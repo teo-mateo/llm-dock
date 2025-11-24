@@ -101,13 +101,13 @@ mv "$DOCKERFILE_PATH.tmp" "$DOCKERFILE_PATH"
 
 # Build the image
 cd "$(dirname "$0")"
-docker build -t my-llamacpp ./llama.cpp/
+docker build -t llm-dock-llamacpp ./llama.cpp/
 
 echo ""
 echo -e "${GREEN}=========================================="
 echo "  Build Complete!"
 echo "==========================================${NC}"
 echo ""
-echo "The 'my-llamacpp' image is now ready."
+echo "The 'llm-dock-llamacpp' image is now ready."
 echo "You can now create llama.cpp services through the dashboard."
 echo ""

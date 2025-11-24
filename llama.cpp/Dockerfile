@@ -26,7 +26,7 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 RUN cmake -B build \
    -DGGML_CUDA=ON \
-   -DCMAKE_CUDA_ARCHITECTURES=120 \
+   -DCMAKE_CUDA_ARCHITECTURES=86 \
    -DLLAMA_BUILD_EXAMPLES=OFF \
    -DLLAMA_BUILD_TESTS=OFF \
    -DCMAKE_BUILD_TYPE=Release
