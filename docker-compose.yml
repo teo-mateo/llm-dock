@@ -1,0 +1,40 @@
+services:
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # Managed manually, not by dashboard
+  # ============================================
+
+  # Open WebUI - Unified interface for all models
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+
+    ports:
+      - "3300:8080"
+
+    environment:
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-change-this-secret-key}
+      - ANONYMIZED_TELEMETRY=false
+
+    volumes:
+      - open-webui-data:/app/backend/data
+
+    networks:
+      - llm-network
+
+  # ============================================
+  # MODEL SERVICES - DASHBOARD MANAGED
+  # Auto-generated from services.json - DO NOT EDIT MANUALLY
+  # ============================================
+
+  # <<<<<<< BEGIN DYNAMIC
+
+  # >>>>>>> END DYNAMIC
+
+volumes:
+  open-webui-data:
+
+networks:
+  llm-network:
+    driver: bridge

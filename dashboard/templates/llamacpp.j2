@@ -1,0 +1,38 @@
+  {{ service_name }}:
+    image: my-llamacpp
+    container_name: {{ service_name }}
+    restart: no
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8080"
+
+    ipc: host
+
+    environment:
+      - LLAMA_SERVER_API_KEY={{ api_key }}
+
+    volumes:
+      - ${HOME}/.cache/huggingface:/hf-cache
+      - ${HOME}/.cache/models:/local-models:ro
+
+    networks:
+      - llm-network
+
+    command: |
+      /llama.cpp/build/bin/llama-server
+      -m {{ model_path }}
+      {% if mmproj_path %}--mmproj {{ mmproj_path }}
+      {% endif %}--alias {{ alias }}
+      --host "0.0.0.0"
+      --port 8080
+      --api-key {{ api_key }}
+      {% for flag in rendered_flags %}{{ flag }}
+      {% endfor %}

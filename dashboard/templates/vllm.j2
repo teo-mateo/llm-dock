@@ -1,0 +1,42 @@
+  {{ service_name }}:
+    image: vllm/vllm-openai:v0.11.0
+    container_name: {{ service_name }}
+    restart: no
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8000"
+
+    ipc: host
+
+    environment:
+      - HF_HUB_OFFLINE=1
+{% if attention_backend %}
+      - VLLM_ATTENTION_BACKEND={{ attention_backend }}
+{% endif %}
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
+      - ${HOME}/.cache/torch:/root/.cache/torch
+      - ${HOME}/.triton:/root/.triton
+      - ${HOME}/.cache/models:/local-models:ro
+
+    networks:
+      - llm-network
+
+    entrypoint: ["vllm"]
+    command: >
+      serve {{ model_name }}
+      --host 0.0.0.0
+      --port 8000
+      --trust-remote-code
+      --served-model-name {{ alias }}
+      --api-key {{ api_key }}
+      {% for flag in rendered_flags %}{{ flag }}
+      {% endfor %}
