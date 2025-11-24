@@ -42,6 +42,77 @@ python app.py
 - Dashboard: http://localhost:3399
 - Open WebUI: http://localhost:3300
 
+## Getting Started with Your First Model
+
+If you don't have any models yet, here's how to download a small (~2GB) but capable model to get started.
+
+### 1. Install huggingface-cli
+
+```bash
+pip install huggingface-hub
+```
+
+### 2. Download a Starter Model
+
+We recommend **Qwen2.5-3B-Instruct** in GGUF format - it's small, fast, and surprisingly capable:
+
+```bash
+# Download Q4_K_M quantization (~2GB, good balance of size/quality)
+huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF \
+  qwen2.5-3b-instruct-q4_k_m.gguf \
+  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-3B-Instruct-GGUF
+```
+
+Alternative smaller/larger options:
+```bash
+# Smaller (~1.5GB) - faster but less capable
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF \
+  qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-1.5B-Instruct-GGUF
+
+# Larger (~4.5GB) - more capable
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
+  qwen2.5-7b-instruct-q4_k_m.gguf \
+  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-7B-Instruct-GGUF
+```
+
+### 3. Build llama.cpp and Start the Dashboard
+
+```bash
+# Build llama.cpp Docker image (select your GPU architecture when prompted)
+./build-llamacpp.sh
+
+# Start the dashboard
+cd dashboard
+source venv/bin/activate
+python app.py
+```
+
+### 4. Create a Service via the Dashboard
+
+1. Open http://localhost:3399 in your browser
+2. The model should appear in the "Discovered Models" section
+3. Click on it and select **llama.cpp** as the engine
+4. Configure options (defaults work fine for the 3B model):
+   - Context length: `8192` (or up to `32768` for Qwen2.5)
+   - GPU layers: `999` (offload all layers to GPU)
+5. Click **Create Service**
+6. Click **Start** to launch it
+
+### 5. Chat with Your Model
+
+- **Via Open WebUI**: Go to http://localhost:3300, your model will be auto-registered
+- **Via API**:
+  ```bash
+  curl http://localhost:3301/v1/chat/completions \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "qwen2.5-3b-instruct",
+      "messages": [{"role": "user", "content": "Hello!"}]
+    }'
+  ```
+
 ## Project Structure
 
 ```
