@@ -2,6 +2,8 @@
 
 A dashboard for managing local LLM inference services with Docker Compose. Supports llama.cpp (GGUF models) and vLLM (HuggingFace models) with automatic GPU detection, model discovery, and Open WebUI integration.
 
+![LLM-Dock Dashboard](docs/images/dashboard.png)
+
 ## Features
 
 - **Model Discovery** - Automatically scans HuggingFace cache and local directories for models
@@ -220,6 +222,8 @@ curl -X POST http://localhost:3399/api/services/create \
 - Multimodal: Supported (mmproj files)
 - Image: Custom build (`my-llamacpp`)
 
+![llama.cpp Service Configuration](docs/images/service-edit-llamacpp.png)
+
 Available flags:
 - `-c` / `context_length` - Context length
 - `-ngl` / `gpu_layers` - GPU layers (999 = all)
@@ -231,6 +235,8 @@ Available flags:
 ### vLLM
 - Format: safetensors (HuggingFace models)
 - Image: `vllm/vllm-openai:v0.11.0`
+
+![vLLM Service Configuration](docs/images/service-edit-vllm.png)
 
 Available flags:
 - `--max-model-len` - Context length
