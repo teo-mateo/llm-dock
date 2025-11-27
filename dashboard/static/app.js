@@ -222,7 +222,7 @@ function renderServices(services) {
                     ${!isNotCreated ? `<button onclick="openLogsModal('${service.name}')" class="text-blue-400 hover:text-blue-300 text-sm font-semibold flex-shrink-0">[Logs]</button>` : ''}
                 </div>
                 <div class="space-y-1 mb-4 text-sm text-gray-300 flex-1">
-                    <p>Status: <span class="${statusColor} font-semibold">${service.status}</span></p>
+                    <p>Status: <span class="${statusColor} font-semibold">${service.status}</span>${service.exit_code ? ` <span class="text-red-400">(exit code: ${service.exit_code}${service.exit_code === 139 ? ' - segfault' : service.exit_code === 137 ? ' - OOM killed' : ''})</span>` : ''}</p>
                     <p>Container ID: <span class="text-gray-500 font-mono">${service.container_id || 'N/A'}</span></p>
                     <p>Port: <span class="text-gray-400">${portInfo}</span>${!isInfraService && service.host_port !== 3301 && service.host_port !== 9999 ? ` <button onclick="setPublicPort('${service.name}')" class="text-blue-400 hover:text-blue-300 ml-1" title="Set to public port (3301)"><i class="fa-solid fa-bullseye"></i></button>` : ''}${!isInfraService && service.host_port === 3301 ? ` <span class="text-green-400 ml-1" title="This is the public port"><i class="fa-solid fa-globe"></i></span>` : ''}</p>
                     ${service.api_key ? `<p>API Key: <span class="text-gray-400 font-mono text-xs">${service.api_key.substring(0, 10)}...</span> <button onclick="copyToClipboard('${service.api_key}')" class="text-blue-400 hover:text-blue-300 ml-1" title="Copy API key"><i class="fa-solid fa-copy"></i></button></p>` : ''}
@@ -357,6 +357,11 @@ function deleteService(name) {
 function closeDeleteModal() {
     document.getElementById('delete-service-modal').classList.add('hidden');
     serviceToDelete = null;
+
+    // Reset button state
+    const confirmBtn = document.getElementById('delete-service-confirm');
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = '<i class="fa-solid fa-trash mr-2"></i>Delete';
 }
 
 async function confirmDelete() {

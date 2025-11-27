@@ -214,9 +214,12 @@ def get_docker_services():
     for container in containers:
         service_name = container.labels.get('com.docker.compose.service')
         if service_name in allowed_services:
+            # Get exit code for crashed containers
+            exit_code = container.attrs.get('State', {}).get('ExitCode', 0)
             container_map[service_name] = {
                 'name': service_name,
                 'status': container.status,
+                'exit_code': exit_code if container.status == 'exited' else None,
                 'container_id': container.id[:12],
                 'created': container.attrs['Created'],
                 'ports': container.ports,
