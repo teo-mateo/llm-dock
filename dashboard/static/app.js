@@ -226,13 +226,21 @@ function renderServices(services) {
                     <p>Container ID: <span class="text-gray-500 font-mono">${service.container_id || 'N/A'}</span></p>
                     <p>Port: <span class="text-gray-400">${portInfo}</span>${!isInfraService && service.host_port !== 3301 && service.host_port !== 9999 ? ` <button onclick="setPublicPort('${service.name}')" class="text-blue-400 hover:text-blue-300 ml-1" title="Set to public port (3301)"><i class="fa-solid fa-bullseye"></i></button>` : ''}${!isInfraService && service.host_port === 3301 ? ` <span class="text-green-400 ml-1" title="This is the public port"><i class="fa-solid fa-globe"></i></span>` : ''}</p>
                     ${service.api_key ? `<p>API Key: <span class="text-gray-400 font-mono text-xs">${service.api_key.substring(0, 10)}...</span> <button onclick="copyToClipboard('${service.api_key}')" class="text-blue-400 hover:text-blue-300 ml-1" title="Copy API key"><i class="fa-solid fa-copy"></i></button></p>` : ''}
+                    ${!isInfraService ? `<p>Open WebUI: ${service.openwebui_registered
+                        ? `<span class="text-green-400"><i class="fa-solid fa-check-circle"></i> Registered</span> <button onclick="toggleOpenWebUI('${service.name}', false)" class="text-red-400 hover:text-red-300 ml-2 text-xs" title="Unregister from Open WebUI">[Unregister]</button>`
+                        : `<span class="text-gray-500"><i class="fa-solid fa-times-circle"></i> Not registered</span> <button onclick="toggleOpenWebUI('${service.name}', true)" class="text-blue-400 hover:text-blue-300 ml-2 text-xs" title="Register with Open WebUI">[Register]</button>`
+                    }</p>` : ''}
                 </div>
                 <div class="flex gap-2 mt-auto">
                     ${isRunning
                         ? `<button onclick="controlService('${service.name}', 'stop')" class="flex-1 bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-semibold">Stop</button>`
                         : `<button onclick="controlService('${service.name}', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 px-3 py-2 rounded font-semibold">${isNotCreated ? 'Create & Start' : 'Start'}</button>`
                     }
-                    ${!isInfraService ? `
+                    ${isInfraService ? `
+                        <button onclick="restartOpenWebUI()" class="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Restart Open WebUI">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    ` : `
                         <button onclick="previewService('${service.name}')" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Preview YAML">
                             <i class="fa-solid fa-code"></i>
                         </button>
@@ -242,7 +250,7 @@ function renderServices(services) {
                         <button onclick="deleteService('${service.name}')" class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Delete service">
                             <i class="fa-solid fa-trash"></i>
                         </button>
-                    ` : ''}
+                    `}
                 </div>
             </div>
         `;
@@ -285,6 +293,56 @@ async function setPublicPort(serviceName) {
     } catch (error) {
         console.error('Failed to set public port:', error);
         showToast(`Failed to set public port: ${error.message}`, true);
+    }
+}
+
+async function toggleOpenWebUI(serviceName, register) {
+    try {
+        const endpoint = register ? 'register-openwebui' : 'unregister-openwebui';
+        const action = register ? 'Registering' : 'Unregistering';
+
+        showToast(`${action} ${serviceName}...`);
+
+        const result = await fetchAPI(`/v2/services/${serviceName}/${endpoint}`, { method: 'POST' });
+
+        if (result.success) {
+            showToast(result.message);
+
+            // Reload services to show updated status
+            loadServices();
+
+            // Ask user if they want to restart Open WebUI
+            const restart = confirm(
+                'Open WebUI must be restarted for changes to take effect.\n\n' +
+                'Do you want to restart Open WebUI now?'
+            );
+
+            if (restart) {
+                await restartOpenWebUI();
+            }
+        } else {
+            showToast(result.error || `Failed to ${register ? 'register' : 'unregister'}`, true);
+        }
+    } catch (error) {
+        console.error(`Failed to ${register ? 'register' : 'unregister'} with Open WebUI:`, error);
+        showToast(`Failed: ${error.message}`, true);
+    }
+}
+
+async function restartOpenWebUI() {
+    try {
+        showToast('Restarting Open WebUI...');
+
+        const result = await fetchAPI('/openwebui/restart', { method: 'POST' });
+
+        if (result.success) {
+            showToast('Open WebUI restarted successfully');
+        } else {
+            showToast(result.error || 'Failed to restart Open WebUI', true);
+        }
+    } catch (error) {
+        console.error('Failed to restart Open WebUI:', error);
+        showToast(`Failed to restart: ${error.message}`, true);
     }
 }
 
@@ -839,6 +897,229 @@ let currentServiceName = null; // For update mode
 let availableFlags = {}; // Cache for flag metadata by engine
 let parameterRows = []; // Track parameter row IDs
 let nextRowId = 1; // Counter for unique row IDs
+let gpuInfo = null; // Cached GPU info
+
+// Fetch and display GPU info in modal
+async function loadGPUInfo() {
+    const gpuNameEl = document.getElementById('modal-gpu-name');
+    const gpuVramEl = document.getElementById('modal-gpu-vram');
+
+    try {
+        const result = await fetchAPI('/gpu');
+        if (result.gpus && result.gpus.length > 0) {
+            const gpu = result.gpus[0]; // Use first GPU
+            gpuInfo = gpu;
+
+            const totalGB = (gpu.memory.total / 1024).toFixed(1);
+            const freeGB = (gpu.memory.free / 1024).toFixed(1);
+            const usedGB = (gpu.memory.used / 1024).toFixed(1);
+
+            gpuNameEl.textContent = gpu.name;
+            gpuVramEl.innerHTML = `VRAM: <span class="text-green-400">${freeGB} GB free</span> / ${totalGB} GB total`;
+        } else {
+            gpuNameEl.textContent = 'No GPU detected';
+            gpuVramEl.textContent = '';
+            gpuInfo = null;
+        }
+    } catch (error) {
+        console.error('Failed to load GPU info:', error);
+        gpuNameEl.textContent = 'GPU info unavailable';
+        gpuVramEl.textContent = '';
+        gpuInfo = null;
+    }
+}
+
+// Get the next available port in the 3301-3399 range
+async function getNextAvailablePort() {
+    try {
+        const data = await fetchAPI('/services');
+        const usedPorts = new Set(
+            data.services
+                .filter(s => s.host_port)
+                .map(s => s.host_port)
+        );
+
+        // Find first available port in range 3301-3399 (3300 reserved for open-webui)
+        for (let port = 3301; port <= 3399; port++) {
+            if (!usedPorts.has(port)) {
+                return port;
+            }
+        }
+        return null; // No available ports
+    } catch (error) {
+        console.error('Failed to get available port:', error);
+        return null;
+    }
+}
+
+// Calculate smart defaults based on GPU VRAM and model size
+function getSmartDefaults(engine, modelSizeGB, vramTotalMB) {
+    const vramGB = vramTotalMB / 1024;
+    const defaults = [];
+
+    if (engine === 'llamacpp') {
+        // Always offload all layers to GPU
+        defaults.push({ flag: 'gpu_layers', value: '999' });
+
+        // Context length based on available headroom
+        // Rough estimate: model takes ~1.2x its size in VRAM, rest for context
+        const headroomGB = vramGB - (modelSizeGB * 1.2);
+
+        let contextLength;
+        if (headroomGB >= 12) {
+            contextLength = '32768';
+        } else if (headroomGB >= 8) {
+            contextLength = '16384';
+        } else if (headroomGB >= 4) {
+            contextLength = '8192';
+        } else if (headroomGB >= 2) {
+            contextLength = '4096';
+        } else {
+            contextLength = '2048';
+        }
+        defaults.push({ flag: 'context_length', value: contextLength });
+
+        // Flash attention for efficiency (if VRAM is tight)
+        if (headroomGB < 6) {
+            defaults.push({ flag: 'flash_attn', value: '' }); // boolean flag
+        }
+
+    } else if (engine === 'vllm') {
+        // GPU memory utilization - be conservative
+        defaults.push({ flag: 'gpu_memory_utilization', value: '0.90' });
+
+        // Max model length based on VRAM
+        if (vramGB >= 24) {
+            defaults.push({ flag: 'max_model_len', value: '8192' });
+        } else if (vramGB >= 16) {
+            defaults.push({ flag: 'max_model_len', value: '4096' });
+        } else {
+            defaults.push({ flag: 'max_model_len', value: '2048' });
+        }
+    }
+
+    return defaults;
+}
+
+// Apply smart defaults to parameter rows
+function applySmartDefaults() {
+    if (!gpuInfo || !currentModelData) return;
+
+    const engine = document.querySelector('input[name="engine"]:checked')?.value;
+    if (!engine) return;
+
+    // Parse model size from size_str (e.g., "14.50 GB" -> 14.5)
+    const sizeMatch = currentModelData.size_str?.match(/([\d.]+)\s*(GB|MB)/i);
+    let modelSizeGB = 0;
+    if (sizeMatch) {
+        modelSizeGB = parseFloat(sizeMatch[1]);
+        if (sizeMatch[2].toUpperCase() === 'MB') {
+            modelSizeGB /= 1024;
+        }
+    }
+
+    const defaults = getSmartDefaults(engine, modelSizeGB, gpuInfo.memory.total);
+
+    // Clear existing rows and add defaults
+    clearParameterRows();
+
+    defaults.forEach(d => {
+        addParameterRow(d.flag, d.value);
+    });
+
+    // Add one empty row for user customization
+    addParameterRow();
+
+    updateCommandPreview();
+    updateParamsCount();
+}
+
+// Update the params count display
+function updateParamsCount() {
+    const countEl = document.getElementById('params-count');
+    if (!countEl) return;
+
+    // Count non-empty parameter rows
+    const rows = document.querySelectorAll('#dynamic-params-container > div');
+    let configuredCount = 0;
+
+    rows.forEach(row => {
+        const select = row.querySelector('select');
+        if (select && select.value && select.value !== '') {
+            configuredCount++;
+        }
+    });
+
+    countEl.textContent = `(${configuredCount} configured)`;
+}
+
+// Transform host path to container path
+function transformToContainerPath(hostPath) {
+    // Replace common host cache paths with container path
+    // ~/.cache/huggingface -> /hf-cache
+    // ~/.cache/models -> /local-models (separate volume mount)
+    let containerPath = hostPath
+        .replace(/^\/home\/[^/]+\/\.cache\/huggingface/, '/hf-cache')
+        .replace(/^\/home\/[^/]+\/\.cache\/models/, '/local-models');
+    return containerPath;
+}
+
+// Populate GGUF file selector
+function populateGGUFFileSelector(files) {
+    const selector = document.getElementById('gguf-file-selector');
+    const fileList = document.getElementById('gguf-file-list');
+    const hint = document.getElementById('model-path-hint');
+
+    // Filter for GGUF files only
+    const ggufFiles = files ? files.filter(f => f.name && f.name.endsWith('.gguf')) : [];
+
+    if (ggufFiles.length === 0) {
+        selector.classList.add('hidden');
+        hint.classList.remove('hidden');
+        return;
+    }
+
+    // Show selector, hide hint
+    selector.classList.remove('hidden');
+    hint.classList.add('hidden');
+
+    // Populate file list
+    fileList.innerHTML = ggufFiles.map((file, index) => {
+        const containerPath = transformToContainerPath(file.path);
+        const fileName = file.name || file.path.split('/').pop();
+        const size = file.size_str || '';
+        return `
+            <div class="px-3 py-2 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-0 flex items-center gap-2"
+                 onclick="selectGGUFFile('${containerPath.replace(/'/g, "\\'")}')">
+                <input type="radio" name="gguf-file" id="gguf-file-${index}" class="flex-shrink-0">
+                <label for="gguf-file-${index}" class="flex-1 cursor-pointer">
+                    <div class="text-sm font-mono truncate" title="${containerPath}">${fileName}</div>
+                    <div class="text-xs text-gray-500">${size}</div>
+                </label>
+            </div>
+        `;
+    }).join('');
+
+    // Auto-select if only one file
+    if (ggufFiles.length === 1) {
+        const containerPath = transformToContainerPath(ggufFiles[0].path);
+        selectGGUFFile(containerPath);
+        document.querySelector('input[name="gguf-file"]').checked = true;
+    }
+}
+
+// Handle GGUF file selection
+function selectGGUFFile(containerPath) {
+    document.getElementById('model-path').value = containerPath;
+
+    // Update radio button state
+    const radios = document.querySelectorAll('input[name="gguf-file"]');
+    radios.forEach(radio => {
+        const div = radio.closest('div');
+        const pathInDiv = div.querySelector('.font-mono').getAttribute('title');
+        radio.checked = (pathInDiv === containerPath);
+    });
+}
 
 // Flag Metadata Functions
 async function loadFlagMetadata(templateType) {
@@ -1375,6 +1656,9 @@ function openCreateServiceModal(modelData) {
     document.getElementById('modal-model-name').textContent = modelData.full_name || modelData.name;
     document.getElementById('modal-model-size').textContent = `Size: ${modelData.size_str}${modelData.quantization ? ' | Quantization: ' + modelData.quantization : ''}`;
 
+    // Reset parameters count
+    document.getElementById('params-count').textContent = '(0 configured)';
+
     // Auto-select engine based on model format
     const hasGGUF = modelData.files && modelData.files.some(f => f.name.endsWith('.gguf'));
     const llamacppRadio = document.querySelector('input[name="engine"][value="llamacpp"]');
@@ -1399,19 +1683,25 @@ function openCreateServiceModal(modelData) {
     document.getElementById('model-hf-name').value = modelData.name;
 
     // Clear previous values
-    document.getElementById('service-port').value = '';  // Will be auto-assigned by backend
+    document.getElementById('service-port').value = '';
     document.getElementById('model-path').value = '';
     document.getElementById('api-key').value = '';
     document.getElementById('create-service-error').classList.add('hidden');
 
-    // Load flag metadata and initialize parameter rows
+    // Populate GGUF file selector if model has GGUF files
+    populateGGUFFileSelector(modelData.files);
+
+    // Load flag metadata, GPU info, and next available port
     const engine = llamacppRadio.checked ? 'llamacpp' : 'vllm';
-    loadFlagMetadata(engine).then(() => {
-        clearParameterRows();
-        // Add 3 empty rows to start
-        addParameterRow();
-        addParameterRow();
-        addParameterRow();
+    Promise.all([
+        loadFlagMetadata(engine),
+        loadGPUInfo(),
+        getNextAvailablePort()
+    ]).then(([_, __, nextPort]) => {
+        applySmartDefaults();
+        if (nextPort) {
+            document.getElementById('service-port').value = nextPort;
+        }
     });
 
     // Show modal
@@ -1424,10 +1714,14 @@ function openCreateServiceModal(modelData) {
             const newEngine = document.querySelector('input[name="engine"]:checked')?.value;
             if (newEngine) {
                 await loadFlagMetadata(newEngine);
-                clearParameterRows();
-                addParameterRow();
-                addParameterRow();
-                addParameterRow();
+
+                // Apply smart defaults for the new engine
+                applySmartDefaults();
+
+                // Repopulate GGUF selector if switching to llamacpp
+                if (newEngine === 'llamacpp' && currentModelData) {
+                    populateGGUFFileSelector(currentModelData.files);
+                }
             }
         });
     });
@@ -1577,6 +1871,8 @@ async function openUpdateServiceModal(serviceName) {
         // Engine-specific fields
         if (engine === 'llamacpp') {
             document.getElementById('model-path').value = config.model_path || '';
+            // Hide file selector in update mode (no model data available)
+            document.getElementById('gguf-file-selector').classList.add('hidden');
         } else {
             document.getElementById('model-hf-name').value = config.model_name || '';
         }
@@ -1595,6 +1891,9 @@ async function openUpdateServiceModal(serviceName) {
 
         // Clear error
         document.getElementById('create-service-error').classList.add('hidden');
+
+        // Load GPU info for display
+        await loadGPUInfo();
 
         // Show modal
         document.getElementById('create-service-modal').classList.remove('hidden');

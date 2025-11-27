@@ -26,7 +26,12 @@ from flag_metadata import (
     get_flag_metadata,
     MANDATORY_FIELDS
 )
-from openwebui_integration import add_service_to_openwebui, remove_service_from_openwebui
+from openwebui_integration import (
+    add_service_to_openwebui,
+    remove_service_from_openwebui,
+    is_service_registered_in_openwebui,
+    get_openwebui_registered_urls
+)
 
 load_dotenv()
 
@@ -176,13 +181,27 @@ def get_docker_services():
     allowed_services = get_compose_services()
     port_map = get_compose_service_ports()
 
-    # Get API keys from services.json
+    # Get API keys and template types from services.json
     compose_mgr = ComposeManager(COMPOSE_FILE)
     api_key_map = {}
+    template_type_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
             api_key_map[service_name] = config.get('api_key', '')
+            template_type_map[service_name] = config.get('template_type', '')
+
+    # Get Open WebUI registered URLs (one query for all services)
+    openwebui_urls = get_openwebui_registered_urls()
+
+    def is_registered_in_openwebui(svc_name: str) -> bool:
+        """Check if service URL is in the registered URLs list"""
+        engine = template_type_map.get(svc_name, '')
+        if not engine:
+            return False
+        internal_port = 8080 if engine == "llamacpp" else 8000
+        expected_url = f"http://{svc_name}:{internal_port}/v1"
+        return expected_url in openwebui_urls
 
     # Get existing containers
     containers = client.containers.list(
@@ -202,7 +221,8 @@ def get_docker_services():
                 'created': container.attrs['Created'],
                 'ports': container.ports,
                 'host_port': port_map.get(service_name, 9999),
-                'api_key': api_key_map.get(service_name, '')
+                'api_key': api_key_map.get(service_name, ''),
+                'openwebui_registered': is_registered_in_openwebui(service_name)
             }
 
     # Build complete services list from compose file
@@ -220,7 +240,8 @@ def get_docker_services():
                 'created': None,
                 'ports': {},
                 'host_port': port_map.get(service_name, 9999),
-                'api_key': api_key_map.get(service_name, '')
+                'api_key': api_key_map.get(service_name, ''),
+                'openwebui_registered': is_registered_in_openwebui(service_name)
             })
 
     # Sort by port number (ascending)
@@ -767,19 +788,11 @@ def create_service():
 
         logger.info(f"Service created: {service_name} on port {port}")
 
-        # Add service to Open WebUI
-        openwebui_success = add_service_to_openwebui(service_name, port, api_key, engine)
-        if openwebui_success:
-            logger.info(f"Service '{service_name}' registered with Open WebUI")
-        else:
-            logger.warning(f"Failed to register service '{service_name}' with Open WebUI (service still created)")
-
         return jsonify({
             'success': True,
             'service_name': service_name,
             'port': port,
             'api_key': api_key,
-            'openwebui_registered': openwebui_success,
             'message': f"Service '{service_name}' created successfully. Start it to begin using."
         }), 201
 
@@ -908,19 +921,11 @@ def create_service_v2():
 
         logger.info(f"=== SERVICE CREATED SUCCESSFULLY: {service_name} on port {port} ===")
 
-        # Add service to Open WebUI
-        openwebui_success = add_service_to_openwebui(service_name, port, data['api_key'], template_type)
-        if openwebui_success:
-            logger.info(f"Service '{service_name}' registered with Open WebUI")
-        else:
-            logger.warning(f"Failed to register service '{service_name}' with Open WebUI (service still created)")
-
         return jsonify({
             'success': True,
             'service_name': service_name,
             'port': port,
             'api_key': data['api_key'],
-            'openwebui_registered': openwebui_success,
             'message': f'Service "{service_name}" created successfully'
         }), 201
 
@@ -1044,6 +1049,22 @@ def delete_service_v2(service_name):
         # Get engine type before deletion
         engine = service_config.get('template_type', 'llamacpp')
 
+        # Stop and remove container if running
+        try:
+            subprocess.run(
+                ['docker', 'compose', '-f', COMPOSE_FILE, 'stop', service_name],
+                capture_output=True,
+                timeout=30
+            )
+            subprocess.run(
+                ['docker', 'compose', '-f', COMPOSE_FILE, 'rm', '-f', service_name],
+                capture_output=True,
+                timeout=10
+            )
+            logger.info(f"Stopped and removed container for: {service_name}")
+        except Exception as e:
+            logger.warning(f"Error stopping container (may not be running): {e}")
+
         # Remove from database
         compose_mgr.remove_service_from_db(service_name)
 
@@ -1052,16 +1073,8 @@ def delete_service_v2(service_name):
 
         logger.info(f"Service deleted: {service_name}")
 
-        # Remove service from Open WebUI
-        openwebui_success = remove_service_from_openwebui(service_name, engine)
-        if openwebui_success:
-            logger.info(f"Service '{service_name}' removed from Open WebUI")
-        else:
-            logger.warning(f"Failed to remove service '{service_name}' from Open WebUI (service still deleted)")
-
         return jsonify({
             'success': True,
-            'openwebui_removed': openwebui_success,
             'message': f'Service "{service_name}" deleted successfully'
         }), 200
 
@@ -1196,6 +1209,142 @@ def set_public_port(service_name):
 
     except Exception as e:
         logger.error(f"Failed to set public port: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v2/services/<service_name>/register-openwebui', methods=['POST'])
+@require_auth
+def register_service_openwebui(service_name):
+    """
+    Manually register a service with Open WebUI.
+    """
+    try:
+        logger.info(f"=== MANUAL REGISTER OPENWEBUI REQUEST for {service_name} ===")
+        compose_mgr = ComposeManager(COMPOSE_FILE)
+
+        # Check if service exists
+        service_config = compose_mgr.get_service_from_db(service_name)
+        if not service_config:
+            return jsonify({'error': f'Service "{service_name}" not found'}), 404
+
+        engine = service_config.get('template_type', '')
+        port = service_config.get('port', 0)
+        api_key = service_config.get('api_key', '')
+
+        if not engine:
+            return jsonify({'error': 'Service has no template_type configured'}), 400
+
+        # Check if already registered
+        if is_service_registered_in_openwebui(service_name, engine):
+            return jsonify({
+                'success': True,
+                'message': f'Service "{service_name}" is already registered with Open WebUI',
+                'already_registered': True
+            }), 200
+
+        # Register with Open WebUI
+        success = add_service_to_openwebui(service_name, port, api_key, engine)
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Service "{service_name}" registered with Open WebUI'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to register service with Open WebUI. Check dashboard logs.'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Failed to register service with Open WebUI: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v2/services/<service_name>/unregister-openwebui', methods=['POST'])
+@require_auth
+def unregister_service_openwebui(service_name):
+    """
+    Manually unregister a service from Open WebUI.
+    """
+    try:
+        logger.info(f"=== MANUAL UNREGISTER OPENWEBUI REQUEST for {service_name} ===")
+        compose_mgr = ComposeManager(COMPOSE_FILE)
+
+        # Check if service exists
+        service_config = compose_mgr.get_service_from_db(service_name)
+        if not service_config:
+            return jsonify({'error': f'Service "{service_name}" not found'}), 404
+
+        engine = service_config.get('template_type', '')
+
+        if not engine:
+            return jsonify({'error': 'Service has no template_type configured'}), 400
+
+        # Check if registered
+        if not is_service_registered_in_openwebui(service_name, engine):
+            return jsonify({
+                'success': True,
+                'message': f'Service "{service_name}" is not registered with Open WebUI',
+                'already_unregistered': True
+            }), 200
+
+        # Unregister from Open WebUI
+        success = remove_service_from_openwebui(service_name, engine)
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Service "{service_name}" unregistered from Open WebUI'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to unregister service from Open WebUI. Check dashboard logs.'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Failed to unregister service from Open WebUI: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/openwebui/restart', methods=['POST'])
+@require_auth
+def restart_openwebui():
+    """
+    Restart the Open WebUI container to apply configuration changes.
+    """
+    try:
+        logger.info("=== RESTARTING OPEN WEBUI CONTAINER ===")
+
+        result = subprocess.run(
+            ['docker', 'restart', 'open-webui'],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Failed to restart Open WebUI: {result.stderr}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to restart: {result.stderr}'
+            }), 500
+
+        logger.info("Open WebUI container restarted successfully")
+        return jsonify({
+            'success': True,
+            'message': 'Open WebUI restarted successfully'
+        }), 200
+
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while restarting Open WebUI")
+        return jsonify({
+            'success': False,
+            'error': 'Timeout while restarting Open WebUI'
+        }), 500
+    except Exception as e:
+        logger.error(f"Failed to restart Open WebUI: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

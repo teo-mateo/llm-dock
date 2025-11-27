@@ -142,7 +142,7 @@ def get_llamacpp_template(options: Dict[str, Any]) -> Dict[str, Any]:
     command = ' \\\n      '.join(cmd_parts)
 
     return {
-        'image': 'my-llamacpp',
+        'image': 'llm-dock-llamacpp',
         'container_name': service_name,
         'restart': 'no',
         'deploy': {

@@ -4,6 +4,17 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 
 ![LLM-Dock Dashboard](docs/images/dashboard.png)
 
+## Changelog
+
+### 2025-11-27
+- **Open WebUI integration** - Register/unregister services with Open WebUI, restart button on Open WebUI card
+- **Auto port assignment** - Next available port (3301-3399) auto-selected on service creation
+- **Fixed path mapping** - `~/.cache/models` now correctly maps to `/local-models` in containers
+- **Service deletion** - Now properly stops and removes containers before deleting
+- **GPU info in edit modal** - GPU stats display when editing existing services
+- **Simplified UI** - Parameters section always visible (removed collapsible)
+- **Image rename** - llama.cpp image renamed from `my-llamacpp` to `llm-dock-llamacpp`
+
 ## Features
 
 - **Model Discovery** - Automatically scans HuggingFace cache and local directories for models
@@ -220,7 +231,7 @@ curl -X POST http://localhost:3399/api/services/create \
 ### llama.cpp
 - Format: GGUF files
 - Multimodal: Supported (mmproj files)
-- Image: Custom build (`my-llamacpp`)
+- Image: Custom build (`llm-dock-llamacpp`)
 
 ![llama.cpp Service Configuration](docs/images/service-edit-llamacpp.png)
 

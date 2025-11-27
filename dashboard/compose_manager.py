@@ -72,12 +72,12 @@ class ComposeManager:
 
         return used_ports
 
-    def get_next_available_port(self, start_port: int = 3300, end_port: int = 3400) -> int:
+    def get_next_available_port(self, start_port: int = 3301, end_port: int = 3400) -> int:
         """
         Find next available port in range.
 
         Args:
-            start_port: Starting port (default: 3300)
+            start_port: Starting port (default: 3301)
             end_port: Ending port (default: 3400)
 
         Returns:

@@ -90,11 +90,18 @@
                 <button onclick="closeCreateServiceModal()" class="text-gray-400 hover:text-white text-2xl font-bold">&times;</button>
             </div>
             <form id="create-service-form" class="p-6 space-y-6 overflow-y-auto flex-1">
-                <!-- Model Info Display -->
-                <div class="bg-gray-900 p-4 rounded border border-gray-700">
-                    <h3 class="font-bold mb-2">Selected Model</h3>
-                    <p id="modal-model-name" class="text-sm text-gray-300"></p>
-                    <p id="modal-model-size" class="text-xs text-gray-500"></p>
+                <!-- Model & GPU Info Display -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-gray-900 p-4 rounded border border-gray-700">
+                        <h3 class="font-bold mb-2">Selected Model</h3>
+                        <p id="modal-model-name" class="text-sm text-gray-300"></p>
+                        <p id="modal-model-size" class="text-xs text-gray-500"></p>
+                    </div>
+                    <div id="gpu-info-panel" class="bg-gray-900 p-4 rounded border border-gray-700">
+                        <h3 class="font-bold mb-2"><i class="fa-solid fa-microchip mr-1"></i> GPU</h3>
+                        <p id="modal-gpu-name" class="text-sm text-gray-300">Loading...</p>
+                        <p id="modal-gpu-vram" class="text-xs text-gray-500"></p>
+                    </div>
                 </div>
 
                 <!-- Engine Selection -->
@@ -127,8 +134,17 @@
                 <!-- Model Path (llama.cpp only) -->
                 <div id="model-path-group" class="hidden">
                     <label class="block text-sm font-medium mb-2">Model Path (container) <span class="text-red-400">*</span></label>
+
+                    <!-- File selector for GGUF files -->
+                    <div id="gguf-file-selector" class="hidden mb-2">
+                        <div class="text-xs text-gray-400 mb-1">Select a GGUF file:</div>
+                        <div id="gguf-file-list" class="bg-gray-800 border border-gray-600 rounded max-h-40 overflow-y-auto">
+                            <!-- Files will be populated here -->
+                        </div>
+                    </div>
+
                     <input type="text" id="model-path" placeholder="/hf-cache/hub/..." class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-blue-500">
-                    <p class="text-xs text-gray-500 mt-1">Copy file path from model list and replace ~/.cache/huggingface with /hf-cache</p>
+                    <p id="model-path-hint" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
 
                 <!-- Model Name (vllm only) -->
@@ -140,8 +156,11 @@
                 <!-- Dynamic Parameters -->
                 <div>
                     <div class="flex justify-between items-center mb-2">
-                        <label class="block text-sm font-medium">Optional Parameters</label>
-                        <div class="flex gap-2">
+                        <label class="flex items-center gap-2">
+                            <span class="text-sm font-medium">Parameters</span>
+                            <span id="params-count" class="text-xs text-gray-500">(0 configured)</span>
+                        </label>
+                        <div id="advanced-buttons" class="flex gap-2">
                             <button type="button" onclick="openCopyFromModal()" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs font-semibold">
                                 <i class="fa-solid fa-copy mr-1"></i>Copy from...
                             </button>

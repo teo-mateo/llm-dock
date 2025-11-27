@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Open WebUI Integration
-Handles automatic registration of model services with Open WebUI
+
+Automatically register/unregister llm-dock services with Open WebUI
+by directly modifying the Open WebUI SQLite database config table.
 """
 
 import json
@@ -10,6 +12,71 @@ import subprocess
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Enable more verbose logging for this module
+logger.setLevel(logging.DEBUG)
+
+
+def get_openwebui_registered_urls() -> list[str]:
+    """
+    Get list of all registered API base URLs from Open WebUI.
+
+    Returns:
+        List of registered URLs, or empty list on error
+    """
+    try:
+        python_script = """
+import sqlite3
+import json
+
+try:
+    conn = sqlite3.connect('/app/backend/data/webui.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT data FROM config WHERE id = 1')
+    row = cursor.fetchone()
+
+    if row:
+        data = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        urls = data.get('openai', {}).get('api_base_urls', [])
+        print(json.dumps(urls))
+    else:
+        print('[]')
+
+    conn.close()
+except Exception as e:
+    print('[]')
+"""
+        result = subprocess.run(
+            ['docker', 'exec', 'open-webui', 'python', '-c', python_script],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            return json.loads(result.stdout.strip())
+        return []
+    except Exception as e:
+        logger.error(f"Error getting registered URLs: {e}")
+        return []
+
+
+def is_service_registered_in_openwebui(service_name: str, engine: str) -> bool:
+    """
+    Check if a service is registered in Open WebUI.
+
+    Args:
+        service_name: Name of the service
+        engine: Engine type ("llamacpp" or "vllm")
+
+    Returns:
+        True if registered, False otherwise
+    """
+    internal_port = 8080 if engine == "llamacpp" else 8000
+    base_url = f"http://{service_name}:{internal_port}/v1"
+
+    registered_urls = get_openwebui_registered_urls()
+    return base_url in registered_urls
 
 
 def add_service_to_openwebui(service_name: str, port: int, api_key: str, engine: str):
@@ -25,6 +92,14 @@ def add_service_to_openwebui(service_name: str, port: int, api_key: str, engine:
     Returns:
         bool: True if successful, False otherwise
     """
+    logger.info("=" * 60)
+    logger.info("OPEN WEBUI INTEGRATION: add_service_to_openwebui() called")
+    logger.info(f"  service_name: {service_name}")
+    logger.info(f"  port: {port}")
+    logger.info(f"  api_key: {api_key[:10] if api_key else 'None'}...")
+    logger.info(f"  engine: {engine}")
+    logger.info("=" * 60)
+
     try:
         # Construct the base URL (internal docker network address)
         # For llamacpp: http://service:8080/v1
@@ -32,9 +107,7 @@ def add_service_to_openwebui(service_name: str, port: int, api_key: str, engine:
         internal_port = 8080 if engine == "llamacpp" else 8000
         base_url = f"http://{service_name}:{internal_port}/v1"
 
-        logger.info(f"Adding service '{service_name}' to Open WebUI")
-        logger.info(f"  Base URL: {base_url}")
-        logger.info(f"  API Key: {api_key[:10]}...")
+        logger.info(f"Constructed base URL: {base_url}")
 
         # Python script to execute inside the Open WebUI container
         python_script = f"""
@@ -124,27 +197,37 @@ except Exception as e:
 """
 
         # Execute the Python script inside the Open WebUI container
+        logger.info("Executing Python script inside 'open-webui' container...")
+        cmd = ['docker', 'exec', 'open-webui', 'python', '-c', python_script]
+        logger.debug(f"Command: docker exec open-webui python -c <script>")
+
         result = subprocess.run(
-            ['docker', 'exec', 'open-webui', 'python', '-c', python_script],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10
         )
 
+        logger.info(f"subprocess return code: {result.returncode}")
+        logger.info(f"subprocess stdout: {result.stdout.strip()}")
+        if result.stderr:
+            logger.info(f"subprocess stderr: {result.stderr.strip()}")
+
         if result.returncode != 0:
-            logger.error(f"Failed to add service to Open WebUI: {result.stderr}")
-            logger.error(f"stdout: {result.stdout}")
+            logger.error(f"FAILED to add service to Open WebUI!")
+            logger.error(f"  returncode: {result.returncode}")
+            logger.error(f"  stderr: {result.stderr}")
+            logger.error(f"  stdout: {result.stdout}")
             return False
 
-        logger.info(f"Open WebUI response: {result.stdout.strip()}")
-        logger.info(f"Service '{service_name}' successfully registered with Open WebUI")
+        logger.info(f"SUCCESS: Service '{service_name}' registered with Open WebUI")
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Timeout while adding service to Open WebUI")
+        logger.error("TIMEOUT while adding service to Open WebUI (10s)")
         return False
     except Exception as e:
-        logger.error(f"Error adding service to Open WebUI: {e}", exc_info=True)
+        logger.error(f"EXCEPTION in add_service_to_openwebui: {e}", exc_info=True)
         return False
 
 
@@ -159,13 +242,18 @@ def remove_service_from_openwebui(service_name: str, engine: str):
     Returns:
         bool: True if successful, False otherwise
     """
+    logger.info("=" * 60)
+    logger.info("OPEN WEBUI INTEGRATION: remove_service_from_openwebui() called")
+    logger.info(f"  service_name: {service_name}")
+    logger.info(f"  engine: {engine}")
+    logger.info("=" * 60)
+
     try:
         # Construct the base URL
         internal_port = 8080 if engine == "llamacpp" else 8000
         base_url = f"http://{service_name}:{internal_port}/v1"
 
-        logger.info(f"Removing service '{service_name}' from Open WebUI")
-        logger.info(f"  Base URL: {base_url}")
+        logger.info(f"Constructed base URL to remove: {base_url}")
 
         # Python script to execute inside the Open WebUI container
         python_script = f"""
@@ -260,25 +348,34 @@ except Exception as e:
 """
 
         # Execute the Python script inside the Open WebUI container
+        logger.info("Executing Python script inside 'open-webui' container...")
+        cmd = ['docker', 'exec', 'open-webui', 'python', '-c', python_script]
+
         result = subprocess.run(
-            ['docker', 'exec', 'open-webui', 'python', '-c', python_script],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10
         )
 
+        logger.info(f"subprocess return code: {result.returncode}")
+        logger.info(f"subprocess stdout: {result.stdout.strip()}")
+        if result.stderr:
+            logger.info(f"subprocess stderr: {result.stderr.strip()}")
+
         if result.returncode != 0:
-            logger.error(f"Failed to remove service from Open WebUI: {result.stderr}")
-            logger.error(f"stdout: {result.stdout}")
+            logger.error(f"FAILED to remove service from Open WebUI!")
+            logger.error(f"  returncode: {result.returncode}")
+            logger.error(f"  stderr: {result.stderr}")
+            logger.error(f"  stdout: {result.stdout}")
             return False
 
-        logger.info(f"Open WebUI response: {result.stdout.strip()}")
-        logger.info(f"Service '{service_name}' successfully removed from Open WebUI")
+        logger.info(f"SUCCESS: Service '{service_name}' removed from Open WebUI")
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Timeout while removing service from Open WebUI")
+        logger.error("TIMEOUT while removing service from Open WebUI (10s)")
         return False
     except Exception as e:
-        logger.error(f"Error removing service from Open WebUI: {e}", exc_info=True)
+        logger.error(f"EXCEPTION in remove_service_from_openwebui: {e}", exc_info=True)
         return False
