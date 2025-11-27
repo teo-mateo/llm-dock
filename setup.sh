@@ -102,6 +102,15 @@ echo -e "  ${GREEN}✓${NC} Dependencies installed"
 
 cd ..
 
+# Initialize docker-compose.yml from template if not exists
+if [ ! -f docker-compose.yml ]; then
+    echo "Creating docker-compose.yml from template..."
+    cp docker-compose.yml.template docker-compose.yml
+    echo -e "  ${GREEN}✓${NC} Created docker-compose.yml"
+else
+    echo -e "  ${GREEN}✓${NC} docker-compose.yml already exists"
+fi
+
 # Start Open WebUI
 echo ""
 echo "Starting Open WebUI..."

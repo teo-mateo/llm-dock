@@ -5,6 +5,7 @@
 
 # Generated files
 services.json
+docker-compose.yml
 docker-compose.yml.backup
 docker-compose.lock
 

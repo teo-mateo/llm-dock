@@ -14,6 +14,7 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 - **GPU info in edit modal** - GPU stats display when editing existing services
 - **Simplified UI** - Parameters section always visible (removed collapsible)
 - **Image rename** - llama.cpp image renamed from `my-llamacpp` to `llm-dock-llamacpp`
+- **Clean installs** - `docker-compose.yml` now generated from template, not tracked in git
 
 ## Features
 
