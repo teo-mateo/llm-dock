@@ -92,6 +92,21 @@ LLAMACPP_FLAGS = {
         'type': 'bool',
         'description': 'Enable Jinja template parsing'
     },
+    'verbose': {
+        'cli': '-v',
+        'type': 'bool',
+        'description': 'Enable verbose logging (max verbosity)'
+    },
+    'log_verbosity': {
+        'cli': '--log-verbosity',
+        'type': 'int',
+        'description': 'Set verbosity threshold level'
+    },
+    'log_file': {
+        'cli': '--log-file',
+        'type': 'string',
+        'description': 'Log output to file'
+    },
     'reasoning_format': {
         'cli': '--reasoning-format',
         'type': 'string',

@@ -99,9 +99,21 @@ DOCKERFILE_PATH="$(dirname "$0")/llama.cpp/Dockerfile"
 sed "s/CMAKE_CUDA_ARCHITECTURES=[0-9]*/CMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH/" "$DOCKERFILE_PATH" > "$DOCKERFILE_PATH.tmp"
 mv "$DOCKERFILE_PATH.tmp" "$DOCKERFILE_PATH"
 
+# Capture build metadata
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BUILD_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+echo "Build metadata:"
+echo "  Date: $BUILD_DATE"
+echo "  Commit: $BUILD_COMMIT"
+echo ""
+
 # Build the image
 cd "$(dirname "$0")"
-docker build -t llm-dock-llamacpp ./llama.cpp/
+docker build --no-cache \
+    --build-arg BUILD_DATE="$BUILD_DATE" \
+    --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
+    -t llm-dock-llamacpp ./llama.cpp/
 
 echo ""
 echo -e "${GREEN}=========================================="

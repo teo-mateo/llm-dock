@@ -26,6 +26,95 @@ function copyToClipboard(text) {
     });
 }
 
+// Format build date as relative time (e.g., "2 days ago")
+function formatBuildDate(isoDateStr) {
+    if (!isoDateStr) return null;
+
+    try {
+        const buildDate = new Date(isoDateStr);
+        const now = new Date();
+        const diffMs = now - buildDate;
+        const diffSecs = Math.floor(diffMs / 1000);
+        const diffMins = Math.floor(diffSecs / 60);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffDays > 30) {
+            return buildDate.toLocaleDateString();
+        } else if (diffDays > 1) {
+            return `${diffDays} days ago`;
+        } else if (diffDays === 1) {
+            return 'yesterday';
+        } else if (diffHours > 1) {
+            return `${diffHours} hours ago`;
+        } else if (diffHours === 1) {
+            return '1 hour ago';
+        } else if (diffMins > 1) {
+            return `${diffMins} minutes ago`;
+        } else {
+            return 'just now';
+        }
+    } catch (e) {
+        console.error('Failed to parse build date:', e);
+        return null;
+    }
+}
+
+// Load and display image metadata in header
+async function loadImageMetadata() {
+    try {
+        const data = await fetchAPI('/images/metadata');
+        const container = document.getElementById('image-metadata');
+
+        if (!container) return;
+
+        const parts = [];
+
+        // Format llamacpp info
+        if (data.llamacpp && data.llamacpp.exists) {
+            const date = formatBuildDate(data.llamacpp.build_date);
+            const commit = data.llamacpp.build_commit ? data.llamacpp.build_commit.substring(0, 7) : null;
+
+            let llamaInfo = 'llamacpp';
+            if (date || commit) {
+                const details = [];
+                if (date) details.push(`built ${date}`);
+                if (commit) details.push(`<span title="${data.llamacpp.build_commit}">${commit}</span>`);
+                llamaInfo += ` (${details.join(', ')})`;
+            }
+            parts.push(llamaInfo);
+        } else if (data.llamacpp && !data.llamacpp.exists) {
+            parts.push('<span class="text-gray-600">llamacpp (not built)</span>');
+        }
+
+        // Format vllm info
+        if (data.vllm && data.vllm.exists) {
+            const date = formatBuildDate(data.vllm.build_date);
+            const commit = data.vllm.build_commit ? data.vllm.build_commit.substring(0, 7) : null;
+
+            let vllmInfo = 'vllm';
+            if (date || commit) {
+                const details = [];
+                if (date) details.push(`built ${date}`);
+                if (commit) details.push(`<span title="${data.vllm.build_commit}">${commit}</span>`);
+                vllmInfo += ` (${details.join(', ')})`;
+            }
+            parts.push(vllmInfo);
+        } else if (data.vllm && !data.vllm.exists) {
+            parts.push('<span class="text-gray-600">vllm (not built)</span>');
+        }
+
+        if (parts.length > 0) {
+            container.innerHTML = `<i class="fa-solid fa-cube mr-1"></i>Images: ${parts.join(' · ')}`;
+        } else {
+            container.innerHTML = '';
+        }
+    } catch (error) {
+        console.error('Failed to load image metadata:', error);
+        // Silently fail - this is non-critical UI info
+    }
+}
+
 function showToast(message, isError = false) {
     // Remove existing toast if any
     const existingToast = document.getElementById('toast');
@@ -126,6 +215,7 @@ async function handleLogin(event) {
         loadServices();
         loadGPU();
         loadSystemInfo();
+        loadImageMetadata();
     } catch (error) {
         errorEl.textContent = `Login failed: ${error.message}`;
         errorEl.classList.remove('hidden');
@@ -623,6 +713,7 @@ async function init() {
                 loadServices();
                 loadGPU();
                 loadSystemInfo();
+                loadImageMetadata();
             } else {
                 // Token is invalid, clear it and show login
                 clearToken();

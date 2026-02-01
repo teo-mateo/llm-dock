@@ -1,5 +1,11 @@
 FROM nvidia/cuda:12.9.0-devel-ubuntu22.04
 
+# Build metadata
+ARG BUILD_DATE
+ARG BUILD_COMMIT
+LABEL org.llm-dock.build.date="${BUILD_DATE}" \
+      org.llm-dock.build.commit="${BUILD_COMMIT}"
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
@@ -15,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 # Make the CUDA stub library visible as libcuda.so.1 for the linker
 #RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp
+RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /llama.cpp
 
 WORKDIR /llama.cpp
 
@@ -26,7 +32,7 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 RUN cmake -B build \
    -DGGML_CUDA=ON \
-   -DCMAKE_CUDA_ARCHITECTURES=86 \
+   -DCMAKE_CUDA_ARCHITECTURES=120 \
    -DLLAMA_BUILD_EXAMPLES=OFF \
    -DLLAMA_BUILD_TESTS=OFF \
    -DCMAKE_BUILD_TYPE=Release

@@ -127,6 +127,34 @@ def check_nvidia_smi():
         return False
 
 
+def get_image_build_metadata(image_name: str) -> dict:
+    """Get build metadata labels from a Docker image"""
+    try:
+        client = docker.from_env()
+        image = client.images.get(image_name)
+        labels = image.labels or {}
+
+        return {
+            'build_date': labels.get('org.llm-dock.build.date'),
+            'build_commit': labels.get('org.llm-dock.build.commit'),
+            'exists': True
+        }
+    except docker.errors.ImageNotFound:
+        return {
+            'build_date': None,
+            'build_commit': None,
+            'exists': False
+        }
+    except Exception as e:
+        logger.warning(f"Failed to get metadata for image {image_name}: {e}")
+        return {
+            'build_date': None,
+            'build_commit': None,
+            'exists': False,
+            'error': str(e)
+        }
+
+
 def get_compose_services():
     """Load service names from docker-compose.yml"""
     try:
@@ -419,6 +447,17 @@ def verify_token():
     return jsonify({
         'valid': True,
         'message': 'Token is valid'
+    })
+
+
+@app.route('/api/images/metadata', methods=['GET'])
+@require_auth
+def get_images_metadata():
+    """Return build metadata for llm-dock images"""
+    return jsonify({
+        'llamacpp': get_image_build_metadata('llm-dock-llamacpp'),
+        'vllm': get_image_build_metadata('llm-dock-vllm'),
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
     })
 
 
