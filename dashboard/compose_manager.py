@@ -13,7 +13,7 @@ from typing import Dict, Any, Set, Optional
 from datetime import datetime
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_flag, generate_service_name
+from flag_metadata import render_flag, render_custom_flag, generate_service_name
 
 logger = logging.getLogger(__name__)
 
@@ -447,6 +447,13 @@ class ComposeManager:
 
             # Render regular flags
             rendered = render_flag(flag_name, flag_value, template_type)
+            if rendered:
+                rendered_flags.append(rendered)
+
+        # Render custom flags
+        custom_flags = config.get('custom_flags', {})
+        for flag_name, flag_value in custom_flags.items():
+            rendered = render_custom_flag(flag_name, flag_value)
             if rendered:
                 rendered_flags.append(rendered)
 

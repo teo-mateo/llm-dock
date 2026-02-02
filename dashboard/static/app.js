@@ -994,6 +994,8 @@ let availableFlags = {}; // Cache for flag metadata by engine
 let parameterRows = []; // Track parameter row IDs
 let nextRowId = 1; // Counter for unique row IDs
 let gpuInfo = null; // Cached GPU info
+let customParameterRows = []; // Track custom parameter row IDs
+let nextCustomRowId = 1; // Counter for unique custom row IDs
 
 // Fetch and display GPU info in modal
 async function loadGPUInfo() {
@@ -1303,6 +1305,7 @@ async function copyParametersFromService(serviceName) {
 
         // Clear existing parameters
         clearParameterRows();
+        clearCustomParameterRows();
 
         // Add parameter rows from the copied service
         const flags = config.optional_flags || {};
@@ -1315,11 +1318,18 @@ async function copyParametersFromService(serviceName) {
             addParameterRow();
         }
 
+        // Copy custom flags
+        const customFlags = config.custom_flags || {};
+        for (const [flagName, flagValue] of Object.entries(customFlags)) {
+            addCustomParameterRow(flagName, flagValue);
+        }
+
         // Close modal
         closeCopyFromModal();
 
         // Show confirmation
-        showToast(`Copied ${Object.keys(flags).length} parameters from ${serviceName}`);
+        const totalCopied = Object.keys(flags).length + Object.keys(customFlags).length;
+        showToast(`Copied ${totalCopied} parameters from ${serviceName}`);
 
         // Update command preview
         updateCommandPreview();
@@ -1635,6 +1645,186 @@ function getParametersFromRows() {
     return params;
 }
 
+// Custom Parameter Row Management
+function validateCustomFlagName(flagName) {
+    if (!flagName) {
+        return { valid: true, error: null }; // Empty is OK (will be ignored)
+    }
+    if (!flagName.startsWith('-')) {
+        return { valid: false, error: 'Must start with - or --' };
+    }
+    const namePart = flagName.replace(/^-+/, '');
+    if (!namePart) {
+        return { valid: false, error: 'Cannot be just dashes' };
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(namePart)) {
+        return { valid: false, error: 'Invalid characters' };
+    }
+    return { valid: true, error: null };
+}
+
+function onCustomFlagNameInput(rowId) {
+    const row = document.getElementById(`custom-param-row-${rowId}`);
+    if (!row) return;
+
+    const input = row.querySelector('input[data-flag-name]');
+    const errorSpan = row.querySelector('.custom-flag-error');
+    const flagName = input?.value?.trim() || '';
+
+    const validation = validateCustomFlagName(flagName);
+
+    if (!validation.valid) {
+        input.classList.add('border-red-500');
+        input.classList.remove('border-gray-600');
+        if (errorSpan) {
+            errorSpan.textContent = validation.error;
+            errorSpan.classList.remove('hidden');
+        }
+    } else {
+        input.classList.remove('border-red-500');
+        input.classList.add('border-gray-600');
+        if (errorSpan) {
+            errorSpan.classList.add('hidden');
+        }
+    }
+
+    updateCustomParamsCount();
+    updateCommandPreview();
+}
+
+function addCustomParameterRow(flagName = '', flagValue = '') {
+    const rowId = nextCustomRowId++;
+    customParameterRows.push(rowId);
+
+    const container = document.getElementById('custom-params-container');
+
+    const rowDiv = document.createElement('div');
+    rowDiv.id = `custom-param-row-${rowId}`;
+    rowDiv.className = 'flex flex-col gap-1';
+
+    rowDiv.innerHTML = `
+        <div class="flex gap-2 items-start">
+            <input type="text" value="${flagName}" placeholder="--flag-name" data-flag-name="true"
+                class="w-1/3 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                oninput="onCustomFlagNameInput(${rowId})" data-custom-row-id="${rowId}">
+            <input type="text" value="${flagValue}" placeholder="value (empty for boolean)"
+                class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                oninput="updateCommandPreview()" data-custom-row-id="${rowId}">
+            <button type="button" onclick="removeCustomParameterRow(${rowId})"
+                class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold" title="Remove custom parameter">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        </div>
+        <span class="custom-flag-error text-xs text-red-400 ml-1 hidden"></span>
+    `;
+
+    container.appendChild(rowDiv);
+    updateCustomParamsCount();
+    updateCommandPreview();
+}
+
+function removeCustomParameterRow(rowId) {
+    const index = customParameterRows.indexOf(rowId);
+    if (index > -1) {
+        customParameterRows.splice(index, 1);
+    }
+
+    const row = document.getElementById(`custom-param-row-${rowId}`);
+    if (row) {
+        row.remove();
+    }
+
+    updateCustomParamsCount();
+    updateCommandPreview();
+}
+
+function clearCustomParameterRows() {
+    const container = document.getElementById('custom-params-container');
+    if (container) {
+        container.innerHTML = '';
+    }
+    customParameterRows = [];
+    nextCustomRowId = 1;
+    updateCustomParamsCount();
+}
+
+function getCustomParametersFromRows() {
+    const customParams = {};
+
+    for (const rowId of customParameterRows) {
+        const row = document.getElementById(`custom-param-row-${rowId}`);
+        if (!row) continue;
+
+        const inputs = row.querySelectorAll('input');
+        const flagName = inputs[0]?.value?.trim() || '';
+        const flagValue = inputs[1]?.value || '';
+
+        // Only include non-empty, valid flag names
+        if (flagName) {
+            const validation = validateCustomFlagName(flagName);
+            if (validation.valid) {
+                customParams[flagName] = flagValue;
+            }
+        }
+    }
+
+    return customParams;
+}
+
+function hasInvalidCustomFlags() {
+    for (const rowId of customParameterRows) {
+        const row = document.getElementById(`custom-param-row-${rowId}`);
+        if (!row) continue;
+
+        const input = row.querySelector('input[data-flag-name]');
+        const flagName = input?.value?.trim() || '';
+
+        if (flagName) {
+            const validation = validateCustomFlagName(flagName);
+            if (!validation.valid) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function updateCustomParamsCount() {
+    const countEl = document.getElementById('custom-params-count');
+    if (!countEl) return;
+
+    // Count valid, non-empty custom parameter rows
+    let configuredCount = 0;
+    let invalidCount = 0;
+
+    for (const rowId of customParameterRows) {
+        const row = document.getElementById(`custom-param-row-${rowId}`);
+        if (!row) continue;
+
+        const flagNameInput = row.querySelector('input[data-flag-name]');
+        const flagName = flagNameInput?.value?.trim() || '';
+
+        if (flagName) {
+            const validation = validateCustomFlagName(flagName);
+            if (validation.valid) {
+                configuredCount++;
+            } else {
+                invalidCount++;
+            }
+        }
+    }
+
+    if (invalidCount > 0) {
+        countEl.textContent = `(${configuredCount} valid, ${invalidCount} invalid)`;
+        countEl.classList.add('text-red-400');
+        countEl.classList.remove('text-gray-500');
+    } else {
+        countEl.textContent = `(${configuredCount} configured)`;
+        countEl.classList.remove('text-red-400');
+        countEl.classList.add('text-gray-500');
+    }
+}
+
 // Command Preview Generator
 function renderFlag(flagName, flagValue, engine) {
     const flags = availableFlags[engine] || {};
@@ -1675,6 +1865,7 @@ function generateCommandPreview() {
 
     // Get parameters from rows
     const params = getParametersFromRows();
+    const customParams = getCustomParametersFromRows();
 
     let preview = '';
 
@@ -1698,6 +1889,15 @@ function generateCommandPreview() {
             const rendered = renderFlag(flagName, flagValue, engine);
             if (rendered) preview += rendered + '\n';
         }
+
+        // Render custom flags
+        for (const [flagName, flagValue] of Object.entries(customParams)) {
+            if (flagValue && flagValue.trim()) {
+                preview += `${flagName} ${flagValue}\n`;
+            } else {
+                preview += `${flagName}\n`;
+            }
+        }
     } else if (engine === 'vllm') {
         preview = 'vllm serve ';
         preview += `${modelName || 'org/model-name'}\n`;
@@ -1718,6 +1918,15 @@ function generateCommandPreview() {
             if (flagName === 'attention_backend') continue; // Environment variable
             const rendered = renderFlag(flagName, flagValue, engine);
             if (rendered) preview += rendered + '\n';
+        }
+
+        // Render custom flags
+        for (const [flagName, flagValue] of Object.entries(customParams)) {
+            if (flagValue && flagValue.trim()) {
+                preview += `${flagName} ${flagValue}\n`;
+            } else {
+                preview += `${flagName}\n`;
+            }
         }
 
         // Prepend environment variables if any
@@ -1786,6 +1995,9 @@ function openCreateServiceModal(modelData) {
 
     // Populate GGUF file selector if model has GGUF files
     populateGGUFFileSelector(modelData.files);
+
+    // Clear custom parameter rows
+    clearCustomParameterRows();
 
     // Load flag metadata, GPU info, and next available port
     const engine = llamacppRadio.checked ? 'llamacpp' : 'vllm';
@@ -1976,6 +2188,7 @@ async function openUpdateServiceModal(serviceName) {
         // Load flag metadata and populate parameter rows from existing config
         await loadFlagMetadata(engine);
         clearParameterRows();
+        clearCustomParameterRows();
 
         const flags = config.optional_flags || {};
         // Add a row for each existing flag
@@ -1984,6 +2197,12 @@ async function openUpdateServiceModal(serviceName) {
         }
         // Add one empty row for convenience
         addParameterRow();
+
+        // Load custom flags
+        const customFlags = config.custom_flags || {};
+        for (const [flagName, flagValue] of Object.entries(customFlags)) {
+            addCustomParameterRow(flagName, flagValue);
+        }
 
         // Clear error
         document.getElementById('create-service-error').classList.add('hidden');
@@ -2052,6 +2271,13 @@ async function handleCreateServiceSubmit(event) {
     const originalBtnText = submitBtn.innerHTML;
 
     try {
+        // Check for invalid custom flags before submitting
+        if (hasInvalidCustomFlags()) {
+            errorEl.textContent = 'Please fix invalid custom flag names before saving.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
         // Disable button and show loading
         submitBtn.disabled = true;
         const loadingText = modalMode === 'create'
@@ -2094,6 +2320,12 @@ async function handleCreateServiceSubmit(event) {
             // Get optional_flags from parameter rows (already strings)
             const params = getParametersFromRows();
             requestBody.optional_flags = params;
+
+            // Get custom_flags from custom parameter rows
+            const customParams = getCustomParametersFromRows();
+            if (Object.keys(customParams).length > 0) {
+                requestBody.custom_flags = customParams;
+            }
 
             // Make API call
             const response = await fetchAPI('/v2/services', {
@@ -2138,6 +2370,10 @@ async function handleCreateServiceSubmit(event) {
             // Get optional_flags from parameter rows (already strings)
             const params = getParametersFromRows();
             requestBody.optional_flags = params;
+
+            // Get custom_flags from custom parameter rows
+            const customParams = getCustomParametersFromRows();
+            requestBody.custom_flags = customParams;
 
             // Make API call
             const response = await fetchAPI(`/v2/services/${currentServiceName}`, {

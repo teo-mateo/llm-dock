@@ -546,6 +546,54 @@ def generate_service_name(template_type: str, alias: str) -> str:
     """
     return sanitize_service_name(f"{template_type}-{alias}")
 
+def render_custom_flag(flag_name: str, flag_value: str) -> Optional[str]:
+    """
+    Render a custom flag as CLI argument.
+
+    Args:
+        flag_name: The flag name (must start with - or --)
+        flag_value: The flag value (empty string for boolean flags)
+
+    Returns:
+        Rendered CLI argument string, or None if flag name is invalid.
+
+    Note:
+        For boolean flags (no value needed), pass empty string as flag_value.
+        The flag will be rendered as just the flag name (e.g., "--verbose").
+
+        This function includes defensive validation - it returns None for
+        invalid flag names rather than raising an exception. Use
+        validate_custom_flag_name() for explicit validation with error messages.
+    """
+    if not flag_name or not flag_name.startswith('-'):
+        return None
+    if not flag_value or flag_value.strip() == "":
+        return flag_name  # Boolean flag (e.g., "--verbose")
+    return f"{flag_name} {flag_value}"
+
+
+def validate_custom_flag_name(flag_name: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate custom flag name format.
+
+    Args:
+        flag_name: The flag name to validate
+
+    Returns:
+        (is_valid, error_message or None)
+    """
+    if not flag_name:
+        return False, "Flag name cannot be empty"
+    if not flag_name.startswith('-'):
+        return False, "Flag name must start with - or --"
+    name_part = flag_name.lstrip('-')
+    if not name_part:
+        return False, "Flag name cannot be just dashes"
+    if not all(c.isalnum() or c in '-_' for c in name_part):
+        return False, "Invalid characters in flag name"
+    return True, None
+
+
 def validate_service_config(template_type: str, config: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """
     Validate service configuration.
@@ -609,5 +657,12 @@ def validate_service_config(template_type: str, config: Dict[str, Any]) -> Tuple
 
         except (ValueError, TypeError):
             errors.append(f"{flag_name}: invalid {value_type} value '{flag_value}'")
+
+    # Validate custom flags
+    custom_flags = config.get('custom_flags', {})
+    for flag_name, flag_value in custom_flags.items():
+        is_valid, error = validate_custom_flag_name(flag_name)
+        if not is_valid:
+            errors.append(f"Custom flag '{flag_name}': {error}")
 
     return len(errors) == 0, errors
