@@ -26,6 +26,53 @@ function copyToClipboard(text) {
     });
 }
 
+// Global API key management
+let globalApiKey = null;
+
+async function loadGlobalApiKey() {
+    try {
+        const data = await fetchAPI('/global-api-key');
+        if (data.api_key) {
+            globalApiKey = data.api_key;
+            const displayElement = document.getElementById('global-api-key-display');
+            const valueElement = document.getElementById('global-api-key-value');
+
+            // Show first 8 chars + ellipsis
+            valueElement.textContent = globalApiKey.substring(0, 8) + '...';
+            displayElement.classList.remove('hidden');
+
+            // Show "Use Global" button in modal if it exists
+            const useGlobalBtn = document.getElementById('use-global-api-key-btn');
+            if (useGlobalBtn) {
+                useGlobalBtn.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load global API key:', error);
+    }
+}
+
+function copyGlobalApiKey() {
+    if (globalApiKey) {
+        navigator.clipboard.writeText(globalApiKey).then(() => {
+            showToast('Global API key copied to clipboard');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            showToast('Failed to copy to clipboard', true);
+        });
+    }
+}
+
+function useGlobalApiKey() {
+    if (globalApiKey) {
+        const apiKeyInput = document.getElementById('api-key');
+        if (apiKeyInput) {
+            apiKeyInput.value = globalApiKey;
+            showToast('API key set to global key');
+        }
+    }
+}
+
 // Format build date as relative time (e.g., "2 days ago")
 function formatBuildDate(isoDateStr) {
     if (!isoDateStr) return null;
@@ -366,7 +413,7 @@ async function controlService(name, action) {
 
 async function setPublicPort(serviceName) {
     try {
-        const result = await fetchAPI(`/v2/services/${serviceName}/set-public-port`, { method: 'POST' });
+        const result = await fetchAPI(`/services/${serviceName}/set-public-port`, { method: 'POST' });
 
         // Show success message
         let message = `${serviceName} now on port 3301`;
@@ -393,7 +440,7 @@ async function toggleOpenWebUI(serviceName, register) {
 
         showToast(`${action} ${serviceName}...`);
 
-        const result = await fetchAPI(`/v2/services/${serviceName}/${endpoint}`, { method: 'POST' });
+        const result = await fetchAPI(`/services/${serviceName}/${endpoint}`, { method: 'POST' });
 
         if (result.success) {
             showToast(result.message);
@@ -465,7 +512,7 @@ async function confirmDelete() {
         confirmBtn.disabled = true;
         confirmBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Deleting...';
 
-        await fetchAPI(`/v2/services/${serviceToDelete}`, { method: 'DELETE' });
+        await fetchAPI(`/services/${serviceToDelete}`, { method: 'DELETE' });
 
         // Close modal and reload
         closeDeleteModal();
@@ -505,7 +552,7 @@ let currentPreviewYaml = '';
 
 async function previewService(serviceName) {
     try {
-        const data = await fetchAPI(`/v2/services/${serviceName}/preview`);
+        const data = await fetchAPI(`/services/${serviceName}/preview`);
         currentPreviewYaml = data.yaml;
 
         document.getElementById('preview-service-name').textContent = serviceName;
@@ -714,6 +761,7 @@ async function init() {
                 loadGPU();
                 loadSystemInfo();
                 loadImageMetadata();
+                loadGlobalApiKey();
             } else {
                 // Token is invalid, clear it and show login
                 clearToken();
@@ -787,6 +835,13 @@ async function loadLogs() {
         const data = await fetchAPI(`/services/${currentLogsService}/logs?tail=200`);
 
         const logsContent = document.getElementById('logs-content');
+
+        // Skip DOM update if user has text selected in the logs to avoid losing selection
+        const selection = window.getSelection();
+        const hasSelection = selection && selection.toString().length > 0 &&
+            logsContent.contains(selection.anchorNode);
+        if (hasSelection) return;
+
         const wasScrolledToBottom = logsContent.scrollHeight - logsContent.scrollTop <= logsContent.clientHeight + 50;
 
         logsContent.textContent = data.logs || 'No logs available';
@@ -1226,7 +1281,7 @@ async function loadFlagMetadata(templateType) {
     }
 
     try {
-        const data = await fetchAPI(`/v2/flag-metadata/${templateType}`);
+        const data = await fetchAPI(`/flag-metadata/${templateType}`);
         availableFlags[templateType] = data.optional_flags || {};
         return availableFlags[templateType];
     } catch (error) {
@@ -1249,8 +1304,8 @@ async function openCopyFromModal() {
     }
 
     try {
-        // Fetch all services from v2 API
-        const data = await fetchAPI('/v2/services');
+        // Fetch all services from API
+        const data = await fetchAPI('/services');
         const services = data.services || {};
 
         // Filter services by same engine type, exclude current service if in update mode
@@ -1300,7 +1355,7 @@ function closeCopyFromModal() {
 async function copyParametersFromService(serviceName) {
     try {
         // Fetch the service configuration
-        const response = await fetchAPI(`/v2/services/${serviceName}`);
+        const response = await fetchAPI(`/services/${serviceName}`);
         const config = response.config;
 
         // Clear existing parameters
@@ -2136,7 +2191,7 @@ async function openUpdateServiceModal(serviceName) {
         currentModelData = null;
 
         // Fetch service configuration
-        const response = await fetchAPI(`/v2/services/${serviceName}`);
+        const response = await fetchAPI(`/services/${serviceName}`);
         const config = response.config;
 
         // Set modal title and button
@@ -2289,15 +2344,15 @@ async function handleCreateServiceSubmit(event) {
         const engine = document.querySelector('input[name="engine"]:checked').value;
 
         if (modalMode === 'create') {
-            // CREATE MODE: Use v2 API
+            // CREATE MODE
             const serviceName = document.getElementById('service-name').value;
             const port = document.getElementById('service-port').value;
             const apiKey = document.getElementById('api-key').value.trim();
 
-            // Build request body for v2 create
+            // Build request body for create
             const requestBody = {
                 template_type: engine,
-                alias: serviceName  // v2 API uses alias
+                alias: serviceName  
             };
 
             // Add port if specified
@@ -2328,7 +2383,7 @@ async function handleCreateServiceSubmit(event) {
             }
 
             // Make API call
-            const response = await fetchAPI('/v2/services', {
+            const response = await fetchAPI('/services', {
                 method: 'POST',
                 body: JSON.stringify(requestBody)
             });
@@ -2341,7 +2396,7 @@ async function handleCreateServiceSubmit(event) {
             alert(`Service "${response.service_name}" created successfully on port ${response.port}!\n\nAPI Key: ${response.api_key}\n\nThe service is stopped. Use the Start button to run it.`);
 
         } else {
-            // UPDATE MODE: Use PUT v2 API
+            // UPDATE MODE: Use PUT API
             const port = document.getElementById('service-port').value;
             const apiKey = document.getElementById('api-key').value.trim();
 
@@ -2376,7 +2431,7 @@ async function handleCreateServiceSubmit(event) {
             requestBody.custom_flags = customParams;
 
             // Make API call
-            const response = await fetchAPI(`/v2/services/${currentServiceName}`, {
+            const response = await fetchAPI(`/services/${currentServiceName}`, {
                 method: 'PUT',
                 body: JSON.stringify(requestBody)
             });

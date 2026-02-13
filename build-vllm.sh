@@ -27,7 +27,7 @@ echo "  Commit: $BUILD_COMMIT"
 echo ""
 
 cd "$(dirname "$0")"
-docker build --no-cache \
+docker build \
     --build-arg BUILD_DATE="$BUILD_DATE" \
     --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
     -t llm-dock-vllm ./vllm/

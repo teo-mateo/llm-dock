@@ -9,7 +9,6 @@ by directly modifying the Open WebUI SQLite database config table.
 import json
 import logging
 import subprocess
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

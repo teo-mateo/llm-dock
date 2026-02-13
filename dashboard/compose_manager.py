@@ -10,10 +10,9 @@ import yaml
 import json
 from pathlib import Path
 from typing import Dict, Any, Set, Optional
-from datetime import datetime
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_flag, render_custom_flag, generate_service_name
+from flag_metadata import render_flag, render_custom_flag
 
 logger = logging.getLogger(__name__)
 

@@ -195,7 +195,12 @@
                 <!-- API Key -->
                 <div>
                     <label class="block text-sm font-medium mb-2">API Key (optional, auto-generated if empty)</label>
-                    <input type="text" id="api-key" placeholder="Leave empty to auto-generate" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-blue-500">
+                    <div class="flex gap-2">
+                        <input type="text" id="api-key" placeholder="Leave empty to auto-generate" class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-blue-500">
+                        <button type="button" id="use-global-api-key-btn" onclick="useGlobalApiKey()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-semibold whitespace-nowrap hidden" title="Set to global API key">
+                            <i class="fa-solid fa-globe mr-1"></i>Use Global
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Command Preview -->
@@ -352,9 +357,18 @@
                     <h1 class="text-3xl font-bold">LLM Service Dashboard</h1>
                     <div id="image-metadata" class="text-xs text-gray-500 mt-1"></div>
                 </div>
-                <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-semibold">
-                    Logout
-                </button>
+                <div class="flex items-center gap-4">
+                    <div id="global-api-key-display" class="hidden flex items-center gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-700">
+                        <span class="text-xs text-gray-400">API Key (default):</span>
+                        <span id="global-api-key-value" class="text-sm font-mono text-gray-300"></span>
+                        <button onclick="copyGlobalApiKey()" class="text-blue-400 hover:text-blue-300 ml-1" title="Copy global API key">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                    </div>
+                    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-semibold">
+                        Logout
+                    </button>
+                </div>
             </div>
             <div class="flex gap-4">
                 <div id="gpu-stats" class="flex-shrink-0"></div>
