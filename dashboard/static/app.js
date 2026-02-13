@@ -378,6 +378,10 @@ function renderServices(services) {
                             <i class="fa-solid fa-rotate-right"></i>
                         </button>
                     ` : `
+                        ${service.name.startsWith('llamacpp-') ? `
+                        <a href="/benchmark?service=${service.name}" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Benchmark">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </a>` : ''}
                         <button onclick="previewService('${service.name}')" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Preview YAML">
                             <i class="fa-solid fa-code"></i>
                         </button>

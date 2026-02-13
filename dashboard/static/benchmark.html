@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Benchmark - LLM Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .terminal-output {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .toast {
+            animation: slideIn 0.3s ease-out, fadeOut 0.3s ease-in 2.7s;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<!-- Toast container -->
+<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+<div class="max-w-7xl mx-auto p-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        <a href="/" class="text-blue-400 hover:text-blue-300 text-sm mb-3 inline-block">
+            <i class="fa-solid fa-arrow-left mr-1"></i> Back to Dashboard
+        </a>
+        <div class="flex items-center gap-3 mb-1">
+            <h1 class="text-2xl font-bold">
+                Benchmark: <span id="service-name" class="text-yellow-400">—</span>
+            </h1>
+            <span id="service-status-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">
+                Unknown
+            </span>
+        </div>
+        <p class="text-gray-400 text-sm">
+            Model: <span id="model-path" class="text-gray-300 font-mono">—</span>
+        </p>
+    </div>
+
+    <!-- Two-column: Parameters (left) + Reference (right) -->
+    <div class="flex flex-col lg:flex-row gap-4 mb-4">
+
+        <!-- Left column: Parameters + Command Preview + Run -->
+        <div class="flex-1 min-w-0">
+            <!-- Parameters -->
+            <div class="bg-gray-800 rounded-lg p-5 mb-4">
+                <h2 class="text-lg font-semibold mb-3">
+                    <i class="fa-solid fa-sliders mr-2 text-gray-400"></i>Parameters
+                </h2>
+                <div id="params-container" class="flex flex-col gap-2 mb-3">
+                    <!-- Dynamic rows inserted here -->
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="resetToDefaults()" class="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Reset to Service Defaults
+                    </button>
+                </div>
+            </div>
+
+            <!-- Command Preview -->
+            <div class="bg-gray-800 rounded-lg p-5 mb-4">
+                <h2 class="text-sm font-semibold text-gray-400 mb-2">Command Preview</h2>
+                <div id="command-preview" class="font-mono text-sm text-green-400 bg-gray-950 rounded p-3 break-all">
+                    llama-bench ...
+                </div>
+            </div>
+
+            <!-- Run Button -->
+            <div class="flex gap-3">
+                <button id="run-btn" onclick="runBenchmark()" class="bg-green-600 hover:bg-green-700 px-5 py-2.5 rounded font-semibold text-sm">
+                    <i class="fa-solid fa-play mr-1"></i> Run Benchmark
+                </button>
+            </div>
+        </div>
+
+        <!-- Right column: Parameter Reference -->
+        <div class="lg:w-80 xl:w-96 flex-shrink-0">
+            <div class="bg-gray-800 rounded-lg p-4 lg:sticky lg:top-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold text-gray-300">
+                        <i class="fa-solid fa-book mr-1.5 text-gray-400"></i>Parameter Reference
+                    </h2>
+                    <a href="https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md"
+                       target="_blank" class="text-gray-500 hover:text-gray-300 text-xs" title="llama-bench docs">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    </a>
+                </div>
+                <div class="relative mb-3">
+                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-gray-500 text-xs"></i>
+                    <input type="text" id="param-search" placeholder="Search flags..."
+                        oninput="filterParamRef()"
+                        class="w-full bg-gray-700 border border-gray-600 rounded pl-7 pr-3 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500 placeholder-gray-500">
+                </div>
+                <div class="flex gap-3 text-[10px] text-gray-500 mb-2 px-1">
+                    <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1"></span>Benchmark-only (not applied to service)</span>
+                    <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Model param</span>
+                </div>
+                <div id="param-ref-list" class="overflow-y-auto max-h-[calc(100vh-260px)] space-y-0.5 text-xs">
+                    <!-- Populated by JS -->
+                </div>
+                <div id="param-ref-empty" class="text-gray-500 text-xs py-4 text-center hidden">
+                    No matching parameters.
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Live Output (full width) -->
+    <div class="bg-gray-800 rounded-lg p-5 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">
+                <i class="fa-solid fa-terminal mr-2 text-gray-400"></i>Live Output
+            </h2>
+            <span id="run-status-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">
+                Idle
+            </span>
+        </div>
+        <div id="live-output" class="terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-gray-400">
+            Waiting for benchmark run...
+        </div>
+    </div>
+
+    <!-- History (full width) -->
+    <div class="bg-gray-800 rounded-lg p-5">
+        <h2 class="text-lg font-semibold mb-3">
+            <i class="fa-solid fa-clock-rotate-left mr-2 text-gray-400"></i>History
+        </h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 text-left border-b border-gray-700">
+                        <th class="pb-2 pr-3">Date</th>
+                        <th class="pb-2 pr-3">PP t/s</th>
+                        <th class="pb-2 pr-3">TG t/s</th>
+                        <th class="pb-2 pr-3">Key Params</th>
+                        <th class="pb-2 pr-3">Status</th>
+                        <th class="pb-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                    <!-- Dynamic rows -->
+                </tbody>
+            </table>
+        </div>
+        <p id="history-empty" class="text-gray-500 text-sm mt-3 hidden">No benchmark history yet.</p>
+    </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+const urlParams = new URLSearchParams(window.location.search);
+const serviceName = urlParams.get('service') || 'unknown-service';
+const modelPath = '/models/model.gguf'; // Mock model path
+
+const DEFAULT_PARAMS = [
+    { flag: '-p', value: '512' },
+    { flag: '-n', value: '128' },
+    { flag: '-r', value: '5' },
+    { flag: '-ngl', value: '99' },
+    { flag: '-b', value: '2048' },
+    { flag: '-fa', value: '' },
+];
+
+let isRunning = false;
+const BENCHMARK_ONLY_FLAGS = new Set(['-p', '-n', '-r', '-o', '-m']);
+
+// Mock history data
+let historyData = [
+    {
+        id: 'mock-1',
+        date: '2025-02-13 14:32:10',
+        pp_ts: 1243.7,
+        tg_ts: 85.2,
+        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99', '-b': '2048', '-fa': '' },
+        status: 'completed',
+    },
+    {
+        id: 'mock-2',
+        date: '2025-02-12 21:15:03',
+        pp_ts: 982.4,
+        tg_ts: 72.1,
+        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '80', '-b': '2048', '-fa': '' },
+        status: 'completed',
+    },
+    {
+        id: 'mock-3',
+        date: '2025-02-12 18:44:22',
+        pp_ts: 1105.9,
+        tg_ts: 79.8,
+        params: { '-p': '256', '-n': '128', '-r': '3', '-ngl': '99', '-b': '1024' },
+        status: 'completed',
+    },
+    {
+        id: 'mock-4',
+        date: '2025-02-11 10:20:55',
+        pp_ts: null,
+        tg_ts: null,
+        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99', '-b': '4096', '-fa': '' },
+        status: 'failed',
+    },
+];
+
+// ── Init ───────────────────────────────────────────────
+document.getElementById('service-name').textContent = serviceName;
+document.getElementById('model-path').textContent = modelPath;
+document.getElementById('service-status-badge').innerHTML = '<span class="text-gray-400">&#9679;</span> Mockup';
+document.getElementById('service-status-badge').className = 'px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-300';
+
+loadDefaultParams();
+renderHistory();
+renderParamRef();
+
+// ── Parameter Reference Data ───────────────────────────
+const PARAM_REFERENCE = [
+    { cat: 'Test', flag: '-m', long: '--model', desc: 'Model file path', def: 'models/7B/ggml-model-q4_0.gguf' },
+    { cat: 'Test', flag: '-p', long: '--n-prompt', desc: 'Number of prompt tokens to process', def: '512' },
+    { cat: 'Test', flag: '-n', long: '--n-gen', desc: 'Number of tokens to generate', def: '128' },
+    { cat: 'Test', flag: '-pg', long: '', desc: 'Combined prompt+generation (pp,tg)', def: '' },
+    { cat: 'Test', flag: '-d', long: '--n-depth', desc: 'Context depth for KV cache prefill', def: '0' },
+    { cat: 'Test', flag: '-r', long: '--repetitions', desc: 'Times to repeat each test', def: '5' },
+
+    { cat: 'Batching', flag: '-b', long: '--batch-size', desc: 'Logical batch size for prompt processing', def: '2048' },
+    { cat: 'Batching', flag: '-ub', long: '--ubatch-size', desc: 'Physical micro-batch size', def: '512' },
+
+    { cat: 'GPU', flag: '-ngl', long: '--n-gpu-layers', desc: 'Number of layers to offload to GPU', def: '99' },
+    { cat: 'GPU', flag: '-sm', long: '--split-mode', desc: 'Multi-GPU split mode (none|layer|row)', def: 'layer' },
+    { cat: 'GPU', flag: '-mg', long: '--main-gpu', desc: 'Primary GPU index for computations', def: '0' },
+    { cat: 'GPU', flag: '-nkvo', long: '--no-kv-offload', desc: 'Disable KV cache offload to GPU (0|1)', def: '0' },
+    { cat: 'GPU', flag: '-ts', long: '--tensor-split', desc: 'Fraction of work per GPU (comma-separated)', def: '0' },
+    { cat: 'GPU', flag: '-dev', long: '--device', desc: 'Device selection', def: 'auto' },
+    { cat: 'GPU', flag: '-nopo', long: '--no-op-offload', desc: 'Disable operation offloading (0|1)', def: '0' },
+
+    { cat: 'Memory', flag: '-fa', long: '--flash-attn', desc: 'Enable flash attention (0|1)', def: '0' },
+    { cat: 'Memory', flag: '-ctk', long: '--cache-type-k', desc: 'KV cache type for K (f16, q8_0, q4_0, etc.)', def: 'f16' },
+    { cat: 'Memory', flag: '-ctv', long: '--cache-type-v', desc: 'KV cache type for V (f16, q8_0, q4_0, etc.)', def: 'f16' },
+    { cat: 'Memory', flag: '-mmp', long: '--mmap', desc: 'Use memory-mapped model loading (0|1)', def: '1' },
+    { cat: 'Memory', flag: '-embd', long: '--embeddings', desc: 'Embeddings mode (0|1)', def: '0' },
+
+    { cat: 'CPU', flag: '-t', long: '--threads', desc: 'Number of threads for computation', def: 'auto' },
+    { cat: 'CPU', flag: '-C', long: '--cpu-mask', desc: 'CPU affinity bitmask', def: '0x0' },
+    { cat: 'CPU', flag: '', long: '--cpu-strict', desc: 'Use strict CPU thread pinning (0|1)', def: '0' },
+    { cat: 'CPU', flag: '', long: '--poll', desc: 'Polling percentage for thread sync', def: '50' },
+    { cat: 'CPU', flag: '', long: '--numa', desc: 'NUMA scheduling (distribute|isolate|numactl)', def: 'disabled' },
+    { cat: 'CPU', flag: '-ncmoe', long: '--n-cpu-moe', desc: 'CPU layers for MoE models', def: '0' },
+
+    { cat: 'Output', flag: '-o', long: '--output', desc: 'Output format (csv|json|jsonl|md|sql)', def: 'md' },
+    { cat: 'Output', flag: '-oe', long: '--output-err', desc: 'Stderr output format', def: 'none' },
+    { cat: 'Output', flag: '-v', long: '--verbose', desc: 'Verbose output', def: 'off' },
+    { cat: 'Output', flag: '', long: '--progress', desc: 'Print progress indicators during test', def: 'off' },
+
+    { cat: 'Other', flag: '', long: '--prio', desc: 'Process/thread priority (0-3)', def: '0' },
+    { cat: 'Other', flag: '', long: '--delay', desc: 'Delay in seconds between tests', def: '0' },
+    { cat: 'Other', flag: '-rpc', long: '--rpc', desc: 'RPC server addresses (comma-separated)', def: '' },
+    { cat: 'Other', flag: '', long: '--list-devices', desc: 'List available devices and exit', def: '' },
+    { cat: 'Other', flag: '-ot', long: '--override-tensors', desc: 'Override tensor buffer types', def: '' },
+];
+
+// ── Parameter Management ───────────────────────────────
+function addParamRow(flag, value, isEmpty = false) {
+    const container = document.getElementById('params-container');
+    const row = document.createElement('div');
+    const isBench = BENCHMARK_ONLY_FLAGS.has(flag);
+    row.className = `flex gap-2 items-center param-row border-l-2 rounded-r pl-1 ${isBench ? 'border-orange-500/50' : 'border-transparent'}`;
+    if (isEmpty) row.dataset.empty = '1';
+    row.innerHTML = `
+        <input type="text" value="${escapeAttr(flag)}" placeholder="-flag"
+            class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-28 font-mono focus:outline-none focus:border-blue-500 ${isBench ? 'text-orange-400' : ''}"
+            oninput="onParamInput(this); updateParamRowStyle(this); updatePreview()">
+        <input type="text" value="${escapeAttr(value)}" placeholder="value (empty = boolean flag)"
+            class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm flex-1 font-mono focus:outline-none focus:border-blue-500"
+            oninput="onParamInput(this); updatePreview()">
+        ${isBench ? '<span class="bench-badge text-[9px] uppercase tracking-wide font-semibold bg-orange-500/15 text-orange-400 px-1.5 py-0.5 rounded whitespace-nowrap">bench</span>' : ''}
+        <button onclick="removeParamRow(this)" class="text-red-400 hover:text-red-300 px-2 py-1 ${isEmpty ? 'invisible' : ''}" title="Remove">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    `;
+    container.appendChild(row);
+    updatePreview();
+    return row;
+}
+
+function ensureEmptyRow() {
+    const container = document.getElementById('params-container');
+    const emptyRow = container.querySelector('.param-row[data-empty="1"]');
+    if (!emptyRow) {
+        addParamRow('', '', true);
+    }
+}
+
+function onParamInput(input) {
+    const row = input.closest('.param-row');
+    if (row.dataset.empty === '1') {
+        // User started typing in the empty row — promote it to a regular row
+        delete row.dataset.empty;
+        row.querySelector('button').classList.remove('invisible');
+        ensureEmptyRow();
+    }
+}
+
+function removeParamRow(btn) {
+    const row = btn.closest('.param-row');
+    if (row.dataset.empty === '1') return; // can't delete the empty row
+    row.remove();
+    updatePreview();
+    ensureEmptyRow();
+}
+
+function updateParamRowStyle(input) {
+    const row = input.closest('.param-row');
+    const flag = input.value.trim();
+    const isBench = BENCHMARK_ONLY_FLAGS.has(flag);
+
+    // Update row border
+    row.classList.toggle('border-orange-500/50', isBench);
+    row.classList.toggle('border-transparent', !isBench);
+
+    // Update flag input color
+    input.classList.toggle('text-orange-400', isBench);
+
+    // Toggle bench badge
+    const existingBadge = row.querySelector('.bench-badge');
+    if (isBench && !existingBadge) {
+        const badge = document.createElement('span');
+        badge.className = 'bench-badge text-[9px] uppercase tracking-wide font-semibold bg-orange-500/15 text-orange-400 px-1.5 py-0.5 rounded whitespace-nowrap';
+        badge.textContent = 'bench';
+        row.querySelector('button').insertAdjacentElement('beforebegin', badge);
+    } else if (!isBench && existingBadge) {
+        existingBadge.remove();
+    }
+}
+
+function getParams() {
+    const rows = document.querySelectorAll('.param-row:not([data-empty="1"])');
+    const params = {};
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const flag = inputs[0].value.trim();
+        const value = inputs[1].value.trim();
+        if (flag) {
+            params[flag] = value;
+        }
+    });
+    return params;
+}
+
+function getParamsArray() {
+    const rows = document.querySelectorAll('.param-row:not([data-empty="1"])');
+    const params = [];
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const flag = inputs[0].value.trim();
+        const value = inputs[1].value.trim();
+        if (flag) {
+            params.push({ flag, value });
+        }
+    });
+    return params;
+}
+
+function loadDefaultParams() {
+    document.getElementById('params-container').innerHTML = '';
+    DEFAULT_PARAMS.forEach(p => addParamRow(p.flag, p.value));
+    ensureEmptyRow();
+}
+
+function resetToDefaults() {
+    loadDefaultParams();
+    showToast('Parameters reset to service defaults', 'info');
+}
+
+function loadParams(params) {
+    document.getElementById('params-container').innerHTML = '';
+    Object.entries(params).forEach(([flag, value]) => addParamRow(flag, value));
+    ensureEmptyRow();
+}
+
+// ── Command Preview ────────────────────────────────────
+function updatePreview() {
+    const params = getParamsArray();
+    let cmd = `llama-bench -m ${modelPath} -o json`;
+    params.forEach(p => {
+        cmd += ` ${p.flag}`;
+        if (p.value) cmd += ` ${p.value}`;
+    });
+    document.getElementById('command-preview').textContent = cmd;
+}
+
+// ── Run Benchmark (Simulated) ──────────────────────────
+async function runBenchmark() {
+    if (isRunning) return;
+    isRunning = true;
+
+    const runBtn = document.getElementById('run-btn');
+    const output = document.getElementById('live-output');
+    const badge = document.getElementById('run-status-badge');
+
+    // Set running state
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running...';
+    runBtn.className = 'bg-gray-600 px-5 py-2.5 rounded font-semibold text-sm cursor-not-allowed';
+    badge.textContent = 'Running';
+    badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900 text-yellow-300';
+    output.textContent = '';
+    output.className = 'terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-green-400';
+
+    const params = getParams();
+    const pp = params['-p'] || '512';
+    const n = params['-n'] || '128';
+    const ngl = params['-ngl'] || '99';
+    const batch = params['-b'] || '2048';
+
+    // Simulated terminal output lines
+    const lines = [
+        `$ llama-bench -m ${modelPath} -o json ${Object.entries(params).map(([k,v]) => v ? `${k} ${v}` : k).join(' ')}`,
+        '',
+        'ggml_cuda_init: GGML_CUDA_FORCE_MMQ:    no',
+        'ggml_cuda_init: GGML_CUDA_FORCE_CUBLAS:  no',
+        'ggml_cuda_init: found 1 CUDA devices:',
+        '  Device 0: NVIDIA GeForce RTX 4090, compute capability 8.9, VMM: yes',
+        `| model                          |       size |     params | backend    | ngl |          test |                  t/s |`,
+        `| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------: | -------------------: |`,
+    ];
+
+    const ppTs = (1100 + Math.random() * 300).toFixed(2);
+    const tgTs = (70 + Math.random() * 30).toFixed(2);
+
+    lines.push(
+        `| ${modelPath.padEnd(30)} | ${(4.5).toFixed(2).padStart(7)} GiB | ${(3.0).toFixed(2).padStart(7)} B | CUDA       | ${ngl.padStart(3)} | pp ${pp.padStart(5)} |     ${ppTs.padStart(12)} ± 0.${Math.floor(Math.random()*99).toString().padStart(2,'0')} |`,
+        `| ${modelPath.padEnd(30)} | ${(4.5).toFixed(2).padStart(7)} GiB | ${(3.0).toFixed(2).padStart(7)} B | CUDA       | ${ngl.padStart(3)} | tg ${n.padStart(5)} |      ${tgTs.padStart(11)} ± 0.${Math.floor(Math.random()*99).toString().padStart(2,'0')} |`,
+        '',
+        'build: 1a2b3c4 (mock)',
+        '',
+        'Benchmark completed successfully.',
+    );
+
+    // Stream lines with delay
+    for (let i = 0; i < lines.length; i++) {
+        await sleep(200 + Math.random() * 150);
+        output.textContent += lines[i] + '\n';
+        output.scrollTop = output.scrollHeight;
+    }
+
+    // Add result to history
+    const newResult = {
+        id: 'mock-' + Date.now(),
+        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        pp_ts: parseFloat(ppTs),
+        tg_ts: parseFloat(tgTs),
+        params: { ...params },
+        status: 'completed',
+    };
+    historyData.unshift(newResult);
+    renderHistory();
+
+    // Set completed state
+    badge.textContent = 'Completed';
+    badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-green-900 text-green-300';
+    runBtn.disabled = false;
+    runBtn.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Run Benchmark';
+    runBtn.className = 'bg-green-600 hover:bg-green-700 px-5 py-2.5 rounded font-semibold text-sm';
+    isRunning = false;
+
+    showToast('Benchmark completed', 'success');
+}
+
+// ── History Table ──────────────────────────────────────
+function renderHistory() {
+    const tbody = document.getElementById('history-body');
+    const empty = document.getElementById('history-empty');
+
+    if (historyData.length === 0) {
+        tbody.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+
+    tbody.innerHTML = historyData.map(row => {
+        const statusBadge = row.status === 'completed'
+            ? '<span class="text-green-400"><i class="fa-solid fa-check"></i> Completed</span>'
+            : '<span class="text-red-400"><i class="fa-solid fa-xmark"></i> Failed</span>';
+
+        const keyParams = [];
+        if (row.params['-p']) keyParams.push(`pp=${row.params['-p']}`);
+        if (row.params['-n']) keyParams.push(`tg=${row.params['-n']}`);
+        if (row.params['-ngl']) keyParams.push(`ngl=${row.params['-ngl']}`);
+        if (row.params['-b']) keyParams.push(`b=${row.params['-b']}`);
+        if (row.params['-fa'] !== undefined) keyParams.push('fa');
+
+        return `
+            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                <td class="py-2.5 pr-3 text-gray-300 text-xs whitespace-nowrap">${row.date}</td>
+                <td class="py-2.5 pr-3 font-mono ${row.pp_ts ? 'text-white' : 'text-gray-500'}">${row.pp_ts ? row.pp_ts.toFixed(1) : '—'}</td>
+                <td class="py-2.5 pr-3 font-mono ${row.tg_ts ? 'text-white' : 'text-gray-500'}">${row.tg_ts ? row.tg_ts.toFixed(1) : '—'}</td>
+                <td class="py-2.5 pr-3 text-gray-400 text-xs font-mono">${keyParams.join(', ')}</td>
+                <td class="py-2.5 pr-3 text-xs">${statusBadge}</td>
+                <td class="py-2.5">
+                    <div class="flex gap-1">
+                        <button onclick="rerunBenchmark('${row.id}')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded" title="Re-run with these params">
+                            <i class="fa-solid fa-rotate-right"></i> Re-run
+                        </button>
+                        ${row.status === 'completed' ? `
+                        <button onclick="applyToService('${row.id}')" class="text-xs bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" title="Apply config to service">
+                            <i class="fa-solid fa-upload"></i> Apply
+                        </button>` : ''}
+                        <button onclick="deleteRun('${row.id}')" class="text-xs bg-red-700 hover:bg-red-600 px-2 py-1 rounded" title="Delete">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function rerunBenchmark(id) {
+    const row = historyData.find(r => r.id === id);
+    if (!row) return;
+    loadParams(row.params);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('Parameters loaded from history run', 'info');
+}
+
+function applyToService(id) {
+    const row = historyData.find(r => r.id === id);
+    if (!row) return;
+
+    const DENYLIST = ['-p', '-n', '-r', '-o', '-m'];
+    const applied = {};
+    const skipped = [];
+
+    Object.entries(row.params).forEach(([flag, value]) => {
+        if (DENYLIST.includes(flag)) {
+            skipped.push(flag);
+        } else {
+            applied[flag] = value;
+        }
+    });
+
+    const appliedStr = Object.entries(applied)
+        .map(([k, v]) => v ? `${k} ${v}` : k)
+        .join(', ');
+
+    if (Object.keys(applied).length === 0) {
+        showToast('No applicable parameters to apply (all are benchmark-only flags)', 'warning');
+        return;
+    }
+
+    showToast(`Would apply to ${serviceName}: ${appliedStr}\nSkipped benchmark-only: ${skipped.join(', ')}`, 'success');
+}
+
+function deleteRun(id) {
+    historyData = historyData.filter(r => r.id !== id);
+    renderHistory();
+    showToast('Benchmark run deleted', 'info');
+}
+
+// ── Toast Notifications ────────────────────────────────
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const colors = {
+        success: 'bg-green-800 border-green-600',
+        info: 'bg-blue-800 border-blue-600',
+        warning: 'bg-yellow-800 border-yellow-600',
+        error: 'bg-red-800 border-red-600',
+    };
+    const toast = document.createElement('div');
+    toast.className = `toast ${colors[type] || colors.info} border rounded px-4 py-2 text-sm max-w-sm shadow-lg`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// ── Utilities ──────────────────────────────────────────
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function escapeAttr(str) {
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Parameter Reference Panel ──────────────────────────
+
+function renderParamRef(filter = '') {
+    const list = document.getElementById('param-ref-list');
+    const empty = document.getElementById('param-ref-empty');
+    const q = filter.toLowerCase();
+
+    let html = '';
+    let currentCat = '';
+    let hasResults = false;
+
+    PARAM_REFERENCE.forEach(p => {
+        const flagText = p.flag || p.long;
+        const searchable = `${p.flag} ${p.long} ${p.desc} ${p.cat}`.toLowerCase();
+        if (q && !searchable.includes(q)) return;
+
+        hasResults = true;
+
+        if (p.cat !== currentCat) {
+            currentCat = p.cat;
+            html += `<div class="text-gray-500 uppercase tracking-wider text-[10px] font-semibold mt-2.5 mb-1 px-1">${escapeHtml(currentCat)}</div>`;
+        }
+
+        const isBenchOnly = BENCHMARK_ONLY_FLAGS.has(p.flag);
+        const flagColor = isBenchOnly ? 'text-orange-400' : 'text-yellow-400';
+        const rowBorder = isBenchOnly ? 'border-l-2 border-orange-500/40' : 'border-l-2 border-transparent';
+        const benchBadge = isBenchOnly ? ' <span class="text-[9px] uppercase tracking-wide font-semibold bg-orange-500/15 text-orange-400 px-1 py-0.5 rounded">bench</span>' : '';
+
+        const primaryFlag = escapeHtml(p.flag || p.long);
+        const secondaryFlag = p.flag && p.long ? ` <span class="text-gray-600">${escapeHtml(p.long)}</span>` : '';
+        const defBadge = p.def ? `<span class="text-gray-600 ml-auto pl-2 whitespace-nowrap">${escapeHtml(p.def)}</span>` : '';
+
+        html += `
+            <div class="param-ref-row group rounded-r px-2 py-1.5 hover:bg-gray-700/50 cursor-pointer transition-colors ${rowBorder}"
+                 onclick="useRefParam('${escapeAttr(p.flag || p.long)}', '${escapeAttr(p.def)}')"
+                 title="${isBenchOnly ? 'Benchmark-only — not applied to service config. ' : ''}Click to add ${escapeAttr(flagText)} to parameters">
+                <div class="flex items-center gap-1">
+                    <span class="${flagColor} font-mono font-semibold">${primaryFlag}</span>${secondaryFlag}${benchBadge}${defBadge}
+                </div>
+                <div class="text-gray-400 leading-snug mt-0.5">${escapeHtml(p.desc)}</div>
+            </div>`;
+    });
+
+    list.innerHTML = html;
+    empty.classList.toggle('hidden', hasResults);
+}
+
+function filterParamRef() {
+    const q = document.getElementById('param-search').value.trim();
+    renderParamRef(q);
+}
+
+function useRefParam(flag, defaultValue) {
+    // Check if this flag already exists in the param rows
+    const rows = document.querySelectorAll('.param-row');
+    for (const row of rows) {
+        const flagInput = row.querySelector('input');
+        if (flagInput && flagInput.value.trim() === flag) {
+            flagInput.focus();
+            showToast(`${flag} is already in your parameters`, 'info');
+            return;
+        }
+    }
+    addParamRow(flag, defaultValue);
+    showToast(`Added ${flag}`, 'success');
+}
+</script>
+
+</body>
+</html>

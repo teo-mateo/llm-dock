@@ -1611,6 +1611,12 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+@app.route("/benchmark")
+def benchmark_page():
+    """Serve the benchmark page"""
+    return send_from_directory("static", "benchmark.html")
+
+
 @app.route("/static/<path:path>")
 def serve_static(path):
     """Serve static files"""
