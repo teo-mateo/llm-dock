@@ -91,30 +91,34 @@
         <!-- Right column: Parameter Reference -->
         <div class="lg:w-80 xl:w-96 flex-shrink-0">
             <div class="bg-gray-800 rounded-lg p-4 lg:sticky lg:top-4">
-                <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center justify-between mb-3 cursor-pointer select-none" onclick="toggleParamRef()">
                     <h2 class="text-sm font-semibold text-gray-300">
+                        <i id="param-ref-chevron" class="fa-solid fa-chevron-down mr-1.5 text-gray-500 text-xs transition-transform"></i>
                         <i class="fa-solid fa-book mr-1.5 text-gray-400"></i>Parameter Reference
                     </h2>
                     <a href="https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md"
-                       target="_blank" class="text-gray-500 hover:text-gray-300 text-xs" title="llama-bench docs">
+                       target="_blank" class="text-gray-500 hover:text-gray-300 text-xs" title="llama-bench docs"
+                       onclick="event.stopPropagation()">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </a>
                 </div>
-                <div class="relative mb-3">
-                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-gray-500 text-xs"></i>
-                    <input type="text" id="param-search" placeholder="Search flags..."
-                        oninput="filterParamRef()"
-                        class="w-full bg-gray-700 border border-gray-600 rounded pl-7 pr-3 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500 placeholder-gray-500">
-                </div>
-                <div class="flex gap-3 text-[10px] text-gray-500 mb-2 px-1">
-                    <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1"></span>Benchmark-only (not applied to service)</span>
-                    <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Model param</span>
-                </div>
-                <div id="param-ref-list" class="overflow-y-auto max-h-[calc(100vh-260px)] space-y-0.5 text-xs">
-                    <!-- Populated by JS -->
-                </div>
-                <div id="param-ref-empty" class="text-gray-500 text-xs py-4 text-center hidden">
-                    No matching parameters.
+                <div id="param-ref-body" class="hidden">
+                    <div class="relative mb-3">
+                        <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-gray-500 text-xs"></i>
+                        <input type="text" id="param-search" placeholder="Search flags..."
+                            oninput="filterParamRef()"
+                            class="w-full bg-gray-700 border border-gray-600 rounded pl-7 pr-3 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500 placeholder-gray-500">
+                    </div>
+                    <div class="flex gap-3 text-[10px] text-gray-500 mb-2 px-1">
+                        <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1"></span>Benchmark-only (not applied to service)</span>
+                        <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Model param</span>
+                    </div>
+                    <div id="param-ref-list" class="overflow-y-auto max-h-[calc(100vh-260px)] space-y-0.5 text-xs">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div id="param-ref-empty" class="text-gray-500 text-xs py-4 text-center hidden">
+                        No matching parameters.
+                    </div>
                 </div>
             </div>
         </div>
@@ -167,65 +171,117 @@
 // ── State ──────────────────────────────────────────────
 const urlParams = new URLSearchParams(window.location.search);
 const serviceName = urlParams.get('service') || 'unknown-service';
-const modelPath = '/models/model.gguf'; // Mock model path
-
-const DEFAULT_PARAMS = [
-    { flag: '-p', value: '512' },
-    { flag: '-n', value: '128' },
-    { flag: '-r', value: '5' },
-    { flag: '-ngl', value: '99' },
-    { flag: '-b', value: '2048' },
-    { flag: '-fa', value: '' },
-];
+let modelPath = '';
+let serviceDefaults = {};
 
 let isRunning = false;
+let currentRunId = null;
+let pollInterval = null;
 const BENCHMARK_ONLY_FLAGS = new Set(['-p', '-n', '-r', '-o', '-m']);
 
-// Mock history data
-let historyData = [
-    {
-        id: 'mock-1',
-        date: '2025-02-13 14:32:10',
-        pp_ts: 1243.7,
-        tg_ts: 85.2,
-        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99', '-b': '2048', '-fa': '' },
-        status: 'completed',
-    },
-    {
-        id: 'mock-2',
-        date: '2025-02-12 21:15:03',
-        pp_ts: 982.4,
-        tg_ts: 72.1,
-        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '80', '-b': '2048', '-fa': '' },
-        status: 'completed',
-    },
-    {
-        id: 'mock-3',
-        date: '2025-02-12 18:44:22',
-        pp_ts: 1105.9,
-        tg_ts: 79.8,
-        params: { '-p': '256', '-n': '128', '-r': '3', '-ngl': '99', '-b': '1024' },
-        status: 'completed',
-    },
-    {
-        id: 'mock-4',
-        date: '2025-02-11 10:20:55',
-        pp_ts: null,
-        tg_ts: null,
-        params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99', '-b': '4096', '-fa': '' },
-        status: 'failed',
-    },
-];
+let historyData = [];
+
+// ── Auth / API ─────────────────────────────────────────
+const API_BASE = window.location.origin;
+
+function getToken() {
+    return localStorage.getItem('dashboard_token');
+}
+
+async function fetchAPI(endpoint, options = {}) {
+    const token = getToken();
+    if (!token) {
+        showToast('Not authenticated. Please log in from the dashboard first.', 'error');
+        throw new Error('Not authenticated');
+    }
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+    });
+    if (response.status === 401) {
+        showToast('Authentication expired. Please log in from the dashboard.', 'error');
+        throw new Error('Auth expired');
+    }
+    return response;
+}
 
 // ── Init ───────────────────────────────────────────────
 document.getElementById('service-name').textContent = serviceName;
-document.getElementById('model-path').textContent = modelPath;
-document.getElementById('service-status-badge').innerHTML = '<span class="text-gray-400">&#9679;</span> Mockup';
-document.getElementById('service-status-badge').className = 'px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-300';
 
-loadDefaultParams();
-renderHistory();
-renderParamRef();
+async function initPage() {
+    try {
+        // Load service info
+        const svcResp = await fetchAPI(`/api/services/${serviceName}`);
+        if (svcResp.ok) {
+            const svcData = await svcResp.json();
+            const config = svcData.config || {};
+            modelPath = config.model_path || '';
+            document.getElementById('model-path').textContent = modelPath || 'Unknown';
+        }
+
+        // Load service status
+        try {
+            const statusResp = await fetchAPI('/api/services');
+            if (statusResp.ok) {
+                const statusData = await statusResp.json();
+                const svc = (statusData.services || []).find(s => s.name === serviceName);
+                if (svc) {
+                    const badge = document.getElementById('service-status-badge');
+                    if (svc.status === 'running') {
+                        badge.innerHTML = '<span class="text-green-400">&#9679;</span> Running';
+                        badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-green-900 text-green-300';
+                    } else {
+                        badge.innerHTML = '<span class="text-gray-400">&#9679;</span> Stopped';
+                        badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400';
+                    }
+                }
+            }
+        } catch (e) { /* status fetch is non-critical */ }
+
+        // Load params: most recent run first, then service defaults
+        const histResp = await fetchAPI(`/api/benchmarks?service_name=${encodeURIComponent(serviceName)}&limit=1`);
+        if (histResp.ok) {
+            const histData = await histResp.json();
+            if (histData.runs && histData.runs.length > 0) {
+                loadParams(histData.runs[0].params || {});
+            } else {
+                await loadServiceDefaults();
+            }
+        } else {
+            await loadServiceDefaults();
+        }
+
+        // Load full history
+        await refreshHistory();
+    } catch (e) {
+        console.error('Init error:', e);
+    }
+
+    renderParamRef();
+}
+
+async function loadServiceDefaults() {
+    try {
+        const resp = await fetchAPI(`/api/benchmarks/service-defaults/${encodeURIComponent(serviceName)}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            serviceDefaults = data.params || {};
+            if (!modelPath) {
+                modelPath = data.model_path || '';
+                document.getElementById('model-path').textContent = modelPath || 'Unknown';
+            }
+            loadParams(serviceDefaults);
+        }
+    } catch (e) {
+        console.error('Failed to load service defaults:', e);
+    }
+}
+
+initPage();
 
 // ── Parameter Reference Data ───────────────────────────
 const PARAM_REFERENCE = [
@@ -374,14 +430,8 @@ function getParamsArray() {
     return params;
 }
 
-function loadDefaultParams() {
-    document.getElementById('params-container').innerHTML = '';
-    DEFAULT_PARAMS.forEach(p => addParamRow(p.flag, p.value));
-    ensureEmptyRow();
-}
-
 function resetToDefaults() {
-    loadDefaultParams();
+    loadServiceDefaults();
     showToast('Parameters reset to service defaults', 'info');
 }
 
@@ -402,85 +452,143 @@ function updatePreview() {
     document.getElementById('command-preview').textContent = cmd;
 }
 
-// ── Run Benchmark (Simulated) ──────────────────────────
+// ── Run Benchmark ──────────────────────────────────────
 async function runBenchmark() {
     if (isRunning) return;
-    isRunning = true;
 
+    const params = getParams();
     const runBtn = document.getElementById('run-btn');
     const output = document.getElementById('live-output');
     const badge = document.getElementById('run-status-badge');
 
-    // Set running state
     runBtn.disabled = true;
-    runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running...';
+    runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Starting...';
     runBtn.className = 'bg-gray-600 px-5 py-2.5 rounded font-semibold text-sm cursor-not-allowed';
-    badge.textContent = 'Running';
-    badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900 text-yellow-300';
-    output.textContent = '';
-    output.className = 'terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-green-400';
 
-    const params = getParams();
-    const pp = params['-p'] || '512';
-    const n = params['-n'] || '128';
-    const ngl = params['-ngl'] || '99';
-    const batch = params['-b'] || '2048';
+    try {
+        const resp = await fetchAPI('/api/benchmarks', {
+            method: 'POST',
+            body: JSON.stringify({ service_name: serviceName, params }),
+        });
 
-    // Simulated terminal output lines
-    const lines = [
-        `$ llama-bench -m ${modelPath} -o json ${Object.entries(params).map(([k,v]) => v ? `${k} ${v}` : k).join(' ')}`,
-        '',
-        'ggml_cuda_init: GGML_CUDA_FORCE_MMQ:    no',
-        'ggml_cuda_init: GGML_CUDA_FORCE_CUBLAS:  no',
-        'ggml_cuda_init: found 1 CUDA devices:',
-        '  Device 0: NVIDIA GeForce RTX 4090, compute capability 8.9, VMM: yes',
-        `| model                          |       size |     params | backend    | ngl |          test |                  t/s |`,
-        `| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------: | -------------------: |`,
-    ];
+        const data = await resp.json();
 
-    const ppTs = (1100 + Math.random() * 300).toFixed(2);
-    const tgTs = (70 + Math.random() * 30).toFixed(2);
+        if (!resp.ok) {
+            const errMsg = data.error?.message || data.error || 'Failed to start benchmark';
+            showToast(errMsg, 'error');
+            resetRunButton();
+            return;
+        }
 
-    lines.push(
-        `| ${modelPath.padEnd(30)} | ${(4.5).toFixed(2).padStart(7)} GiB | ${(3.0).toFixed(2).padStart(7)} B | CUDA       | ${ngl.padStart(3)} | pp ${pp.padStart(5)} |     ${ppTs.padStart(12)} ± 0.${Math.floor(Math.random()*99).toString().padStart(2,'0')} |`,
-        `| ${modelPath.padEnd(30)} | ${(4.5).toFixed(2).padStart(7)} GiB | ${(3.0).toFixed(2).padStart(7)} B | CUDA       | ${ngl.padStart(3)} | tg ${n.padStart(5)} |      ${tgTs.padStart(11)} ± 0.${Math.floor(Math.random()*99).toString().padStart(2,'0')} |`,
-        '',
-        'build: 1a2b3c4 (mock)',
-        '',
-        'Benchmark completed successfully.',
-    );
+        currentRunId = data.id;
+        isRunning = true;
 
-    // Stream lines with delay
-    for (let i = 0; i < lines.length; i++) {
-        await sleep(200 + Math.random() * 150);
-        output.textContent += lines[i] + '\n';
-        output.scrollTop = output.scrollHeight;
+        badge.textContent = 'Running';
+        badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900 text-yellow-300';
+        runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running...';
+        output.textContent = `Benchmark started (${currentRunId}).\nWaiting for results...\n`;
+        output.className = 'terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-green-400';
+
+        showToast('Benchmark started', 'info');
+        startPolling(currentRunId);
+    } catch (e) {
+        showToast('Failed to start benchmark: ' + e.message, 'error');
+        resetRunButton();
     }
+}
 
-    // Add result to history
-    const newResult = {
-        id: 'mock-' + Date.now(),
-        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        pp_ts: parseFloat(ppTs),
-        tg_ts: parseFloat(tgTs),
-        params: { ...params },
-        status: 'completed',
-    };
-    historyData.unshift(newResult);
-    renderHistory();
+function startPolling(runId) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => pollRunStatus(runId), 2000);
+}
 
-    // Set completed state
-    badge.textContent = 'Completed';
-    badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-green-900 text-green-300';
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+async function pollRunStatus(runId) {
+    try {
+        const resp = await fetchAPI(`/api/benchmarks/${runId}`);
+        if (!resp.ok) return;
+
+        const run = await resp.json();
+        const output = document.getElementById('live-output');
+        const badge = document.getElementById('run-status-badge');
+
+        if (run.status === 'running') {
+            badge.textContent = 'Running';
+            badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900 text-yellow-300';
+        } else if (run.status === 'completed') {
+            stopPolling();
+            isRunning = false;
+            currentRunId = null;
+
+            let resultText = `Benchmark completed.\n`;
+            if (run.pp_avg_ts != null) resultText += `\nPrompt Processing: ${run.pp_avg_ts.toFixed(2)} t/s`;
+            if (run.pp_stddev_ts != null) resultText += ` (stddev: ${run.pp_stddev_ts.toFixed(2)})`;
+            if (run.tg_avg_ts != null) resultText += `\nText Generation:   ${run.tg_avg_ts.toFixed(2)} t/s`;
+            if (run.tg_stddev_ts != null) resultText += ` (stddev: ${run.tg_stddev_ts.toFixed(2)})`;
+            if (run.build_commit) resultText += `\n\nbuild: ${run.build_commit}`;
+            if (run.gpu_info) resultText += `\ngpu:   ${run.gpu_info}`;
+            if (run.raw_output) {
+                resultText += `\n\n--- Raw Output ---\n${run.raw_output}`;
+            }
+
+            output.textContent = resultText;
+            badge.textContent = 'Completed';
+            badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-green-900 text-green-300';
+            resetRunButton();
+            showToast('Benchmark completed', 'success');
+            await refreshHistory();
+        } else if (run.status === 'failed' || run.status === 'cancelled') {
+            stopPolling();
+            isRunning = false;
+            currentRunId = null;
+
+            output.textContent = `Benchmark ${run.status}.\n\n${run.error_message || ''}`;
+            output.className = 'terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-red-400';
+            badge.textContent = run.status === 'failed' ? 'Failed' : 'Cancelled';
+            badge.className = 'px-2 py-0.5 rounded text-xs font-semibold bg-red-900 text-red-300';
+            resetRunButton();
+            showToast(`Benchmark ${run.status}`, 'error');
+            await refreshHistory();
+        }
+    } catch (e) {
+        console.error('Poll error:', e);
+    }
+}
+
+function resetRunButton() {
+    const runBtn = document.getElementById('run-btn');
     runBtn.disabled = false;
     runBtn.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Run Benchmark';
     runBtn.className = 'bg-green-600 hover:bg-green-700 px-5 py-2.5 rounded font-semibold text-sm';
-    isRunning = false;
-
-    showToast('Benchmark completed', 'success');
 }
 
 // ── History Table ──────────────────────────────────────
+async function refreshHistory() {
+    try {
+        const resp = await fetchAPI(`/api/benchmarks?service_name=${encodeURIComponent(serviceName)}&limit=50`);
+        if (resp.ok) {
+            const data = await resp.json();
+            historyData = (data.runs || []).map(r => ({
+                id: r.id,
+                date: r.created_at ? r.created_at.replace('T', ' ').substring(0, 19) : '',
+                pp_ts: r.pp_avg_ts,
+                tg_ts: r.tg_avg_ts,
+                params: r.params || {},
+                status: r.status,
+            }));
+            renderHistory();
+        }
+    } catch (e) {
+        console.error('Failed to refresh history:', e);
+    }
+}
+
 function renderHistory() {
     const tbody = document.getElementById('history-body');
     const empty = document.getElementById('history-empty');
@@ -493,23 +601,25 @@ function renderHistory() {
     empty.classList.add('hidden');
 
     tbody.innerHTML = historyData.map(row => {
-        const statusBadge = row.status === 'completed'
-            ? '<span class="text-green-400"><i class="fa-solid fa-check"></i> Completed</span>'
-            : '<span class="text-red-400"><i class="fa-solid fa-xmark"></i> Failed</span>';
+        const statusIcons = {
+            completed: '<span class="text-green-400"><i class="fa-solid fa-check"></i> Completed</span>',
+            failed: '<span class="text-red-400"><i class="fa-solid fa-xmark"></i> Failed</span>',
+            running: '<span class="text-yellow-400"><i class="fa-solid fa-spinner fa-spin"></i> Running</span>',
+            pending: '<span class="text-gray-400"><i class="fa-solid fa-clock"></i> Pending</span>',
+            cancelled: '<span class="text-gray-400"><i class="fa-solid fa-ban"></i> Cancelled</span>',
+        };
+        const statusBadge = statusIcons[row.status] || `<span class="text-gray-400">${escapeHtml(row.status)}</span>`;
 
-        const keyParams = [];
-        if (row.params['-p']) keyParams.push(`pp=${row.params['-p']}`);
-        if (row.params['-n']) keyParams.push(`tg=${row.params['-n']}`);
-        if (row.params['-ngl']) keyParams.push(`ngl=${row.params['-ngl']}`);
-        if (row.params['-b']) keyParams.push(`b=${row.params['-b']}`);
-        if (row.params['-fa'] !== undefined) keyParams.push('fa');
+        const allParams = Object.entries(row.params || {}).map(([flag, val]) =>
+            val ? `${flag} ${val}` : flag
+        ).join('  ');
 
         return `
             <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
-                <td class="py-2.5 pr-3 text-gray-300 text-xs whitespace-nowrap">${row.date}</td>
+                <td class="py-2.5 pr-3 text-gray-300 text-xs whitespace-nowrap">${escapeHtml(row.date)}</td>
                 <td class="py-2.5 pr-3 font-mono ${row.pp_ts ? 'text-white' : 'text-gray-500'}">${row.pp_ts ? row.pp_ts.toFixed(1) : '—'}</td>
                 <td class="py-2.5 pr-3 font-mono ${row.tg_ts ? 'text-white' : 'text-gray-500'}">${row.tg_ts ? row.tg_ts.toFixed(1) : '—'}</td>
-                <td class="py-2.5 pr-3 text-gray-400 text-xs font-mono">${keyParams.join(', ')}</td>
+                <td class="py-2.5 pr-3 text-gray-400 text-xs font-mono">${escapeHtml(allParams)}</td>
                 <td class="py-2.5 pr-3 text-xs">${statusBadge}</td>
                 <td class="py-2.5">
                     <div class="flex gap-1">
@@ -538,38 +648,57 @@ function rerunBenchmark(id) {
     showToast('Parameters loaded from history run', 'info');
 }
 
-function applyToService(id) {
+async function applyToService(id) {
     const row = historyData.find(r => r.id === id);
     if (!row) return;
 
     const DENYLIST = ['-p', '-n', '-r', '-o', '-m'];
-    const applied = {};
+    const applicable = {};
     const skipped = [];
-
     Object.entries(row.params).forEach(([flag, value]) => {
-        if (DENYLIST.includes(flag)) {
-            skipped.push(flag);
-        } else {
-            applied[flag] = value;
-        }
+        if (DENYLIST.includes(flag)) skipped.push(flag);
+        else applicable[flag] = value;
     });
 
-    const appliedStr = Object.entries(applied)
-        .map(([k, v]) => v ? `${k} ${v}` : k)
-        .join(', ');
-
-    if (Object.keys(applied).length === 0) {
+    if (Object.keys(applicable).length === 0) {
         showToast('No applicable parameters to apply (all are benchmark-only flags)', 'warning');
         return;
     }
 
-    showToast(`Would apply to ${serviceName}: ${appliedStr}\nSkipped benchmark-only: ${skipped.join(', ')}`, 'success');
+    const appliedStr = Object.entries(applicable)
+        .map(([k, v]) => v ? `${k} ${v}` : k)
+        .join(', ');
+
+    if (!confirm(`Apply to ${serviceName}?\n\nParams: ${appliedStr}\nSkipped: ${skipped.join(', ')}\n\nService must be restarted for changes to take effect.`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetchAPI(`/api/benchmarks/${id}/apply`, { method: 'PUT' });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(data.message || 'Configuration applied', 'success');
+        } else {
+            showToast(data.error?.message || 'Failed to apply', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to apply: ' + e.message, 'error');
+    }
 }
 
-function deleteRun(id) {
-    historyData = historyData.filter(r => r.id !== id);
-    renderHistory();
-    showToast('Benchmark run deleted', 'info');
+async function deleteRun(id) {
+    try {
+        const resp = await fetchAPI(`/api/benchmarks/${id}`, { method: 'DELETE' });
+        if (resp.ok) {
+            showToast('Benchmark run deleted', 'info');
+            await refreshHistory();
+        } else {
+            const data = await resp.json();
+            showToast(data.error?.message || 'Failed to delete', 'error');
+        }
+    } catch (e) {
+        showToast('Failed to delete: ' + e.message, 'error');
+    }
 }
 
 // ── Toast Notifications ────────────────────────────────
@@ -602,6 +731,13 @@ function escapeHtml(str) {
 }
 
 // ── Parameter Reference Panel ──────────────────────────
+
+function toggleParamRef() {
+    const body = document.getElementById('param-ref-body');
+    const chevron = document.getElementById('param-ref-chevron');
+    body.classList.toggle('hidden');
+    chevron.classList.toggle('rotate-[-90deg]');
+}
 
 function renderParamRef(filter = '') {
     const list = document.getElementById('param-ref-list');

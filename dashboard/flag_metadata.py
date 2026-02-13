@@ -406,12 +406,12 @@ LLAMACPP_VALIDATION = {
     'batch_size': {
         'type': 'int',
         'min': 1,
-        'max': 2048
+        'max': 16384
     },
     'ubatch_size': {
         'type': 'int',
         'min': 1,
-        'max': 2048
+        'max': 16384
     },
     'repeat_penalty': {
         'type': 'float',

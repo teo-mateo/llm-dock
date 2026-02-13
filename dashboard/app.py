@@ -33,6 +33,7 @@ from openwebui_integration import (
     is_service_registered_in_openwebui,
     get_openwebui_registered_urls,
 )
+from benchmarking.routes import benchmarks_bp, init_benchmarking
 
 load_dotenv()
 
@@ -73,6 +74,10 @@ root_logger.addHandler(console_handler)
 # Application logger
 logger = logging.getLogger(__name__)
 logger.setLevel(log_level)
+
+# Register benchmarking Blueprint and initialize subsystem
+app.register_blueprint(benchmarks_bp)
+init_benchmarking(COMPOSE_FILE)
 
 
 def require_auth(f):

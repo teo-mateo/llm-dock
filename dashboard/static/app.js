@@ -348,7 +348,7 @@ function renderServices(services) {
         const isInfraService = service.name === 'open-webui';
 
         return `
-            <div class="${cardBg} rounded-lg p-4 border-2 ${borderColor} flex flex-col h-full ${cardOpacity}">
+            <div class="${cardBg} rounded-lg p-4 border-2 ${borderColor} flex flex-col h-full ${cardOpacity}" data-service="${service.name}" data-status="${service.status}">
                 <div class="flex justify-between items-start mb-2">
                     <div class="flex-1 pr-2">
                         <h3 class="text-xl font-bold ${titleColor} inline">${service.name}</h3>
@@ -369,9 +369,11 @@ function renderServices(services) {
                     }</p>` : ''}
                 </div>
                 <div class="flex gap-2 mt-auto">
-                    ${isRunning
-                        ? `<button onclick="controlService('${service.name}', 'stop')" class="flex-1 bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-semibold">Stop</button>`
-                        : `<button onclick="controlService('${service.name}', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 px-3 py-2 rounded font-semibold">${isNotCreated ? 'Create & Start' : 'Start'}</button>`
+                    ${_transitioningServices[service.name]
+                        ? `<button disabled class="flex-1 bg-gray-600 px-3 py-2 rounded font-semibold cursor-not-allowed">${_transitioningServices[service.name].charAt(0).toUpperCase() + _transitioningServices[service.name].slice(1)}ing...</button>`
+                        : isRunning
+                            ? `<button onclick="controlService('${service.name}', 'stop')" class="flex-1 bg-red-600 hover:bg-red-700 px-3 py-2 rounded font-semibold">Stop</button>`
+                            : `<button onclick="controlService('${service.name}', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 px-3 py-2 rounded font-semibold">${isNotCreated ? 'Create & Start' : 'Start'}</button>`
                     }
                     ${isInfraService ? `
                         <button onclick="restartOpenWebUI()" class="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Restart Open WebUI">
@@ -398,20 +400,36 @@ function renderServices(services) {
     }).join('');
 }
 
+// Track services currently being started/stopped so renders show transitioning state
+const _transitioningServices = {};
+
 async function controlService(name, action) {
     try {
-        const button = event.target;
+        const button = event.target.closest('button');
         button.disabled = true;
         button.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
 
+        _transitioningServices[name] = action;
+
         await fetchAPI(`/services/${name}/${action}`, { method: 'POST' });
 
-        // Reload after a short delay to see the status change
-        setTimeout(loadServices, 500);
+        // container.stop() is blocking, so the container should be stopped
+        // by the time we get here. Poll a few times in case Docker's list
+        // query returns stale state.
+        const expectedRunning = (action === 'start' || action === 'restart');
+        for (let i = 0; i < 5; i++) {
+            await loadServices();
+            const card = document.querySelector(`[data-service="${name}"]`);
+            const isRunning = card?.dataset.status === 'running';
+            if (isRunning === expectedRunning) break;
+            await new Promise(r => setTimeout(r, 500));
+        }
     } catch (error) {
         console.error(`Failed to ${action} service:`, error);
         alert(`Failed to ${action} service: ${error.message}`);
-        loadServices(); // Reload to refresh state
+    } finally {
+        delete _transitioningServices[name];
+        loadServices();
     }
 }
 
