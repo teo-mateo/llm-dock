@@ -140,7 +140,13 @@ class BenchmarkExecutor:
                 continue
             cmd.append(flag)
             if value:
-                cmd.append(value)
+                # Strip surrounding quotes — users may type them out of habit
+                # but Popen passes args directly without shell interpretation
+                stripped = value.strip()
+                if (stripped.startswith('"') and stripped.endswith('"')) or \
+                   (stripped.startswith("'") and stripped.endswith("'")):
+                    stripped = stripped[1:-1]
+                cmd.append(stripped)
 
         return cmd
 

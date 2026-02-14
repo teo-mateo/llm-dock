@@ -9,9 +9,6 @@ BENCHMARK_ONLY_FLAGS = {"-p", "-n", "-r", "-o", "-m"}
 # Valid flag pattern: starts with -, followed by alphanumeric/hyphens
 FLAG_PATTERN = re.compile(r"^--?[a-zA-Z][a-zA-Z0-9\-]*$")
 
-# Value pattern: reject shell-unsafe characters
-UNSAFE_VALUE_PATTERN = re.compile(r"[;&|`$\\\n\r]")
-
 
 def validate_flag_name(flag: str) -> Tuple[bool, Optional[str]]:
     if not flag:
@@ -30,9 +27,6 @@ def validate_flag_name(flag: str) -> Tuple[bool, Optional[str]]:
 
 
 def validate_flag_value(value: str) -> Tuple[bool, Optional[str]]:
-    if UNSAFE_VALUE_PATTERN.search(value):
-        return False, f"Value contains unsafe characters: {value}"
-
     if len(value) > 1024:
         return False, "Value too long (max 1024 characters)"
 

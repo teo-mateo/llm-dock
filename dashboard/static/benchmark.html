@@ -96,7 +96,7 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="resetToDefaults()" class="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded">
-                        <i class="fa-solid fa-rotate-left mr-1"></i> Reset to Service Defaults
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Reset
                     </button>
                 </div>
             </div>
@@ -152,18 +152,21 @@
 
     </div>
 
-    <!-- Live Output (full width) -->
+    <!-- Live Output (full width, collapsible) -->
     <div class="bg-gray-800 rounded-lg p-5 mb-6">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleLiveOutput()">
             <h2 class="text-lg font-semibold">
+                <i id="live-output-chevron" class="fa-solid fa-chevron-down mr-1.5 text-gray-500 text-xs transition-transform rotate-[-90deg]"></i>
                 <i class="fa-solid fa-terminal mr-2 text-gray-400"></i>Live Output
             </h2>
             <span id="run-status-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">
                 Idle
             </span>
         </div>
-        <div id="live-output" class="terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-gray-400">
-            Waiting for benchmark run...
+        <div id="live-output-wrapper" class="hidden mt-3">
+            <div id="live-output" class="terminal-output bg-gray-950 rounded p-4 h-64 overflow-y-auto text-gray-400">
+                Waiting for benchmark run...
+            </div>
         </div>
     </div>
 
@@ -204,8 +207,9 @@ let serviceDefaults = {};
 let isRunning = false;
 let currentRunId = null;
 let pollInterval = null;
-const BENCHMARK_ONLY_FLAGS = new Set(['-m', '-p', '-n', '-r', '-o', '-pg', '-d', '-oe', '-v', '--progress', '--delay', '--list-devices']);
+const BENCHMARK_ONLY_FLAGS = new Set(['-m', '-p', '-n', '-r', '-o', '-pg', '-d', '-oe', '-v', '--delay', '--list-devices']);
 const AUTO_ADDED_FLAGS = new Set(['-m', '-o']);
+const SAFE_DEFAULTS = { '-p': '512', '-n': '128', '-r': '3' };
 
 let historyData = [];
 
@@ -270,17 +274,17 @@ async function initPage() {
             }
         } catch (e) { /* status fetch is non-critical */ }
 
-        // Load params: most recent run first, then service defaults
+        // Load params: most recent run first, then safe defaults
         const histResp = await fetchAPI(`/api/benchmarks?service_name=${encodeURIComponent(serviceName)}&limit=1`);
         if (histResp.ok) {
             const histData = await histResp.json();
             if (histData.runs && histData.runs.length > 0) {
                 loadParams(histData.runs[0].params || {});
             } else {
-                await loadServiceDefaults();
+                loadParams(SAFE_DEFAULTS);
             }
         } else {
-            await loadServiceDefaults();
+            loadParams(SAFE_DEFAULTS);
         }
 
         // Load full history
@@ -335,9 +339,7 @@ const PARAM_REFERENCE = [
       tip: 'Directs benchmark output to <b>stderr</b> in specified format (<code>csv|json|jsonl|md|sql</code>). Use to separate diagnostic data from main results when piping stdout to files or databases.' },
     { cat: 'Benchmark', flag: '-v', long: '--verbose', desc: 'Verbose output', def: 'off',
       tip: 'Enables <b>detailed diagnostic logging</b> during test execution, showing model loading details, device configuration, and per-iteration metrics. Enable when troubleshooting performance issues or verifying test parameters.' },
-    { cat: 'Benchmark', flag: '', long: '--progress', desc: 'Print progress indicators during test', def: 'off',
-      tip: 'Prints <b>real-time progress indicators</b> showing test advancement during execution. Useful for long-running benchmarks with many repetitions or large models, without the verbosity of <code>-v</code>.' },
-    { cat: 'Benchmark', flag: '', long: '--delay', desc: 'Delay in seconds between tests', def: '0',
+{ cat: 'Benchmark', flag: '', long: '--delay', desc: 'Delay in seconds between tests', def: '0',
       tip: 'Introduces a <b>pause in seconds</b> between successive tests (default: 0). Allows GPU temperature to stabilize and caches to clear between runs. Add delay when thermal throttling might skew results.' },
     { cat: 'Benchmark', flag: '', long: '--list-devices', desc: 'List available devices and exit', def: '',
       tip: 'Displays all available <b>compute devices</b> (CPUs, GPUs, accelerators) compatible with your build, then exits. Use to verify hardware detection before configuring device-specific tests.' },
@@ -502,8 +504,8 @@ function getParamsArray() {
 }
 
 function resetToDefaults() {
-    loadServiceDefaults();
-    showToast('Parameters reset to service defaults', 'info');
+    loadParams(SAFE_DEFAULTS);
+    showToast('Parameters reset to defaults', 'info');
 }
 
 function loadParams(params) {
@@ -539,6 +541,10 @@ async function runBenchmark() {
     runBtn.disabled = true;
     runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Starting...';
     runBtn.className = 'bg-gray-600 px-5 py-2.5 rounded font-semibold text-sm cursor-not-allowed';
+
+    // Auto-expand live output
+    document.getElementById('live-output-wrapper').classList.remove('hidden');
+    document.getElementById('live-output-chevron').classList.remove('rotate-[-90deg]');
 
     try {
         const resp = await fetchAPI('/api/benchmarks', {
@@ -806,6 +812,13 @@ function escapeHtml(str) {
 }
 
 // ── Parameter Reference Panel ──────────────────────────
+
+function toggleLiveOutput() {
+    const wrapper = document.getElementById('live-output-wrapper');
+    const chevron = document.getElementById('live-output-chevron');
+    wrapper.classList.toggle('hidden');
+    chevron.classList.toggle('rotate-[-90deg]');
+}
 
 function toggleParamRef() {
     const body = document.getElementById('param-ref-body');
