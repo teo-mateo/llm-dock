@@ -25,6 +25,35 @@
             from { opacity: 1; }
             to { opacity: 0; }
         }
+        .param-tooltip {
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 6px);
+            z-index: 50;
+            width: 280px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #cbd5e1;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .param-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 16px;
+            border: 6px solid transparent;
+            border-top-color: #475569;
+        }
+        .param-ref-row:hover .param-tooltip {
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
@@ -56,7 +85,7 @@
     <div class="flex flex-col lg:flex-row gap-4 mb-4">
 
         <!-- Left column: Parameters + Command Preview + Run -->
-        <div class="flex-1 min-w-0">
+        <div id="left-column" class="flex-1 min-w-0">
             <!-- Parameters -->
             <div class="bg-gray-800 rounded-lg p-5 mb-4">
                 <h2 class="text-lg font-semibold mb-3">
@@ -91,18 +120,16 @@
         <!-- Right column: Parameter Reference -->
         <div class="lg:w-80 xl:w-96 flex-shrink-0">
             <div class="bg-gray-800 rounded-lg p-4 lg:sticky lg:top-4">
-                <div class="flex items-center justify-between mb-3 cursor-pointer select-none" onclick="toggleParamRef()">
+                <div class="flex items-center justify-between mb-3">
                     <h2 class="text-sm font-semibold text-gray-300">
-                        <i id="param-ref-chevron" class="fa-solid fa-chevron-down mr-1.5 text-gray-500 text-xs transition-transform"></i>
                         <i class="fa-solid fa-book mr-1.5 text-gray-400"></i>Parameter Reference
                     </h2>
                     <a href="https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md"
-                       target="_blank" class="text-gray-500 hover:text-gray-300 text-xs" title="llama-bench docs"
-                       onclick="event.stopPropagation()">
+                       target="_blank" class="text-gray-500 hover:text-gray-300 text-xs" title="llama-bench docs">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </a>
                 </div>
-                <div id="param-ref-body" class="hidden">
+                <div id="param-ref-body">
                     <div class="relative mb-3">
                         <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-gray-500 text-xs"></i>
                         <input type="text" id="param-search" placeholder="Search flags..."
@@ -113,7 +140,7 @@
                         <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1"></span>Benchmark-only (not applied to service)</span>
                         <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Model param</span>
                     </div>
-                    <div id="param-ref-list" class="overflow-y-auto max-h-[calc(100vh-260px)] space-y-0.5 text-xs">
+                    <div id="param-ref-list" class="overflow-y-auto space-y-0.5 text-xs">
                         <!-- Populated by JS -->
                     </div>
                     <div id="param-ref-empty" class="text-gray-500 text-xs py-4 text-center hidden">
@@ -177,7 +204,8 @@ let serviceDefaults = {};
 let isRunning = false;
 let currentRunId = null;
 let pollInterval = null;
-const BENCHMARK_ONLY_FLAGS = new Set(['-p', '-n', '-r', '-o', '-m']);
+const BENCHMARK_ONLY_FLAGS = new Set(['-m', '-p', '-n', '-r', '-o', '-pg', '-d', '-oe', '-v', '--progress', '--delay', '--list-devices']);
+const AUTO_ADDED_FLAGS = new Set(['-m', '-o']);
 
 let historyData = [];
 
@@ -283,49 +311,87 @@ async function loadServiceDefaults() {
 
 initPage();
 
+// Keep param ref height synced with left column
+new ResizeObserver(() => updateParamRefHeight()).observe(document.getElementById('left-column'));
+
 // ── Parameter Reference Data ───────────────────────────
 const PARAM_REFERENCE = [
-    { cat: 'Test', flag: '-m', long: '--model', desc: 'Model file path', def: 'models/7B/ggml-model-q4_0.gguf' },
-    { cat: 'Test', flag: '-p', long: '--n-prompt', desc: 'Number of prompt tokens to process', def: '512' },
-    { cat: 'Test', flag: '-n', long: '--n-gen', desc: 'Number of tokens to generate', def: '128' },
-    { cat: 'Test', flag: '-pg', long: '', desc: 'Combined prompt+generation (pp,tg)', def: '' },
-    { cat: 'Test', flag: '-d', long: '--n-depth', desc: 'Context depth for KV cache prefill', def: '0' },
-    { cat: 'Test', flag: '-r', long: '--repetitions', desc: 'Times to repeat each test', def: '5' },
+    // Benchmark-only flags first
+    { cat: 'Benchmark', flag: '-m', long: '--model', desc: 'Model file path (auto-added)', def: 'auto',
+      tip: 'Path to the GGUF model file. <b>Auto-added</b> from your service configuration — you don\'t need to set this manually.' },
+    { cat: 'Benchmark', flag: '-o', long: '--output', desc: 'Output format (auto-added as json)', def: 'json',
+      tip: 'Sets the output format for benchmark results. <b>Auto-added as json</b> so the dashboard can parse the results. You don\'t need to set this manually.' },
+    { cat: 'Benchmark', flag: '-p', long: '--n-prompt', desc: 'Number of prompt tokens to process', def: '512',
+      tip: 'Sets the number of tokens to process in the <b>prompt phase</b> (default: 512). This measures how quickly your system can ingest input before generation begins. Increase to test performance with larger prompts or longer context windows.' },
+    { cat: 'Benchmark', flag: '-n', long: '--n-gen', desc: 'Number of tokens to generate', def: '128',
+      tip: 'Specifies how many tokens to <b>generate</b> during the text generation phase (default: 128). This tests sequential token production speed, which determines response time. Higher values show sustained performance over longer outputs.' },
+    { cat: 'Benchmark', flag: '-r', long: '--repetitions', desc: 'Times to repeat each test', def: '5',
+      tip: 'Number of times to <b>repeat each test</b> (default: 5). Multiple runs provide statistical averaging to account for variance from thermal throttling, caching, or system load. Increase for more reliable comparisons.' },
+    { cat: 'Benchmark', flag: '-pg', long: '', desc: 'Combined prompt+generation (pp,tg)', def: '',
+      tip: 'Runs <b>prompt processing + text generation</b> in a single pass (format: <code>-pg 1024,256</code> for 1024 prompt + 256 generated tokens). The most realistic benchmark since it measures end-to-end inference like actual usage, rather than testing PP and TG separately.' },
+    { cat: 'Benchmark', flag: '-d', long: '--n-depth', desc: 'Context depth for KV cache prefill', def: '0',
+      tip: 'Sets how many tokens are already in the KV cache before the test runs. For example, <b>-d 4096</b> fills the cache with 4096 tokens first, then measures PP/TG speed. This lets you benchmark performance with a long conversation history, since attention slows down as context grows. Default is 0 (empty cache).' },
+    { cat: 'Benchmark', flag: '-oe', long: '--output-err', desc: 'Stderr output format', def: 'none',
+      tip: 'Directs benchmark output to <b>stderr</b> in specified format (<code>csv|json|jsonl|md|sql</code>). Use to separate diagnostic data from main results when piping stdout to files or databases.' },
+    { cat: 'Benchmark', flag: '-v', long: '--verbose', desc: 'Verbose output', def: 'off',
+      tip: 'Enables <b>detailed diagnostic logging</b> during test execution, showing model loading details, device configuration, and per-iteration metrics. Enable when troubleshooting performance issues or verifying test parameters.' },
+    { cat: 'Benchmark', flag: '', long: '--progress', desc: 'Print progress indicators during test', def: 'off',
+      tip: 'Prints <b>real-time progress indicators</b> showing test advancement during execution. Useful for long-running benchmarks with many repetitions or large models, without the verbosity of <code>-v</code>.' },
+    { cat: 'Benchmark', flag: '', long: '--delay', desc: 'Delay in seconds between tests', def: '0',
+      tip: 'Introduces a <b>pause in seconds</b> between successive tests (default: 0). Allows GPU temperature to stabilize and caches to clear between runs. Add delay when thermal throttling might skew results.' },
+    { cat: 'Benchmark', flag: '', long: '--list-devices', desc: 'List available devices and exit', def: '',
+      tip: 'Displays all available <b>compute devices</b> (CPUs, GPUs, accelerators) compatible with your build, then exits. Use to verify hardware detection before configuring device-specific tests.' },
 
-    { cat: 'Batching', flag: '-b', long: '--batch-size', desc: 'Logical batch size for prompt processing', def: '2048' },
-    { cat: 'Batching', flag: '-ub', long: '--ubatch-size', desc: 'Physical micro-batch size', def: '512' },
+    { cat: 'Batching', flag: '-b', long: '--batch-size', desc: 'Logical batch size for prompt processing', def: '2048',
+      tip: '<b>Logical batch size</b> for prompt processing (default: 2048). Controls how many tokens are processed per iteration at the application level. Larger values speed up prompt processing but require more VRAM for the logits buffer. All prompt tokens are still evaluated — they\'re just chunked into groups of this size.' },
+    { cat: 'Batching', flag: '-ub', long: '--ubatch-size', desc: 'Physical micro-batch size', def: '512',
+      tip: '<b>Physical micro-batch size</b> at the hardware level (default: 512). When <code>batch > ubatch</code>, processing is pipelined (e.g., batch=2048 with ubatch=512 = 4-stage pipeline). Lower values reduce VRAM usage during prompt processing. Must satisfy: <code>batch_size >= ubatch_size</code>.' },
 
-    { cat: 'GPU', flag: '-ngl', long: '--n-gpu-layers', desc: 'Number of layers to offload to GPU', def: '99' },
-    { cat: 'GPU', flag: '-sm', long: '--split-mode', desc: 'Multi-GPU split mode (none|layer|row)', def: 'layer' },
-    { cat: 'GPU', flag: '-mg', long: '--main-gpu', desc: 'Primary GPU index for computations', def: '0' },
-    { cat: 'GPU', flag: '-nkvo', long: '--no-kv-offload', desc: 'Disable KV cache offload to GPU (0|1)', def: '0' },
-    { cat: 'GPU', flag: '-ts', long: '--tensor-split', desc: 'Fraction of work per GPU (comma-separated)', def: '0' },
-    { cat: 'GPU', flag: '-dev', long: '--device', desc: 'Device selection', def: 'auto' },
-    { cat: 'GPU', flag: '-nopo', long: '--no-op-offload', desc: 'Disable operation offloading (0|1)', def: '0' },
+    { cat: 'GPU', flag: '-ngl', long: '--n-gpu-layers', desc: 'Number of layers to offload to GPU', def: '99',
+      tip: 'Controls how many model layers are stored in VRAM. Use a specific number, <code>auto</code>, or <code>-1</code>/all to offload everything. <b>Higher values = faster inference but more VRAM.</b> Start with <code>auto</code> and adjust based on available memory.' },
+    { cat: 'GPU', flag: '-sm', long: '--split-mode', desc: 'Multi-GPU split mode (none|layer|row)', def: 'layer',
+      tip: 'Determines how models distribute across multiple GPUs. <code>none</code> = single GPU; <code>layer</code> (default) = sequential layer distribution; <code>row</code> = parallel tensor splitting where all GPUs work simultaneously per layer. <b>Use <code>row</code> for better multi-GPU utilization.</b>' },
+    { cat: 'GPU', flag: '-mg', long: '--main-gpu', desc: 'Primary GPU index for computations', def: '0',
+      tip: 'Specifies which GPU (by index, default: 0) handles primary processing. With <code>split-mode=none</code>, the entire model runs here. With <code>row</code> mode, this GPU manages intermediate results and KV cache. <b>Set to your fastest GPU.</b>' },
+    { cat: 'GPU', flag: '-nkvo', long: '--no-kv-offload', desc: 'Disable KV cache offload to GPU (0|1)', def: '0',
+      tip: 'Keeps the KV cache in system RAM instead of VRAM. By default, KV cache uses VRAM. <b>Enable if you\'re VRAM-constrained but have plenty of RAM</b> — trades GPU memory for slower CPU memory access.' },
+    { cat: 'GPU', flag: '-ts', long: '--tensor-split', desc: 'Fraction of work per GPU (comma-separated)', def: '0',
+      tip: 'Defines custom proportions for distributing model weights across GPUs (e.g., <code>3,1</code> = 75%/25% split). <b>Use when GPUs have different VRAM capacities</b> to allocate smaller portions to weaker GPUs and prevent bottlenecks.' },
+    { cat: 'GPU', flag: '-dev', long: '--device', desc: 'Device selection', def: 'auto',
+      tip: 'Specifies which compute devices to use as a comma-separated list. Set to <code>none</code> to disable offloading entirely. <b>Run with <code>--list-devices</code> first</b> to see available devices. Useful for mixed GPU/CPU setups.' },
+    { cat: 'GPU', flag: '-nopo', long: '--no-op-offload', desc: 'Disable operation offloading (0|1)', def: '0',
+      tip: 'Disables GPU acceleration for host tensor operations, forcing them onto CPU. <b>Enable only for debugging</b> or if you encounter GPU operation errors — it will significantly slow down inference.' },
 
-    { cat: 'Memory', flag: '-fa', long: '--flash-attn', desc: 'Enable flash attention (0|1)', def: '0' },
-    { cat: 'Memory', flag: '-ctk', long: '--cache-type-k', desc: 'KV cache type for K (f16, q8_0, q4_0, etc.)', def: 'f16' },
-    { cat: 'Memory', flag: '-ctv', long: '--cache-type-v', desc: 'KV cache type for V (f16, q8_0, q4_0, etc.)', def: 'f16' },
-    { cat: 'Memory', flag: '-mmp', long: '--mmap', desc: 'Use memory-mapped model loading (0|1)', def: '1' },
-    { cat: 'Memory', flag: '-embd', long: '--embeddings', desc: 'Embeddings mode (0|1)', def: '0' },
+    { cat: 'Memory', flag: '-fa', long: '--flash-attn', desc: 'Enable flash attention (0|1)', def: '0',
+      tip: 'Enables flash attention, which reduces memory bandwidth and improves GPU performance through tiling and kernel fusion. <b>Enable (set to 1) when using GPU</b> for up to ~15% throughput gains and better long-context support. Required for KV cache quantization (<code>-ctk</code>/<code>-ctv</code>).' },
+    { cat: 'Memory', flag: '-ctk', long: '--cache-type-k', desc: 'KV cache type for K (f16, q8_0, q4_0, etc.)', def: 'f16',
+      tip: 'Data type for the <b>key</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss — useful for long contexts or fitting more layers on GPU. Requires <code>-fa 1</code>.' },
+    { cat: 'Memory', flag: '-ctv', long: '--cache-type-v', desc: 'KV cache type for V (f16, q8_0, q4_0, etc.)', def: 'f16',
+      tip: 'Data type for the <b>value</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss. Should typically match <code>-ctk</code> setting. Requires <code>-fa 1</code>.' },
+    { cat: 'Memory', flag: '-mmp', long: '--mmap', desc: 'Use memory-mapped model loading (0|1)', def: '1',
+      tip: 'Controls memory-mapped file loading (default: enabled). When on, the model maps directly from disk via the OS page cache, enabling <b>instant loads on subsequent runs</b>. Disable (set to 0) to force loading the full model into RAM upfront — useful if your model is larger than available RAM or you want consistent performance without page faults.' },
+    { cat: 'Memory', flag: '-embd', long: '--embeddings', desc: 'Embeddings mode (0|1)', def: '0',
+      tip: 'Switches from text generation to <b>embedding generation</b> mode. Enable (set to 1) when benchmarking vector embedding performance for semantic search, similarity tasks, or RAG applications. Requires a model designed for embeddings.' },
 
-    { cat: 'CPU', flag: '-t', long: '--threads', desc: 'Number of threads for computation', def: 'auto' },
-    { cat: 'CPU', flag: '-C', long: '--cpu-mask', desc: 'CPU affinity bitmask', def: '0x0' },
-    { cat: 'CPU', flag: '', long: '--cpu-strict', desc: 'Use strict CPU thread pinning (0|1)', def: '0' },
-    { cat: 'CPU', flag: '', long: '--poll', desc: 'Polling percentage for thread sync', def: '50' },
-    { cat: 'CPU', flag: '', long: '--numa', desc: 'NUMA scheduling (distribute|isolate|numactl)', def: 'disabled' },
-    { cat: 'CPU', flag: '-ncmoe', long: '--n-cpu-moe', desc: 'CPU layers for MoE models', def: '0' },
+    { cat: 'CPU', flag: '-t', long: '--threads', desc: 'Number of threads for computation', def: 'auto',
+      tip: 'Number of CPU threads for computation (default: auto-detected core count). <b>Higher values improve performance on multi-core systems</b> but may cause diminishing returns beyond the optimal count. Experiment with values like 4, 8, 16, 32 to find the sweet spot for your hardware.' },
+    { cat: 'CPU', flag: '-C', long: '--cpu-mask', desc: 'CPU affinity bitmask', def: '0x0',
+      tip: 'CPU affinity bitmask in hex (default: <code>0x0</code> = unrestricted). <b>Restricts execution to specific CPU cores.</b> Example: <code>0xFF</code> pins to CPUs 0-7. Useful on NUMA systems or when running multiple workloads to reduce cross-socket memory access.' },
+    { cat: 'CPU', flag: '', long: '--cpu-strict', desc: 'Use strict CPU thread pinning (0|1)', def: '0',
+      tip: 'Enforces <b>strict thread-to-core binding</b> to reduce context switching (default: disabled). Most beneficial when combined with <code>--cpu-mask</code> for maximum performance isolation and predictability in multi-threaded environments.' },
+    { cat: 'CPU', flag: '', long: '--poll', desc: 'Polling percentage for thread sync', def: '50',
+      tip: 'Controls how aggressively threads <b>spin-check for new work</b> (0-100, default: 50). Higher values reduce latency but consume more CPU power. Lower values save power by using passive waiting. Tune based on your latency vs. power efficiency needs.' },
+    { cat: 'CPU', flag: '', long: '--numa', desc: 'NUMA scheduling (distribute|isolate|numactl)', def: 'disabled',
+      tip: 'NUMA scheduling mode: <code>distribute</code> (spread across all nodes), <code>isolate</code> (current node only), or <code>numactl</code> (use numactl CPU map). <b>Essential for multi-socket systems</b> to optimize memory access. <code>distribute</code> with memory interleave often provides the best throughput.' },
+    { cat: 'CPU', flag: '-ncmoe', long: '--n-cpu-moe', desc: 'CPU layers for MoE models', def: '0',
+      tip: 'Number of MoE layers to keep on CPU, counting from the <b>highest layer number</b> (default: 0). Offloads expert FFN layers to CPU to reduce VRAM usage on large MoE models. llama.cpp may still copy CPU weights to GPU for batch processing when enough tokens are available.' },
 
-    { cat: 'Output', flag: '-o', long: '--output', desc: 'Output format (csv|json|jsonl|md|sql)', def: 'md' },
-    { cat: 'Output', flag: '-oe', long: '--output-err', desc: 'Stderr output format', def: 'none' },
-    { cat: 'Output', flag: '-v', long: '--verbose', desc: 'Verbose output', def: 'off' },
-    { cat: 'Output', flag: '', long: '--progress', desc: 'Print progress indicators during test', def: 'off' },
-
-    { cat: 'Other', flag: '', long: '--prio', desc: 'Process/thread priority (0-3)', def: '0' },
-    { cat: 'Other', flag: '', long: '--delay', desc: 'Delay in seconds between tests', def: '0' },
-    { cat: 'Other', flag: '-rpc', long: '--rpc', desc: 'RPC server addresses (comma-separated)', def: '' },
-    { cat: 'Other', flag: '', long: '--list-devices', desc: 'List available devices and exit', def: '' },
-    { cat: 'Other', flag: '-ot', long: '--override-tensors', desc: 'Override tensor buffer types', def: '' },
+    { cat: 'Other', flag: '', long: '--prio', desc: 'Process/thread priority (0-3)', def: '0',
+      tip: 'CPU scheduling priority: <code>-1</code> (low), <code>0</code> (normal), <code>1</code> (medium), <code>2</code> (high), <code>3</code> (realtime). Higher priorities allocate more CPU time to llama.cpp. Use <b>low for background benchmarking</b>, high for dedicated performance testing.' },
+    { cat: 'Other', flag: '-rpc', long: '--rpc', desc: 'RPC server addresses (comma-separated)', def: '',
+      tip: 'Enables distributed benchmarking across machines by specifying RPC server addresses (e.g., <code>192.168.1.10:50052,192.168.1.11:50052</code>). Model weights and KV cache are automatically distributed proportional to available memory. <b>Experimental — do not use on open networks.</b>' },
+    { cat: 'Other', flag: '-ot', long: '--override-tensors', desc: 'Override tensor buffer types', def: '',
+      tip: 'Fine-grained control over which device specific tensors load to, using regex patterns (e.g., <code>-ot ".*_exps.*=CPU"</code> or <code>-ot "blk.[0-5].*=CUDA0"</code>). Buffer types: <code>CPU</code>, <code>CUDA0</code>, <code>CUDA1</code>. <b>Essential for MoE models</b> to selectively offload expert layers while keeping attention on GPU.' },
 ];
 
 // ── Parameter Management ───────────────────────────────
@@ -347,7 +413,12 @@ function addParamRow(flag, value, isEmpty = false) {
             <i class="fa-solid fa-xmark"></i>
         </button>
     `;
-    container.appendChild(row);
+    const emptyRow = container.querySelector('.param-row[data-empty="1"]');
+    if (emptyRow && !isEmpty) {
+        container.insertBefore(row, emptyRow);
+    } else {
+        container.appendChild(row);
+    }
     updatePreview();
     return row;
 }
@@ -437,7 +508,11 @@ function resetToDefaults() {
 
 function loadParams(params) {
     document.getElementById('params-container').innerHTML = '';
-    Object.entries(params).forEach(([flag, value]) => addParamRow(flag, value));
+    // Benchmark-only flags first, then the rest
+    const entries = Object.entries(params);
+    const bench = entries.filter(([flag]) => BENCHMARK_ONLY_FLAGS.has(flag));
+    const rest = entries.filter(([flag]) => !BENCHMARK_ONLY_FLAGS.has(flag));
+    bench.concat(rest).forEach(([flag, value]) => addParamRow(flag, value));
     ensureEmptyRow();
 }
 
@@ -737,6 +812,30 @@ function toggleParamRef() {
     const chevron = document.getElementById('param-ref-chevron');
     body.classList.toggle('hidden');
     chevron.classList.toggle('rotate-[-90deg]');
+    updateParamRefHeight();
+}
+
+function updateParamRefHeight() {
+    const list = document.getElementById('param-ref-list');
+    const body = document.getElementById('param-ref-body');
+    if (!body || body.classList.contains('hidden')) return;
+
+    const leftCol = document.getElementById('left-column');
+    const refPanel = body.closest('.bg-gray-800');
+    if (!leftCol || !refPanel) return;
+
+    // Measure left column content height (not stretched flex height)
+    let leftContentHeight = 0;
+    for (const child of leftCol.children) {
+        leftContentHeight += child.offsetHeight + 16; // mb-4 gap
+    }
+    leftContentHeight -= 16; // no gap after last child
+
+    // Chrome = header + search + legend (everything in the ref panel except the list)
+    list.style.maxHeight = 'none';
+    const chrome = refPanel.offsetHeight - list.offsetHeight;
+    const maxList = leftContentHeight - chrome;
+    list.style.maxHeight = Math.max(120, maxList) + 'px';
 }
 
 function renderParamRef(filter = '') {
@@ -760,23 +859,27 @@ function renderParamRef(filter = '') {
             html += `<div class="text-gray-500 uppercase tracking-wider text-[10px] font-semibold mt-2.5 mb-1 px-1">${escapeHtml(currentCat)}</div>`;
         }
 
-        const isBenchOnly = BENCHMARK_ONLY_FLAGS.has(p.flag);
+        const isBenchOnly = BENCHMARK_ONLY_FLAGS.has(p.flag) || BENCHMARK_ONLY_FLAGS.has(p.long);
+        const isAutoAdded = AUTO_ADDED_FLAGS.has(p.flag) || AUTO_ADDED_FLAGS.has(p.long);
         const flagColor = isBenchOnly ? 'text-orange-400' : 'text-yellow-400';
         const rowBorder = isBenchOnly ? 'border-l-2 border-orange-500/40' : 'border-l-2 border-transparent';
-        const benchBadge = isBenchOnly ? ' <span class="text-[9px] uppercase tracking-wide font-semibold bg-orange-500/15 text-orange-400 px-1 py-0.5 rounded">bench</span>' : '';
+        const benchBadge = isBenchOnly ? ' <span class="text-[9px] uppercase tracking-wide font-semibold bg-orange-500/15 text-orange-400 px-1 py-0.5 rounded">' + (isAutoAdded ? 'auto' : 'bench') + '</span>' : '';
 
         const primaryFlag = escapeHtml(p.flag || p.long);
         const secondaryFlag = p.flag && p.long ? ` <span class="text-gray-600">${escapeHtml(p.long)}</span>` : '';
         const defBadge = p.def ? `<span class="text-gray-600 ml-auto pl-2 whitespace-nowrap">${escapeHtml(p.def)}</span>` : '';
 
+        const clickable = !isAutoAdded;
+        const tooltip = p.tip ? `<div class="param-tooltip">${p.tip}</div>` : '';
         html += `
-            <div class="param-ref-row group rounded-r px-2 py-1.5 hover:bg-gray-700/50 cursor-pointer transition-colors ${rowBorder}"
-                 onclick="useRefParam('${escapeAttr(p.flag || p.long)}', '${escapeAttr(p.def)}')"
-                 title="${isBenchOnly ? 'Benchmark-only — not applied to service config. ' : ''}Click to add ${escapeAttr(flagText)} to parameters">
+            <div class="param-ref-row group rounded-r px-2 py-1.5 relative ${clickable ? 'hover:bg-gray-700/50 cursor-pointer' : 'opacity-60'} transition-colors ${rowBorder}"
+                 ${clickable ? `onclick="useRefParam('${escapeAttr(p.flag || p.long)}', '${escapeAttr(p.def)}')"` : ''}
+                 ${!p.tip ? `title="${isAutoAdded ? 'Auto-added, cannot be modified' : (isBenchOnly ? 'Benchmark-only — not applied to service config. ' : '') + 'Click to add ' + escapeAttr(flagText) + ' to parameters'}"` : ''}>
                 <div class="flex items-center gap-1">
                     <span class="${flagColor} font-mono font-semibold">${primaryFlag}</span>${secondaryFlag}${benchBadge}${defBadge}
                 </div>
                 <div class="text-gray-400 leading-snug mt-0.5">${escapeHtml(p.desc)}</div>
+                ${tooltip}
             </div>`;
     });
 
