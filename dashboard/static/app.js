@@ -1074,6 +1074,10 @@ let gpuInfo = null; // Cached GPU info
 let customParameterRows = []; // Track custom parameter row IDs
 let nextCustomRowId = 1; // Counter for unique custom row IDs
 
+function escapeAttr(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // Fetch and display GPU info in modal
 async function loadGPUInfo() {
     const gpuNameEl = document.getElementById('modal-gpu-name');
@@ -1670,7 +1674,7 @@ function addParameterRow(flagName = '', flagValue = '') {
         <select class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" onchange="updateCommandPreview()" data-row-id="${rowId}">
             ${optionsHTML}
         </select>
-        <input type="text" value="${flagValue}" placeholder="Value (leave empty for boolean flags)" class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500" oninput="updateCommandPreview()" data-row-id="${rowId}">
+        <input type="text" value="${escapeAttr(flagValue)}" placeholder="Value (leave empty for boolean flags)" class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500" oninput="updateCommandPreview()" data-row-id="${rowId}">
         <button type="button" onclick="removeParameterRow(${rowId})" class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold" title="Remove parameter">
             <i class="fa-solid fa-times"></i>
         </button>
@@ -1781,10 +1785,10 @@ function addCustomParameterRow(flagName = '', flagValue = '') {
 
     rowDiv.innerHTML = `
         <div class="flex gap-2 items-start">
-            <input type="text" value="${flagName}" placeholder="--flag-name" data-flag-name="true"
+            <input type="text" value="${escapeAttr(flagName)}" placeholder="--flag-name" data-flag-name="true"
                 class="w-1/3 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                 oninput="onCustomFlagNameInput(${rowId})" data-custom-row-id="${rowId}">
-            <input type="text" value="${flagValue}" placeholder="value (empty for boolean)"
+            <input type="text" value="${escapeAttr(flagValue)}" placeholder="value (empty for boolean)"
                 class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                 oninput="updateCommandPreview()" data-custom-row-id="${rowId}">
             <button type="button" onclick="removeCustomParameterRow(${rowId})"

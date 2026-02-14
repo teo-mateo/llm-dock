@@ -113,6 +113,13 @@ LLAMACPP_FLAGS = {
         'description': 'Reasoning format (auto, cot, etc.)'
     },
 
+    # Memory
+    'no_mmap': {
+        'cli': '--no-mmap',
+        'type': 'bool',
+        'description': 'Disable memory-mapped model loading (loads fully into RAM)'
+    },
+
     # RoPE scaling
     'rope_freq_base': {
         'cli': '--rope-freq-base',
