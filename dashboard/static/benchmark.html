@@ -138,7 +138,7 @@
                     </div>
                     <div class="flex gap-3 text-[10px] text-gray-500 mb-2 px-1">
                         <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1"></span>Benchmark-only (not applied to service)</span>
-                        <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Model param</span>
+                        <span><span class="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1"></span>Serve param</span>
                     </div>
                     <div id="param-ref-list" class="overflow-y-auto space-y-0.5 text-xs">
                         <!-- Populated by JS -->
@@ -359,7 +359,7 @@ const PARAM_REFERENCE = [
       tip: 'Defines custom proportions for distributing model weights across GPUs (e.g., <code>3,1</code> = 75%/25% split). <b>Use when GPUs have different VRAM capacities</b> to allocate smaller portions to weaker GPUs and prevent bottlenecks.' },
     { cat: 'GPU', flag: '-dev', long: '--device', desc: 'Device selection', def: 'auto',
       tip: 'Specifies which compute devices to use as a comma-separated list. Set to <code>none</code> to disable offloading entirely. <b>Run with <code>--list-devices</code> first</b> to see available devices. Useful for mixed GPU/CPU setups.' },
-    { cat: 'GPU', flag: '-nopo', long: '--no-op-offload', desc: 'Disable operation offloading (0|1)', def: '0',
+    { cat: 'GPU', flag: '', long: '--no-op-offload', desc: 'Disable operation offloading (0|1)', def: '0',
       tip: 'Disables GPU acceleration for host tensor operations, forcing them onto CPU. <b>Enable only for debugging</b> or if you encounter GPU operation errors — it will significantly slow down inference.' },
 
     { cat: 'Memory', flag: '-fa', long: '--flash-attn', desc: 'Enable flash attention (0|1)', def: '0',
@@ -368,9 +368,9 @@ const PARAM_REFERENCE = [
       tip: 'Data type for the <b>key</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss — useful for long contexts or fitting more layers on GPU. Requires <code>-fa 1</code>.' },
     { cat: 'Memory', flag: '-ctv', long: '--cache-type-v', desc: 'KV cache type for V (f16, q8_0, q4_0, etc.)', def: 'f16',
       tip: 'Data type for the <b>value</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss. Should typically match <code>-ctk</code> setting. Requires <code>-fa 1</code>.' },
-    { cat: 'Memory', flag: '-mmp', long: '--mmap', desc: 'Use memory-mapped model loading (0|1)', def: '1',
+    { cat: 'Memory', flag: '', long: '--mmap', desc: 'Use memory-mapped model loading (0|1)', def: '1',
       tip: 'Controls memory-mapped file loading (default: enabled). When on, the model maps directly from disk via the OS page cache, enabling <b>instant loads on subsequent runs</b>. Disable (set to 0) to force loading the full model into RAM upfront — useful if your model is larger than available RAM or you want consistent performance without page faults.' },
-    { cat: 'Memory', flag: '-embd', long: '--embeddings', desc: 'Embeddings mode (0|1)', def: '0',
+    { cat: 'Memory', flag: '', long: '--embeddings', desc: 'Embeddings mode (0|1)', def: '0',
       tip: 'Switches from text generation to <b>embedding generation</b> mode. Enable (set to 1) when benchmarking vector embedding performance for semantic search, similarity tasks, or RAG applications. Requires a model designed for embeddings.' },
 
     { cat: 'CPU', flag: '-t', long: '--threads', desc: 'Number of threads for computation', def: 'auto',
@@ -388,7 +388,7 @@ const PARAM_REFERENCE = [
 
     { cat: 'Other', flag: '', long: '--prio', desc: 'Process/thread priority (0-3)', def: '0',
       tip: 'CPU scheduling priority: <code>-1</code> (low), <code>0</code> (normal), <code>1</code> (medium), <code>2</code> (high), <code>3</code> (realtime). Higher priorities allocate more CPU time to llama.cpp. Use <b>low for background benchmarking</b>, high for dedicated performance testing.' },
-    { cat: 'Other', flag: '-rpc', long: '--rpc', desc: 'RPC server addresses (comma-separated)', def: '',
+    { cat: 'Other', flag: '', long: '--rpc', desc: 'RPC server addresses (comma-separated)', def: '',
       tip: 'Enables distributed benchmarking across machines by specifying RPC server addresses (e.g., <code>192.168.1.10:50052,192.168.1.11:50052</code>). Model weights and KV cache are automatically distributed proportional to available memory. <b>Experimental — do not use on open networks.</b>' },
     { cat: 'Other', flag: '-ot', long: '--override-tensors', desc: 'Override tensor buffer types', def: '',
       tip: 'Fine-grained control over which device specific tensors load to, using regex patterns (e.g., <code>-ot ".*_exps.*=CPU"</code> or <code>-ot "blk.[0-5].*=CUDA0"</code>). Buffer types: <code>CPU</code>, <code>CUDA0</code>, <code>CUDA1</code>. <b>Essential for MoE models</b> to selectively offload expert layers while keeping attention on GPU.' },
