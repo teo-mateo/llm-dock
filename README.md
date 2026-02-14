@@ -6,6 +6,18 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 
 ## Changelog
 
+### 2026-02-14
+- **Unified parameter editor** - Replaced dropdown-based parameter selection with free-form flag+value rows (benchmark-style) for llama.cpp services
+- **Inline parameter reference** - Searchable side panel with categories, color-coded badges, and rich HTML tooltips for all llama-server flags
+- **Benchmarking system** - Full `llama-bench` integration: run benchmarks from the dashboard, view results history, compare runs
+- **Benchmark UI** - Collapsible live output, parameter reference with tooltips, auto-added flags (-m, -o), safe defaults for new models
+- **Global API key** - Shared API key support across services
+- **Build metadata** - Docker images now track build date and commit; displayed in dashboard header
+- **vLLM improvements** - Updated to v0.12.0, newer base image, CUDA architecture updates
+- **Custom parameters** - Support for arbitrary CLI flags beyond the predefined set
+- **Container diagnostics** - Exit codes shown for crashed containers
+- **Systemd integration** - Installer script and `start.sh` for quick startup
+
 ### 2025-11-27
 - **Open WebUI integration** - Register/unregister services with Open WebUI, restart button on Open WebUI card
 - **Auto port assignment** - Next available port (3301-3399) auto-selected on service creation
@@ -107,9 +119,9 @@ python app.py
 1. Open http://localhost:3399 in your browser
 2. The model should appear in the "Discovered Models" section
 3. Click on it and select **llama.cpp** as the engine
-4. Configure options (defaults work fine for the 3B model):
-   - Context length: `8192` (or up to `32768` for Qwen2.5)
-   - GPU layers: `999` (offload all layers to GPU)
+4. Configure parameters using the inline reference panel (defaults work fine for the 3B model):
+   - `-c 8192` (context length, up to `32768` for Qwen2.5)
+   - `-ngl 99` (offload all layers to GPU)
 5. Click **Create Service**
 6. Click **Start** to launch it
 
@@ -132,25 +144,38 @@ python app.py
 ```
 llm-dock/
 ├── setup.sh                    # Initial setup script
+├── start.sh                    # Quick start script
 ├── build-llamacpp.sh           # Build llama.cpp Docker image
-├── docker-compose.yml          # Docker Compose configuration
+├── build-vllm.sh               # Build vLLM Docker image
+├── docker-compose.yml          # Docker Compose configuration (generated)
 │
 ├── dashboard/
 │   ├── app.py                  # Flask API server
 │   ├── compose_manager.py      # Docker Compose management
-│   ├── flag_metadata.py        # Engine flag definitions
+│   ├── flag_metadata.py        # Engine flag definitions & validation
 │   ├── model_discovery.py      # Model scanning
 │   ├── service_templates.py    # Service generators
 │   ├── openwebui_integration.py
 │   ├── requirements.txt
 │   ├── .env.example
+│   ├── benchmarking/           # Benchmark subsystem
+│   │   ├── routes.py           # Benchmark API endpoints
+│   │   ├── executor.py         # llama-bench runner
+│   │   ├── db.py               # Benchmark results storage
+│   │   └── validators.py       # Input validation
 │   ├── templates/              # Jinja2 service templates
 │   │   ├── llamacpp.j2
 │   │   └── vllm.j2
-│   └── static/                 # Pre-built frontend
+│   └── static/                 # Frontend
+│       ├── index.html          # Main dashboard
+│       ├── app.js              # Dashboard logic
+│       └── benchmark.html      # Benchmark UI
 │
-└── llama.cpp/
-    └── Dockerfile              # Custom llama.cpp build
+├── llama.cpp/
+│   └── Dockerfile              # Custom llama.cpp build
+│
+└── vllm/
+    └── Dockerfile              # Custom vLLM build
 ```
 
 ## Configuration
@@ -210,19 +235,18 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3399/api/services
 ### Creating a Service
 
 ```bash
-curl -X POST http://localhost:3399/api/services/create \
+curl -X POST http://localhost:3399/api/v2/services \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "engine": "llamacpp",
-    "model_data": {
-      "name": "unsloth/Qwen2.5-7B-Instruct-GGUF",
-      "files": [{"name": "model-Q4_K_M.gguf", "path": "/path/to/model.gguf"}]
-    },
-    "options": {
-      "model_path": "/hf-cache/hub/.../model.gguf",
-      "context_length": "32000",
-      "gpu_layers": "999"
+    "template_type": "llamacpp",
+    "port": 3301,
+    "model_path": "/hf-cache/hub/.../model.gguf",
+    "alias": "qwen2.5-7b",
+    "params": {
+      "-c": "32000",
+      "-ngl": "99",
+      "-fa": "1"
     }
   }'
 ```
@@ -233,16 +257,20 @@ curl -X POST http://localhost:3399/api/services/create \
 - Format: GGUF files
 - Multimodal: Supported (mmproj files)
 - Image: Custom build (`llm-dock-llamacpp`)
+- Benchmarking: Built-in `llama-bench` support from the dashboard
 
 ![llama.cpp Service Configuration](docs/images/service-edit-llamacpp.png)
 
-Available flags:
-- `-c` / `context_length` - Context length
-- `-ngl` / `gpu_layers` - GPU layers (999 = all)
-- `-b` / `batch_size` - Batch size
-- `--flash-attn` - Flash attention
-- `--jinja` - Jinja template support
-- `--reasoning-format` - Reasoning mode
+Parameters are configured as CLI flags directly (e.g. `-ngl 99`, `-fa 1`). The editor includes an inline reference panel with tooltips for all supported flags. Common flags:
+- `-c` - Context length
+- `-ngl` - GPU layers (99 = all)
+- `-b` / `-ub` - Batch / micro-batch size
+- `-fa` - Flash attention
+- `-ctk` / `-ctv` - KV cache quantization
+- `-t` - Thread count
+- `-sm` - Multi-GPU split mode
+- `-ts` - Tensor split ratios
+- `-ot` - Override tensor buffer types (for MoE models)
 
 ### vLLM
 - Format: safetensors (HuggingFace models)

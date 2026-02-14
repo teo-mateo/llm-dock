@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Set, Optional
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_flag, render_custom_flag
+from flag_metadata import render_flag, render_custom_flag, render_cli_flag
 
 logger = logging.getLogger(__name__)
 
@@ -434,27 +434,40 @@ class ComposeManager:
             context['alias'] = config['alias']
             context['api_key'] = config['api_key']
 
-        # Render optional flags
-        optional_flags = config.get('optional_flags', {})
         rendered_flags = []
 
-        for flag_name, flag_value in optional_flags.items():
-            # Handle environment variables specially
-            if flag_name == 'attention_backend':
-                context['attention_backend'] = flag_value
-                continue
+        # Handle attention_backend env var (vLLM only) from either format
+        if template_type == 'vllm':
+            ab = config.get('optional_flags', {}).get('attention_backend')
+            if ab:
+                context['attention_backend'] = ab
 
-            # Render regular flags
-            rendered = render_flag(flag_name, flag_value, template_type)
-            if rendered:
-                rendered_flags.append(rendered)
+        # Check for unified params dict (new format, CLI-keyed)
+        params = config.get('params', {})
+        if params:
+            for flag_name, flag_value in params.items():
+                rendered = render_cli_flag(flag_name, str(flag_value))
+                if rendered:
+                    rendered_flags.append(rendered)
+        else:
+            # Legacy format: optional_flags + custom_flags
+            optional_flags = config.get('optional_flags', {})
+            for flag_name, flag_value in optional_flags.items():
+                # Handle environment variables specially
+                if flag_name == 'attention_backend':
+                    context['attention_backend'] = flag_value
+                    continue
 
-        # Render custom flags
-        custom_flags = config.get('custom_flags', {})
-        for flag_name, flag_value in custom_flags.items():
-            rendered = render_custom_flag(flag_name, flag_value)
-            if rendered:
-                rendered_flags.append(rendered)
+                # Render regular flags
+                rendered = render_flag(flag_name, flag_value, template_type)
+                if rendered:
+                    rendered_flags.append(rendered)
+
+            custom_flags = config.get('custom_flags', {})
+            for flag_name, flag_value in custom_flags.items():
+                rendered = render_custom_flag(flag_name, flag_value)
+                if rendered:
+                    rendered_flags.append(rendered)
 
         context['rendered_flags'] = rendered_flags
 

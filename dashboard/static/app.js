@@ -558,10 +558,7 @@ document.addEventListener('keydown', (e) => {
         if (!previewModal.classList.contains('hidden')) {
             closePreviewModal();
         }
-        const paramBrowser = document.getElementById('param-browser-modal');
-        if (!paramBrowser.classList.contains('hidden')) {
-            closeParamBrowser();
-        }
+        // param-browser-modal removed (replaced by inline reference panel)
         const copyFromModal = document.getElementById('copy-from-modal');
         if (copyFromModal && !copyFromModal.classList.contains('hidden')) {
             closeCopyFromModal();
@@ -1068,15 +1065,65 @@ let currentModelData = null;
 let modalMode = 'create'; // 'create' or 'update'
 let currentServiceName = null; // For update mode
 let availableFlags = {}; // Cache for flag metadata by engine
-let parameterRows = []; // Track parameter row IDs
-let nextRowId = 1; // Counter for unique row IDs
 let gpuInfo = null; // Cached GPU info
-let customParameterRows = []; // Track custom parameter row IDs
-let nextCustomRowId = 1; // Counter for unique custom row IDs
 
 function escapeAttr(str) {
     return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Serve parameter reference data (llama-server flags only)
+const SERVE_PARAM_REFERENCE = [
+    { cat: 'Context', flag: '-c', long: '--ctx-size', desc: 'Context length in tokens', def: '128000',
+      tip: 'Sets the <b>maximum context length</b> in tokens. Determines how much text the model can process at once. Higher values require more VRAM for the KV cache.' },
+    { cat: 'GPU', flag: '-ngl', long: '--n-gpu-layers', desc: 'Number of layers to offload to GPU', def: '999',
+      tip: 'Controls how many model layers are stored in VRAM. Use <code>999</code> to offload everything. <b>Higher values = faster inference but more VRAM.</b>' },
+    { cat: 'Batching', flag: '-b', long: '--batch-size', desc: 'Logical batch size for prompt processing', def: '256',
+      tip: '<b>Logical batch size</b> for prompt processing. Controls how many tokens are processed per iteration. Larger values speed up prompt processing but require more VRAM.' },
+    { cat: 'Batching', flag: '-ub', long: '--ubatch-size', desc: 'Physical micro-batch size', def: '256',
+      tip: '<b>Physical micro-batch size</b> at the hardware level. When <code>batch > ubatch</code>, processing is pipelined. Must satisfy: <code>batch >= ubatch</code>.' },
+    { cat: 'Memory', flag: '-fa', long: '--flash-attn', desc: 'Enable flash attention', def: '',
+      tip: 'Enables flash attention for reduced memory bandwidth and improved GPU performance. <b>Enable when using GPU</b> for up to ~15% throughput gains. Required for KV cache quantization.' },
+    { cat: 'Memory', flag: '-ctk', long: '--cache-type-k', desc: 'KV cache type for K', def: 'f16',
+      tip: 'Data type for the <b>key</b> component of the KV cache. Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. Use <code>q8_0</code> to halve KV cache VRAM. Requires <code>-fa</code>.' },
+    { cat: 'Memory', flag: '-ctv', long: '--cache-type-v', desc: 'KV cache type for V', def: 'f16',
+      tip: 'Data type for the <b>value</b> component of the KV cache. Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. Should match <code>-ctk</code>. Requires <code>-fa</code>.' },
+    { cat: 'Memory', flag: '', long: '--no-mmap', desc: 'Disable memory-mapped model loading', def: '',
+      tip: 'Disables memory-mapped file loading, forcing the model to be loaded fully into RAM. Use when model is larger than available RAM or for consistent performance.' },
+    { cat: 'GPU', flag: '-sm', long: '--split-mode', desc: 'Multi-GPU split mode (none|layer|row)', def: 'layer',
+      tip: 'How models distribute across multiple GPUs. <code>layer</code> = sequential; <code>row</code> = parallel tensor splitting. <b>Use row for better multi-GPU utilization.</b>' },
+    { cat: 'GPU', flag: '-mg', long: '--main-gpu', desc: 'Primary GPU index', def: '0',
+      tip: 'Which GPU handles primary processing. <b>Set to your fastest GPU.</b>' },
+    { cat: 'GPU', flag: '-ts', long: '--tensor-split', desc: 'Fraction of work per GPU (comma-separated)', def: '',
+      tip: 'Custom proportions for distributing model weights across GPUs (e.g., <code>3,1</code> = 75%/25% split). <b>Use when GPUs have different VRAM.</b>' },
+    { cat: 'Sampling', flag: '', long: '--repeat-penalty', desc: 'Penalty for repeating tokens', def: '1.3',
+      tip: 'Penalizes repeated token sequences. Values > 1.0 discourage repetition. <b>1.0 = no penalty, 1.5 = strong penalty.</b>' },
+    { cat: 'Sampling', flag: '', long: '--top-p', desc: 'Top-p (nucleus) sampling', def: '0.95',
+      tip: 'Limits token choices to the smallest set with cumulative probability >= p. <b>Lower values = more focused, higher = more diverse.</b>' },
+    { cat: 'Sampling', flag: '', long: '--top-k', desc: 'Top-k sampling', def: '40',
+      tip: 'Limits choices to top K most likely tokens. <b>Lower = more focused, higher = more diverse.</b>' },
+    { cat: 'Sampling', flag: '-t', long: '--temp', desc: 'Temperature for sampling', def: '1.0',
+      tip: 'Controls randomness. <b>0.0 = deterministic, 1.0 = normal, >1.0 = more random.</b>' },
+    { cat: 'CPU', flag: '', long: '--threads', desc: 'Number of threads for computation', def: 'auto',
+      tip: 'Number of CPU threads for computation. <b>Higher values improve performance on multi-core systems.</b>' },
+    { cat: 'Features', flag: '', long: '--jinja', desc: 'Enable Jinja template parsing', def: '',
+      tip: 'Enables <b>Jinja template parsing</b> for chat templates. Required for some models with custom chat formats.' },
+    { cat: 'Features', flag: '-v', long: '--verbose', desc: 'Enable verbose logging', def: '',
+      tip: 'Enables <b>detailed diagnostic logging</b> with maximum verbosity.' },
+    { cat: 'Features', flag: '', long: '--log-verbosity', desc: 'Set verbosity threshold level', def: '',
+      tip: 'Sets the verbosity threshold for logging output.' },
+    { cat: 'Features', flag: '', long: '--reasoning-format', desc: 'Reasoning format (auto, cot, etc.)', def: '',
+      tip: 'Sets the reasoning output format. Use <code>auto</code> for automatic detection.' },
+    { cat: 'Features', flag: '', long: '--mmproj', desc: 'Path to multi-modal projector', def: '',
+      tip: 'Path to the multi-modal projector file for vision models.' },
+    { cat: 'RoPE', flag: '', long: '--rope-freq-base', desc: 'RoPE frequency base', def: '',
+      tip: 'Base frequency for RoPE positional encoding.' },
+    { cat: 'RoPE', flag: '', long: '--rope-freq-scale', desc: 'RoPE frequency scaling factor', def: '',
+      tip: 'Scaling factor for RoPE positional encoding frequencies.' },
+];
 
 // Fetch and display GPU info in modal
 async function loadGPUInfo() {
@@ -1086,12 +1133,11 @@ async function loadGPUInfo() {
     try {
         const result = await fetchAPI('/gpu');
         if (result.gpus && result.gpus.length > 0) {
-            const gpu = result.gpus[0]; // Use first GPU
+            const gpu = result.gpus[0];
             gpuInfo = gpu;
 
             const totalGB = (gpu.memory.total / 1024).toFixed(1);
             const freeGB = (gpu.memory.free / 1024).toFixed(1);
-            const usedGB = (gpu.memory.used / 1024).toFixed(1);
 
             gpuNameEl.textContent = gpu.name;
             gpuVramEl.innerHTML = `VRAM: <span class="text-green-400">${freeGB} GB free</span> / ${totalGB} GB total`;
@@ -1118,99 +1164,64 @@ async function getNextAvailablePort() {
                 .map(s => s.host_port)
         );
 
-        // Find first available port in range 3301-3399 (3300 reserved for open-webui)
         for (let port = 3301; port <= 3399; port++) {
             if (!usedPorts.has(port)) {
                 return port;
             }
         }
-        return null; // No available ports
+        return null;
     } catch (error) {
         console.error('Failed to get available port:', error);
         return null;
     }
 }
 
-// Calculate smart defaults based on GPU VRAM and model size
+// Calculate smart defaults based on GPU VRAM and model size (returns CLI-keyed params)
 function getSmartDefaults(engine, modelSizeGB, vramTotalMB) {
     const vramGB = vramTotalMB / 1024;
-    const defaults = [];
+    const params = {};
 
     if (engine === 'llamacpp') {
-        // Always offload all layers to GPU
-        defaults.push({ flag: 'gpu_layers', value: '999' });
+        params['-ngl'] = '999';
 
-        // Context length based on available headroom
-        // Rough estimate: model takes ~1.2x its size in VRAM, rest for context
         const headroomGB = vramGB - (modelSizeGB * 1.2);
-
         let contextLength;
-        if (headroomGB >= 12) {
-            contextLength = '32768';
-        } else if (headroomGB >= 8) {
-            contextLength = '16384';
-        } else if (headroomGB >= 4) {
-            contextLength = '8192';
-        } else if (headroomGB >= 2) {
-            contextLength = '4096';
-        } else {
-            contextLength = '2048';
-        }
-        defaults.push({ flag: 'context_length', value: contextLength });
+        if (headroomGB >= 12) contextLength = '32768';
+        else if (headroomGB >= 8) contextLength = '16384';
+        else if (headroomGB >= 4) contextLength = '8192';
+        else if (headroomGB >= 2) contextLength = '4096';
+        else contextLength = '2048';
+        params['-c'] = contextLength;
 
-        // Flash attention for efficiency (if VRAM is tight)
         if (headroomGB < 6) {
-            defaults.push({ flag: 'flash_attn', value: '' }); // boolean flag
+            params['-fa'] = '';
         }
-
     } else if (engine === 'vllm') {
-        // GPU memory utilization - be conservative
-        defaults.push({ flag: 'gpu_memory_utilization', value: '0.90' });
-
-        // Max model length based on VRAM
-        if (vramGB >= 24) {
-            defaults.push({ flag: 'max_model_len', value: '8192' });
-        } else if (vramGB >= 16) {
-            defaults.push({ flag: 'max_model_len', value: '4096' });
-        } else {
-            defaults.push({ flag: 'max_model_len', value: '2048' });
-        }
+        params['--gpu-memory-utilization'] = '0.90';
+        if (vramGB >= 24) params['--max-model-len'] = '8192';
+        else if (vramGB >= 16) params['--max-model-len'] = '4096';
+        else params['--max-model-len'] = '2048';
     }
 
-    return defaults;
+    return params;
 }
 
-// Apply smart defaults to parameter rows
+// Apply smart defaults to service parameter rows
 function applySmartDefaults() {
     if (!gpuInfo || !currentModelData) return;
 
     const engine = document.querySelector('input[name="engine"]:checked')?.value;
     if (!engine) return;
 
-    // Parse model size from size_str (e.g., "14.50 GB" -> 14.5)
     const sizeMatch = currentModelData.size_str?.match(/([\d.]+)\s*(GB|MB)/i);
     let modelSizeGB = 0;
     if (sizeMatch) {
         modelSizeGB = parseFloat(sizeMatch[1]);
-        if (sizeMatch[2].toUpperCase() === 'MB') {
-            modelSizeGB /= 1024;
-        }
+        if (sizeMatch[2].toUpperCase() === 'MB') modelSizeGB /= 1024;
     }
 
     const defaults = getSmartDefaults(engine, modelSizeGB, gpuInfo.memory.total);
-
-    // Clear existing rows and add defaults
-    clearParameterRows();
-
-    defaults.forEach(d => {
-        addParameterRow(d.flag, d.value);
-    });
-
-    // Add one empty row for user customization
-    addParameterRow();
-
-    updateCommandPreview();
-    updateParamsCount();
+    loadServiceParams(defaults);
 }
 
 // Update the params count display
@@ -1218,15 +1229,11 @@ function updateParamsCount() {
     const countEl = document.getElementById('params-count');
     if (!countEl) return;
 
-    // Count non-empty parameter rows
-    const rows = document.querySelectorAll('#dynamic-params-container > div');
+    const rows = document.querySelectorAll('#dynamic-params-container .param-row:not([data-empty="1"])');
     let configuredCount = 0;
-
     rows.forEach(row => {
-        const select = row.querySelector('select');
-        if (select && select.value && select.value !== '') {
-            configuredCount++;
-        }
+        const flagInput = row.querySelector('input');
+        if (flagInput && flagInput.value.trim()) configuredCount++;
     });
 
     countEl.textContent = `(${configuredCount} configured)`;
@@ -1300,7 +1307,7 @@ function selectGGUFFile(containerPath) {
     });
 }
 
-// Flag Metadata Functions
+// Flag Metadata Functions (kept for vllm backward compat)
 async function loadFlagMetadata(templateType) {
     if (availableFlags[templateType]) {
         return availableFlags[templateType];
@@ -1316,12 +1323,181 @@ async function loadFlagMetadata(templateType) {
     }
 }
 
-// Parameter Browser Variables
-let paramBrowserEngine = null;
-let allParametersCache = {};
-let selectedParamForBrowser = null;
+// ── Unified Parameter Row Management (benchmark-style) ──
 
-// Copy From Modal Functions
+function addServiceParamRow(flag, value, isEmpty = false) {
+    const container = document.getElementById('dynamic-params-container');
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center param-row';
+    if (isEmpty) row.dataset.empty = '1';
+    row.innerHTML = `
+        <input type="text" value="${escapeAttr(flag)}" placeholder="-flag"
+            class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-28 font-mono focus:outline-none focus:border-blue-500"
+            oninput="onServiceParamInput(this); updateCommandPreview(); updateParamsCount()">
+        <input type="text" value="${escapeAttr(value)}" placeholder="value (empty = boolean flag)"
+            class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm flex-1 font-mono focus:outline-none focus:border-blue-500"
+            oninput="onServiceParamInput(this); updateCommandPreview()">
+        <button type="button" onclick="removeServiceParamRow(this)" class="text-red-400 hover:text-red-300 px-2 py-1 ${isEmpty ? 'invisible' : ''}" title="Remove">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    `;
+    const emptyRow = container.querySelector('.param-row[data-empty="1"]');
+    if (emptyRow && !isEmpty) {
+        container.insertBefore(row, emptyRow);
+    } else {
+        container.appendChild(row);
+    }
+    updateCommandPreview();
+    return row;
+}
+
+function ensureEmptyServiceRow() {
+    const container = document.getElementById('dynamic-params-container');
+    const emptyRow = container.querySelector('.param-row[data-empty="1"]');
+    if (!emptyRow) {
+        addServiceParamRow('', '', true);
+    }
+}
+
+function onServiceParamInput(input) {
+    const row = input.closest('.param-row');
+    if (row.dataset.empty === '1') {
+        delete row.dataset.empty;
+        row.querySelector('button').classList.remove('invisible');
+        ensureEmptyServiceRow();
+    }
+}
+
+function removeServiceParamRow(btn) {
+    const row = btn.closest('.param-row');
+    if (row.dataset.empty === '1') return;
+    row.remove();
+    updateCommandPreview();
+    updateParamsCount();
+    ensureEmptyServiceRow();
+}
+
+function getServiceParams() {
+    const rows = document.querySelectorAll('#dynamic-params-container .param-row:not([data-empty="1"])');
+    const params = {};
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const flag = inputs[0].value.trim();
+        const value = inputs[1].value.trim();
+        if (flag) {
+            params[flag] = value;
+        }
+    });
+    return params;
+}
+
+function getServiceParamsArray() {
+    const rows = document.querySelectorAll('#dynamic-params-container .param-row:not([data-empty="1"])');
+    const params = [];
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const flag = inputs[0].value.trim();
+        const value = inputs[1].value.trim();
+        if (flag) {
+            params.push({ flag, value });
+        }
+    });
+    return params;
+}
+
+function loadServiceParams(params) {
+    document.getElementById('dynamic-params-container').innerHTML = '';
+    Object.entries(params).forEach(([flag, value]) => addServiceParamRow(flag, String(value)));
+    ensureEmptyServiceRow();
+    updateParamsCount();
+}
+
+function resetServiceParams() {
+    const engine = document.querySelector('input[name="engine"]:checked')?.value;
+    if (engine === 'llamacpp') {
+        loadServiceParams({ '-ngl': '999', '-c': '8192' });
+    } else {
+        loadServiceParams({});
+    }
+    showToast('Parameters reset');
+    updateCommandPreview();
+}
+
+// ── Parameter Reference Panel ──
+
+function renderServeParamRef(filter = '') {
+    const engine = document.querySelector('input[name="engine"]:checked')?.value;
+    const list = document.getElementById('serve-param-ref-list');
+    const empty = document.getElementById('serve-param-ref-empty');
+    if (!list) return;
+
+    // For vllm, we don't show the reference panel (different flags)
+    if (engine !== 'llamacpp') {
+        list.innerHTML = '<div class="text-gray-500 text-xs py-2">Reference available for llama.cpp only.</div>';
+        empty.classList.add('hidden');
+        return;
+    }
+
+    const q = filter.toLowerCase();
+    let html = '';
+    let currentCat = '';
+    let hasResults = false;
+
+    SERVE_PARAM_REFERENCE.forEach(p => {
+        const flagText = p.flag || p.long;
+        const searchable = `${p.flag} ${p.long} ${p.desc} ${p.cat}`.toLowerCase();
+        if (q && !searchable.includes(q)) return;
+
+        hasResults = true;
+
+        if (p.cat !== currentCat) {
+            currentCat = p.cat;
+            html += `<div class="text-gray-500 uppercase tracking-wider text-[10px] font-semibold mt-2 mb-1 px-1">${escapeHtml(currentCat)}</div>`;
+        }
+
+        const primaryFlag = escapeHtml(p.flag || p.long);
+        const secondaryFlag = p.flag && p.long ? ` <span class="text-gray-600">${escapeHtml(p.long)}</span>` : '';
+        const defBadge = p.def ? `<span class="text-gray-600 ml-auto pl-2 whitespace-nowrap">${escapeHtml(p.def)}</span>` : '';
+
+        const tooltip = p.tip ? `<div class="param-tooltip">${p.tip}</div>` : '';
+        html += `
+            <div class="param-ref-row group rounded px-2 py-1.5 relative hover:bg-gray-700/50 cursor-pointer transition-colors"
+                 onclick="useServeRefParam('${escapeAttr(p.flag || p.long)}', '${escapeAttr(p.def)}')">
+                <div class="flex items-center gap-1">
+                    <span class="text-yellow-400 font-mono font-semibold">${primaryFlag}</span>${secondaryFlag}${defBadge}
+                </div>
+                <div class="text-gray-400 leading-snug mt-0.5">${escapeHtml(p.desc)}</div>
+                ${tooltip}
+            </div>`;
+    });
+
+    list.innerHTML = html;
+    empty.classList.toggle('hidden', hasResults);
+}
+
+function filterServeParamRef() {
+    const q = document.getElementById('serve-param-search').value.trim();
+    renderServeParamRef(q);
+}
+
+function useServeRefParam(flag, defaultValue) {
+    // Check if this flag already exists in the param rows
+    const rows = document.querySelectorAll('#dynamic-params-container .param-row');
+    for (const row of rows) {
+        const flagInput = row.querySelector('input');
+        if (flagInput && flagInput.value.trim() === flag) {
+            flagInput.focus();
+            showToast(`${flag} is already in your parameters`);
+            return;
+        }
+    }
+    addServiceParamRow(flag, defaultValue);
+    updateParamsCount();
+    showToast(`Added ${flag}`);
+}
+
+// ── Copy From Modal ──
+
 async function openCopyFromModal() {
     const engine = document.querySelector('input[name="engine"]:checked')?.value;
     if (!engine) {
@@ -1330,14 +1506,29 @@ async function openCopyFromModal() {
     }
 
     try {
-        // Fetch all services from API
+        // GET /api/services returns Docker status array, not DB configs.
+        // Fetch the status list to get service names, then fetch each config individually.
         const data = await fetchAPI('/services');
-        const services = data.services || {};
+        const serviceNames = (data.services || [])
+            .map(s => s.name)
+            .filter(name => name && name !== 'open-webui');
 
-        // Filter services by same engine type, exclude current service if in update mode
-        const filteredServices = Object.entries(services).filter(([name, config]) => {
-            if (config.template_type !== engine) return false;
-            if (modalMode === 'update' && name === currentServiceName) return false;
+        // Fetch configs in parallel
+        const configs = await Promise.all(
+            serviceNames.map(async name => {
+                try {
+                    const resp = await fetchAPI(`/services/${name}`);
+                    return { name, config: resp.config };
+                } catch {
+                    return null;
+                }
+            })
+        );
+
+        const filteredServices = configs.filter(entry => {
+            if (!entry || !entry.config) return false;
+            if (entry.config.template_type !== engine) return false;
+            if (modalMode === 'update' && entry.name === currentServiceName) return false;
             return true;
         });
 
@@ -1351,9 +1542,8 @@ async function openCopyFromModal() {
             listContainer.classList.remove('hidden');
             emptyMessage.classList.add('hidden');
 
-            // Render service buttons
-            listContainer.innerHTML = filteredServices.map(([name, config]) => {
-                const flagCount = Object.keys(config.optional_flags || {}).length;
+            listContainer.innerHTML = filteredServices.map(({ name, config }) => {
+                const paramCount = Object.keys(config.params || config.optional_flags || {}).length;
                 return `
                     <button
                         type="button"
@@ -1361,7 +1551,7 @@ async function openCopyFromModal() {
                         class="w-full text-left px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 transition"
                     >
                         <div class="font-semibold">${name}</div>
-                        <div class="text-xs text-gray-400 mt-1">${flagCount} parameter${flagCount !== 1 ? 's' : ''}</div>
+                        <div class="text-xs text-gray-400 mt-1">${paramCount} parameter${paramCount !== 1 ? 's' : ''}</div>
                     </button>
                 `;
             }).join('');
@@ -1380,39 +1570,31 @@ function closeCopyFromModal() {
 
 async function copyParametersFromService(serviceName) {
     try {
-        // Fetch the service configuration
         const response = await fetchAPI(`/services/${serviceName}`);
         const config = response.config;
 
-        // Clear existing parameters
-        clearParameterRows();
-        clearCustomParameterRows();
-
-        // Add parameter rows from the copied service
-        const flags = config.optional_flags || {};
-        for (const [flagName, flagValue] of Object.entries(flags)) {
-            addParameterRow(flagName, flagValue);
+        // Support both new (params) and legacy (optional_flags + custom_flags) formats
+        let params = config.params;
+        if (!params || Object.keys(params).length === 0) {
+            // Convert legacy format
+            params = {};
+            const metadata = availableFlags[config.template_type] || {};
+            const optFlags = config.optional_flags || {};
+            for (const [name, value] of Object.entries(optFlags)) {
+                if (metadata[name]) {
+                    params[metadata[name].cli] = String(value);
+                }
+            }
+            const customFlags = config.custom_flags || {};
+            for (const [name, value] of Object.entries(customFlags)) {
+                params[name] = String(value);
+            }
         }
 
-        // Add one empty row for convenience
-        if (Object.keys(flags).length === 0) {
-            addParameterRow();
-        }
-
-        // Copy custom flags
-        const customFlags = config.custom_flags || {};
-        for (const [flagName, flagValue] of Object.entries(customFlags)) {
-            addCustomParameterRow(flagName, flagValue);
-        }
-
-        // Close modal
+        loadServiceParams(params);
         closeCopyFromModal();
 
-        // Show confirmation
-        const totalCopied = Object.keys(flags).length + Object.keys(customFlags).length;
-        showToast(`Copied ${totalCopied} parameters from ${serviceName}`);
-
-        // Update command preview
+        showToast(`Copied ${Object.keys(params).length} parameters from ${serviceName}`);
         updateCommandPreview();
     } catch (error) {
         console.error('Failed to copy parameters:', error);
@@ -1420,566 +1602,51 @@ async function copyParametersFromService(serviceName) {
     }
 }
 
-// Parameter Browser Functions
-async function openParamBrowser() {
-    const engine = document.querySelector('input[name="engine"]:checked')?.value;
-    if (!engine) {
-        alert('Please select an engine first');
-        return;
-    }
-
-    paramBrowserEngine = engine;
-    selectedParamForBrowser = null;
-
-    // Load flags if not cached
-    if (!allParametersCache[engine]) {
-        await loadFlagMetadata(engine);
-    }
-
-    // Render parameter browser
-    renderParamBrowser();
-    document.getElementById('param-browser-modal').classList.remove('hidden');
-    document.getElementById('param-search-input').focus();
-}
-
-function closeParamBrowser() {
-    document.getElementById('param-browser-modal').classList.add('hidden');
-    paramBrowserEngine = null;
-    selectedParamForBrowser = null;
-}
-
-function renderParamBrowser() {
-    const flags = availableFlags[paramBrowserEngine] || {};
-    const container = document.getElementById('param-list-container');
-
-    // Group flags by category
-    const categories = {};
-    for (const [name, meta] of Object.entries(flags)) {
-        const category = meta.category || 'Other';
-        if (!categories[category]) categories[category] = [];
-        categories[category].push({ name, ...meta });
-    }
-
-    // Sort categories by priority
-    const categoryOrder = [
-        'Context & Memory',
-        'Quantization & Precision',
-        'Batching & Throughput',
-        'Distributed & Scaling',
-        'Caching & Optimization',
-        'Attention & Optimization',
-        'Model Format & Loading',
-        'Generation & Sampling',
-        'Features & Tools',
-        'LoRA & Adapters',
-        'RoPE Scaling',
-        'Scheduling',
-        'Multimodal',
-        'Other'
-    ];
-
-    let html = '';
-    for (const category of categoryOrder) {
-        if (!categories[category]) continue;
-
-        html += `<div class="mb-4">
-            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">${category}</h3>
-            <div class="space-y-1">`;
-
-        for (const param of categories[category]) {
-            const isSelected = param.name === selectedParamForBrowser ? 'bg-blue-600 border-blue-500' : 'hover:bg-gray-700 border-gray-600';
-            const impactColor = param.impact === 'Critical' ? 'text-red-400' : param.impact === 'High' ? 'text-yellow-400' : 'text-gray-500';
-
-            html += `<button
-                type="button"
-                onclick="selectParameterInBrowser('${param.name}')"
-                class="w-full text-left px-3 py-2 rounded border border-gray-600 text-sm transition ${isSelected}"
-            >
-                <div class="flex justify-between items-start">
-                    <span class="font-semibold">${param.name}</span>
-                    <span class="text-xs ${impactColor}">${param.impact}</span>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">${param.cli}</div>
-            </button>`;
-        }
-
-        html += '</div></div>';
-    }
-
-    container.innerHTML = html;
-}
-
-function selectParameterInBrowser(paramName) {
-    selectedParamForBrowser = paramName;
-    renderParamBrowser();
-    showParamDetails(paramName);
-}
-
-function showParamDetails(paramName) {
-    const flags = availableFlags[paramBrowserEngine] || {};
-    const param = flags[paramName];
-
-    if (!param) return;
-
-    let html = `
-        <div class="space-y-4">
-            <div>
-                <h3 class="text-lg font-bold text-white mb-2">${paramName}</h3>
-                <div class="text-xs text-gray-400">Type: <span class="text-gray-300">${param.type}</span></div>
-            </div>
-
-            <div>
-                <div class="text-xs text-gray-500 mb-1">CLI Flag</div>
-                <div class="font-mono text-sm bg-gray-800 p-2 rounded text-blue-300">${param.cli}</div>
-            </div>
-
-            <div>
-                <div class="text-xs text-gray-500 mb-1">Description</div>
-                <p class="text-sm text-gray-300 leading-relaxed">${param.description}</p>
-            </div>
-    `;
-
-    if (param.default) {
-        html += `<div>
-            <div class="text-xs text-gray-500 mb-1">Default Value</div>
-            <div class="font-mono text-sm bg-gray-800 p-2 rounded text-green-300">${param.default}</div>
-        </div>`;
-    }
-
-    if (param.options) {
-        html += `<div>
-            <div class="text-xs text-gray-500 mb-1">Options</div>
-            <div class="text-sm text-gray-300">${param.options}</div>
-        </div>`;
-    }
-
-    const impactBg = param.impact === 'Critical' ? 'bg-red-900' : param.impact === 'High' ? 'bg-yellow-900' : 'bg-blue-900';
-    html += `<div>
-        <div class="text-xs text-gray-500 mb-1">Impact</div>
-        <div class="text-sm font-semibold ${impactBg} px-2 py-1 rounded text-white">${param.impact}</div>
-    </div>`;
-
-    html += `<div class="pt-4 border-t border-gray-700">
-        <button
-            type="button"
-            onclick="addParameterRowFromBrowser('${paramName}')"
-            class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold text-sm"
-        >
-            <i class="fa-solid fa-plus mr-2"></i>Add to Service
-        </button>
-    </div>
-        </div>
-    `;
-
-    document.getElementById('param-details').innerHTML = html;
-}
-
-function filterParameterList(searchTerm) {
-    const flags = availableFlags[paramBrowserEngine] || {};
-    const term = searchTerm.toLowerCase();
-
-    // If empty, show all
-    if (!term) {
-        renderParamBrowser();
-        return;
-    }
-
-    // Filter and re-render
-    const filtered = {};
-    for (const [name, meta] of Object.entries(flags)) {
-        if (name.toLowerCase().includes(term) ||
-            (meta.description && meta.description.toLowerCase().includes(term)) ||
-            (meta.cli && meta.cli.toLowerCase().includes(term))) {
-            const category = meta.category || 'Other';
-            if (!filtered[category]) filtered[category] = [];
-            filtered[category].push({ name, ...meta });
-        }
-    }
-
-    // Render filtered
-    const container = document.getElementById('param-list-container');
-    let html = '';
-
-    if (Object.keys(filtered).length === 0) {
-        html = '<p class="text-gray-400 text-sm">No parameters match your search</p>';
-    } else {
-        for (const [category, params] of Object.entries(filtered)) {
-            html += `<div class="mb-4">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">${category}</h3>
-                <div class="space-y-1">`;
-
-            for (const param of params) {
-                const isSelected = param.name === selectedParamForBrowser ? 'bg-blue-600 border-blue-500' : 'hover:bg-gray-700 border-gray-600';
-                const impactColor = param.impact === 'Critical' ? 'text-red-400' : param.impact === 'High' ? 'text-yellow-400' : 'text-gray-500';
-
-                html += `<button
-                    type="button"
-                    onclick="selectParameterInBrowser('${param.name}')"
-                    class="w-full text-left px-3 py-2 rounded border border-gray-600 text-sm transition ${isSelected}"
-                >
-                    <div class="flex justify-between items-start">
-                        <span class="font-semibold">${param.name}</span>
-                        <span class="text-xs ${impactColor}">${param.impact}</span>
-                    </div>
-                    <div class="text-xs text-gray-400 mt-1">${param.cli}</div>
-                </button>`;
-            }
-
-            html += '</div></div>';
-        }
-    }
-
-    container.innerHTML = html;
-}
-
-function addParameterRowFromBrowser(paramName) {
-    addParameterRow(paramName, '');
-    closeParamBrowser();
-    // Scroll to new row
-    setTimeout(() => {
-        const container = document.getElementById('dynamic-params-container');
-        const lastRow = container.lastElementChild;
-        if (lastRow) {
-            lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            lastRow.querySelector('input')?.focus();
-        }
-    }, 100);
-}
-
-// Parameter Row Management
-function addParameterRow(flagName = '', flagValue = '') {
-    const rowId = nextRowId++;
-    parameterRows.push(rowId);
-
-    const engine = document.querySelector('input[name="engine"]:checked')?.value;
-    if (!engine) return;
-
-    const flags = availableFlags[engine] || {};
-    const container = document.getElementById('dynamic-params-container');
-
-    // Create the row HTML
-    const rowDiv = document.createElement('div');
-    rowDiv.id = `param-row-${rowId}`;
-    rowDiv.className = 'flex gap-2 items-start';
-
-    // Build dropdown options
-    let optionsHTML = '<option value="">-- Select Parameter --</option>';
-    for (const [name, meta] of Object.entries(flags)) {
-        const selected = name === flagName ? 'selected' : '';
-        const defaultStr = meta.default ? ` [default: ${meta.default}]` : '';
-        optionsHTML += `<option value="${name}" ${selected}>${name} (${meta.cli}) - ${meta.type}${defaultStr}</option>`;
-    }
-
-    rowDiv.innerHTML = `
-        <select class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" onchange="updateCommandPreview()" data-row-id="${rowId}">
-            ${optionsHTML}
-        </select>
-        <input type="text" value="${escapeAttr(flagValue)}" placeholder="Value (leave empty for boolean flags)" class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500" oninput="updateCommandPreview()" data-row-id="${rowId}">
-        <button type="button" onclick="removeParameterRow(${rowId})" class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold" title="Remove parameter">
-            <i class="fa-solid fa-times"></i>
-        </button>
-    `;
-
-    container.appendChild(rowDiv);
-    updateCommandPreview();
-}
-
-function removeParameterRow(rowId) {
-    const index = parameterRows.indexOf(rowId);
-    if (index > -1) {
-        parameterRows.splice(index, 1);
-    }
-
-    const row = document.getElementById(`param-row-${rowId}`);
-    if (row) {
-        row.remove();
-    }
-
-    updateCommandPreview();
-}
-
-function clearParameterRows() {
-    const container = document.getElementById('dynamic-params-container');
-    container.innerHTML = '';
-    parameterRows = [];
-    nextRowId = 1;
-}
-
-function getParametersFromRows() {
-    const params = {};
-
-    for (const rowId of parameterRows) {
-        const row = document.getElementById(`param-row-${rowId}`);
-        if (!row) continue;
-
-        const select = row.querySelector('select');
-        const input = row.querySelector('input');
-
-        const flagName = select?.value;
-        const flagValue = input?.value || '';
-
-        if (flagName) {
-            params[flagName] = flagValue;
-        }
-    }
-
-    return params;
-}
-
-// Custom Parameter Row Management
-function validateCustomFlagName(flagName) {
-    if (!flagName) {
-        return { valid: true, error: null }; // Empty is OK (will be ignored)
-    }
-    if (!flagName.startsWith('-')) {
-        return { valid: false, error: 'Must start with - or --' };
-    }
-    const namePart = flagName.replace(/^-+/, '');
-    if (!namePart) {
-        return { valid: false, error: 'Cannot be just dashes' };
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(namePart)) {
-        return { valid: false, error: 'Invalid characters' };
-    }
-    return { valid: true, error: null };
-}
-
-function onCustomFlagNameInput(rowId) {
-    const row = document.getElementById(`custom-param-row-${rowId}`);
-    if (!row) return;
-
-    const input = row.querySelector('input[data-flag-name]');
-    const errorSpan = row.querySelector('.custom-flag-error');
-    const flagName = input?.value?.trim() || '';
-
-    const validation = validateCustomFlagName(flagName);
-
-    if (!validation.valid) {
-        input.classList.add('border-red-500');
-        input.classList.remove('border-gray-600');
-        if (errorSpan) {
-            errorSpan.textContent = validation.error;
-            errorSpan.classList.remove('hidden');
-        }
-    } else {
-        input.classList.remove('border-red-500');
-        input.classList.add('border-gray-600');
-        if (errorSpan) {
-            errorSpan.classList.add('hidden');
-        }
-    }
-
-    updateCustomParamsCount();
-    updateCommandPreview();
-}
-
-function addCustomParameterRow(flagName = '', flagValue = '') {
-    const rowId = nextCustomRowId++;
-    customParameterRows.push(rowId);
-
-    const container = document.getElementById('custom-params-container');
-
-    const rowDiv = document.createElement('div');
-    rowDiv.id = `custom-param-row-${rowId}`;
-    rowDiv.className = 'flex flex-col gap-1';
-
-    rowDiv.innerHTML = `
-        <div class="flex gap-2 items-start">
-            <input type="text" value="${escapeAttr(flagName)}" placeholder="--flag-name" data-flag-name="true"
-                class="w-1/3 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                oninput="onCustomFlagNameInput(${rowId})" data-custom-row-id="${rowId}">
-            <input type="text" value="${escapeAttr(flagValue)}" placeholder="value (empty for boolean)"
-                class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                oninput="updateCommandPreview()" data-custom-row-id="${rowId}">
-            <button type="button" onclick="removeCustomParameterRow(${rowId})"
-                class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold" title="Remove custom parameter">
-                <i class="fa-solid fa-times"></i>
-            </button>
-        </div>
-        <span class="custom-flag-error text-xs text-red-400 ml-1 hidden"></span>
-    `;
-
-    container.appendChild(rowDiv);
-    updateCustomParamsCount();
-    updateCommandPreview();
-}
-
-function removeCustomParameterRow(rowId) {
-    const index = customParameterRows.indexOf(rowId);
-    if (index > -1) {
-        customParameterRows.splice(index, 1);
-    }
-
-    const row = document.getElementById(`custom-param-row-${rowId}`);
-    if (row) {
-        row.remove();
-    }
-
-    updateCustomParamsCount();
-    updateCommandPreview();
-}
-
-function clearCustomParameterRows() {
-    const container = document.getElementById('custom-params-container');
-    if (container) {
-        container.innerHTML = '';
-    }
-    customParameterRows = [];
-    nextCustomRowId = 1;
-    updateCustomParamsCount();
-}
-
-function getCustomParametersFromRows() {
-    const customParams = {};
-
-    for (const rowId of customParameterRows) {
-        const row = document.getElementById(`custom-param-row-${rowId}`);
-        if (!row) continue;
-
-        const inputs = row.querySelectorAll('input');
-        const flagName = inputs[0]?.value?.trim() || '';
-        const flagValue = inputs[1]?.value || '';
-
-        // Only include non-empty, valid flag names
-        if (flagName) {
-            const validation = validateCustomFlagName(flagName);
-            if (validation.valid) {
-                customParams[flagName] = flagValue;
-            }
-        }
-    }
-
-    return customParams;
-}
-
 function hasInvalidCustomFlags() {
-    for (const rowId of customParameterRows) {
-        const row = document.getElementById(`custom-param-row-${rowId}`);
-        if (!row) continue;
-
-        const input = row.querySelector('input[data-flag-name]');
-        const flagName = input?.value?.trim() || '';
-
-        if (flagName) {
-            const validation = validateCustomFlagName(flagName);
-            if (!validation.valid) {
-                return true;
-            }
-        }
+    // Validate all param rows have valid flag names
+    const rows = document.querySelectorAll('#dynamic-params-container .param-row:not([data-empty="1"])');
+    for (const row of rows) {
+        const flagInput = row.querySelector('input');
+        const flagName = flagInput?.value?.trim() || '';
+        if (flagName && !flagName.startsWith('-')) return true;
     }
     return false;
 }
 
-function updateCustomParamsCount() {
-    const countEl = document.getElementById('custom-params-count');
-    if (!countEl) return;
-
-    // Count valid, non-empty custom parameter rows
-    let configuredCount = 0;
-    let invalidCount = 0;
-
-    for (const rowId of customParameterRows) {
-        const row = document.getElementById(`custom-param-row-${rowId}`);
-        if (!row) continue;
-
-        const flagNameInput = row.querySelector('input[data-flag-name]');
-        const flagName = flagNameInput?.value?.trim() || '';
-
-        if (flagName) {
-            const validation = validateCustomFlagName(flagName);
-            if (validation.valid) {
-                configuredCount++;
-            } else {
-                invalidCount++;
-            }
-        }
-    }
-
-    if (invalidCount > 0) {
-        countEl.textContent = `(${configuredCount} valid, ${invalidCount} invalid)`;
-        countEl.classList.add('text-red-400');
-        countEl.classList.remove('text-gray-500');
-    } else {
-        countEl.textContent = `(${configuredCount} configured)`;
-        countEl.classList.remove('text-red-400');
-        countEl.classList.add('text-gray-500');
-    }
-}
-
 // Command Preview Generator
-function renderFlag(flagName, flagValue, engine) {
-    const flags = availableFlags[engine] || {};
-    const flagMeta = flags[flagName];
-
-    if (!flagMeta) return null; // Unknown flag
-
-    const cliArg = flagMeta.cli;
-    const flagType = flagMeta.type;
-
-    // Environment variables handled separately
-    if (flagType === 'env') return null;
-
-    // Boolean flags
-    if (flagType === 'bool') {
-        if (flagValue === '' || flagValue.toLowerCase() === 'true') {
-            return cliArg; // Just the flag, no value
-        }
-        return null; // Don't render
-    }
-
-    // Value flags (int, float, string, path)
-    if (!flagValue || flagValue.trim() === '') return null;
-    return `${cliArg} ${flagValue}`;
-}
-
 function generateCommandPreview() {
     const engine = document.querySelector('input[name="engine"]:checked')?.value;
     if (!engine) {
         return 'Select an engine to see command preview';
     }
 
-    // Get field values
     const modelPath = document.getElementById('model-path')?.value || '';
     const modelName = document.getElementById('model-hf-name')?.value || '';
     const alias = document.getElementById('service-name')?.value || 'model-alias';
     const apiKey = document.getElementById('api-key')?.value || 'your-api-key';
 
-    // Get parameters from rows
-    const params = getParametersFromRows();
-    const customParams = getCustomParametersFromRows();
+    // Get unified params from rows (CLI-keyed)
+    const paramsArray = getServiceParamsArray();
 
     let preview = '';
 
     if (engine === 'llamacpp') {
         preview = '/llama.cpp/build/bin/llama-server\n';
         preview += `-m ${modelPath || '/path/to/model.gguf'}\n`;
-
-        // Check for mmproj_path in params
-        if (params.mmproj_path) {
-            preview += `--mmproj ${params.mmproj_path}\n`;
-        }
-
         preview += `--alias ${alias}\n`;
         preview += `--host "0.0.0.0"\n`;
         preview += `--port 8080\n`;
         preview += `--api-key ${apiKey}\n`;
 
-        // Render optional flags
-        for (const [flagName, flagValue] of Object.entries(params)) {
-            if (flagName === 'mmproj_path') continue; // Already handled
-            const rendered = renderFlag(flagName, flagValue, engine);
-            if (rendered) preview += rendered + '\n';
-        }
-
-        // Render custom flags
-        for (const [flagName, flagValue] of Object.entries(customParams)) {
-            if (flagValue && flagValue.trim()) {
-                preview += `${flagName} ${flagValue}\n`;
+        paramsArray.forEach(p => {
+            if (p.value) {
+                preview += `${p.flag} ${p.value}\n`;
             } else {
-                preview += `${flagName}\n`;
+                preview += `${p.flag}\n`;
             }
-        }
+        });
     } else if (engine === 'vllm') {
+        // vllm still uses old approach for now - render params as CLI flags
         preview = 'vllm serve ';
         preview += `${modelName || 'org/model-name'}\n`;
         preview += `--host 0.0.0.0\n`;
@@ -1988,40 +1655,23 @@ function generateCommandPreview() {
         preview += `--served-model-name ${alias}\n`;
         preview += `--api-key ${apiKey}\n`;
 
-        // Check for environment variables
-        let envVars = '';
-        if (params.attention_backend) {
-            envVars += `VLLM_ATTENTION_BACKEND=${params.attention_backend}\n`;
-        }
-
-        // Render optional flags
-        for (const [flagName, flagValue] of Object.entries(params)) {
-            if (flagName === 'attention_backend') continue; // Environment variable
-            const rendered = renderFlag(flagName, flagValue, engine);
-            if (rendered) preview += rendered + '\n';
-        }
-
-        // Render custom flags
-        for (const [flagName, flagValue] of Object.entries(customParams)) {
-            if (flagValue && flagValue.trim()) {
-                preview += `${flagName} ${flagValue}\n`;
+        paramsArray.forEach(p => {
+            if (p.value) {
+                preview += `${p.flag} ${p.value}\n`;
             } else {
-                preview += `${flagName}\n`;
+                preview += `${p.flag}\n`;
             }
-        }
-
-        // Prepend environment variables if any
-        if (envVars) {
-            preview = 'Environment:\n' + envVars + '\nCommand:\n' + preview;
-        }
+        });
     }
 
     return preview;
 }
 
 function updateCommandPreview() {
-    const preview = generateCommandPreview();
-    document.getElementById('command-preview').textContent = preview;
+    const previewEl = document.getElementById('command-preview');
+    if (previewEl) {
+        previewEl.textContent = generateCommandPreview();
+    }
 }
 
 function openCreateServiceModal(modelData) {
@@ -2077,9 +1727,6 @@ function openCreateServiceModal(modelData) {
     // Populate GGUF file selector if model has GGUF files
     populateGGUFFileSelector(modelData.files);
 
-    // Clear custom parameter rows
-    clearCustomParameterRows();
-
     // Load flag metadata, GPU info, and next available port
     const engine = llamacppRadio.checked ? 'llamacpp' : 'vllm';
     Promise.all([
@@ -2088,6 +1735,7 @@ function openCreateServiceModal(modelData) {
         getNextAvailablePort()
     ]).then(([_, __, nextPort]) => {
         applySmartDefaults();
+        renderServeParamRef();
         if (nextPort) {
             document.getElementById('service-port').value = nextPort;
         }
@@ -2103,11 +1751,9 @@ function openCreateServiceModal(modelData) {
             const newEngine = document.querySelector('input[name="engine"]:checked')?.value;
             if (newEngine) {
                 await loadFlagMetadata(newEngine);
-
-                // Apply smart defaults for the new engine
                 applySmartDefaults();
+                renderServeParamRef();
 
-                // Repopulate GGUF selector if switching to llamacpp
                 if (newEngine === 'llamacpp' && currentModelData) {
                     populateGGUFFileSelector(currentModelData.files);
                 }
@@ -2268,22 +1914,26 @@ async function openUpdateServiceModal(serviceName) {
 
         // Load flag metadata and populate parameter rows from existing config
         await loadFlagMetadata(engine);
-        clearParameterRows();
-        clearCustomParameterRows();
 
-        const flags = config.optional_flags || {};
-        // Add a row for each existing flag
-        for (const [flagName, flagValue] of Object.entries(flags)) {
-            addParameterRow(flagName, flagValue);
+        // Load params: prefer new format, fall back to legacy conversion
+        let params = config.params;
+        if (!params || Object.keys(params).length === 0) {
+            // Convert legacy optional_flags + custom_flags to unified params
+            params = {};
+            const metadata = availableFlags[engine] || {};
+            const optFlags = config.optional_flags || {};
+            for (const [name, value] of Object.entries(optFlags)) {
+                if (metadata[name]) {
+                    params[metadata[name].cli] = String(value);
+                }
+            }
+            const customFlags = config.custom_flags || {};
+            for (const [name, value] of Object.entries(customFlags)) {
+                params[name] = String(value);
+            }
         }
-        // Add one empty row for convenience
-        addParameterRow();
-
-        // Load custom flags
-        const customFlags = config.custom_flags || {};
-        for (const [flagName, flagValue] of Object.entries(customFlags)) {
-            addCustomParameterRow(flagName, flagValue);
-        }
+        loadServiceParams(params);
+        renderServeParamRef();
 
         // Clear error
         document.getElementById('create-service-error').classList.add('hidden');
@@ -2327,20 +1977,23 @@ function handleEngineChange() {
     const modelPathGroup = document.getElementById('model-path-group');
     const modelNameGroup = document.getElementById('model-name-group');
     const modelPathInput = document.getElementById('model-path');
+    const paramsSection = document.getElementById('params-section');
 
     if (engine === 'llamacpp') {
-        // Show llama.cpp fields
         modelPathGroup.classList.remove('hidden');
         modelNameGroup.classList.add('hidden');
         modelPathInput.required = true;
     } else if (engine === 'vllm') {
-        // Show vllm fields
         modelPathGroup.classList.add('hidden');
         modelNameGroup.classList.remove('hidden');
         modelPathInput.required = false;
     }
 
-    // Update command preview
+    // Show params section once engine is selected
+    if (paramsSection && engine) {
+        paramsSection.classList.remove('hidden');
+    }
+
     updateCommandPreview();
 }
 
@@ -2375,94 +2028,59 @@ async function handleCreateServiceSubmit(event) {
             const port = document.getElementById('service-port').value;
             const apiKey = document.getElementById('api-key').value.trim();
 
-            // Build request body for create
             const requestBody = {
                 template_type: engine,
-                alias: serviceName  
+                alias: serviceName
             };
 
-            // Add port if specified
-            if (port) {
-                requestBody.port = parseInt(port);
-            }
+            if (port) requestBody.port = parseInt(port);
+            if (apiKey) requestBody.api_key = apiKey;
 
-            // Add API key if specified
-            if (apiKey) {
-                requestBody.api_key = apiKey;
-            }
-
-            // Add model path or model name
             if (engine === 'llamacpp') {
                 requestBody.model_path = document.getElementById('model-path').value;
             } else {
                 requestBody.model_name = document.getElementById('model-hf-name').value;
             }
 
-            // Get optional_flags from parameter rows (already strings)
-            const params = getParametersFromRows();
-            requestBody.optional_flags = params;
+            // Send unified params (CLI-keyed)
+            requestBody.params = getServiceParams();
 
-            // Get custom_flags from custom parameter rows
-            const customParams = getCustomParametersFromRows();
-            if (Object.keys(customParams).length > 0) {
-                requestBody.custom_flags = customParams;
-            }
-
-            // Make API call
             const response = await fetchAPI('/services', {
                 method: 'POST',
                 body: JSON.stringify(requestBody)
             });
 
-            // Success!
             closeCreateServiceModal();
             await loadServices();
 
-            // Show success notification with API key
             alert(`Service "${response.service_name}" created successfully on port ${response.port}!\n\nAPI Key: ${response.api_key}\n\nThe service is stopped. Use the Start button to run it.`);
 
         } else {
-            // UPDATE MODE: Use PUT API
+            // UPDATE MODE
             const port = document.getElementById('service-port').value;
             const apiKey = document.getElementById('api-key').value.trim();
 
-            // Build request body for update
             const requestBody = {
-                alias: currentServiceName  // Keep same alias
+                alias: currentServiceName
             };
 
-            // Add port
-            if (port) {
-                requestBody.port = parseInt(port);
-            }
+            if (port) requestBody.port = parseInt(port);
+            if (apiKey) requestBody.api_key = apiKey;
 
-            // Add API key
-            if (apiKey) {
-                requestBody.api_key = apiKey;
-            }
-
-            // Add model path or model name
             if (engine === 'llamacpp') {
                 requestBody.model_path = document.getElementById('model-path').value;
             } else {
                 requestBody.model_name = document.getElementById('model-hf-name').value;
             }
 
-            // Get optional_flags from parameter rows (already strings)
-            const params = getParametersFromRows();
-            requestBody.optional_flags = params;
+            // Send unified params (CLI-keyed)
+            requestBody.params = getServiceParams();
 
-            // Get custom_flags from custom parameter rows
-            const customParams = getCustomParametersFromRows();
-            requestBody.custom_flags = customParams;
-
-            // Make API call
             const response = await fetchAPI(`/services/${currentServiceName}`, {
                 method: 'PUT',
                 body: JSON.stringify(requestBody)
             });
 
-            // Success!
             closeCreateServiceModal();
             await loadServices();
 

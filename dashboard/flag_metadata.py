@@ -553,12 +553,12 @@ def generate_service_name(template_type: str, alias: str) -> str:
     """
     return sanitize_service_name(f"{template_type}-{alias}")
 
-def render_custom_flag(flag_name: str, flag_value: str) -> Optional[str]:
+def render_cli_flag(flag_name: str, flag_value: str) -> Optional[str]:
     """
-    Render a custom flag as CLI argument.
+    Render a CLI flag (already in CLI form like -ngl, --flash-attn) as argument.
 
     Args:
-        flag_name: The flag name (must start with - or --)
+        flag_name: The CLI flag (e.g. "-ngl", "--flash-attn", "-fa")
         flag_value: The flag value (empty string for boolean flags)
 
     Returns:
@@ -575,8 +575,12 @@ def render_custom_flag(flag_name: str, flag_value: str) -> Optional[str]:
     if not flag_name or not flag_name.startswith('-'):
         return None
     if not flag_value or flag_value.strip() == "":
-        return flag_name  # Boolean flag (e.g., "--verbose")
+        return flag_name  # Boolean flag
     return f"{flag_name} {flag_value}"
+
+
+# Alias for backward compatibility
+render_custom_flag = render_cli_flag
 
 
 def validate_custom_flag_name(flag_name: str) -> Tuple[bool, Optional[str]]:
@@ -672,4 +676,49 @@ def validate_service_config(template_type: str, config: Dict[str, Any]) -> Tuple
         if not is_valid:
             errors.append(f"Custom flag '{flag_name}': {error}")
 
+    # Validate params (unified CLI-keyed format)
+    params = config.get('params', {})
+    for flag_name, flag_value in params.items():
+        if flag_name.startswith('-'):
+            is_valid, error = validate_custom_flag_name(flag_name)
+            if not is_valid:
+                errors.append(f"Param '{flag_name}': {error}")
+
     return len(errors) == 0, errors
+
+
+def convert_legacy_flags_to_params(config: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Convert old-format optional_flags + custom_flags to unified params dict
+    keyed by CLI flag (e.g. {"-ngl": "99", "--flash-attn": ""}).
+
+    Args:
+        config: Service configuration that may have optional_flags and/or custom_flags
+
+    Returns:
+        Unified params dict keyed by CLI flag
+    """
+    params = {}
+    template_type = config.get('template_type', 'llamacpp')
+
+    # Convert optional_flags (keyed by friendly name like 'context_length')
+    optional_flags = config.get('optional_flags', {})
+    metadata = get_flag_metadata(template_type)
+
+    for flag_name, flag_value in optional_flags.items():
+        if flag_name in metadata:
+            cli_flag = metadata[flag_name]['cli']
+            # Skip env vars
+            if metadata[flag_name].get('type') == 'env':
+                continue
+            params[cli_flag] = str(flag_value)
+        else:
+            # Unknown flag name, skip
+            pass
+
+    # Convert custom_flags (already keyed by CLI flag like '--verbose')
+    custom_flags = config.get('custom_flags', {})
+    for flag_name, flag_value in custom_flags.items():
+        params[flag_name] = str(flag_value)
+
+    return params
