@@ -1,6 +1,6 @@
 // Dynamically construct API base URL based on hostname
 // Use port 3399 only for localhost, otherwise use current hostname without port (assumes reverse proxy)
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'z440'
     ? `${window.location.protocol}//${window.location.hostname}:3399/api`
     : `${window.location.protocol}//${window.location.hostname}/api`;
 const TOKEN_KEY = 'dashboard_token';
