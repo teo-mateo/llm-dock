@@ -22,6 +22,7 @@
     volumes:
       - ${HOME}/.cache/huggingface:/hf-cache
       - ${HOME}/.cache/models:/local-models:ro
+      - ./chat-templates:/chat-templates:ro
 
     networks:
       - llm-network

@@ -267,6 +267,18 @@ class BenchmarkDB:
         finally:
             self._close_conn(conn)
 
+    def rename_service(self, old_name: str, new_name: str) -> int:
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute(
+                "UPDATE benchmark_runs SET service_name = ? WHERE service_name = ?",
+                (new_name, old_name),
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            self._close_conn(conn)
+
     def recover_stale_runs(self) -> int:
         conn = self._get_conn()
         try:

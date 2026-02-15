@@ -207,11 +207,18 @@ async function fetchAPI(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-        const errorData = await response.json();
-        // Handle both {error: "message"} and {error: {message: "message"}} formats
-        const errorMessage = typeof errorData.error === 'string'
-            ? errorData.error
-            : errorData.error?.message || `HTTP ${response.status}`;
+        let errorMessage = `HTTP ${response.status}`;
+        const text = await response.text();
+        try {
+            const errorData = JSON.parse(text);
+            // Handle both {error: "message"} and {error: {message: "message"}} formats
+            errorMessage = typeof errorData.error === 'string'
+                ? errorData.error
+                : errorData.error?.message || errorMessage;
+        } catch {
+            // Response body is not JSON (e.g. HTML error page)
+            if (text) errorMessage = `HTTP ${response.status}: ${text.substring(0, 200)}`;
+        }
         throw new Error(errorMessage);
     }
 
@@ -355,6 +362,9 @@ function renderServices(services) {
                         <button onclick="copyToClipboard('${service.name}')" class="text-blue-400 hover:text-blue-300 text-sm font-semibold inline-block ml-1 align-middle" title="Copy service name">
                             <i class="fa-solid fa-copy"></i>
                         </button>
+                        ${!isInfraService ? `<button onclick="openRenameModal('${service.name}')" class="text-gray-500 hover:text-blue-300 text-sm inline-block ml-1 align-middle" title="Rename service">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>` : ''}
                     </div>
                     ${!isNotCreated ? `<button onclick="openLogsModal('${service.name}')" class="text-blue-400 hover:text-blue-300 text-sm font-semibold flex-shrink-0">[Logs]</button>` : ''}
                 </div>
@@ -547,6 +557,86 @@ async function confirmDelete() {
     }
 }
 
+// Rename Service Modal
+let serviceToRename = null;
+
+function openRenameModal(serviceName) {
+    serviceToRename = serviceName;
+    const input = document.getElementById('rename-service-input');
+    const errorEl = document.getElementById('rename-service-error');
+    document.getElementById('rename-service-old-name').textContent = serviceName;
+    input.value = serviceName;
+    errorEl.classList.add('hidden');
+    document.getElementById('rename-service-modal').classList.remove('hidden');
+
+    // Focus and select the input text
+    setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 50);
+}
+
+function closeRenameModal() {
+    document.getElementById('rename-service-modal').classList.add('hidden');
+    serviceToRename = null;
+
+    // Reset button state
+    const confirmBtn = document.getElementById('rename-service-confirm');
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = '<i class="fa-solid fa-pen mr-2"></i>Rename';
+}
+
+async function confirmRename() {
+    if (!serviceToRename) return;
+
+    const input = document.getElementById('rename-service-input');
+    const errorEl = document.getElementById('rename-service-error');
+    const confirmBtn = document.getElementById('rename-service-confirm');
+    const newName = input.value.trim();
+
+    // Client-side validation
+    if (!newName) {
+        errorEl.textContent = 'Service name cannot be empty';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    if (newName === serviceToRename) {
+        closeRenameModal();
+        return;
+    }
+    if (newName.length > 63) {
+        errorEl.textContent = 'Name too long (max 63 characters)';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    if (!newName.replace(/-/g, '').replace(/_/g, '').match(/^[a-zA-Z0-9]+$/)) {
+        errorEl.textContent = 'Only alphanumeric characters, hyphens, and underscores allowed';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Renaming...';
+        errorEl.classList.add('hidden');
+
+        const result = await fetchAPI(`/services/${serviceToRename}/rename`, {
+            method: 'POST',
+            body: JSON.stringify({ new_name: newName })
+        });
+
+        closeRenameModal();
+        showToast(result.message);
+        loadServices();
+    } catch (error) {
+        console.error('Failed to rename service:', error);
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="fa-solid fa-pen mr-2"></i>Rename';
+    }
+}
+
 // Close modal on ESC key
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -559,6 +649,10 @@ document.addEventListener('keydown', (e) => {
             closePreviewModal();
         }
         // param-browser-modal removed (replaced by inline reference panel)
+        const renameModal = document.getElementById('rename-service-modal');
+        if (renameModal && !renameModal.classList.contains('hidden')) {
+            closeRenameModal();
+        }
         const copyFromModal = document.getElementById('copy-from-modal');
         if (copyFromModal && !copyFromModal.classList.contains('hidden')) {
             closeCopyFromModal();

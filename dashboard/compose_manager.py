@@ -386,6 +386,41 @@ class ComposeManager:
         del services[service_name]
         self._save_services_db(services)
 
+    def rename_service(self, old_name: str, new_name: str):
+        """
+        Rename a service in the services database and rebuild compose file.
+
+        Args:
+            old_name: Current service name
+            new_name: New service name
+
+        Raises:
+            ValueError: If old service doesn't exist or new name is invalid/taken
+        """
+        # Validate new name (skip the "already exists" check done by validate_service_name
+        # since we do our own check)
+        if not new_name:
+            raise ValueError("Service name cannot be empty")
+        if len(new_name) > 63:
+            raise ValueError("Service name too long (max 63 characters)")
+        if not new_name.replace('-', '').replace('_', '').isalnum():
+            raise ValueError("Service name must be alphanumeric with hyphens/underscores")
+
+        services = self._load_services_db()
+
+        if old_name not in services:
+            raise ValueError(f"Service '{old_name}' not found in database")
+        if new_name in services:
+            raise ValueError(f"Service '{new_name}' already exists")
+
+        # Pop old key and insert under new key
+        config = services.pop(old_name)
+        services[new_name] = config
+        self._save_services_db(services)
+
+        # Rebuild compose file
+        self.rebuild_compose_file()
+
     def get_service_from_db(self, service_name: str) -> Optional[Dict[str, Any]]:
         """Get service config from database"""
         services = self._load_services_db()

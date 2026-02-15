@@ -1209,6 +1209,96 @@ def delete_service(service_name):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/services/<service_name>/rename", methods=["POST"])
+@require_auth
+def rename_service(service_name):
+    """
+    Rename a service. Service must be stopped.
+
+    Request body: {"new_name": "my-new-name"}
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("new_name"):
+            return jsonify({"error": "new_name is required"}), 400
+
+        new_name = data["new_name"].strip()
+
+        compose_mgr = ComposeManager(COMPOSE_FILE)
+
+        # Check service exists
+        service_config = compose_mgr.get_service_from_db(service_name)
+        if not service_config:
+            return jsonify({"error": f'Service "{service_name}" not found'}), 404
+
+        # Check service is not running
+        container = get_service_container(service_name)
+        if container and container.status == "running":
+            return jsonify(
+                {"error": "Service must be stopped before renaming"}
+            ), 409
+
+        # Handle Open WebUI: unregister old name (best-effort)
+        engine = service_config.get("template_type", "")
+        owu_was_registered = False
+        if engine:
+            try:
+                if is_service_registered_in_openwebui(service_name, engine):
+                    owu_was_registered = True
+                    remove_service_from_openwebui(service_name, engine)
+            except Exception as e:
+                logger.warning(f"Failed to unregister old name from Open WebUI: {e}")
+
+        # Remove old container if it exists (stopped/exited)
+        if container:
+            try:
+                subprocess.run(
+                    ["docker", "compose", "-f", COMPOSE_FILE, "rm", "-f", service_name],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to remove old container: {e}")
+
+        # Rename in services DB and rebuild compose
+        compose_mgr.rename_service(service_name, new_name)
+
+        # Rename in benchmark DB
+        from benchmarking import routes as bench_routes
+        try:
+            if bench_routes._db:
+                updated = bench_routes._db.rename_service(service_name, new_name)
+                logger.info(f"Updated {updated} benchmark records from '{service_name}' to '{new_name}'")
+        except Exception as e:
+            logger.warning(f"Failed to rename benchmarks (non-fatal): {e}")
+
+        # Re-register with Open WebUI under new name (best-effort)
+        if owu_was_registered and engine:
+            try:
+                port = service_config.get("port", 0)
+                api_key = service_config.get("api_key", "")
+                add_service_to_openwebui(new_name, port, api_key, engine)
+            except Exception as e:
+                logger.warning(f"Failed to re-register new name with Open WebUI: {e}")
+
+        logger.info(f"Service renamed: {service_name} -> {new_name}")
+
+        return jsonify(
+            {
+                "success": True,
+                "old_name": service_name,
+                "new_name": new_name,
+                "message": f'Service renamed from "{service_name}" to "{new_name}"',
+            }
+        ), 200
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Failed to rename service: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/flag-metadata/<template_type>", methods=["GET"])
 @require_auth
 def get_flags_metadata(template_type):
