@@ -87,8 +87,9 @@ else
 fi
 
 # Create virtual environment
-if [ ! -d venv ]; then
+if [ ! -f venv/bin/activate ]; then
     echo "Creating Python virtual environment..."
+    rm -rf venv
     python3 -m venv venv
     echo -e "  ${GREEN}✓${NC} Created venv"
 fi
