@@ -38,7 +38,11 @@ Before running setup, ensure the following are installed and configured:
 - **Docker Engine with Compose v2** - The setup script uses `docker compose` (not the legacy `docker-compose`). Install from [Docker's official repository](https://docs.docker.com/engine/install/ubuntu/) for the latest version.
 - **Docker group membership** - Your user must be in the `docker` group (`sudo usermod -aG docker $USER`, then log out and back in) or `./build-llamacpp.sh` will fail with permission errors.
 - **Python venv** - On Ubuntu, the `python3.10-venv` (or equivalent) package is required. Without it, `./setup.sh` cannot create the virtual environment.
-- **NVIDIA Container Toolkit** - Required for GPU passthrough into Docker containers. Install from [NVIDIA's repository](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) and restart Docker afterwards.
+- **NVIDIA Container Toolkit** - Required for GPU passthrough into Docker containers. Install from [NVIDIA's repository](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then configure the Docker runtime and restart:
+  ```bash
+  sudo nvidia-ctk runtime configure --runtime=docker
+  sudo systemctl restart docker
+  ```
 
 ```bash
 # Clone the repository
