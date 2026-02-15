@@ -103,6 +103,9 @@ function renderServices(services) {
                             : `<button onclick="controlService('${service.name}', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 px-3 py-2 rounded font-semibold">${isNotCreated ? 'Create & Start' : 'Start'}</button>`
                     }
                     ${isInfraService ? `
+                        <a href="${window.location.protocol}//${window.location.hostname}:${service.host_port}" target="_blank" class="flex-1 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded font-semibold text-center" title="Open WebUI">
+                            <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Open
+                        </a>
                         <button onclick="restartOpenWebUI()" class="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded font-semibold w-10 h-10 flex items-center justify-center" title="Restart Open WebUI">
                             <i class="fa-solid fa-rotate-right"></i>
                         </button>
