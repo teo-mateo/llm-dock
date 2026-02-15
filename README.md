@@ -57,6 +57,10 @@ source venv/bin/activate
 python app.py
 ```
 
+Here's what a successful setup looks like:
+
+![Setup output](docs/images/setup-output.png)
+
 **Access points:**
 - Dashboard: http://localhost:3399
 - Open WebUI: http://localhost:3300
