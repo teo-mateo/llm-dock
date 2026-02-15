@@ -51,7 +51,7 @@ def require_auth(f):
                 {
                     "error": {
                         "code": "INVALID_TOKEN",
-                        "message": "Authentication token is invalid",
+                        "message": "Authentication failed",
                     },
                     "timestamp": datetime.utcnow().isoformat() + "Z",
                 }

@@ -68,19 +68,26 @@ cd "$(dirname "$0")/dashboard"
 if [ ! -f .env ]; then
     echo "Creating .env file..."
 
-    # Generate secure token
-    TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    # Generate secure password (8 chars)
+    PASSWORD=$(python3 -c "import secrets; print(secrets.token_hex(4))")
 
-    # Copy template and replace token
+    # Generate API key
+    API_KEY=$(python3 -c "import secrets; print('llmdock-' + secrets.token_hex(16))")
+
+    # Copy template and replace placeholders
     cp .env.example .env
-    sed -i "s/your-secret-token-here/$TOKEN/" .env
+    sed -i "s/your-secret-token-here/$PASSWORD/" .env
+    sed -i "s/your-global-api-key-here/$API_KEY/" .env
 
-    echo -e "  ${GREEN}✓${NC} Created .env with generated token"
+    echo -e "  ${GREEN}✓${NC} Created .env with generated credentials"
     echo ""
-    echo -e "  ${YELLOW}Your dashboard token:${NC}"
-    echo "  $TOKEN"
+    echo -e "  ${YELLOW}Your dashboard password:${NC}"
+    echo "  $PASSWORD"
     echo ""
-    echo -e "  ${YELLOW}Save this token - you'll need it to access the API!${NC}"
+    echo -e "  ${YELLOW}Your API key:${NC}"
+    echo "  $API_KEY"
+    echo ""
+    echo -e "  ${YELLOW}Save this password - you'll need it to access the dashboard!${NC}"
     echo ""
 else
     echo -e "  ${GREEN}✓${NC} .env already exists"
@@ -143,7 +150,7 @@ echo "   source venv/bin/activate"
 echo "   python app.py"
 echo ""
 echo "3. Access the dashboard at http://localhost:3399"
-echo "   (Your API token is stored in dashboard/.env)"
+echo "   (Your dashboard password is stored in dashboard/.env)"
 echo ""
 echo "4. Access Open WebUI at http://localhost:3300"
 echo ""

@@ -37,7 +37,7 @@ async function fetchAPI(endpoint, options = {}) {
     if (response.status === 401) {
         clearToken();
         showLoginModal();
-        throw new Error('Authentication token is invalid or expired');
+        throw new Error('Authentication failed');
     }
 
     if (!response.ok) {
@@ -95,7 +95,7 @@ async function handleLogin(event) {
     const errorEl = document.getElementById('login-error');
 
     if (!token) {
-        errorEl.textContent = 'Token cannot be empty';
+        errorEl.textContent = 'Password cannot be empty';
         errorEl.classList.remove('hidden');
         return;
     }
@@ -112,7 +112,7 @@ async function handleLogin(event) {
         });
 
         if (!response.ok) {
-            throw new Error('Invalid token');
+            throw new Error('Invalid password');
         }
 
         // Token is valid, save it

@@ -45,7 +45,7 @@ Before running setup, ensure the following are installed and configured:
 git clone https://github.com/teo-mateo/llm-dock.git
 cd llm-dock
 
-# Run setup (creates venv, installs deps, generates token, starts Open WebUI)
+# Run setup (creates venv, installs deps, generates password, starts Open WebUI)
 ./setup.sh
 
 # Build llama.cpp Docker image (if using GGUF models)
@@ -188,7 +188,7 @@ cp .env.example .env
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DASHBOARD_TOKEN` | API authentication token | (required) |
+| `DASHBOARD_TOKEN` | Dashboard password | (required) |
 | `DASHBOARD_PORT` | Dashboard port | 3399 |
 | `DASHBOARD_HOST` | Dashboard bind address | 0.0.0.0 |
 | `COMPOSE_PROJECT_NAME` | Docker project name | llm-dock |
@@ -208,7 +208,7 @@ To add custom paths, modify `model_discovery.py`.
 All endpoints (except `/api/health`) require Bearer token authentication:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3399/api/services
+curl -H "Authorization: Bearer YOUR_PASSWORD" http://localhost:3399/api/services
 ```
 
 ### Endpoints
@@ -233,7 +233,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3399/api/services
 
 ```bash
 curl -X POST http://localhost:3399/api/v2/services \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer YOUR_PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{
     "template_type": "llamacpp",
