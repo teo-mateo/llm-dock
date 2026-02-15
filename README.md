@@ -4,34 +4,7 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 
 ![LLM-Dock Dashboard](docs/images/dashboard.png)
 
-## Changelog
-
-### 2026-02-15
-- **Service rename** - Rename services directly from the dashboard with a modal UI
-- **Rename API endpoint** - New `/api/v2/services/<name>/rename` endpoint
-- **Chat templates** - Added chat-templates directory with StepFun Step-3.5 Flash template
-
-### 2026-02-14
-- **Unified parameter editor** - Replaced dropdown-based parameter selection with free-form flag+value rows (benchmark-style) for llama.cpp services
-- **Inline parameter reference** - Searchable side panel with categories, color-coded badges, and rich HTML tooltips for all llama-server flags
-- **Benchmarking system** - Full `llama-bench` integration: run benchmarks from the dashboard, view results history, compare runs
-- **Benchmark UI** - Collapsible live output, parameter reference with tooltips, auto-added flags (-m, -o), safe defaults for new models
-- **Global API key** - Shared API key support across services
-- **Build metadata** - Docker images now track build date and commit; displayed in dashboard header
-- **vLLM improvements** - Updated to v0.12.0, newer base image, CUDA architecture updates
-- **Custom parameters** - Support for arbitrary CLI flags beyond the predefined set
-- **Container diagnostics** - Exit codes shown for crashed containers
-- **Systemd integration** - Installer script and `start.sh` for quick startup
-
-### 2025-11-27
-- **Open WebUI integration** - Register/unregister services with Open WebUI, restart button on Open WebUI card
-- **Auto port assignment** - Next available port (3301-3399) auto-selected on service creation
-- **Fixed path mapping** - `~/.cache/models` now correctly maps to `/local-models` in containers
-- **Service deletion** - Now properly stops and removes containers before deleting
-- **GPU info in edit modal** - GPU stats display when editing existing services
-- **Simplified UI** - Parameters section always visible (removed collapsible)
-- **Image rename** - llama.cpp image renamed from `my-llamacpp` to `llm-dock-llamacpp`
-- **Clean installs** - `docker-compose.yml` now generated from template, not tracked in git
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Features
 
@@ -41,6 +14,7 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 - **Service Management** - Create, start, stop, restart services via web UI or API
 - **Open WebUI Integration** - Auto-registers services as OpenAI-compatible endpoints
 - **Port Management** - Automatic port assignment in the 3300-3400 range
+- **Benchmarking** - Run `llama-bench` directly from the dashboard against any llama.cpp service. Benchmarks inherit the service's model and parameters, with live output streaming. Results are stored in a local database for history tracking and comparison across runs
 
 ## Prerequisites
 
@@ -50,11 +24,12 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 - NVIDIA GPU with CUDA drivers
 - nvidia-container-toolkit
 
-### Tested Machines
+### Tested On
 
-| Machine | OS | GPU | CUDA Arch | Notes |
-|---------|-----|-----|-----------|-------|
-| z440 | Ubuntu 22.04.5 LTS | RTX 3090 | 86 | HP Z440 workstation |
+| OS | GPU | CUDA Arch |
+|----|-----|-----------|
+| Ubuntu 22.04.5 LTS | RTX PRO 6000 Blackwell | 120 |
+| Ubuntu 22.04.5 LTS | RTX 3090 | 86 |
 
 ## Quick Start
 
