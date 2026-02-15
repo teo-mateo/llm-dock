@@ -171,6 +171,7 @@ async function openCopyFromModal() {
         }
 
         document.getElementById('copy-from-modal').classList.remove('hidden');
+        modalManager.lockScroll();
     } catch (error) {
         console.error('Failed to load services:', error);
         alert(`Failed to load services: ${error.message}`);
@@ -179,6 +180,7 @@ async function openCopyFromModal() {
 
 function closeCopyFromModal() {
     document.getElementById('copy-from-modal').classList.add('hidden');
+    modalManager.unlockScroll();
 }
 
 async function copyParametersFromService(serviceName) {

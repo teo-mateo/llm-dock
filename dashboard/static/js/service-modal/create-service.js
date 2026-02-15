@@ -329,6 +329,7 @@ function openCreateServiceModal(modelData) {
 
     // Show modal
     document.getElementById('create-service-modal').classList.remove('hidden');
+    modalManager.lockScroll();
 
     // Add engine change listeners with flag reload
     document.querySelectorAll('input[name="engine"]').forEach(radio => {
@@ -420,6 +421,7 @@ function initModalDrag() {
 function closeCreateServiceModal() {
     document.getElementById('create-service-modal').classList.add('hidden');
     currentModelData = null;
+    modalManager.unlockScroll();
 
     // Reset modal position
     const modal = document.getElementById('create-service-modal-content');
@@ -529,6 +531,7 @@ async function openUpdateServiceModal(serviceName) {
 
         // Show modal
         document.getElementById('create-service-modal').classList.remove('hidden');
+        modalManager.lockScroll();
 
         // Add engine change listeners (but they won't work since radios are disabled)
         document.querySelectorAll('input[name="engine"]').forEach(radio => {

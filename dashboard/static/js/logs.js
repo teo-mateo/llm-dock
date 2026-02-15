@@ -8,6 +8,7 @@ function openLogsModal(serviceName) {
     document.getElementById('logs-modal-title').textContent = `${serviceName} - Logs`;
     document.getElementById('logs-modal').classList.remove('hidden');
     document.getElementById('logs-content').textContent = 'Loading logs...';
+    modalManager.lockScroll();
 
     // Add ESC key listener
     document.addEventListener('keydown', handleEscapeKey);
@@ -22,6 +23,7 @@ function openLogsModal(serviceName) {
 function closeLogsModal() {
     document.getElementById('logs-modal').classList.add('hidden');
     currentLogsService = null;
+    modalManager.unlockScroll();
 
     // Remove ESC key listener
     document.removeEventListener('keydown', handleEscapeKey);

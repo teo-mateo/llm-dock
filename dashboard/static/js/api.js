@@ -75,13 +75,17 @@ function showLoginModal() {
         toggleBtn.setAttribute('aria-pressed', 'false');
     }
     
-    document.getElementById('login-modal').classList.remove('hidden');
+    const loginModal = document.getElementById('login-modal');
+    const wasHidden = loginModal.classList.contains('hidden');
+    loginModal.classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
+    if (wasHidden) modalManager.lockScroll();
 }
 
 function hideLoginModal() {
     document.getElementById('login-modal').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
+    modalManager.unlockScroll();
 }
 
 async function handleLogin(event) {

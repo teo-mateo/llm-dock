@@ -238,11 +238,13 @@ function deleteService(name) {
     serviceToDelete = name;
     document.getElementById('delete-service-name').textContent = name;
     document.getElementById('delete-service-modal').classList.remove('hidden');
+    modalManager.lockScroll();
 }
 
 function closeDeleteModal() {
     document.getElementById('delete-service-modal').classList.add('hidden');
     serviceToDelete = null;
+    modalManager.unlockScroll();
 
     // Reset button state
     const confirmBtn = document.getElementById('delete-service-confirm');
@@ -285,6 +287,7 @@ function openRenameModal(serviceName) {
     input.value = serviceName;
     errorEl.classList.add('hidden');
     document.getElementById('rename-service-modal').classList.remove('hidden');
+    modalManager.lockScroll();
 
     // Focus and select the input text
     setTimeout(() => {
@@ -296,6 +299,7 @@ function openRenameModal(serviceName) {
 function closeRenameModal() {
     document.getElementById('rename-service-modal').classList.add('hidden');
     serviceToRename = null;
+    modalManager.unlockScroll();
 
     // Reset button state
     const confirmBtn = document.getElementById('rename-service-confirm');
@@ -388,6 +392,7 @@ async function previewService(serviceName) {
         document.getElementById('preview-service-name').textContent = serviceName;
         document.getElementById('preview-yaml').textContent = data.yaml;
         document.getElementById('preview-service-modal').classList.remove('hidden');
+        modalManager.lockScroll();
     } catch (error) {
         console.error('Failed to preview service:', error);
         alert(`Failed to preview service: ${error.message}`);
@@ -397,6 +402,7 @@ async function previewService(serviceName) {
 function closePreviewModal() {
     document.getElementById('preview-service-modal').classList.add('hidden');
     currentPreviewYaml = '';
+    modalManager.unlockScroll();
 }
 
 function copyPreviewYaml() {
