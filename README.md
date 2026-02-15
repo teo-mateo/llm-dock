@@ -75,28 +75,24 @@ If you don't have any models yet, here's how to download a small (~2GB) but capa
 pip install huggingface-hub
 ```
 
+The `huggingface-cli` (or `hf`) command may be installed to `~/.local/bin/`. If not found, either use `~/.local/bin/huggingface-cli` directly or add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile.
+
 ### 2. Download a Starter Model
 
 We recommend **Qwen2.5-3B-Instruct** in GGUF format - it's small, fast, and surprisingly capable:
 
 ```bash
 # Download Q4_K_M quantization (~2GB, good balance of size/quality)
-huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF \
-  qwen2.5-3b-instruct-q4_k_m.gguf \
-  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-3B-Instruct-GGUF
+hf download Qwen/Qwen2.5-3B-Instruct-GGUF qwen2.5-3b-instruct-q4_k_m.gguf
 ```
 
 Alternative smaller/larger options:
 ```bash
 # Smaller (~1.5GB) - faster but less capable
-huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF \
-  qwen2.5-1.5b-instruct-q4_k_m.gguf \
-  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-1.5B-Instruct-GGUF
+hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf
 
 # Larger (~4.5GB) - more capable
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
-  qwen2.5-7b-instruct-q4_k_m.gguf \
-  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-7B-Instruct-GGUF
+hf download Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf
 ```
 
 ### 3. Build llama.cpp and Start the Dashboard
@@ -340,13 +336,18 @@ sudo systemctl start llm-dock
 
 ## Troubleshooting
 
-### "nvidia-container-toolkit not detected"
+### "could not select device driver nvidia" / "nvidia-container-toolkit not detected"
 Install the NVIDIA Container Toolkit:
 ```bash
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# Add NVIDIA repo
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# Install and configure
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 

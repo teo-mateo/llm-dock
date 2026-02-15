@@ -406,10 +406,5 @@ function closePreviewModal() {
 }
 
 function copyPreviewYaml() {
-    navigator.clipboard.writeText(currentPreviewYaml).then(() => {
-        showToast('YAML copied to clipboard');
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-        alert('Failed to copy to clipboard');
-    });
+    copyToClipboard(currentPreviewYaml, 'YAML');
 }

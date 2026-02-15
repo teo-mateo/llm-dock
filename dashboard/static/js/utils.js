@@ -1,10 +1,29 @@
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        showToast('API key copied to clipboard');
-    }).catch(err => {
-        console.error('Failed to copy:', err);
+function copyToClipboard(text, label = 'API key') {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(`${label} copied to clipboard`);
+        }).catch(() => {
+            fallbackCopy(text, label);
+        });
+    } else {
+        fallbackCopy(text, label);
+    }
+}
+
+function fallbackCopy(text, label) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        showToast(`${label} copied to clipboard`);
+    } catch {
         showToast('Failed to copy to clipboard', true);
-    });
+    }
+    document.body.removeChild(textarea);
 }
 
 // Global API key management
@@ -35,12 +54,7 @@ async function loadGlobalApiKey() {
 
 function copyGlobalApiKey() {
     if (globalApiKey) {
-        navigator.clipboard.writeText(globalApiKey).then(() => {
-            showToast('Global API key copied to clipboard');
-        }).catch(err => {
-            console.error('Failed to copy:', err);
-            showToast('Failed to copy to clipboard', true);
-        });
+        copyToClipboard(globalApiKey, 'Global API key');
     }
 }
 
