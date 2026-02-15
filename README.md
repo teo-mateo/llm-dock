@@ -6,6 +6,11 @@ A dashboard for managing local LLM inference services with Docker Compose. Suppo
 
 ## Changelog
 
+### 2026-02-15
+- **Service rename** - Rename services directly from the dashboard with a modal UI
+- **Rename API endpoint** - New `/api/v2/services/<name>/rename` endpoint
+- **Chat templates** - Added chat-templates directory with StepFun Step-3.5 Flash template
+
 ### 2026-02-14
 - **Unified parameter editor** - Replaced dropdown-based parameter selection with free-form flag+value rows (benchmark-style) for llama.cpp services
 - **Inline parameter reference** - Searchable side panel with categories, color-coded badges, and rich HTML tooltips for all llama-server flags
