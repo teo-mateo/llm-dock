@@ -51,13 +51,13 @@ def _get_service_config(service_name: str):
 
 
 def _require_auth(f):
-    """Import require_auth from app module at call time to avoid circular imports."""
+    """Import require_auth from auth module at call time to avoid circular imports."""
     from functools import wraps
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-        from app import require_auth as app_require_auth
-        decorated = app_require_auth(f)
+        from auth import require_auth as auth_require_auth
+        decorated = auth_require_auth(f)
         return decorated(*args, **kwargs)
     return wrapper
 
