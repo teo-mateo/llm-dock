@@ -186,7 +186,7 @@ cp .env.example .env
 |----------|-------------|---------|
 | `DASHBOARD_TOKEN` | API authentication token | (required) |
 | `DASHBOARD_PORT` | Dashboard port | 3399 |
-| `DASHBOARD_HOST` | Dashboard bind address | 127.0.0.1 |
+| `DASHBOARD_HOST` | Dashboard bind address | 0.0.0.0 |
 | `COMPOSE_PROJECT_NAME` | Docker project name | llm-dock |
 | `COMPOSE_FILE` | Path to docker-compose.yml | ../docker-compose.yml |
 | `LOG_LEVEL` | Logging level | INFO |
