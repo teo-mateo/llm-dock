@@ -71,15 +71,26 @@
         <div class="bg-gray-800 rounded-lg p-8 w-full max-w-md border border-gray-700">
             <h2 class="text-2xl font-bold mb-6">LLM Dashboard Login</h2>
             <form id="login-form" onsubmit="handleLogin(event)">
-                <div class="mb-4">
+                <div class="mb-4 relative">
                     <label class="block text-sm font-medium mb-2">Authentication Token</label>
-                    <input
-                        type="password"
-                        id="token-input"
-                        placeholder="Enter your token"
-                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-                        required
-                    >
+                    <div class="relative">
+                        <input
+                            type="password"
+                            id="token-input"
+                            placeholder="Enter your token"
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 pr-10 py-2 text-white focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                        <button
+                            type="button"
+                            id="toggle-password"
+                            class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-200 focus:outline-none"
+                            aria-label="Show password"
+                            aria-pressed="false"
+                        >
+                            <i class="fa-regular fa-eye" id="password-icon"></i>
+                        </button>
+                    </div>
                 </div>
                 <button
                     type="submit"

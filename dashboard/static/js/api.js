@@ -60,6 +60,21 @@ async function fetchAPI(endpoint, options = {}) {
 }
 
 function showLoginModal() {
+    // Reset password visibility state
+    const tokenInput = document.getElementById('token-input');
+    const toggleBtn = document.getElementById('toggle-password');
+    const icon = document.getElementById('password-icon');
+    
+    if (tokenInput) tokenInput.type = 'password';
+    if (icon) {
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-label', 'Show password');
+        toggleBtn.setAttribute('aria-pressed', 'false');
+    }
+    
     document.getElementById('login-modal').classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
 }
