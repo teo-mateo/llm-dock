@@ -9,7 +9,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ## Features
 
 - **Model Discovery** - Automatically scans HuggingFace cache and local directories for models
-- **Multi-Engine Support** - llama.cpp for GGUF models, vLLM for safetensors/HuggingFace models
+- **Multi-Engine Support** - llama.cpp for GGUF models, vLLM for .safetensors models
 - **GPU Monitoring** - Real-time nvidia-smi stats in the dashboard
 - **Service Management** - Create, start, stop, restart services via web UI or API
 - **Open WebUI Integration** - Auto-registers services as OpenAI-compatible endpoints
