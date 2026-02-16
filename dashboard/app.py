@@ -35,6 +35,12 @@ def benchmark_page():
     return send_from_directory("static", "benchmark.html")
 
 
+@app.route("/design-preview")
+def design_preview():
+    """Serve the design preview page"""
+    return send_from_directory("static", "design-preview.html")
+
+
 @app.route("/static/<path:path>")
 def serve_static(path):
     """Serve static files"""

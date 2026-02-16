@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Dashboard - List View Design</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background: #111827; }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-running { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-stopped { background: #eab308; }
+        .status-not-created { background: #6b7280; }
+        
+        .table-row {
+            transition: background-color 0.15s;
+        }
+        .table-row:hover {
+            background-color: #1f2937;
+        }
+        
+        .action-btn {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto p-6">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h1 class="text-3xl font-bold">LLM Service Dashboard</h1>
+                    <div class="text-xs text-gray-500 mt-1">llm-dock v1.2.0</div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-700">
+                        <span class="text-xs text-gray-400">API Key:</span>
+                        <span class="text-sm font-mono text-gray-300">sk-abc123...</span>
+                        <button class="text-blue-400 hover:text-blue-300 ml-1">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                    </div>
+                    <button class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-semibold">Logout</button>
+                </div>
+            </div>
+            
+            <!-- GPU Stats Bar -->
+            <div class="flex gap-4 mb-4">
+                <div class="flex-1 bg-gray-800 rounded-lg border border-gray-700 p-4">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-microchip text-green-400 text-xl"></i>
+                            <div>
+                                <div class="font-semibold">NVIDIA RTX 3090</div>
+                                <div class="text-xs text-gray-400">24GB VRAM</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-8 text-sm">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-blue-400">18.2</div>
+                                <div class="text-xs text-gray-500">GB Used</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-green-400">76%</div>
+                                <div class="text-xs text-gray-500">Memory</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-yellow-400">42%</div>
+                                <div class="text-xs text-gray-500">GPU Util</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-red-400">68C</div>
+                                <div class="text-xs text-gray-500">Temp</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Services Section -->
+        <section class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Services</h2>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-gray-400">5 services</span>
+                    <button class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded font-semibold text-sm">
+                        <i class="fa-solid fa-plus mr-2"></i>New Service
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Services Table -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-900 text-xs text-gray-400 uppercase tracking-wider">
+                        <tr>
+                            <th class="px-4 py-3 text-left w-3"></th>
+                            <th class="px-4 py-3 text-left">Service</th>
+                            <th class="px-4 py-3 text-left">Status</th>
+                            <th class="px-4 py-3 text-left">Port</th>
+                            <th class="px-4 py-3 text-left">Open WebUI</th>
+                            <th class="px-4 py-3 text-left">API Key</th>
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <!-- Infrastructure Service -->
+                        <tr class="table-row">
+                            <td class="px-4 py-3"><span class="status-dot status-running"></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-server text-purple-400"></i>
+                                    <span class="font-semibold">open-webui</span>
+                                    <span class="text-xs bg-purple-900 text-purple-300 px-2 py-0.5 rounded">infra</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-green-400 text-sm">running</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-sm">3300</span>
+                            </td>
+                            <td class="px-4 py-3 text-gray-500">-</td>
+                            <td class="px-4 py-3 text-gray-500">-</td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    <a href="#" class="action-btn bg-blue-600 hover:bg-blue-700 text-white" title="Open">
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                                    </a>
+                                    <button class="action-btn bg-orange-600 hover:bg-orange-700 text-white" title="Restart">
+                                        <i class="fa-solid fa-rotate-right text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Logs">
+                                        <i class="fa-solid fa-terminal text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Running Service 1 -->
+                        <tr class="table-row">
+                            <td class="px-4 py-3"><span class="status-dot status-running"></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-cube text-blue-400"></i>
+                                    <span class="font-semibold">llamacpp-qwen2.5-7b</span>
+                                    <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">llama.cpp</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-green-400 text-sm">running</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono text-sm">3301</span>
+                                    <i class="fa-solid fa-globe text-green-400 text-xs" title="Public port"></i>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-green-400 text-sm"><i class="fa-solid fa-check mr-1"></i>Registered</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-1">
+                                    <span class="font-mono text-xs text-gray-400">sk-llm-a1b2...</span>
+                                    <button class="text-blue-400 hover:text-blue-300">
+                                        <i class="fa-solid fa-copy text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    <button class="action-btn bg-red-600 hover:bg-red-700 text-white" title="Stop">
+                                        <i class="fa-solid fa-stop text-xs"></i>
+                                    </button>
+                                    <a href="#" class="action-btn bg-yellow-600 hover:bg-yellow-700 text-white" title="Benchmark">
+                                        <i class="fa-solid fa-gauge-high text-xs"></i>
+                                    </a>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Logs">
+                                        <i class="fa-solid fa-terminal text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Edit">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="YAML">
+                                        <i class="fa-solid fa-code text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Running Service 2 -->
+                        <tr class="table-row">
+                            <td class="px-4 py-3"><span class="status-dot status-running"></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-cube text-green-400"></i>
+                                    <span class="font-semibold">vllm-llama-3.1-8b</span>
+                                    <span class="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded">vllm</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-green-400 text-sm">running</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-sm">3302</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-green-400 text-sm"><i class="fa-solid fa-check mr-1"></i>Registered</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-1">
+                                    <span class="font-mono text-xs text-gray-400">sk-llm-c3d4...</span>
+                                    <button class="text-blue-400 hover:text-blue-300">
+                                        <i class="fa-solid fa-copy text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    <button class="action-btn bg-red-600 hover:bg-red-700 text-white" title="Stop">
+                                        <i class="fa-solid fa-stop text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Logs">
+                                        <i class="fa-solid fa-terminal text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Edit">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="YAML">
+                                        <i class="fa-solid fa-code text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Stopped Service -->
+                        <tr class="table-row opacity-60">
+                            <td class="px-4 py-3"><span class="status-dot status-stopped"></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-cube text-blue-400"></i>
+                                    <span class="font-semibold">llamacpp-mistral-7b</span>
+                                    <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">llama.cpp</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-yellow-400 text-sm">stopped</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-sm">3303</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-gray-500 text-sm"><i class="fa-solid fa-times mr-1"></i>Not registered</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-1">
+                                    <span class="font-mono text-xs text-gray-400">sk-llm-e5f6...</span>
+                                    <button class="text-blue-400 hover:text-blue-300">
+                                        <i class="fa-solid fa-copy text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    <button class="action-btn bg-green-600 hover:bg-green-700 text-white" title="Start">
+                                        <i class="fa-solid fa-play text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Logs">
+                                        <i class="fa-solid fa-terminal text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Edit">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="YAML">
+                                        <i class="fa-solid fa-code text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-red-600 hover:bg-red-700 text-white" title="Delete">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Not Created Service -->
+                        <tr class="table-row opacity-50">
+                            <td class="px-4 py-3"><span class="status-dot status-not-created"></span></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-cube text-blue-400"></i>
+                                    <span class="font-semibold">llamacpp-phi-3</span>
+                                    <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">llama.cpp</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-gray-400 text-sm">not created</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-sm">3304</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-gray-500 text-sm">-</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-gray-500 text-sm">-</span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-1">
+                                    <button class="action-btn bg-green-600 hover:bg-green-700 text-white" title="Create & Start">
+                                        <i class="fa-solid fa-play text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="Edit">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-gray-600 hover:bg-gray-700 text-white" title="YAML">
+                                        <i class="fa-solid fa-code text-xs"></i>
+                                    </button>
+                                    <button class="action-btn bg-red-600 hover:bg-red-700 text-white" title="Delete">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Discovered Models Section -->
+        <section class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Discovered Models</h2>
+                <button class="text-sm text-blue-400 hover:text-blue-300">
+                    <i class="fa-solid fa-rotate mr-1"></i>Refresh
+                </button>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-900 text-xs text-gray-400 uppercase tracking-wider">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Model</th>
+                            <th class="px-4 py-3 text-left">Type</th>
+                            <th class="px-4 py-3 text-left">Size</th>
+                            <th class="px-4 py-3 text-left">Path</th>
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <tr class="table-row">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-file-code text-blue-400"></i>
+                                    <span class="font-mono text-sm">qwen2.5-7b-instruct-q4_k_m.gguf</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">GGUF</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-400">4.7 GB</td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-xs text-gray-500">/hf-cache/hub/.../qwen2.5-7b...</span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <button class="text-sm text-green-400 hover:text-green-300">
+                                    <i class="fa-solid fa-plus mr-1"></i>Create Service
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="table-row">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-file-code text-blue-400"></i>
+                                    <span class="font-mono text-sm">mistral-7b-instruct-v0.3-q4_k_m.gguf</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">GGUF</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-400">4.4 GB</td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-xs text-gray-500">/hf-cache/hub/.../mistral-7b...</span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <button class="text-sm text-green-400 hover:text-green-300">
+                                    <i class="fa-solid fa-plus mr-1"></i>Create Service
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="table-row">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-folder text-green-400"></i>
+                                    <span class="font-mono text-sm">meta-llama/Llama-3.1-8B-Instruct</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded">safetensors</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-400">16.2 GB</td>
+                            <td class="px-4 py-3">
+                                <span class="font-mono text-xs text-gray-500">/hf-cache/hub/models--meta-llama...</span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <button class="text-sm text-green-400 hover:text-green-300">
+                                    <i class="fa-solid fa-plus mr-1"></i>Create Service
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- System Info Section -->
+        <section>
+            <h2 class="text-xl font-bold mb-4">System Information</h2>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <div class="grid grid-cols-4 gap-6 text-sm">
+                    <div>
+                        <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Docker</div>
+                        <div class="font-mono">24.0.7</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">CUDA</div>
+                        <div class="font-mono">12.2</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Host</div>
+                        <div class="font-mono">ubuntu-server</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Uptime</div>
+                        <div class="font-mono">14d 6h 32m</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Design Note -->
+        <div class="mt-8 p-4 bg-gray-800 border border-gray-700 rounded-lg">
+            <div class="text-sm text-gray-400">
+                <strong class="text-gray-300">Design Preview:</strong> This is a static mockup showing a table-based list view alternative to the cards layout. 
+                The design is more compact, shows more information at a glance, and scales better with many services.
+            </div>
+        </div>
+    </div>
+</body>
+</html>
