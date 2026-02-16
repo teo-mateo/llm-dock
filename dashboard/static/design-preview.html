@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM-Dock - Design Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .sidebar-item.active {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, transparent 100%);
+            border-left: 3px solid #3b82f6;
+        }
+        .service-row:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.running { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .status-dot.stopped { background: #eab308; }
+        .status-dot.error { background: #ef4444; }
+        .status-dot.inactive { background: #6b7280; }
+        
+        .gpu-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: #1f2937;
+            overflow: hidden;
+        }
+        .gpu-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        .expandable-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .expandable-content.expanded {
+            max-height: 500px;
+        }
+        
+        .action-btn {
+            @apply px-3 py-1.5 rounded text-sm font-medium transition-all duration-150;
+        }
+        .action-btn-primary {
+            @apply bg-blue-600 hover:bg-blue-500 text-white;
+        }
+        .action-btn-secondary {
+            @apply bg-gray-700 hover:bg-gray-600 text-gray-200;
+        }
+        .action-btn-danger {
+            @apply bg-red-600/20 hover:bg-red-600/30 text-red-400;
+        }
+        .action-btn-success {
+            @apply bg-green-600/20 hover:bg-green-600/30 text-green-400;
+        }
+        
+        .tooltip {
+            position: relative;
+        }
+        .tooltip::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 4px 8px;
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+        }
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        .metric-card {
+            @apply bg-gray-800/50 border border-gray-700/50 rounded-lg p-4;
+        }
+        
+        .nav-badge {
+            @apply ml-auto bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded-full;
+        }
+        
+        input[type="checkbox"] {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #4b5563;
+            border-radius: 4px;
+            background: transparent;
+            cursor: pointer;
+            position: relative;
+        }
+        input[type="checkbox"]:checked {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        input[type="checkbox"]:checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .activity-item {
+            position: relative;
+            padding-left: 24px;
+        }
+        .activity-item::before {
+            content: '';
+            position: absolute;
+            left: 6px;
+            top: 24px;
+            bottom: -8px;
+            width: 1px;
+            background: #374151;
+        }
+        .activity-item:last-child::before {
+            display: none;
+        }
+        .activity-dot {
+            position: absolute;
+            left: 0;
+            top: 6px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #4b5563;
+            background: #1f2937;
+        }
+        .activity-dot.success { border-color: #22c55e; background: #22c55e; }
+        .activity-dot.warning { border-color: #eab308; }
+        .activity-dot.error { border-color: #ef4444; }
+        
+        .chat-panel {
+            width: 400px;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+        .chat-panel.open {
+            transform: translateX(0);
+        }
+        
+        .chat-message {
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .typing-indicator span {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: #6b7280;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-56 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
+            <!-- Logo -->
+            <div class="p-4 border-b border-gray-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-cube text-white text-sm"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">LLM-Dock</h1>
+                        <p class="text-xs text-gray-500">v1.0.0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Navigation -->
+            <nav class="flex-1 py-4">
+                <div class="px-3 mb-2">
+                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Main</span>
+                </div>
+                <a href="#" class="sidebar-item active flex items-center gap-3 px-4 py-2.5 text-gray-200 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-server w-5 text-center"></i>
+                    <span>Services</span>
+                    <span class="nav-badge">5</span>
+                </a>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50" onclick="document.getElementById('chat-panel').classList.add('open')">
+                    <i class="fa-solid fa-message w-5 text-center"></i>
+                    <span>Quick Chat</span>
+                </a>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-gauge-high w-5 text-center"></i>
+                    <span>Benchmarks</span>
+                </a>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-cubes w-5 text-center"></i>
+                    <span>Models</span>
+                    <span class="nav-badge">12</span>
+                </a>
+                
+                <div class="px-3 mt-6 mb-2">
+                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System</span>
+                </div>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-microchip w-5 text-center"></i>
+                    <span>GPU Monitor</span>
+                </a>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-clock-rotate-left w-5 text-center"></i>
+                    <span>Activity</span>
+                </a>
+                <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+                    <i class="fa-solid fa-gear w-5 text-center"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <!-- User section -->
+            <div class="p-4 border-t border-gray-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                        <i class="fa-solid fa-user text-gray-400 text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">Admin</p>
+                        <p class="text-xs text-gray-500">API: sk-xxxx</p>
+                    </div>
+                    <button class="text-gray-500 hover:text-gray-300">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <header class="bg-gray-900/80 border-b border-gray-800 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold">Services</h2>
+                        <p class="text-sm text-gray-500">Manage your LLM inference services</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="document.getElementById('chat-panel').classList.toggle('open')" class="action-btn action-btn-secondary flex items-center gap-2">
+                            <i class="fa-solid fa-message"></i>
+                            <span>Quick Chat</span>
+                        </button>
+                        <div class="relative">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                            <input type="text" placeholder="Search services..." class="bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm w-64 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <button class="action-btn action-btn-primary">
+                            <i class="fa-solid fa-plus mr-2"></i>New Service
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Content Area -->
+            <div class="flex-1 overflow-auto p-6">
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-4 gap-4 mb-6">
+                    <div class="metric-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Running</span>
+                            <i class="fa-solid fa-circle-play text-green-500"></i>
+                        </div>
+                        <p class="text-2xl font-bold">3</p>
+                        <p class="text-xs text-gray-500 mt-1">of 5 services</p>
+                    </div>
+                    <div class="metric-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">GPU Memory</span>
+                            <i class="fa-solid fa-memory text-blue-500"></i>
+                        </div>
+                        <p class="text-2xl font-bold">18.4<span class="text-lg text-gray-500">/24</span> <span class="text-sm font-normal text-gray-500">GB</span></p>
+                        <div class="gpu-bar mt-2">
+                            <div class="gpu-bar-fill bg-gradient-to-r from-blue-500 to-blue-400" style="width: 77%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">GPU Utilization</span>
+                            <i class="fa-solid fa-microchip text-purple-500"></i>
+                        </div>
+                        <p class="text-2xl font-bold">42<span class="text-lg text-gray-500">%</span></p>
+                        <div class="gpu-bar mt-2">
+                            <div class="gpu-bar-fill bg-gradient-to-r from-purple-500 to-purple-400" style="width: 42%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-gray-400 text-sm">Disk Usage</span>
+                            <i class="fa-solid fa-hard-drive text-orange-500"></i>
+                        </div>
+                        <p class="text-2xl font-bold">142<span class="text-lg text-gray-500">/500</span> <span class="text-sm font-normal text-gray-500">GB</span></p>
+                        <div class="gpu-bar mt-2">
+                            <div class="gpu-bar-fill bg-gradient-to-r from-orange-500 to-orange-400" style="width: 28%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Services Table -->
+                <div class="bg-gray-800/30 border border-gray-700/50 rounded-xl overflow-hidden">
+                    <!-- Table Header -->
+                    <div class="flex items-center gap-4 px-4 py-3 bg-gray-800/50 border-b border-gray-700/50 text-sm font-medium text-gray-400">
+                        <input type="checkbox" class="flex-shrink-0">
+                        <div class="flex-1 min-w-0">Service</div>
+                        <div class="w-24 text-center">Status</div>
+                        <div class="w-20 text-center">Port</div>
+                        <div class="w-28 text-center">Engine</div>
+                        <div class="w-32 text-center">Open WebUI</div>
+                        <div class="w-32 text-right">Actions</div>
+                    </div>
+                    
+                    <!-- Service Rows -->
+                    <div class="divide-y divide-gray-700/30">
+                        <!-- Service 1: Running -->
+                        <div class="service-row">
+                            <div class="flex items-center gap-4 px-4 py-3 cursor-pointer" onclick="this.nextElementSibling.classList.toggle('expanded')">
+                                <input type="checkbox" class="flex-shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium">llamacpp-llama-3-8b</span>
+                                        <button class="text-gray-500 hover:text-blue-400" onclick="event.stopPropagation()">
+                                            <i class="fa-solid fa-copy text-xs"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 truncate">Meta-Llama-3-8B-Instruct-Q4_K_M.gguf</p>
+                                </div>
+                                <div class="w-24 text-center">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="status-dot running"></span>
+                                        <span class="text-green-400 text-sm">Running</span>
+                                    </span>
+                                </div>
+                                <div class="w-20 text-center">
+                                    <span class="font-mono text-sm text-gray-300">3301</span>
+                                </div>
+                                <div class="w-28 text-center">
+                                    <span class="px-2 py-1 bg-gray-700 rounded text-xs font-medium text-gray-300">llama.cpp</span>
+                                </div>
+                                <div class="w-32 text-center">
+                                    <span class="text-green-400 text-sm"><i class="fa-solid fa-check mr-1"></i>Registered</span>
+                                </div>
+                                <div class="w-32 text-right flex items-center justify-end gap-1">
+                                    <button class="p-2 hover:bg-gray-700 rounded text-green-400" title="Quick Chat" onclick="document.getElementById('chat-panel').classList.add('open')">
+                                        <i class="fa-solid fa-message"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-red-400" title="Stop">
+                                        <i class="fa-solid fa-stop"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Logs">
+                                        <i class="fa-solid fa-terminal"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-500" title="More">
+                                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Expanded Details -->
+                            <div class="expandable-content expanded bg-gray-900/50">
+                                <div class="px-4 py-3 grid grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                        <span class="text-gray-500">Container ID</span>
+                                        <p class="font-mono text-xs text-gray-400 mt-1">a1b2c3d4e5f6</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500">API Key</span>
+                                        <p class="font-mono text-xs text-gray-400 mt-1">sk-xxxx...xxxx</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500">Memory</span>
+                                        <p class="text-xs text-gray-300 mt-1">6.2 GB VRAM</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500">Uptime</span>
+                                        <p class="text-xs text-gray-300 mt-1">2h 34m</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Service 2: Running -->
+                        <div class="service-row">
+                            <div class="flex items-center gap-4 px-4 py-3 cursor-pointer">
+                                <input type="checkbox" class="flex-shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium">llamacpp-mistral-7b</span>
+                                        <button class="text-gray-500 hover:text-blue-400">
+                                            <i class="fa-solid fa-copy text-xs"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 truncate">mistral-7b-instruct-v0.2.Q4_K_M.gguf</p>
+                                </div>
+                                <div class="w-24 text-center">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="status-dot running"></span>
+                                        <span class="text-green-400 text-sm">Running</span>
+                                    </span>
+                                </div>
+                                <div class="w-20 text-center">
+                                    <span class="font-mono text-sm text-gray-300">3302</span>
+                                </div>
+                                <div class="w-28 text-center">
+                                    <span class="px-2 py-1 bg-gray-700 rounded text-xs font-medium text-gray-300">llama.cpp</span>
+                                </div>
+                                <div class="w-32 text-center">
+                                    <span class="text-green-400 text-sm"><i class="fa-solid fa-check mr-1"></i>Registered</span>
+                                </div>
+                                <div class="w-32 text-right flex items-center justify-end gap-1">
+                                    <button class="p-2 hover:bg-gray-700 rounded text-red-400" title="Stop">
+                                        <i class="fa-solid fa-stop"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Logs">
+                                        <i class="fa-solid fa-terminal"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-500" title="More">
+                                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Service 3: Running -->
+                        <div class="service-row">
+                            <div class="flex items-center gap-4 px-4 py-3 cursor-pointer">
+                                <input type="checkbox" class="flex-shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium">vllm-phi-3-mini</span>
+                                        <button class="text-gray-500 hover:text-blue-400">
+                                            <i class="fa-solid fa-copy text-xs"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 truncate">microsoft/Phi-3-mini-4k-instruct</p>
+                                </div>
+                                <div class="w-24 text-center">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="status-dot running"></span>
+                                        <span class="text-green-400 text-sm">Running</span>
+                                    </span>
+                                </div>
+                                <div class="w-20 text-center">
+                                    <span class="font-mono text-sm text-gray-300">3303</span>
+                                </div>
+                                <div class="w-28 text-center">
+                                    <span class="px-2 py-1 bg-purple-900/50 border border-purple-700 rounded text-xs font-medium text-purple-300">vLLM</span>
+                                </div>
+                                <div class="w-32 text-center">
+                                    <span class="text-gray-500 text-sm">Not registered</span>
+                                </div>
+                                <div class="w-32 text-right flex items-center justify-end gap-1">
+                                    <button class="p-2 hover:bg-gray-700 rounded text-red-400" title="Stop">
+                                        <i class="fa-solid fa-stop"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Logs">
+                                        <i class="fa-solid fa-terminal"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-500" title="More">
+                                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Service 4: Stopped -->
+                        <div class="service-row opacity-60">
+                            <div class="flex items-center gap-4 px-4 py-3 cursor-pointer">
+                                <input type="checkbox" class="flex-shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium">llamacpp-codellama-34b</span>
+                                        <button class="text-gray-500 hover:text-blue-400">
+                                            <i class="fa-solid fa-copy text-xs"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 truncate">codellama-34b-instruct.Q4_K_M.gguf</p>
+                                </div>
+                                <div class="w-24 text-center">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="status-dot stopped"></span>
+                                        <span class="text-yellow-400 text-sm">Stopped</span>
+                                    </span>
+                                </div>
+                                <div class="w-20 text-center">
+                                    <span class="font-mono text-sm text-gray-500">3304</span>
+                                </div>
+                                <div class="w-28 text-center">
+                                    <span class="px-2 py-1 bg-gray-700 rounded text-xs font-medium text-gray-400">llama.cpp</span>
+                                </div>
+                                <div class="w-32 text-center">
+                                    <span class="text-gray-600 text-sm">—</span>
+                                </div>
+                                <div class="w-32 text-right flex items-center justify-end gap-1">
+                                    <button class="p-2 hover:bg-gray-700 rounded text-green-400" title="Start">
+                                        <i class="fa-solid fa-play"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-red-400" title="Delete">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Service 5: Open WebUI -->
+                        <div class="service-row bg-blue-900/10">
+                            <div class="flex items-center gap-4 px-4 py-3 cursor-pointer">
+                                <input type="checkbox" class="flex-shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium">open-webui</span>
+                                        <span class="px-1.5 py-0.5 bg-blue-600/20 text-blue-400 rounded text-xs">Infrastructure</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 truncate">Open WebUI chat interface</p>
+                                </div>
+                                <div class="w-24 text-center">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="status-dot running"></span>
+                                        <span class="text-green-400 text-sm">Running</span>
+                                    </span>
+                                </div>
+                                <div class="w-20 text-center">
+                                    <a href="#" class="font-mono text-sm text-blue-400 hover:text-blue-300">8080 <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i></a>
+                                </div>
+                                <div class="w-28 text-center">
+                                    <span class="px-2 py-1 bg-blue-900/50 border border-blue-700 rounded text-xs font-medium text-blue-300">WebUI</span>
+                                </div>
+                                <div class="w-32 text-center">
+                                    <span class="text-gray-600 text-sm">—</span>
+                                </div>
+                                <div class="w-32 text-right flex items-center justify-end gap-1">
+                                    <a href="#" class="p-2 hover:bg-gray-700 rounded text-blue-400" title="Open">
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                    </a>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-orange-400" title="Restart">
+                                        <i class="fa-solid fa-rotate-right"></i>
+                                    </button>
+                                    <button class="p-2 hover:bg-gray-700 rounded text-gray-400" title="Logs">
+                                        <i class="fa-solid fa-terminal"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bottom section: Activity & Quick Deploy -->
+                <div class="grid grid-cols-3 gap-6 mt-6">
+                    <!-- Recent Activity -->
+                    <div class="col-span-2 bg-gray-800/30 border border-gray-700/50 rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-gray-200">Recent Activity</h3>
+                            <a href="#" class="text-sm text-blue-400 hover:text-blue-300">View all</a>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="activity-item">
+                                <div class="activity-dot success"></div>
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-200">llamacpp-llama-3-8b</span> <span class="text-gray-500">started successfully</span></p>
+                                        <p class="text-xs text-gray-600 mt-0.5">Port 3301 · 6.2GB VRAM allocated</p>
+                                    </div>
+                                    <span class="text-xs text-gray-500">2m ago</span>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-dot success"></div>
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-200">llamacpp-llama-3-8b</span> <span class="text-gray-500">registered with Open WebUI</span></p>
+                                    </div>
+                                    <span class="text-xs text-gray-500">3m ago</span>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-dot warning"></div>
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-200">llamacpp-codellama-34b</span> <span class="text-gray-500">stopped (exit code 0)</span></p>
+                                    </div>
+                                    <span class="text-xs text-gray-500">15m ago</span>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-dot error"></div>
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-200">vllm-large-model</span> <span class="text-red-400">crashed (OOM)</span></p>
+                                        <p class="text-xs text-gray-600 mt-0.5">Exit code 137</p>
+                                    </div>
+                                    <span class="text-xs text-gray-500">1h ago</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Deploy -->
+                    <div class="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4">
+                        <h3 class="font-semibold text-gray-200 mb-4">Quick Deploy</h3>
+                        <div class="space-y-3">
+                            <button class="w-full flex items-center gap-3 p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition-colors text-left">
+                                <div class="w-10 h-10 bg-orange-900/50 rounded-lg flex items-center justify-center">
+                                    <i class="fa-solid fa-fire text-orange-400"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium">Llama 3 8B</p>
+                                    <p class="text-xs text-gray-500">Q4_K_M · 4.9 GB</p>
+                                </div>
+                            </button>
+                            <button class="w-full flex items-center gap-3 p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition-colors text-left">
+                                <div class="w-10 h-10 bg-purple-900/50 rounded-lg flex items-center justify-center">
+                                    <i class="fa-solid fa-wind text-purple-400"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium">Mistral 7B</p>
+                                    <p class="text-xs text-gray-500">Q4_K_M · 4.1 GB</p>
+                                </div>
+                            </button>
+                            <button class="w-full flex items-center gap-3 p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition-colors text-left">
+                                <div class="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center">
+                                    <i class="fa-solid fa-code text-blue-400"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium">CodeLlama 7B</p>
+                                    <p class="text-xs text-gray-500">Q4_K_M · 3.8 GB</p>
+                                </div>
+                            </button>
+                            <button class="w-full text-center text-sm text-gray-400 hover:text-gray-300 py-2">
+                                <i class="fa-solid fa-folder-open mr-1"></i> Browse all models
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Quick Chat Panel -->
+    <div id="chat-panel" class="chat-panel fixed top-0 right-0 h-full bg-gray-900 border-l border-gray-800 flex flex-col z-50 shadow-2xl">
+        <!-- Chat Header -->
+        <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-message text-white text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold">Quick Chat</h3>
+                    <p class="text-xs text-gray-500">Test your models</p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('chat-panel').classList.remove('open')" class="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        
+        <!-- Service Selector -->
+        <div class="p-4 border-b border-gray-800">
+            <label class="text-xs text-gray-500 mb-2 block">Select Service</label>
+            <select class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                <option>llamacpp-llama-3-8b (3301)</option>
+                <option>llamacpp-mistral-7b (3302)</option>
+                <option>vllm-phi-3-mini (3303)</option>
+            </select>
+            
+            <!-- Quick Settings -->
+            <div class="flex items-center gap-4 mt-3">
+                <div class="flex-1">
+                    <label class="text-xs text-gray-500 block mb-1">Temperature</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="0" max="2" step="0.1" value="0.7" class="flex-1 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span class="text-xs text-gray-400 w-8">0.7</span>
+                    </div>
+                </div>
+                <div class="w-24">
+                    <label class="text-xs text-gray-500 block mb-1">Max Tokens</label>
+                    <input type="number" value="512" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chat Messages -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            <!-- User Message -->
+            <div class="chat-message flex justify-end">
+                <div class="max-w-[85%] bg-blue-600 rounded-2xl rounded-br-md px-4 py-2.5">
+                    <p class="text-sm">What's the capital of France?</p>
+                </div>
+            </div>
+            
+            <!-- Assistant Message -->
+            <div class="chat-message flex justify-start">
+                <div class="max-w-[85%]">
+                    <div class="flex items-center gap-2 mb-1">
+                        <div class="w-5 h-5 bg-gradient-to-br from-green-500 to-emerald-600 rounded flex items-center justify-center">
+                            <i class="fa-solid fa-robot text-white text-xs"></i>
+                        </div>
+                        <span class="text-xs text-gray-500">llamacpp-llama-3-8b</span>
+                    </div>
+                    <div class="bg-gray-800 rounded-2xl rounded-bl-md px-4 py-2.5">
+                        <p class="text-sm text-gray-200">The capital of France is <strong>Paris</strong>. It's the country's largest city and a major European hub for art, fashion, and culture.</p>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">142 tokens · 1.2s</p>
+                </div>
+            </div>
+            
+            <!-- User Message -->
+            <div class="chat-message flex justify-end">
+                <div class="max-w-[85%] bg-blue-600 rounded-2xl rounded-br-md px-4 py-2.5">
+                    <p class="text-sm">Write a quick Python function to reverse a string</p>
+                </div>
+            </div>
+            
+            <!-- Assistant Message with Code -->
+            <div class="chat-message flex justify-start">
+                <div class="max-w-[85%]">
+                    <div class="flex items-center gap-2 mb-1">
+                        <div class="w-5 h-5 bg-gradient-to-br from-green-500 to-emerald-600 rounded flex items-center justify-center">
+                            <i class="fa-solid fa-robot text-white text-xs"></i>
+                        </div>
+                        <span class="text-xs text-gray-500">llamacpp-llama-3-8b</span>
+                    </div>
+                    <div class="bg-gray-800 rounded-2xl rounded-bl-md px-4 py-2.5">
+                        <p class="text-sm text-gray-200 mb-2">Here's a simple function:</p>
+                        <div class="bg-gray-900 rounded-lg p-3 font-mono text-xs overflow-x-auto">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-gray-500">python</span>
+                                <button class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                            <pre class="text-green-400">def reverse_string(s):
+    return s[::-1]
+
+# Usage
+result = reverse_string("hello")
+print(result)  # "olleh"</pre>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">89 tokens · 0.8s</p>
+                </div>
+            </div>
+            
+            <!-- Typing Indicator -->
+            <div class="chat-message flex justify-start">
+                <div class="bg-gray-800 rounded-2xl px-4 py-3">
+                    <div class="typing-indicator flex gap-1">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chat Input -->
+        <div class="p-4 border-t border-gray-800">
+            <div class="flex items-end gap-2">
+                <div class="flex-1 relative">
+                    <textarea 
+                        rows="1" 
+                        placeholder="Type a message..." 
+                        class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-10 text-sm resize-none focus:outline-none focus:border-blue-500"
+                    ></textarea>
+                    <button class="absolute right-2 bottom-2.5 p-1.5 text-gray-500 hover:text-gray-300">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </button>
+                </div>
+                <button class="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+            <p class="text-xs text-gray-600 mt-2 text-center">Press Enter to send · Shift+Enter for new line</p>
+        </div>
+        
+        <!-- Chat Footer Stats -->
+        <div class="px-4 py-2 bg-gray-800/50 border-t border-gray-800 flex items-center justify-between text-xs text-gray-500">
+            <span><i class="fa-solid fa-clock mr-1"></i> Total: 231 tokens · 2.0s</span>
+            <button class="text-gray-400 hover:text-gray-200"><i class="fa-solid fa-trash-can mr-1"></i> Clear</button>
+        </div>
+    </div>
+    
+    <!-- Optional: Floating Action Bar (shown when items selected) -->
+    <div id="action-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl px-4 py-3 flex items-center gap-4 hidden">
+        <span class="text-sm text-gray-400"><span class="text-white font-medium">2</span> services selected</span>
+        <div class="w-px h-6 bg-gray-700"></div>
+        <button class="action-btn action-btn-success"><i class="fa-solid fa-play mr-1"></i> Start all</button>
+        <button class="action-btn action-btn-danger"><i class="fa-solid fa-stop mr-1"></i> Stop all</button>
+        <button class="action-btn action-btn-secondary"><i class="fa-solid fa-trash mr-1"></i> Delete</button>
+    </div>
+    
+    <script>
+        // Simple demo: show action bar when checkboxes are checked
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const checked = document.querySelectorAll('tbody input[type="checkbox"]:checked').length;
+                const actionBar = document.getElementById('action-bar');
+                if (checked > 0) {
+                    actionBar.classList.remove('hidden');
+                    actionBar.querySelector('span span').textContent = checked;
+                } else {
+                    actionBar.classList.add('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
