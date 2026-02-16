@@ -1,4 +1,3 @@
-import json
 import logging
 import subprocess
 from datetime import datetime
@@ -8,12 +7,7 @@ from auth import require_auth
 from config import COMPOSE_FILE, GLOBAL_API_KEY
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service
-from model_discovery import discover_all_models
-from service_templates import (
-    generate_service_name,
-    validate_model_compatibility,
-    generate_api_key,
-)
+from service_templates import generate_api_key
 from flag_metadata import (
     generate_service_name as gen_service_name,
     validate_service_config,
@@ -29,6 +23,34 @@ from openwebui_integration import (
 logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
+
+
+def _recreate_if_running(service_name):
+    """Recreate the container if it was running. Returns restart status dict."""
+    container = get_service_container(service_name)
+    if not container or container.status != "running":
+        return {"restarted": False}
+
+    result = subprocess.run(
+        [
+            "docker", "compose", "-f", COMPOSE_FILE,
+            "up", "-d", "--force-recreate", service_name,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        logger.warning(f"Failed to restart {service_name}: {result.stderr}")
+        return {"restarted": False, "error": result.stderr}
+    logger.info(f"Restarted service: {service_name}")
+    return {"restarted": True}
+
+
+def _rebuild_and_restart(compose_mgr, service_name):
+    """Rebuild docker-compose.yml and recreate the container if it was running."""
+    compose_mgr.rebuild_compose_file()
+    return _recreate_if_running(service_name)
 
 
 # ============================================
@@ -52,14 +74,7 @@ def list_services():
         )
     except Exception as e:
         logger.error(f"Failed to get services: {e}")
-        return jsonify(
-            {
-                "error": {
-                    "code": "DOCKER_ERROR",
-                    "message": "Failed to retrieve service information",
-                }
-            }
-        ), 500
+        return jsonify({"error": "Failed to retrieve service information"}), 500
 
 
 @services_bp.route("/api/services/<service_name>", methods=["GET"])
@@ -127,14 +142,7 @@ def preview_service(service_name):
         services_db = manager._load_services_db()
 
         if service_name not in services_db:
-            return jsonify(
-                {
-                    "error": {
-                        "code": "SERVICE_NOT_FOUND",
-                        "message": f"Service {service_name} not found in database",
-                    }
-                }
-            ), 404
+            return jsonify({"error": f"Service {service_name} not found in database"}), 404
 
         config = services_db[service_name]
         yaml_content = manager._render_service(service_name, config)
@@ -143,7 +151,7 @@ def preview_service(service_name):
 
     except Exception as e:
         logger.error(f"Failed to preview service {service_name}: {e}")
-        return jsonify({"error": {"code": "PREVIEW_ERROR", "message": str(e)}}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 @services_bp.route("/api/services/<service_name>/logs", methods=["GET"])
@@ -154,14 +162,7 @@ def get_service_logs(service_name):
         container = get_service_container(service_name)
 
         if not container:
-            return jsonify(
-                {
-                    "error": {
-                        "code": "SERVICE_NOT_FOUND",
-                        "message": "Service has not been created yet",
-                    }
-                }
-            ), 404
+            return jsonify({"error": "Service has not been created yet"}), 404
 
         # Get tail parameter (default 100 lines)
         tail = request.args.get("tail", default=100, type=int)
@@ -180,14 +181,7 @@ def get_service_logs(service_name):
 
     except Exception as e:
         logger.error(f"Failed to get logs for service {service_name}: {e}")
-        return jsonify(
-            {
-                "error": {
-                    "code": "LOGS_ERROR",
-                    "message": f"Failed to retrieve logs: {str(e)}",
-                }
-            }
-        ), 500
+        return jsonify({"error": f"Failed to retrieve logs: {str(e)}"}), 500
 
 
 # ============================================
@@ -195,241 +189,9 @@ def get_service_logs(service_name):
 # ============================================
 
 
-@services_bp.route("/api/services/create", methods=["POST"])
-@require_auth
-def create_service():
-    """Create a new service in docker-compose.yml (legacy endpoint)"""
-    try:
-        data = request.get_json()
-
-        logger.info(f"=== CREATE SERVICE REQUEST ===")
-        logger.info(f"Request from: {request.remote_addr}")
-        logger.info(f"Request data: {json.dumps(data, indent=2) if data else 'None'}")
-
-        if not data:
-            logger.error("Request body is empty")
-            return jsonify(
-                {
-                    "error": {
-                        "code": "INVALID_REQUEST",
-                        "message": "Request body is required",
-                    }
-                }
-            ), 400
-
-        # Extract required fields
-        engine = data.get("engine")
-        model_data = data.get("model_data")
-        options = data.get("options", {})
-
-        logger.info(f"Engine: {engine}")
-        logger.info(
-            f"Model data: {json.dumps(model_data, indent=2) if model_data else 'None'}"
-        )
-        logger.info(f"Options: {json.dumps(options, indent=2)}")
-
-        # Validate required fields
-        if not engine:
-            logger.error("Engine not provided in request")
-            return jsonify(
-                {
-                    "error": {
-                        "code": "MISSING_ENGINE",
-                        "message": "Engine type is required (llamacpp or vllm)",
-                    }
-                }
-            ), 400
-
-        if engine not in ["llamacpp", "vllm"]:
-            logger.error(f"Invalid engine: {engine}")
-            return jsonify(
-                {
-                    "error": {
-                        "code": "INVALID_ENGINE",
-                        "message": f"Invalid engine: {engine}. Must be llamacpp or vllm",
-                    }
-                }
-            ), 400
-
-        if not model_data:
-            logger.error("Model data not provided in request")
-            return jsonify(
-                {
-                    "error": {
-                        "code": "MISSING_MODEL_DATA",
-                        "message": "Model data is required",
-                    }
-                }
-            ), 400
-
-        # Validate model compatibility with engine
-        logger.info(
-            f"Validating model compatibility: {model_data.get('name')} with {engine}"
-        )
-        compatible, error_msg = validate_model_compatibility(model_data, engine)
-        if not compatible:
-            logger.error(f"Model compatibility check failed: {error_msg}")
-            return jsonify(
-                {"error": {"code": "INCOMPATIBLE_MODEL", "message": error_msg}}
-            ), 400
-
-        logger.info(f"Model compatibility check passed")
-
-        # Initialize compose manager
-        logger.info("Initializing compose manager...")
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Auto-generate service name if not provided
-        service_name = options.get("service_name")
-        if not service_name:
-            logger.info(f"Auto-generating service name for {model_data['name']}")
-            service_name = generate_service_name(
-                model_data["name"], engine, model_data.get("quantization")
-            )
-            options["service_name"] = service_name
-            logger.info(f"Generated service name: {service_name}")
-        else:
-            logger.info(f"Using provided service name: {service_name}")
-
-        # Validate service name
-        logger.info(f"Validating service name: {service_name}")
-        valid, error_msg = compose_mgr.validate_service_name(service_name)
-        if not valid:
-            logger.error(f"Service name validation failed: {error_msg}")
-            return jsonify(
-                {"error": {"code": "INVALID_SERVICE_NAME", "message": error_msg}}
-            ), 400
-        logger.info(f"Service name validation passed")
-
-        # Auto-assign port if not provided
-        port = options.get("port")
-        if not port:
-            logger.info("Port not provided, auto-assigning...")
-            port = compose_mgr.get_next_available_port()
-            options["port"] = port
-            logger.info(f"Auto-assigned port: {port}")
-        else:
-            # Validate provided port
-            logger.info(f"Validating provided port: {port}")
-            valid, error_msg = compose_mgr.validate_port(port)
-            if not valid:
-                logger.error(f"Port validation failed: {error_msg}")
-                return jsonify(
-                    {"error": {"code": "INVALID_PORT", "message": error_msg}}
-                ), 400
-            logger.info(f"Port validation passed")
-
-        # Generate API key if not provided
-        api_key = options.get("api_key") or generate_api_key()
-        logger.info(f"API Key: {api_key[:10]}...")
-
-        # Prepare service configuration for database (NOT docker-compose dict)
-        service_config = {
-            "template_type": engine,  # 'llamacpp' or 'vllm'
-            "port": port,
-            "alias": options.get("alias", service_name),
-            "api_key": api_key,
-        }
-
-        # Add engine-specific required fields
-        if engine == "llamacpp":
-            if not options.get("model_path"):
-                logger.error("model_path not provided for llamacpp service")
-                return jsonify(
-                    {
-                        "error": {
-                            "code": "MISSING_MODEL_PATH",
-                            "message": "model_path is required for llama.cpp services",
-                        }
-                    }
-                ), 400
-
-            service_config["model_path"] = options["model_path"]
-            logger.info(f"Model path: {service_config['model_path']}")
-            if options.get("mmproj_path"):
-                service_config["mmproj_path"] = options["mmproj_path"]
-                logger.info(f"MMPROJ path: {service_config['mmproj_path']}")
-
-        else:  # vllm
-            model_name = options.get("model_name", model_data["name"])
-            service_config["model_name"] = model_name
-            logger.info(f"vLLM model name: {model_name}")
-
-        # Add all optional flags from options
-        skip_fields = {
-            "service_name",
-            "port",
-            "alias",
-            "api_key",
-            "model_path",
-            "model_name",
-            "mmproj_path",
-        }
-        # Convert all values to strings since flag_metadata.py expects strings
-        optional_flags = {
-            k: str(v)
-            for k, v in options.items()
-            if k not in skip_fields and v is not None
-        }
-
-        if optional_flags:
-            service_config["optional_flags"] = optional_flags
-            logger.info(f"Optional flags: {json.dumps(optional_flags, indent=2)}")
-
-        logger.info(f"Final service config: {json.dumps(service_config, indent=2)}")
-
-        # Add service to database
-        logger.info(f"Adding service '{service_name}' to database...")
-        try:
-            compose_mgr.add_service_to_db(service_name, service_config)
-            logger.info(f"Service '{service_name}' added to database successfully")
-        except Exception as e:
-            logger.error(f"Failed to add service to database: {str(e)}", exc_info=True)
-            raise
-
-        # Rebuild docker-compose.yml from database (uses Jinja templates)
-        logger.info(f"Rebuilding docker-compose.yml...")
-        try:
-            compose_mgr.rebuild_compose_file()
-            logger.info(f"docker-compose.yml rebuilt successfully")
-        except Exception as e:
-            logger.error(
-                f"Failed to rebuild docker-compose.yml: {str(e)}", exc_info=True
-            )
-            raise
-
-        logger.info(f"Service created: {service_name} on port {port}")
-
-        return jsonify(
-            {
-                "success": True,
-                "service_name": service_name,
-                "port": port,
-                "api_key": api_key,
-                "message": f"Service '{service_name}' created successfully. Start it to begin using.",
-            }
-        ), 201
-
-    except ValueError as e:
-        logger.error(f"Validation error creating service: {e}", exc_info=True)
-        return jsonify({"error": {"code": "VALIDATION_ERROR", "message": str(e)}}), 400
-
-    except Exception as e:
-        logger.error(f"Failed to create service: {e}", exc_info=True)
-        logger.error(f"=== SERVICE CREATION FAILED ===")
-        return jsonify(
-            {
-                "error": {
-                    "code": "SERVICE_CREATION_ERROR",
-                    "message": f"Failed to create service: {str(e)}",
-                }
-            }
-        ), 500
-
-
 @services_bp.route("/api/services", methods=["POST"])
 @require_auth
-def create_service_v2():
+def create_service():
     """
     Create a new service in services database and rebuild compose file.
 
@@ -448,91 +210,44 @@ def create_service_v2():
     }
     """
     try:
-        logger.info(f"=== CREATE SERVICE V2 REQUEST ===")
         data = request.get_json()
-
         if not data:
-            logger.error("Request body is empty")
             return jsonify({"error": "Request body is required"}), 400
-
-        logger.info(f"Request data: {json.dumps(data, indent=2)}")
 
         template_type = data.get("template_type")
         if not template_type:
-            logger.error("template_type not provided")
             return jsonify({"error": "template_type is required"}), 400
-
         if template_type not in ["llamacpp", "vllm"]:
-            logger.error(f"Invalid template_type: {template_type}")
             return jsonify({"error": 'template_type must be "llamacpp" or "vllm"'}), 400
 
         # Auto-generate API key if not provided
-        if "api_key" not in data or not data["api_key"]:
+        if not data.get("api_key"):
             data["api_key"] = generate_api_key()
-            logger.info(f"Auto-generated API key: {data['api_key'][:10]}...")
 
         # Validate configuration
-        logger.info(f"Validating configuration for {template_type}")
         valid, errors = validate_service_config(template_type, data)
         if not valid:
-            logger.error(f"Validation failed: {errors}")
             return jsonify({"error": "Validation failed", "details": errors}), 400
 
-        logger.info(f"Configuration validation passed")
-
         # Generate service name from alias
-        alias = data.get("alias")
-        service_name = gen_service_name(template_type, alias)
-        logger.info(f"Generated service name: {service_name}")
+        service_name = gen_service_name(template_type, data.get("alias"))
 
-        # Initialize compose manager
-        logger.info(f"Initializing compose manager...")
         compose_mgr = ComposeManager(COMPOSE_FILE)
 
         # Check if service already exists
-        logger.info(f"Checking if service '{service_name}' already exists...")
-        existing_service = compose_mgr.get_service_from_db(service_name)
-        if existing_service:
-            logger.error(f"Service '{service_name}' already exists in database")
+        if compose_mgr.get_service_from_db(service_name):
             return jsonify({"error": f'Service "{service_name}" already exists'}), 409
 
         # Check port availability
-        logger.info(f"Checking port availability...")
-        used_ports = compose_mgr.get_used_ports()
-        logger.info(f"Used ports: {used_ports}")
         port = int(data["port"])
-        logger.info(f"Requested port: {port}")
-        if port in used_ports:
-            logger.error(f"Port {port} is already in use")
+        if port in compose_mgr.get_used_ports():
             return jsonify({"error": f"Port {port} is already in use"}), 409
 
-        logger.info(f"Port {port} is available")
+        # Add to database and rebuild
+        compose_mgr.add_service_to_db(service_name, data)
+        compose_mgr.rebuild_compose_file()
 
-        # Add to database
-        logger.info(
-            f"Adding service '{service_name}' to database with data: {json.dumps(data, indent=2)}"
-        )
-        try:
-            compose_mgr.add_service_to_db(service_name, data)
-            logger.info(f"Service added to database successfully")
-        except Exception as e:
-            logger.error(f"Failed to add service to database: {str(e)}", exc_info=True)
-            raise
-
-        # Rebuild compose file
-        logger.info(f"Rebuilding docker-compose.yml...")
-        try:
-            compose_mgr.rebuild_compose_file()
-            logger.info(f"docker-compose.yml rebuilt successfully")
-        except Exception as e:
-            logger.error(
-                f"Failed to rebuild docker-compose.yml: {str(e)}", exc_info=True
-            )
-            raise
-
-        logger.info(
-            f"=== SERVICE CREATED SUCCESSFULLY: {service_name} on port {port} ==="
-        )
+        logger.info(f"Service created: {service_name} on port {port}")
 
         return jsonify(
             {
@@ -545,7 +260,6 @@ def create_service_v2():
         ), 201
 
     except Exception as e:
-        logger.error(f"=== SERVICE CREATION FAILED ===")
         logger.error(f"Failed to create service: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
@@ -633,9 +347,6 @@ def delete_service(service_name):
         service_config = compose_mgr.get_service_from_db(service_name)
         if not service_config:
             return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Get engine type before deletion
-        engine = service_config.get("template_type", "llamacpp")
 
         # Stop and remove container if running
         try:
@@ -813,7 +524,6 @@ def set_public_port(service_name):
     If another service is using 3301, reassign it to a random 33XX port.
     """
     try:
-        logger.info(f"=== SET PUBLIC PORT REQUEST for {service_name} ===")
         compose_mgr = ComposeManager(COMPOSE_FILE)
 
         # Check if service exists
@@ -851,10 +561,6 @@ def set_public_port(service_name):
             new_port = compose_mgr.get_next_available_port(
                 start_port=3300, end_port=3399
             )
-            logger.info(
-                f"Reassigning {conflicting_service_name} from port 3301 to {new_port}"
-            )
-
             conflicting_service["port"] = new_port
             compose_mgr.update_service_in_db(
                 conflicting_service_name, conflicting_service
@@ -869,7 +575,6 @@ def set_public_port(service_name):
             )
 
         # Set requested service to 3301
-        logger.info(f"Setting {service_name} from port {current_port} to 3301")
         service_config["port"] = 3301
         compose_mgr.update_service_in_db(service_name, service_config)
 
@@ -877,51 +582,21 @@ def set_public_port(service_name):
             {"service": service_name, "old_port": current_port, "new_port": 3301}
         )
 
-        # Rebuild compose file
-        logger.info("Rebuilding docker-compose.yml...")
+        # Rebuild compose file and restart affected services
         compose_mgr.rebuild_compose_file()
 
-        # Restart affected services
         services_to_restart = [service_name]
         if conflicting_service_name:
             services_to_restart.append(conflicting_service_name)
 
         restart_results = []
         for svc in services_to_restart:
-            container = get_service_container(svc)
-            if container and container.status == "running":
-                try:
-                    result = subprocess.run(
-                        [
-                            "docker",
-                            "compose",
-                            "-f",
-                            COMPOSE_FILE,
-                            "up",
-                            "-d",
-                            "--force-recreate",
-                            svc,
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                    )
-
-                    if result.returncode == 0:
-                        restart_results.append({"service": svc, "restarted": True})
-                        logger.info(f"Restarted service: {svc}")
-                    else:
-                        restart_results.append(
-                            {"service": svc, "restarted": False, "error": result.stderr}
-                        )
-                        logger.warning(f"Failed to restart {svc}: {result.stderr}")
-                except Exception as e:
-                    restart_results.append(
-                        {"service": svc, "restarted": False, "error": str(e)}
-                    )
-                    logger.error(f"Failed to restart {svc}: {e}")
-
-        logger.info(f"=== PUBLIC PORT SET SUCCESSFULLY ===")
+            try:
+                restart_results.append({"service": svc, **_recreate_if_running(svc)})
+            except Exception as e:
+                restart_results.append(
+                    {"service": svc, "restarted": False, "error": str(e)}
+                )
 
         return jsonify(
             {
@@ -971,10 +646,7 @@ def set_service_global_api_key(service_name):
     The global API key is read from .env file, not received in the request.
     """
     try:
-        logger.info(f"=== SET GLOBAL API KEY REQUEST for {service_name} ===")
-
         if not GLOBAL_API_KEY:
-            logger.error("Global API key not configured in environment")
             return jsonify(
                 {
                     "success": False,
@@ -984,43 +656,15 @@ def set_service_global_api_key(service_name):
 
         compose_mgr = ComposeManager(COMPOSE_FILE)
 
-        # Check if service exists
         service_config = compose_mgr.get_service_from_db(service_name)
         if not service_config:
             return jsonify({"error": f'Service "{service_name}" not found'}), 404
 
-        # Update the API key with global API key
         old_api_key = service_config.get("api_key", "")
         service_config["api_key"] = GLOBAL_API_KEY
-
-        # Update in database
         compose_mgr.update_service_in_db(service_name, service_config)
 
-        # Rebuild compose file
-        compose_mgr.rebuild_compose_file()
-
-        # Restart container if running
-        container = get_service_container(service_name)
-        if container and container.status == "running":
-            try:
-                subprocess.run(
-                    [
-                        "docker",
-                        "compose",
-                        "-f",
-                        COMPOSE_FILE,
-                        "up",
-                        "-d",
-                        "--force-recreate",
-                        service_name,
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                logger.info(f"Restarted service {service_name} after API key update")
-            except Exception as e:
-                logger.warning(f"Failed to restart service {service_name}: {e}")
+        _rebuild_and_restart(compose_mgr, service_name)
 
         logger.info(f"Service '{service_name}' API key updated to global API key")
 

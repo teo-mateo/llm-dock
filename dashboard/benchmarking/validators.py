@@ -26,9 +26,15 @@ def validate_flag_name(flag: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
+UNSAFE_VALUE_PATTERN = re.compile(r"[;|`$\n]")
+
+
 def validate_flag_value(value: str) -> Tuple[bool, Optional[str]]:
     if len(value) > 1024:
         return False, "Value too long (max 1024 characters)"
+
+    if UNSAFE_VALUE_PATTERN.search(value):
+        return False, "Unsafe characters in value"
 
     return True, None
 

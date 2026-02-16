@@ -145,6 +145,8 @@ class TestExecuteBenchmark:
         mock_results = json.dumps([
             {
                 "test": "pp512",
+                "n_prompt": 512,
+                "n_gen": 0,
                 "avg_ts": 1200.5,
                 "stddev_ts": 10.2,
                 "build_commit": "abc123",
@@ -156,6 +158,8 @@ class TestExecuteBenchmark:
             },
             {
                 "test": "tg128",
+                "n_prompt": 0,
+                "n_gen": 128,
                 "avg_ts": 85.3,
                 "stddev_ts": 2.1,
             },

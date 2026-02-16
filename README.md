@@ -203,51 +203,6 @@ The dashboard automatically scans:
 
 To add custom paths, modify `model_discovery.py`.
 
-## API Reference
-
-All endpoints (except `/api/health`) require Bearer token authentication:
-
-```bash
-curl -H "Authorization: Bearer YOUR_PASSWORD" http://localhost:3399/api/services
-```
-
-### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check (no auth) |
-| `/api/gpu` | GET | GPU statistics |
-| `/api/system/info` | GET | System info + discovered models |
-| `/api/services` | GET | List all services |
-| `/api/services/<name>/start` | POST | Start a service |
-| `/api/services/<name>/stop` | POST | Stop a service |
-| `/api/services/<name>/restart` | POST | Restart a service |
-| `/api/services/<name>/logs` | GET | Get service logs |
-| `/api/services/create` | POST | Create a new service |
-| `/api/v2/services/<name>` | GET | Get service config |
-| `/api/v2/services/<name>` | PUT | Update service |
-| `/api/v2/services/<name>` | DELETE | Delete service |
-| `/api/v2/flag-metadata/<type>` | GET | Get engine flags |
-
-### Creating a Service
-
-```bash
-curl -X POST http://localhost:3399/api/v2/services \
-  -H "Authorization: Bearer YOUR_PASSWORD" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "template_type": "llamacpp",
-    "port": 3301,
-    "model_path": "/hf-cache/hub/.../model.gguf",
-    "alias": "qwen2.5-7b",
-    "params": {
-      "-c": "32000",
-      "-ngl": "99",
-      "-fa": "1"
-    }
-  }'
-```
-
 ## Supported Engines
 
 ### llama.cpp
