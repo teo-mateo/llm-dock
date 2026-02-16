@@ -2,9 +2,7 @@ import logging
 import secrets
 from datetime import datetime
 from functools import wraps
-from flask import jsonify, request
-
-from config import DASHBOARD_TOKEN
+from flask import current_app, jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +42,10 @@ def require_auth(f):
 
         token = auth_header[7:]  # Remove 'Bearer ' prefix
 
+        dashboard_token = current_app.config["DASHBOARD_TOKEN"]
+
         # Constant-time comparison to prevent timing attacks
-        if not secrets.compare_digest(token, DASHBOARD_TOKEN):
+        if not secrets.compare_digest(token, dashboard_token):
             logger.warning(f"Invalid token attempt from {request.remote_addr}")
             return jsonify(
                 {

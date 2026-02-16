@@ -23,7 +23,7 @@ def _auth_headers():
 
 @pytest.fixture
 def simple_client(tmp_path):
-    """Create a test client using the real app with auth header."""
+    """Create a test client using the app factory."""
     compose_content = """services:
   # <<<<<<< BEGIN DYNAMIC
   # >>>>>>> END DYNAMIC
@@ -61,25 +61,18 @@ networks:
 
     db_path = str(tmp_path / "test_benchmarks.db")
 
-    # Use the real app but point COMPOSE_FILE at our temp compose
-    os.environ["COMPOSE_FILE"] = str(compose_path)
+    from app import create_app
 
-    # Reimport to get fresh app with correct settings
-    import importlib
-    import app as app_module
-    importlib.reload(app_module)
+    app = create_app(config={
+        "TESTING": True,
+        "COMPOSE_FILE": str(compose_path),
+        "BENCHMARK_DB_PATH": db_path,
+        "DASHBOARD_TOKEN": TEST_TOKEN,
+    })
 
-    # Now override the routes module state AFTER reload (reload calls init_benchmarking)
-    from benchmarking.db import BenchmarkDB
-    from benchmarking.executor import BenchmarkExecutor
-    from benchmarking import routes as routes_mod
-
-    test_db = BenchmarkDB(db_path)
-    routes_mod._db = test_db
-    routes_mod._executor = BenchmarkExecutor(test_db, str(compose_path))
-    routes_mod._compose_file = str(compose_path)
-
+    # Override _get_compose_manager to use test services.json
     from compose_manager import ComposeManager
+    from benchmarking import routes as routes_mod
 
     original_get_cm = routes_mod._get_compose_manager
 
@@ -88,8 +81,8 @@ networks:
 
     routes_mod._get_compose_manager = mock_get_compose_manager
 
-    app_module.app.config["TESTING"] = True
-    client = app_module.app.test_client()
+    test_db = app.config["BENCHMARK_DB"]
+    client = app.test_client()
 
     yield client, test_db, services_path
 
