@@ -63,6 +63,9 @@ Thumbs.db
 *.onnx
 *.msgpack
 
+# Databases
+*.db
+
 # Testing
 .pytest_cache/
 .coverage
