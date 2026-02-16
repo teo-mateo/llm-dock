@@ -1,6 +1,6 @@
 # LLM-Dock
 
-A dashboard for managing local LLM inference services with Docker Compose. Supports llama.cpp (GGUF models) and vLLM (HuggingFace models) with automatic GPU detection, model discovery, and Open WebUI integration.
+A dashboard for managing local LLM inference services with Docker Compose. Supports llama.cpp (GGUF models) and vLLM with automatic GPU detection, model discovery, and Open WebUI integration.
 
 ![LLM-Dock Dashboard](docs/images/dashboard.png)
 
