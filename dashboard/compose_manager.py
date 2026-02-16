@@ -430,6 +430,13 @@ class ComposeManager:
         """List all services in database"""
         return self._load_services_db()
 
+    def preview_service(self, service_name: str) -> Optional[str]:
+        """Get the rendered YAML for a service, or None if not found."""
+        config = self.get_service_from_db(service_name)
+        if config is None:
+            return None
+        return self._render_service(service_name, config)
+
     # ============================================
     # TEMPLATE RENDERING METHODS
     # ============================================

@@ -139,13 +139,10 @@ def preview_service(service_name):
     """Get the rendered YAML for a service"""
     try:
         manager = ComposeManager(COMPOSE_FILE)
-        services_db = manager._load_services_db()
+        yaml_content = manager.preview_service(service_name)
 
-        if service_name not in services_db:
+        if yaml_content is None:
             return jsonify({"error": f"Service {service_name} not found in database"}), 404
-
-        config = services_db[service_name]
-        yaml_content = manager._render_service(service_name, config)
 
         return jsonify({"service_name": service_name, "yaml": yaml_content})
 
@@ -444,14 +441,13 @@ def rename_service(service_name):
         compose_mgr.rename_service(service_name, new_name)
 
         # Rename in benchmark DB
-        from benchmarking import routes as bench_routes
+        from benchmarking.routes import rename_service as bench_rename
 
         try:
-            if bench_routes._db:
-                updated = bench_routes._db.rename_service(service_name, new_name)
-                logger.info(
-                    f"Updated {updated} benchmark records from '{service_name}' to '{new_name}'"
-                )
+            updated = bench_rename(service_name, new_name)
+            logger.info(
+                f"Updated {updated} benchmark records from '{service_name}' to '{new_name}'"
+            )
         except Exception as e:
             logger.warning(f"Failed to rename benchmarks (non-fatal): {e}")
 

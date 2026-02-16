@@ -17,6 +17,13 @@ _executor: BenchmarkExecutor = None
 _compose_file: str = None
 
 
+def rename_service(old_name: str, new_name: str) -> int:
+    """Rename a service in the benchmark database. Returns the number of updated records."""
+    if _db is None:
+        return 0
+    return _db.rename_service(old_name, new_name)
+
+
 def init_benchmarking(compose_file: str, db_path: str = None):
     global _db, _executor, _compose_file
     _compose_file = compose_file
