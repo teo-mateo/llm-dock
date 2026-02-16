@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, current_app
 
 from auth import require_auth
@@ -50,33 +49,33 @@ def _get_service_config(service_name: str):
 def start_benchmark():
     data = request.get_json()
     if not data:
-        return jsonify({"error": {"code": "INVALID_REQUEST", "message": "Request body is required"}}), 400
+        return jsonify({"error": "Request body is required"}), 400
 
     service_name = data.get("service_name")
     valid, err = validate_service_name(service_name)
     if not valid:
-        return jsonify({"error": {"code": "INVALID_REQUEST", "message": err}}), 400
+        return jsonify({"error": err}), 400
 
     service_config = _get_service_config(service_name)
     if not service_config:
-        return jsonify({"error": {"code": "SERVICE_NOT_FOUND", "message": f"Service '{service_name}' not found"}}), 404
+        return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     template_type = service_config.get("template_type", "")
     if template_type != "llamacpp":
-        return jsonify({"error": {"code": "INVALID_SERVICE", "message": "Benchmarking is only supported for llama.cpp services"}}), 400
+        return jsonify({"error": "Benchmarking is only supported for llama.cpp services"}), 400
 
     executor = current_app.config["BENCHMARK_EXECUTOR"]
     if executor.is_running_for_service(service_name):
-        return jsonify({"error": {"code": "ALREADY_RUNNING", "message": f"Benchmark already running for {service_name}"}}), 409
+        return jsonify({"error": f"Benchmark already running for {service_name}"}), 409
 
     params = data.get("params", {})
     valid, err = validate_params(params)
     if not valid:
-        return jsonify({"error": {"code": "INVALID_PARAMS", "message": err}}), 400
+        return jsonify({"error": err}), 400
 
     model_path = service_config.get("model_path", "")
     if not model_path:
-        return jsonify({"error": {"code": "NO_MODEL_PATH", "message": "Service has no model_path configured"}}), 400
+        return jsonify({"error": "Service has no model_path configured"}), 400
 
     run = executor.start_benchmark(service_name, model_path, params)
     return jsonify({
@@ -115,7 +114,7 @@ def get_benchmark(run_id):
     db = current_app.config["BENCHMARK_DB"]
     run = db.get_run(run_id)
     if not run:
-        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Benchmark run {run_id} not found"}}), 404
+        return jsonify({"error": f"Benchmark run {run_id} not found"}), 404
     return jsonify(run.to_dict()), 200
 
 
@@ -126,7 +125,7 @@ def delete_benchmark(run_id):
     executor = current_app.config["BENCHMARK_EXECUTOR"]
     run = db.get_run(run_id)
     if not run:
-        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Benchmark run {run_id} not found"}}), 404
+        return jsonify({"error": f"Benchmark run {run_id} not found"}), 404
 
     if run.status in ("pending", "running"):
         executor.cancel_benchmark(run_id)
@@ -142,14 +141,14 @@ def apply_benchmark(run_id):
     db = current_app.config["BENCHMARK_DB"]
     run = db.get_run(run_id)
     if not run:
-        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Benchmark run {run_id} not found"}}), 404
+        return jsonify({"error": f"Benchmark run {run_id} not found"}), 404
 
     if run.status != "completed":
-        return jsonify({"error": {"code": "INVALID_STATUS", "message": "Can only apply completed benchmark runs"}}), 400
+        return jsonify({"error": "Can only apply completed benchmark runs"}), 400
 
     service_config = _get_service_config(run.service_name)
     if not service_config:
-        return jsonify({"error": {"code": "SERVICE_NOT_FOUND", "message": f"Service '{run.service_name}' not found"}}), 404
+        return jsonify({"error": f"Service '{run.service_name}' not found"}), 404
 
     applied_params = {}
     skipped_flags = []
@@ -164,7 +163,7 @@ def apply_benchmark(run_id):
         applied_params[flag] = value
 
     if not applied_params:
-        return jsonify({"error": {"code": "NO_APPLICABLE_PARAMS", "message": "No applicable parameters found to apply"}}), 400
+        return jsonify({"error": "No applicable parameters found to apply"}), 400
 
     mgr = _get_compose_manager()
     mgr.update_service_in_db(run.service_name, service_config)
@@ -183,10 +182,10 @@ def apply_benchmark(run_id):
 def get_service_defaults(service_name):
     service_config = _get_service_config(service_name)
     if not service_config:
-        return jsonify({"error": {"code": "SERVICE_NOT_FOUND", "message": f"Service '{service_name}' not found"}}), 404
+        return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     if service_config.get("template_type") != "llamacpp":
-        return jsonify({"error": {"code": "INVALID_SERVICE", "message": "Only llama.cpp services are supported"}}), 400
+        return jsonify({"error": "Only llama.cpp services are supported"}), 400
 
     params = {
         "-p": "512",

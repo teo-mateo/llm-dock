@@ -135,7 +135,7 @@ class TestStartBenchmark:
             json={"service_name": "vllm-test", "params": {}},
             headers=_auth_headers())
         assert resp.status_code == 400
-        assert "llama.cpp" in resp.get_json()["error"]["message"]
+        assert "llama.cpp" in resp.get_json()["error"]
 
     def test_start_invalid_params(self, simple_client):
         client, db, _ = simple_client
@@ -143,7 +143,7 @@ class TestStartBenchmark:
             json={"service_name": "llamacpp-test", "params": {"-m": "/evil/path"}},
             headers=_auth_headers())
         assert resp.status_code == 400
-        assert "Reserved" in resp.get_json()["error"]["message"]
+        assert "Reserved" in resp.get_json()["error"]
 
     @patch("benchmarking.executor.BenchmarkExecutor.is_running_for_service")
     def test_start_concurrent_rejected(self, mock_running, simple_client):

@@ -66,11 +66,4 @@ def get_system_info():
 
     except Exception as e:
         logger.error(f"Failed to get system info: {e}")
-        return jsonify(
-            {
-                "error": {
-                    "code": "SYSTEM_INFO_ERROR",
-                    "message": f"Failed to retrieve system information: {str(e)}",
-                }
-            }
-        ), 500
+        return jsonify({"error": f"Failed to retrieve system information: {e}"}), 500

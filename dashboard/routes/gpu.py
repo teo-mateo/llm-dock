@@ -19,13 +19,4 @@ def gpu_stats():
         return jsonify({"gpus": gpus, "timestamp": datetime.utcnow().isoformat() + "Z"})
     except Exception as e:
         logger.error(f"Failed to get GPU stats: {e}")
-        return jsonify(
-            {
-                "error": {
-                    "code": "NVIDIA_ERROR",
-                    "message": "Failed to retrieve GPU information",
-                    "details": str(e),
-                },
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-            }
-        ), 500
+        return jsonify({"error": f"Failed to retrieve GPU information: {e}"}), 500
