@@ -497,46 +497,6 @@ def get_validation_rules(template_type: str) -> Dict[str, Any]:
     else:
         return {}
 
-def render_flag(flag_name: str, flag_value: str, template_type: str) -> Optional[str]:
-    """
-    Render a flag as CLI argument.
-
-    Args:
-        flag_name: Name of the flag
-        flag_value: Value as string
-        template_type: 'llamacpp' or 'vllm'
-
-    Returns:
-        Rendered CLI argument or None if flag should be skipped
-    """
-    metadata = get_flag_metadata(template_type)
-
-    if flag_name not in metadata:
-        # Unknown flag - skip it
-        return None
-
-    flag_meta = metadata[flag_name]
-    cli_arg = flag_meta['cli']
-    flag_type = flag_meta['type']
-
-    # Skip environment variables (handled separately)
-    if flag_type == 'env':
-        return None
-
-    # Boolean flags
-    if flag_type == 'bool':
-        # Empty string or "true" = render flag
-        if flag_value == "" or flag_value.lower() == "true":
-            return cli_arg
-        else:
-            return None
-
-    # Value flags (int, float, string, path)
-    else:
-        if not flag_value or flag_value.strip() == "":
-            return None
-        return f"{cli_arg} {flag_value}"
-
 def generate_service_name(template_type: str, alias: str) -> str:
     """
     Generate service name from template type and alias.
@@ -577,10 +537,6 @@ def render_cli_flag(flag_name: str, flag_value: str) -> Optional[str]:
     if not flag_value or flag_value.strip() == "":
         return flag_name  # Boolean flag
     return f"{flag_name} {flag_value}"
-
-
-# Alias for backward compatibility
-render_custom_flag = render_cli_flag
 
 
 def validate_custom_flag_name(flag_name: str) -> Tuple[bool, Optional[str]]:
@@ -635,47 +591,6 @@ def validate_service_config(template_type: str, config: Dict[str, Any]) -> Tuple
         except (ValueError, TypeError):
             errors.append(f"Invalid port: {config['port']}")
 
-    # Validate optional flags
-    optional_flags = config.get('optional_flags', {})
-    validation_rules = get_validation_rules(template_type)
-
-    for flag_name, flag_value in optional_flags.items():
-        if flag_name not in validation_rules:
-            continue  # Unknown flag, allow it
-
-        rule = validation_rules[flag_name]
-        value_type = rule['type']
-
-        # Skip empty values
-        if not flag_value or flag_value.strip() == "":
-            continue
-
-        # Type validation
-        try:
-            if value_type == 'int':
-                val = int(flag_value)
-                if 'min' in rule and val < rule['min']:
-                    errors.append(f"{flag_name}: value {val} below minimum {rule['min']}")
-                if 'max' in rule and val > rule['max']:
-                    errors.append(f"{flag_name}: value {val} above maximum {rule['max']}")
-
-            elif value_type == 'float':
-                val = float(flag_value)
-                if 'min' in rule and val < rule['min']:
-                    errors.append(f"{flag_name}: value {val} below minimum {rule['min']}")
-                if 'max' in rule and val > rule['max']:
-                    errors.append(f"{flag_name}: value {val} above maximum {rule['max']}")
-
-        except (ValueError, TypeError):
-            errors.append(f"{flag_name}: invalid {value_type} value '{flag_value}'")
-
-    # Validate custom flags
-    custom_flags = config.get('custom_flags', {})
-    for flag_name, flag_value in custom_flags.items():
-        is_valid, error = validate_custom_flag_name(flag_name)
-        if not is_valid:
-            errors.append(f"Custom flag '{flag_name}': {error}")
-
     # Validate params (unified CLI-keyed format)
     params = config.get('params', {})
     for flag_name, flag_value in params.items():
@@ -685,40 +600,3 @@ def validate_service_config(template_type: str, config: Dict[str, Any]) -> Tuple
                 errors.append(f"Param '{flag_name}': {error}")
 
     return len(errors) == 0, errors
-
-
-def convert_legacy_flags_to_params(config: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Convert old-format optional_flags + custom_flags to unified params dict
-    keyed by CLI flag (e.g. {"-ngl": "99", "--flash-attn": ""}).
-
-    Args:
-        config: Service configuration that may have optional_flags and/or custom_flags
-
-    Returns:
-        Unified params dict keyed by CLI flag
-    """
-    params = {}
-    template_type = config.get('template_type', 'llamacpp')
-
-    # Convert optional_flags (keyed by friendly name like 'context_length')
-    optional_flags = config.get('optional_flags', {})
-    metadata = get_flag_metadata(template_type)
-
-    for flag_name, flag_value in optional_flags.items():
-        if flag_name in metadata:
-            cli_flag = metadata[flag_name]['cli']
-            # Skip env vars
-            if metadata[flag_name].get('type') == 'env':
-                continue
-            params[cli_flag] = str(flag_value)
-        else:
-            # Unknown flag name, skip
-            pass
-
-    # Convert custom_flags (already keyed by CLI flag like '--verbose')
-    custom_flags = config.get('custom_flags', {})
-    for flag_name, flag_value in custom_flags.items():
-        params[flag_name] = str(flag_value)
-
-    return params

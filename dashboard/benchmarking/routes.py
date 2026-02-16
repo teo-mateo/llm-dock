@@ -16,18 +16,6 @@ _db: BenchmarkDB = None
 _executor: BenchmarkExecutor = None
 _compose_file: str = None
 
-# Mapping from llama-bench flags to service config keys
-FLAG_TO_SERVICE_CONFIG = {
-    "-ngl": "gpu_layers",
-    "-b": "batch_size",
-    "-ub": "ubatch_size",
-    "-fa": "flash_attn",
-    "-t": "threads",
-}
-
-# Reverse mapping: service config keys to llama-bench flags
-SERVICE_CONFIG_TO_FLAG = {v: k for k, v in FLAG_TO_SERVICE_CONFIG.items()}
-
 
 def init_benchmarking(compose_file: str, db_path: str = None):
     global _db, _executor, _compose_file
@@ -165,29 +153,14 @@ def apply_benchmark(run_id):
     applied_params = {}
     skipped_flags = []
 
-    # Check if service uses new unified params format
-    uses_unified = "params" in service_config
-
     for flag, value in run.params_json.items():
         if flag in BENCHMARK_ONLY_FLAGS:
             skipped_flags.append(flag)
             continue
 
-        if uses_unified:
-            params = service_config.setdefault("params", {})
-            params[flag] = value
-            applied_params[flag] = value
-        else:
-            # Legacy format
-            config_key = FLAG_TO_SERVICE_CONFIG.get(flag)
-            if config_key:
-                optional_flags = service_config.setdefault("optional_flags", {})
-                optional_flags[config_key] = value
-                applied_params[flag] = value
-            else:
-                custom_flags = service_config.setdefault("custom_flags", {})
-                custom_flags[flag] = value
-                applied_params[flag] = value
+        params = service_config.setdefault("params", {})
+        params[flag] = value
+        applied_params[flag] = value
 
     if not applied_params:
         return jsonify({"error": {"code": "NO_APPLICABLE_PARAMS", "message": "No applicable parameters found to apply"}}), 400
@@ -220,21 +193,9 @@ def get_service_defaults(service_name):
         "-r": "5",
     }
 
-    # Check for unified params format first
     svc_params = service_config.get("params", {})
-    if svc_params:
-        for flag, value in svc_params.items():
-            params[flag] = value
-    else:
-        # Legacy format
-        optional_flags = service_config.get("optional_flags", {})
-        for config_key, flag in SERVICE_CONFIG_TO_FLAG.items():
-            if config_key in optional_flags:
-                params[flag] = optional_flags[config_key]
-
-        custom_flags = service_config.get("custom_flags", {})
-        for flag, value in custom_flags.items():
-            params[flag] = value
+    for flag, value in svc_params.items():
+        params[flag] = value
 
     return jsonify({
         "service_name": service_name,

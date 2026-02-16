@@ -503,23 +503,8 @@ async function openUpdateServiceModal(serviceName) {
         // Load flag metadata and populate parameter rows from existing config
         await loadFlagMetadata(engine);
 
-        // Load params: prefer new format, fall back to legacy conversion
-        let params = config.params;
-        if (!params || Object.keys(params).length === 0) {
-            // Convert legacy optional_flags + custom_flags to unified params
-            params = {};
-            const metadata = availableFlags[engine] || {};
-            const optFlags = config.optional_flags || {};
-            for (const [name, value] of Object.entries(optFlags)) {
-                if (metadata[name]) {
-                    params[metadata[name].cli] = String(value);
-                }
-            }
-            const customFlags = config.custom_flags || {};
-            for (const [name, value] of Object.entries(customFlags)) {
-                params[name] = String(value);
-            }
-        }
+        // Load params
+        const params = config.params || {};
         loadServiceParams(params);
         renderServeParamRef();
 

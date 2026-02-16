@@ -156,7 +156,7 @@ async function openCopyFromModal() {
             emptyMessage.classList.add('hidden');
 
             listContainer.innerHTML = filteredServices.map(({ name, config }) => {
-                const paramCount = Object.keys(config.params || config.optional_flags || {}).length;
+                const paramCount = Object.keys(config.params || {}).length;
                 return `
                     <button
                         type="button"
@@ -188,23 +188,7 @@ async function copyParametersFromService(serviceName) {
         const response = await fetchAPI(`/services/${serviceName}`);
         const config = response.config;
 
-        // Support both new (params) and legacy (optional_flags + custom_flags) formats
-        let params = config.params;
-        if (!params || Object.keys(params).length === 0) {
-            // Convert legacy format
-            params = {};
-            const metadata = availableFlags[config.template_type] || {};
-            const optFlags = config.optional_flags || {};
-            for (const [name, value] of Object.entries(optFlags)) {
-                if (metadata[name]) {
-                    params[metadata[name].cli] = String(value);
-                }
-            }
-            const customFlags = config.custom_flags || {};
-            for (const [name, value] of Object.entries(customFlags)) {
-                params[name] = String(value);
-            }
-        }
+        const params = config.params || {};
 
         loadServiceParams(params);
         closeCopyFromModal();

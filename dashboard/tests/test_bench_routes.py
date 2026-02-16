@@ -42,10 +42,10 @@ networks:
             "port": 3301,
             "model_path": "/models/test.gguf",
             "api_key": "test-key",
-            "optional_flags": {
-                "gpu_layers": "99",
-                "batch_size": "2048",
-                "flash_attn": "",
+            "params": {
+                "-ngl": "99",
+                "-b": "2048",
+                "-fa": "",
             },
         },
         "vllm-test": {

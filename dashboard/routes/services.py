@@ -203,9 +203,9 @@ def create_service():
         "model_name": "org/model",             // for vllm
         "alias": "my-model",
         "api_key": "key-xxx" (optional, auto-generated if not provided),
-        "optional_flags": {
-            "context_length": "32000",
-            "gpu_layers": "40"
+        "params": {
+            "-c": "32000",
+            "-ngl": "40"
         }
     }
     """
