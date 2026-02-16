@@ -124,7 +124,7 @@ python app.py
 
 ### 5. Chat with Your Model
 
-- **Via Open WebUI**: Go to http://localhost:3300, your model will be auto-registered
+- **Via Open WebUI**: Go to http://localhost:3300 and create an account first (the first account becomes admin). Once registered, your model will be auto-registered and available to chat with
 - **Via API**:
   ```bash
   curl http://localhost:3301/v1/chat/completions \
