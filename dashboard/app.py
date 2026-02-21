@@ -63,6 +63,14 @@ def create_app(config=None):
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
+    @app.route("/v2")
+    def serve_v2_index():
+        return send_from_directory("frontend/dist", "index.html")
+    
+    @app.route("/v2/<path:whatever>")
+    def serve_v2_static(whatever):
+        return send_from_directory("frontend/dist", whatever)
+
     return app
 
 
