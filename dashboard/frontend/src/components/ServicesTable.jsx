@@ -69,7 +69,7 @@ function CopyButton({ text }) {
   return (
     <button
       onClick={handleCopy}
-      className="ml-2 text-gray-400 hover:text-gray-200 text-xs"
+      className="ml-2 text-gray-400 hover:text-gray-200 text-lg leading-none cursor-pointer"
       title="Copy"
     >
       {copied ? '✓' : '⧉'}
@@ -92,7 +92,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-gray-200"
+            className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-gray-200 cursor-pointer"
             title="Open"
           >
             ↗
@@ -101,7 +101,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onRestart(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-yellow-300 disabled:opacity-50"
+          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-yellow-300 disabled:opacity-50 cursor-pointer"
           title="Restart"
         >
           ↻
@@ -116,7 +116,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onStop(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50"
+          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50 cursor-pointer"
           title="Stop"
         >
           {isTransitioning === 'stopping' ? '...' : '■'}
@@ -125,7 +125,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onStart(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-green-400 disabled:opacity-50"
+          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-green-400 disabled:opacity-50 cursor-pointer"
           title="Start"
         >
           {isTransitioning === 'starting' ? '...' : '▶'}
@@ -133,7 +133,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
       )}
       <button
         onClick={e => e.stopPropagation()}
-        className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400"
+        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400 cursor-pointer"
         title="Edit"
       >
         ✎
@@ -141,7 +141,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
       <button
         onClick={e => { e.stopPropagation(); onDelete(service.name) }}
         disabled={!!isTransitioning}
-        className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50"
+        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50 cursor-pointer"
         title="Delete"
       >
         ✕
@@ -150,10 +150,24 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
   )
 }
 
+function Toast({ message, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000)
+    return () => clearTimeout(t)
+  }, [onDone])
+
+  return (
+    <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-2 rounded shadow-lg text-sm z-50">
+      {message}
+    </div>
+  )
+}
+
 export default function ServicesTable() {
   const [services, setServices] = useState(null)
   const [error, setError] = useState(null)
   const [transitioning, setTransitioning] = useState({})
+  const [toast, setToast] = useState(null)
 
   const fetchServices = useCallback(async () => {
     try {
@@ -204,6 +218,15 @@ export default function ServicesTable() {
     } catch { /* poll will update state */ }
     await fetchServices()
     setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+  }
+
+  const handleSetPublicPort = async (name) => {
+    try {
+      await fetchAPI(`/services/${name}/set-public-port`, { method: 'POST' })
+    } catch (err) {
+      setToast(`Failed to set public port: ${err.message}`)
+    }
+    await fetchServices()
   }
 
   const handleDelete = async (name) => {
@@ -260,20 +283,65 @@ export default function ServicesTable() {
                 onStart={handleStart}
                 onStop={handleStop}
                 onRestart={handleRestart}
+                onSetPublicPort={handleSetPublicPort}
                 onDelete={handleDelete}
               />
             ))}
           </tbody>
         </table>
       </div>
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   )
 }
 
-function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onDelete }) {
+function PortCell({ service, onSetPublicPort }) {
+  const infra = isInfra(service.name)
+  const port = service.host_port && service.host_port !== 9999 ? service.host_port : null
+  const engine = getEngine(service.name)
+  const isLlamaCpp = engine === 'llama.cpp'
+  const isPublicPort = port === 3301
+
+  if (!port) return <td className="px-6 py-3 font-mono text-gray-500">N/A</td>
+
+  return (
+    <td className="px-6 py-3">
+      <div className="flex items-center gap-1.5">
+        {isLlamaCpp ? (
+          <a
+            href={`http://${window.location.hostname}:${port}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="font-mono text-blue-400 hover:text-blue-300"
+          >
+            {port}
+          </a>
+        ) : (
+          <span className="font-mono text-gray-300">{port}</span>
+        )}
+        {!infra && (isPublicPort ? (
+          <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" title="Public port (3301)">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); onSetPublicPort(service.name) }}
+            className="text-gray-500 hover:text-blue-400 text-lg leading-none cursor-pointer"
+            title="Set to public port (3301)"
+          >
+            ◎
+          </button>
+        ))}
+      </div>
+    </td>
+  )
+}
+
+function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onDelete }) {
   const engine = getEngine(service.name)
   const infra = isInfra(service.name)
-  const port = service.host_port && service.host_port !== 9999 ? service.host_port : 'N/A'
 
   return (
     <tr className="border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
@@ -297,7 +365,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onDele
           <StatusLabel service={service} />
         </div>
       </td>
-      <td className="px-6 py-3 font-mono text-gray-300">{port}</td>
+      <PortCell service={service} onSetPublicPort={onSetPublicPort} />
       <td className="px-6 py-3"><EngineBadge engine={engine} /></td>
       <td className="px-6 py-3 text-gray-300 text-xs">
         {service.model_size_str || '—'}
