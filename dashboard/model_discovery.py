@@ -91,14 +91,15 @@ class GenericModelDiscovery(ModelDiscovery):
                         except Exception:
                             pass
 
+                total_size = sum(f['size'] for f in files)
                 models.append({
                     "name": name,
                     "path": str(gguf_file.parent),
                     "type": "generic",
                     "files": files,
                     "file_count": len(files),
-                    "size": size,
-                    "size_str": self.format_size(size),
+                    "size": total_size,
+                    "size_str": self.format_size(total_size),
                     "source_path": str(self.base_path)
                 })
 
@@ -178,11 +179,13 @@ class HuggingFaceDiscovery(ModelDiscovery):
 
         # If no directory-based quantizations found, check for file-based
         if not quantizations:
+            seen = set()
             for item in snapshot_path.iterdir():
                 if item.is_file() and item.name.endswith('.gguf'):
                     # Extract quantization from filename
                     quant = self._extract_quantization_from_filename(item.name)
-                    if quant:
+                    if quant and quant not in seen:
+                        seen.add(quant)
                         quantizations.append(quant)
                         quant_type = 'file'
 
@@ -231,23 +234,25 @@ class HuggingFaceDiscovery(ModelDiscovery):
 
         return blobs
 
-    def _get_file_for_quantization(self, snapshot_path: Path, quantization: str) -> Path | None:
+    def _get_files_for_quantization_flat(self, snapshot_path: Path, quantization: str) -> List[Path]:
         """
-        Find the GGUF file for a given quantization in file-based storage.
+        Find all GGUF files for a given quantization in file-based storage.
+        Handles sharded models (e.g., Model-Q4_K-00001-of-00003.gguf).
 
         Args:
             snapshot_path: Path to snapshot directory
             quantization: Quantization identifier (e.g., 'Q4_0', 'UD-Q6_K_XL')
 
         Returns:
-            Path to the GGUF file or None if not found
+            Sorted list of matching GGUF file paths
         """
+        matches = []
         for item in snapshot_path.iterdir():
             if item.is_file() and item.name.endswith('.gguf'):
                 file_quant = self._extract_quantization_from_filename(item.name)
                 if file_quant == quantization:
-                    return item
-        return None
+                    matches.append(item)
+        return sorted(matches)
 
     def _get_quantization_size(self, model_path: Path, blobs: Set[str]) -> int:
         """Calculate total size of blobs for a quantization."""
@@ -315,10 +320,11 @@ class HuggingFaceDiscovery(ModelDiscovery):
                     'size_str': self.format_size(size)
                 })
 
-                # Check for related files in the same directory (e.g., mmproj)
+                # Check for related non-quantization files (e.g., mmproj)
                 parent_dir = quantization_path.parent
                 for item in parent_dir.iterdir():
-                    if item != quantization_path and item.is_file() and item.suffix in ['.mmproj', '.gguf']:
+                    if item != quantization_path and item.is_file() and item.suffix in ['.mmproj', '.gguf'] \
+                            and not self._extract_quantization_from_filename(item.name):
                         try:
                             actual_path = item.resolve()
                             size = actual_path.stat().st_size
@@ -433,13 +439,23 @@ class HuggingFaceDiscovery(ModelDiscovery):
                                 blobs = self._get_blobs_for_quantization(quant_path, is_directory=True)
                                 files = self._get_files_for_quantization(quant_path, is_directory=True)
                             else:  # file-based
-                                # File-based quantization
-                                quant_file = self._get_file_for_quantization(snapshot_path, quant)
-                                if not quant_file:
+                                # File-based quantization (may be sharded)
+                                quant_files = self._get_files_for_quantization_flat(snapshot_path, quant)
+                                if not quant_files:
                                     continue
-                                quant_path = quant_file
-                                blobs = self._get_blobs_for_quantization(quant_file, is_directory=False)
-                                files = self._get_files_for_quantization(quant_file, is_directory=False)
+                                quant_path = quant_files[0]
+                                # Collect blobs and file info from all shards
+                                blobs = set()
+                                files = []
+                                for i, qf in enumerate(quant_files):
+                                    blobs |= self._get_blobs_for_quantization(qf, is_directory=False)
+                                    shard_files = self._get_files_for_quantization(qf, is_directory=False)
+                                    if i == 0:
+                                        # First shard: include related files (mmproj etc.)
+                                        files.extend(shard_files)
+                                    else:
+                                        # Subsequent shards: only the shard file itself
+                                        files.extend(f for f in shard_files if not f.get('related'))
 
                             size = self._get_quantization_size(path, blobs)
 
