@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+import os
 import logging
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, abort
 from flask_cors import CORS
 
 from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
@@ -13,6 +14,7 @@ def create_app(config=None):
     init_config()
 
     app = Flask(__name__)
+    app.json.sort_keys = False
     CORS(app)
 
     if config:
@@ -69,7 +71,16 @@ def create_app(config=None):
     
     @app.route("/v2/<path:whatever>")
     def serve_v2_static(whatever):
-        return send_from_directory("frontend/dist", whatever)
+        dist_dir = os.path.realpath(os.path.join(app.root_path, "frontend", "dist"))
+        file_path = os.path.realpath(os.path.join(dist_dir, whatever))
+        if file_path.startswith(dist_dir) and os.path.isfile(file_path):
+            return send_from_directory("frontend/dist", whatever)
+        # Only fall back to index.html for client-side routes (no file extension).
+        # Asset requests (.js, .css, etc.) must 404 so browsers don't cache HTML
+        # as a JS/CSS resource after deploys.
+        if '.' in whatever.split('/')[-1]:
+            abort(404)
+        return send_from_directory("frontend/dist", "index.html")
 
     return app
 

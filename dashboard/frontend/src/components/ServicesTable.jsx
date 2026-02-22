@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fetchAPI } from '../api'
+import { startService, stopService, restartService } from '../services/lifecycle'
 
 const POLL_INTERVAL = 3000
 
@@ -79,7 +81,7 @@ function CopyButton({ text }) {
 
 
 
-function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onDelete }) {
+function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onDelete, onEdit, onViewLogs }) {
   const infra = isInfra(service.name)
   const isTransitioning = transitioning[service.name]
 
@@ -132,11 +134,18 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         </button>
       )}
       <button
-        onClick={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onEdit(service.name) }}
         className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400 cursor-pointer"
         title="Edit"
       >
         ✎
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); onViewLogs(service.name) }}
+        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-purple-400 cursor-pointer"
+        title="View logs"
+      >
+        <i className="fa-solid fa-terminal text-sm"></i>
       </button>
       <button
         onClick={e => { e.stopPropagation(); onDelete(service.name) }}
@@ -164,6 +173,7 @@ function Toast({ message, onDone }) {
 }
 
 export default function ServicesTable() {
+  const navigate = useNavigate()
   const [services, setServices] = useState(null)
   const [error, setError] = useState(null)
   const [transitioning, setTransitioning] = useState({})
@@ -193,7 +203,7 @@ export default function ServicesTable() {
   const handleStart = async (name) => {
     setTransitioning(prev => ({ ...prev, [name]: 'starting' }))
     try {
-      await fetchAPI(`/services/${name}/start`, { method: 'POST' })
+      await startService(name)
     } catch { /* poll will update state */ }
     await fetchServices()
     setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
@@ -202,10 +212,7 @@ export default function ServicesTable() {
   const handleRestart = async (name) => {
     setTransitioning(prev => ({ ...prev, [name]: 'restarting' }))
     try {
-      await fetchAPI(`/services/${name}/stop`, { method: 'POST' })
-    } catch { /* continue to start */ }
-    try {
-      await fetchAPI(`/services/${name}/start`, { method: 'POST' })
+      await restartService(name)
     } catch { /* poll will update state */ }
     await fetchServices()
     setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
@@ -214,7 +221,7 @@ export default function ServicesTable() {
   const handleStop = async (name) => {
     setTransitioning(prev => ({ ...prev, [name]: 'stopping' }))
     try {
-      await fetchAPI(`/services/${name}/stop`, { method: 'POST' })
+      await stopService(name)
     } catch { /* poll will update state */ }
     await fetchServices()
     setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
@@ -227,6 +234,14 @@ export default function ServicesTable() {
       setToast(`Failed to set public port: ${err.message}`)
     }
     await fetchServices()
+  }
+
+  const handleEdit = (name) => {
+    navigate(`/services/${name}`)
+  }
+
+  const handleViewLogs = (name) => {
+    navigate(`/services/${name}/logs`)
   }
 
   const handleDelete = async (name) => {
@@ -284,6 +299,8 @@ export default function ServicesTable() {
                 onStop={handleStop}
                 onRestart={handleRestart}
                 onSetPublicPort={handleSetPublicPort}
+                onEdit={handleEdit}
+                onViewLogs={handleViewLogs}
                 onDelete={handleDelete}
               />
             ))}
@@ -339,7 +356,7 @@ function PortCell({ service, onSetPublicPort }) {
   )
 }
 
-function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onDelete }) {
+function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete }) {
   const engine = getEngine(service.name)
   const infra = isInfra(service.name)
 
@@ -348,7 +365,16 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
       <td className="px-6 py-3">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-gray-200">
-            <span>{service.name}</span>
+            {!infra ? (
+              <button
+                onClick={() => onEdit(service.name)}
+                className="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer text-left"
+              >
+                {service.name}
+              </button>
+            ) : (
+              <span>{service.name}</span>
+            )}
             <CopyButton text={service.name} />
           </div>
           {service.api_key && (
@@ -386,6 +412,8 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
           onStart={onStart}
           onStop={onStop}
           onRestart={onRestart}
+          onEdit={onEdit}
+          onViewLogs={onViewLogs}
           onDelete={onDelete}
         />
       </td>

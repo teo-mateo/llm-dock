@@ -1,6 +1,8 @@
+import { NavLink } from 'react-router-dom'
+
 function Sidebar() {
   return (
-    <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
+    <aside className="hidden md:flex w-56 bg-gray-900 border-r border-gray-800 flex-col flex-shrink-0">
       {/* Logo */}
       <div className="h-16 px-4 border-b border-gray-800 flex items-center">
         <div className="flex items-center gap-3">
@@ -16,10 +18,20 @@ function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 py-4">
-        <a href="#" className="flex items-center gap-3 px-4 py-2.5 text-gray-400 hover:bg-gray-800/50">
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-2.5 ${
+              isActive
+                ? 'text-white bg-gray-800/70'
+                : 'text-gray-400 hover:bg-gray-800/50'
+            }`
+          }
+        >
           <i className="fa-solid fa-server w-5 text-center"></i>
           <span>Services</span>
-        </a>
+        </NavLink>
       </nav>
 
       {/* User section */}

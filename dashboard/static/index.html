@@ -35,10 +35,8 @@
             background: #1f2937;
         }
         .param-tooltip {
-            position: absolute;
-            left: 0;
-            bottom: calc(100% + 6px);
-            z-index: 50;
+            position: fixed;
+            z-index: 9999;
             width: 280px;
             background: #1e293b;
             border: 1px solid #475569;
@@ -51,14 +49,6 @@
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.15s;
-        }
-        .param-tooltip::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 16px;
-            border: 6px solid transparent;
-            border-top-color: #475569;
         }
         .param-ref-row:hover .param-tooltip {
             opacity: 1;
@@ -230,7 +220,7 @@
                                         oninput="filterServeParamRef()"
                                         class="w-full bg-gray-700 border border-gray-600 rounded pl-7 pr-3 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500 placeholder-gray-500">
                                 </div>
-                                <div id="serve-param-ref-list" class="overflow-y-auto space-y-0.5 text-xs max-h-72">
+                                <div id="serve-param-ref-list" class="overflow-y-auto space-y-0.5 text-xs max-h-72 min-h-72">
                                     <!-- Populated by JS -->
                                 </div>
                                 <div id="serve-param-ref-empty" class="text-gray-500 text-xs py-4 text-center hidden">

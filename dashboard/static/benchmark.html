@@ -349,7 +349,7 @@ const PARAM_REFERENCE = [
     { cat: 'Batching', flag: '-ub', long: '--ubatch-size', desc: 'Physical micro-batch size', def: '512',
       tip: '<b>Physical micro-batch size</b> at the hardware level (default: 512). When <code>batch > ubatch</code>, processing is pipelined (e.g., batch=2048 with ubatch=512 = 4-stage pipeline). Lower values reduce VRAM usage during prompt processing. Must satisfy: <code>batch_size >= ubatch_size</code>.' },
 
-    { cat: 'GPU', flag: '-ngl', long: '--n-gpu-layers', desc: 'Number of layers to offload to GPU', def: '99',
+    { cat: 'GPU', flag: '-ngl', long: '--gpu-layers', desc: 'Number of layers to offload to GPU', def: '99',
       tip: 'Controls how many model layers are stored in VRAM. Use a specific number, <code>auto</code>, or <code>-1</code>/all to offload everything. <b>Higher values = faster inference but more VRAM.</b> Start with <code>auto</code> and adjust based on available memory.' },
     { cat: 'GPU', flag: '-sm', long: '--split-mode', desc: 'Multi-GPU split mode (none|layer|row)', def: 'layer',
       tip: 'Determines how models distribute across multiple GPUs. <code>none</code> = single GPU; <code>layer</code> (default) = sequential layer distribution; <code>row</code> = parallel tensor splitting where all GPUs work simultaneously per layer. <b>Use <code>row</code> for better multi-GPU utilization.</b>' },
