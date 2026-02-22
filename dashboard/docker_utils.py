@@ -101,15 +101,20 @@ def get_docker_services():
     allowed_services = get_compose_services()
     port_map = get_compose_service_ports()
 
-    # Get API keys and template types from services.json
+    # Get API keys, template types, and model sizes from services.json
     compose_mgr = ComposeManager(COMPOSE_FILE)
     api_key_map = {}
     template_type_map = {}
+    model_size_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
             api_key_map[service_name] = config.get("api_key", "")
             template_type_map[service_name] = config.get("template_type", "")
+            model_size_map[service_name] = {
+                "model_size": config.get("model_size"),
+                "model_size_str": config.get("model_size_str"),
+            }
 
     # Get Open WebUI registered URLs (one query for all services)
     openwebui_urls = get_openwebui_registered_urls()
@@ -135,6 +140,7 @@ def get_docker_services():
         if service_name in allowed_services:
             # Get exit code for crashed containers
             exit_code = container.attrs.get("State", {}).get("ExitCode", 0)
+            size_info = model_size_map.get(service_name, {})
             container_map[service_name] = {
                 "name": service_name,
                 "status": container.status,
@@ -145,6 +151,8 @@ def get_docker_services():
                 "host_port": port_map.get(service_name, 9999),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
+                "model_size": size_info.get("model_size"),
+                "model_size_str": size_info.get("model_size_str"),
             }
 
     # Build complete services list from compose file
@@ -155,6 +163,7 @@ def get_docker_services():
             services.append(container_map[service_name])
         else:
             # Service defined but no container yet
+            size_info = model_size_map.get(service_name, {})
             services.append(
                 {
                     "name": service_name,
@@ -165,6 +174,8 @@ def get_docker_services():
                     "host_port": port_map.get(service_name, 9999),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),
+                    "model_size": size_info.get("model_size"),
+                    "model_size_str": size_info.get("model_size_str"),
                 }
             )
 

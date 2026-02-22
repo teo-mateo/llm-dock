@@ -1,12 +1,15 @@
 import logging
+import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from flask import Blueprint, jsonify, request
 
 from auth import require_auth
 from config import COMPOSE_FILE, GLOBAL_API_KEY
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service
+from model_discovery import ModelDiscovery
 from service_templates import generate_api_key
 from flag_metadata import (
     generate_service_name as gen_service_name,
@@ -23,6 +26,53 @@ from openwebui_integration import (
 logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
+
+# Container-path → host-path prefixes for model file resolution
+_CONTAINER_PATH_MAP = [
+    ("/hf-cache/", os.path.expanduser("~/.cache/huggingface/")),
+    ("/local-models/", os.path.expanduser("~/.cache/models/")),
+]
+
+
+def _resolve_host_path(container_path: str) -> str | None:
+    """Translate a container model path to the corresponding host path."""
+    for prefix, host_prefix in _CONTAINER_PATH_MAP:
+        if container_path.startswith(prefix):
+            return host_prefix + container_path[len(prefix):]
+    return None
+
+
+def _compute_model_size(data: dict) -> None:
+    """Compute model directory size and store in data dict. Fails silently."""
+    try:
+        target = None
+
+        model_path = data.get("model_path")
+        if model_path:
+            host_path = _resolve_host_path(model_path)
+            if not host_path:
+                return
+            p = Path(host_path)
+            target = p.parent if p.is_file() or p.is_symlink() else p
+
+        # vLLM: model_name is an HF identifier like "org/model"
+        model_name = data.get("model_name")
+        if not target and model_name and "/" in model_name:
+            cache_dir = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+            target = cache_dir / ("models--" + model_name.replace("/", "--"))
+
+        if not target or not target.exists():
+            return
+
+        # Sum file sizes following symlinks (HF cache uses symlinks to blobs)
+        size = sum(
+            f.stat().st_size for f in target.rglob("*") if f.is_file()
+        )
+        discovery = ModelDiscovery(Path.home())
+        data["model_size"] = size
+        data["model_size_str"] = discovery.format_size(size)
+    except Exception as e:
+        logger.debug(f"Could not compute model size: {e}")
 
 
 def _recreate_if_running(service_name):
@@ -239,6 +289,9 @@ def create_service():
         port = int(data["port"])
         if port in compose_mgr.get_used_ports():
             return jsonify({"error": f"Port {port} is already in use"}), 409
+
+        # Compute model size before persisting
+        _compute_model_size(data)
 
         # Add to database and rebuild
         compose_mgr.add_service_to_db(service_name, data)

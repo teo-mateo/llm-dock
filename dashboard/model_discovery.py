@@ -3,10 +3,13 @@ Model discovery for HuggingFace cache.
 Adapted from ai-toolbox/models-backup for dashboard use.
 """
 
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Set
 import re
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class ModelDiscovery:
@@ -88,8 +91,8 @@ class GenericModelDiscovery(ModelDiscovery):
                                 'size_str': self.format_size(mmproj_size),
                                 'related': True
                             })
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("Failed to read mmproj file %s: %s", item, e)
 
                 total_size = sum(f['size'] for f in files)
                 models.append({
@@ -103,8 +106,8 @@ class GenericModelDiscovery(ModelDiscovery):
                     "source_path": str(self.base_path)
                 })
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to process model %s: %s", gguf_file, e)
 
         return sorted(models, key=lambda x: x["size"], reverse=True)
 
@@ -123,8 +126,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
             snapshot_path = model_path / "snapshots" / snapshot_hash
             if snapshot_path.exists():
                 return snapshot_path
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read snapshot ref for %s: %s", model_path.name, e)
 
         return None
 
@@ -219,8 +222,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
                             blob_index = actual_path.parts.index('blobs')
                             if blob_index + 1 < len(actual_path.parts):
                                 blobs.add(actual_path.parts[blob_index + 1])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to resolve blob for %s: %s", item, e)
         else:
             # File-based: single file
             try:
@@ -229,8 +232,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
                     blob_index = actual_path.parts.index('blobs')
                     if blob_index + 1 < len(actual_path.parts):
                         blobs.add(actual_path.parts[blob_index + 1])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to resolve blob for %s: %s", quantization_path, e)
 
         return blobs
 
@@ -267,8 +270,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
             if blob_path.exists() and blob_path.is_file():
                 try:
                     total_size += blob_path.stat().st_size
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to stat blob %s: %s", blob_path, e)
 
         return total_size
 
@@ -304,8 +307,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
                             'size': size,
                             'size_str': self.format_size(size)
                         })
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to read file %s: %s", item, e)
         else:
             # File-based: single file (or check for related files like mmproj)
             try:
@@ -337,11 +340,11 @@ class HuggingFaceDiscovery(ModelDiscovery):
                                 'size_str': self.format_size(size),
                                 'related': True  # Mark as related file
                             })
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("Failed to read related file %s: %s", item, e)
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to process quantization %s: %s", quantization_path, e)
 
         return files
 
@@ -376,8 +379,8 @@ class HuggingFaceDiscovery(ModelDiscovery):
                         'size': size,
                         'size_str': self.format_size(size)
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to read snapshot file %s: %s", item, e)
 
         return files
 

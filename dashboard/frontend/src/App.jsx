@@ -1,6 +1,7 @@
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import GpuMonitor from './components/GpuMonitor'
+import ServicesTable from './components/ServicesTable'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
         <Header />
         <div className="flex-1 overflow-auto p-6">
           <GpuMonitor />
+          <ServicesTable />
         </div>
       </main>
     </div>

@@ -1,0 +1,326 @@
+import { useState, useEffect, useCallback } from 'react'
+import { fetchAPI } from '../api'
+
+const POLL_INTERVAL = 3000
+
+function getEngine(name) {
+  if (name === 'open-webui') return 'WebUI'
+  if (name.startsWith('llamacpp-')) return 'llama.cpp'
+  if (name.startsWith('vllm-')) return 'vLLM'
+  return 'Unknown'
+}
+
+function isInfra(name) {
+  return name === 'open-webui'
+}
+
+
+function sortServices(services) {
+  return [...services].sort((a, b) => {
+    if (a.name === 'open-webui') return -1
+    if (b.name === 'open-webui') return 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function StatusDot({ status }) {
+  const color = status === 'running'
+    ? 'bg-green-400'
+    : status === 'exited'
+      ? 'bg-red-400'
+      : 'bg-gray-500'
+  return <span className={`inline-block w-2.5 h-2.5 rounded-full ${color}`} />
+}
+
+function StatusLabel({ service }) {
+  const s = service.status
+  if (s === 'running') return <span className="text-green-400">Running</span>
+  if (s === 'exited') {
+    const exitInfo = service.exit_code != null ? ` (exit ${service.exit_code})` : ''
+    return <span className="text-red-400">Stopped{exitInfo}</span>
+  }
+  return <span className="text-gray-500">Not Created</span>
+}
+
+function EngineBadge({ engine }) {
+  const colors = {
+    'llama.cpp': 'bg-blue-600/30 text-blue-300',
+    'vLLM': 'bg-purple-600/30 text-purple-300',
+    'WebUI': 'bg-emerald-600/30 text-emerald-300',
+    'Unknown': 'bg-gray-600/30 text-gray-400'
+  }
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[engine] || colors.Unknown}`}>
+      {engine}
+    </span>
+  )
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = (e) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-2 text-gray-400 hover:text-gray-200 text-xs"
+      title="Copy"
+    >
+      {copied ? '✓' : '⧉'}
+    </button>
+  )
+}
+
+
+
+function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onDelete }) {
+  const infra = isInfra(service.name)
+  const isTransitioning = transitioning[service.name]
+
+  if (infra) {
+    return (
+      <div className="flex gap-1">
+        {service.status === 'running' && service.host_port && (
+          <a
+            href={`http://${window.location.hostname}:${service.host_port}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-gray-200"
+            title="Open"
+          >
+            ↗
+          </a>
+        )}
+        <button
+          onClick={e => { e.stopPropagation(); onRestart(service.name) }}
+          disabled={!!isTransitioning}
+          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-yellow-300 disabled:opacity-50"
+          title="Restart"
+        >
+          ↻
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex gap-1">
+      {service.status === 'running' ? (
+        <button
+          onClick={e => { e.stopPropagation(); onStop(service.name) }}
+          disabled={!!isTransitioning}
+          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50"
+          title="Stop"
+        >
+          {isTransitioning === 'stopping' ? '...' : '■'}
+        </button>
+      ) : (
+        <button
+          onClick={e => { e.stopPropagation(); onStart(service.name) }}
+          disabled={!!isTransitioning}
+          className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-green-400 disabled:opacity-50"
+          title="Start"
+        >
+          {isTransitioning === 'starting' ? '...' : '▶'}
+        </button>
+      )}
+      <button
+        onClick={e => e.stopPropagation()}
+        className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400"
+        title="Edit"
+      >
+        ✎
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(service.name) }}
+        disabled={!!isTransitioning}
+        className="p-1.5 rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50"
+        title="Delete"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
+export default function ServicesTable() {
+  const [services, setServices] = useState(null)
+  const [error, setError] = useState(null)
+  const [transitioning, setTransitioning] = useState({})
+
+  const fetchServices = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/services')
+      setServices(sortServices(data.services || []))
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    async function poll() {
+      if (!active) return
+      await fetchServices()
+    }
+    poll()
+    const id = setInterval(poll, POLL_INTERVAL)
+    return () => { active = false; clearInterval(id) }
+  }, [fetchServices])
+
+  const handleStart = async (name) => {
+    setTransitioning(prev => ({ ...prev, [name]: 'starting' }))
+    try {
+      await fetchAPI(`/services/${name}/start`, { method: 'POST' })
+    } catch { /* poll will update state */ }
+    await fetchServices()
+    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+  }
+
+  const handleRestart = async (name) => {
+    setTransitioning(prev => ({ ...prev, [name]: 'restarting' }))
+    try {
+      await fetchAPI(`/services/${name}/stop`, { method: 'POST' })
+    } catch { /* continue to start */ }
+    try {
+      await fetchAPI(`/services/${name}/start`, { method: 'POST' })
+    } catch { /* poll will update state */ }
+    await fetchServices()
+    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+  }
+
+  const handleStop = async (name) => {
+    setTransitioning(prev => ({ ...prev, [name]: 'stopping' }))
+    try {
+      await fetchAPI(`/services/${name}/stop`, { method: 'POST' })
+    } catch { /* poll will update state */ }
+    await fetchServices()
+    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+  }
+
+  const handleDelete = async (name) => {
+    if (!window.confirm(`Delete service "${name}"? This cannot be undone.`)) return
+    setTransitioning(prev => ({ ...prev, [name]: 'deleting' }))
+    try {
+      await fetchAPI(`/services/${name}`, { method: 'DELETE' })
+    } catch { /* poll will update state */ }
+    await fetchServices()
+    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+  }
+
+  if (error) {
+    return <p className="text-red-400 mt-6">Services: {error}</p>
+  }
+
+  if (services === null) {
+    return <p className="text-gray-500 mt-6">Loading services...</p>
+  }
+
+  if (!services.length) {
+    return <p className="text-gray-400 mt-6">No services configured</p>
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-gray-200">Services</h2>
+        <button
+          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+        >
+          + New Service
+        </button>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-gray-700">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-gray-800 text-gray-400 uppercase text-xs">
+            <tr>
+              <th className="px-6 py-3">Service</th>
+              <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Port</th>
+              <th className="px-6 py-3">Engine</th>
+              <th className="px-6 py-3">Size</th>
+              <th className="px-6 py-3">Open WebUI</th>
+              <th className="px-6 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {services.map(svc => (
+              <ServiceRow
+                key={svc.name}
+                service={svc}
+                transitioning={transitioning}
+                onStart={handleStart}
+                onStop={handleStop}
+                onRestart={handleRestart}
+                onDelete={handleDelete}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onDelete }) {
+  const engine = getEngine(service.name)
+  const infra = isInfra(service.name)
+  const port = service.host_port && service.host_port !== 9999 ? service.host_port : 'N/A'
+
+  return (
+    <tr className="border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
+      <td className="px-6 py-3">
+        <div className="flex flex-col">
+          <div className="flex items-center font-medium text-gray-200">
+            <span>{service.name}</span>
+            <CopyButton text={service.name} />
+          </div>
+          {service.api_key && (
+            <p className="text-gray-400 font-mono text-xs mt-1">
+              {service.api_key.slice(0, 12)}...
+              <CopyButton text={service.api_key} />
+            </p>
+          )}
+        </div>
+      </td>
+      <td className="px-6 py-3">
+        <div className="flex items-center gap-2">
+          <StatusDot status={service.status} />
+          <StatusLabel service={service} />
+        </div>
+      </td>
+      <td className="px-6 py-3 font-mono text-gray-300">{port}</td>
+      <td className="px-6 py-3"><EngineBadge engine={engine} /></td>
+      <td className="px-6 py-3 text-gray-300 text-xs">
+        {service.model_size_str || '—'}
+      </td>
+      <td className="px-6 py-3">
+        {infra ? (
+          <span className="text-gray-600">—</span>
+        ) : service.openwebui_registered ? (
+          <span className="text-green-400 text-xs">✓ Registered</span>
+        ) : (
+          <span className="text-gray-500 text-xs">Not registered</span>
+        )}
+      </td>
+      <td className="px-6 py-3">
+        <ActionButtons
+          service={service}
+          transitioning={transitioning}
+          onStart={onStart}
+          onStop={onStop}
+          onRestart={onRestart}
+          onDelete={onDelete}
+        />
+      </td>
+    </tr>
+  )
+}
