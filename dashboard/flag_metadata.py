@@ -731,7 +731,7 @@ LLAMACPP_LLAMA_BENCH_FLAGS = {
         "cli": "--numa",
         "type": "string",
         "description": "NUMA scheduling (distribute|isolate|numactl)",
-        "default": "disabled",
+        "default": "",
         "tip": "NUMA scheduling mode: <code>distribute</code> (spread across all nodes), <code>isolate</code> (current node only), or <code>numactl</code> (use numactl CPU map). <b>Essential for multi-socket systems</b> to optimize memory access. <code>distribute</code> with memory interleave often provides the best throughput.",
     },
     "n_cpu_moe": {

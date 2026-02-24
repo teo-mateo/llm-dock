@@ -6,6 +6,7 @@ import ServiceDetailsHeader from './ServiceDetailsHeader'
 import ServiceConfigPanel from './ServiceConfigPanel'
 import ServiceLogsPanel from './ServiceLogsPanel'
 import ParameterReference from './ParameterReference'
+import BenchmarkTab from './BenchmarkTab'
 
 function Toast({ message, type, onDone }) {
   useEffect(() => {
@@ -22,29 +23,30 @@ function Toast({ message, type, onDone }) {
   )
 }
 
-function TabBar({ serviceName, isLogsRoute }) {
+function TabBar({ serviceName, activeTab, isLlamaCpp }) {
+  const tabs = [
+    { id: 'config', label: 'Configuration', path: `/services/${serviceName}` },
+    { id: 'logs', label: 'Logs', path: `/services/${serviceName}/logs` },
+  ]
+  if (isLlamaCpp) {
+    tabs.push({ id: 'benchmark', label: 'Benchmark', path: `/services/${serviceName}/benchmark` })
+  }
+
   return (
     <div className="flex gap-6 border-b border-gray-700 mb-6">
-      <Link
-        to={`/services/${serviceName}`}
-        className={`pb-3 text-sm font-medium cursor-pointer ${
-          !isLogsRoute
-            ? 'border-b-2 border-blue-500 text-white'
-            : 'text-gray-400 hover:text-gray-200'
-        }`}
-      >
-        Configuration
-      </Link>
-      <Link
-        to={`/services/${serviceName}/logs`}
-        className={`pb-3 text-sm font-medium cursor-pointer ${
-          isLogsRoute
-            ? 'border-b-2 border-blue-500 text-white'
-            : 'text-gray-400 hover:text-gray-200'
-        }`}
-      >
-        Logs
-      </Link>
+      {tabs.map(tab => (
+        <Link
+          key={tab.id}
+          to={tab.path}
+          className={`pb-3 text-sm font-medium cursor-pointer ${
+            activeTab === tab.id
+              ? 'border-b-2 border-blue-500 text-white'
+              : 'text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          {tab.label}
+        </Link>
+      ))}
     </div>
   )
 }
@@ -126,8 +128,11 @@ export default function ServiceDetailsPage() {
   const addFlagRef = useRef(null)
   const metadataFetchId = useRef(0)
 
-  const isLogsRoute = location.pathname.endsWith('/logs')
+  const activeTab = location.pathname.endsWith('/benchmark') ? 'benchmark'
+    : location.pathname.endsWith('/logs') ? 'logs'
+    : 'config'
   const templateType = config?.template_type
+  const isLlamaCpp = templateType === 'llamacpp'
 
   // Fetch flag metadata at page level for both ConfigPanel and ParameterReference
   useEffect(() => {
@@ -183,12 +188,19 @@ export default function ServiceDetailsPage() {
         onError={handleError}
       />
 
-      <TabBar serviceName={serviceName} isLogsRoute={isLogsRoute} />
+      <TabBar serviceName={serviceName} activeTab={activeTab} isLlamaCpp={isLlamaCpp} />
 
-      {isLogsRoute ? (
+      {activeTab === 'logs' ? (
         <div className="flex-1 min-h-0">
           <ServiceLogsPanel serviceName={serviceName} runtime={runtime} />
         </div>
+      ) : activeTab === 'benchmark' ? (
+        <BenchmarkTab
+          serviceName={serviceName}
+          config={config}
+          onSuccess={handleSuccess}
+          onError={handleError}
+        />
       ) : (
         <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[60%_1fr] gap-6 content-start">
           <div>

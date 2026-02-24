@@ -98,9 +98,20 @@ export default function ParameterReference({ flagMetadata, existingFlags, onAddF
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2 flex-shrink-0">
-        <i className="fa-solid fa-book text-gray-500 text-xs"></i>
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Parameter Reference</span>
+      <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <i className="fa-solid fa-book text-gray-500 text-xs"></i>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Parameter Reference</span>
+        </div>
+        <a
+          href="https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md"
+          target="_blank"
+          rel="noreferrer"
+          className="text-gray-500 hover:text-gray-300 text-xs"
+          title="llama-server docs"
+        >
+          <i className="fa-solid fa-arrow-up-right-from-square"></i>
+        </a>
       </div>
       <div className="px-3 py-2 border-b border-gray-700 flex-shrink-0">
         <div className="relative">

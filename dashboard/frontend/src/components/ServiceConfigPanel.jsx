@@ -177,7 +177,9 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     <div className="bg-gray-800 rounded-lg border border-gray-700">
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-200">Configuration</h2>
+        <h2 className="text-lg font-semibold text-gray-200">
+          <i className="fa-solid fa-gear mr-2 text-gray-400"></i>Configuration
+        </h2>
         {isDirty && (
           <span className="text-yellow-400 text-sm flex items-center gap-1" role="status" aria-live="polite">
             <i className="fa-solid fa-circle-exclamation"></i>
@@ -241,13 +243,13 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
               <i className="fa-solid fa-plus mr-1"></i>Add parameter
             </button>
           </div>
-          <div className="space-y-0.5">
+          <div className="flex flex-col gap-2">
             {params.map(({ id, flag, value }, idx) => {
               const tooltip = getTooltip(flag)
               const isDuplicate = flag && duplicateFlags.has(flag)
               const isTrailingEmpty = idx === params.length - 1 && !flag && !value
               return (
-                <div key={id} className="flex items-center gap-2 rounded px-3 py-1">
+                <div key={id} className={`flex gap-2 items-center border-l-2 rounded-r pl-1 ${isDuplicate ? 'border-red-500' : 'border-transparent'}`}>
                   <input
                     ref={el => { if (el && justAddedIdRef.current === id) { el.focus(); justAddedIdRef.current = null } }}
                     value={flag}
@@ -267,7 +269,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                   <button
                     onClick={() => handleParamRemove(id)}
                     disabled={saving || isTrailingEmpty}
-                    className={`disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-gray-500 hover:text-red-400'}`}
+                    className={`disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-red-400 hover:text-red-300'}`}
                     aria-label={`Remove parameter ${flag || '(empty)'}`}
                   >
                     <i className="fa-solid fa-xmark"></i>
