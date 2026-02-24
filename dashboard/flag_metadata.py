@@ -16,11 +16,11 @@ MANDATORY_FIELDS = {
 }
 
 # ============================================
-# FLAG METADATA
+# FLAG METADATA FOR llama-server
 # Defines CLI mapping and type for each flag
 # ============================================
 
-LLAMACPP_FLAGS = {
+LLAMACPP_LLAMA_SERVER_FLAGS = {
     # Core model flags
     "mmproj_path": {
         "cli": "--mmproj",
@@ -513,6 +513,299 @@ LLAMACPP_FLAGS = {
     },
 }
 
+# ============================================
+# FLAG METADATA FOR llama-bench
+# Defines CLI mapping and type for each flag
+# ============================================
+
+LLAMACPP_LLAMA_BENCH_FLAGS = {
+    # Benchmark flags
+    "model": {
+        "cli": "-m",
+        "type": "path",
+        "description": "Model file path (auto-added)",
+        "default": "auto",
+        "tip": "Path to the GGUF model file. <b>Auto-added</b> from your service configuration — you don't need to set this manually.",
+    },
+    "output": {
+        "cli": "-o",
+        "type": "string",
+        "description": "Output format (auto-added as json)",
+        "default": "json",
+        "tip": "Sets the output format for benchmark results. <b>Auto-added as json</b> so the dashboard can parse the results. You don't need to set this manually.",
+    },
+    "n_prompt": {
+        "cli": "-p",
+        "type": "int",
+        "description": "Number of prompt tokens to process",
+        "default": "512",
+        "tip": "Sets the number of tokens to process in the <b>prompt phase</b> (default: 512). This measures how quickly your system can ingest input before generation begins. Increase to test performance with larger prompts or longer context windows.",
+    },
+    "n_gen": {
+        "cli": "-n",
+        "type": "int",
+        "description": "Number of tokens to generate",
+        "default": "128",
+        "tip": "Specifies how many tokens to <b>generate</b> during the text generation phase (default: 128). This tests sequential token production speed, which determines response time. Higher values show sustained performance over longer outputs.",
+    },
+    "repetitions": {
+        "cli": "-r",
+        "type": "int",
+        "description": "Times to repeat each test",
+        "default": "5",
+        "tip": "Number of times to <b>repeat each test</b> (default: 5). Multiple runs provide statistical averaging to account for variance from thermal throttling, caching, or system load. Increase for more reliable comparisons.",
+    },
+    "pg": {
+        "cli": "-pg",
+        "type": "string",
+        "description": "Combined prompt+generation (pp,tg)",
+        "default": "",
+        "tip": "Runs <b>prompt processing + text generation</b> in a single pass (format: <code>-pg 1024,256</code> for 1024 prompt + 256 generated tokens). The most realistic benchmark since it measures end-to-end inference like actual usage, rather than testing PP and TG separately.",
+    },
+    "n_depth": {
+        "cli": "-d",
+        "type": "int",
+        "description": "Context depth for KV cache prefill",
+        "default": "0",
+        "tip": "Sets how many tokens are already in the KV cache before the test runs. For example, <b>-d 4096</b> fills the cache with 4096 tokens first, then measures PP/TG speed. This lets you benchmark performance with a long conversation history, since attention slows down as context grows. Default is 0 (empty cache).",
+    },
+    "output_err": {
+        "cli": "-oe",
+        "type": "string",
+        "description": "Stderr output format",
+        "default": "none",
+        "tip": "Directs benchmark output to <b>stderr</b> in specified format (<code>csv|json|jsonl|md|sql</code>). Use to separate diagnostic data from main results when piping stdout to files or databases.",
+    },
+    "verbose": {
+        "cli": "-v",
+        "type": "bool",
+        "description": "Verbose output",
+        "default": "off",
+        "tip": "Enables <b>detailed diagnostic logging</b> during test execution, showing model loading details, device configuration, and per-iteration metrics. Enable when troubleshooting performance issues or verifying test parameters.",
+    },
+    "delay": {
+        "cli": "--delay",
+        "type": "int",
+        "description": "Delay in seconds between tests",
+        "default": "0",
+        "tip": "Introduces a <b>pause in seconds</b> between successive tests (default: 0). Allows GPU temperature to stabilize and caches to clear between runs. Add delay when thermal throttling might skew results.",
+    },
+    "list_devices": {
+        "cli": "--list-devices",
+        "type": "bool",
+        "description": "List available devices and exit",
+        "default": "",
+        "tip": "Displays all available <b>compute devices</b> (CPUs, GPUs, accelerators) compatible with your build, then exits. Use to verify hardware detection before configuring device-specific tests.",
+    },
+    # Batching flags
+    "batch_size": {
+        "cli": "-b",
+        "type": "int",
+        "description": "Logical batch size for prompt processing",
+        "default": "2048",
+        "tip": "<b>Logical batch size</b> for prompt processing (default: 2048). Controls how many tokens are processed per iteration at the application level. Larger values speed up prompt processing but require more VRAM for the logits buffer. All prompt tokens are still evaluated — they're just chunked into groups of this size.",
+    },
+    "ubatch_size": {
+        "cli": "-ub",
+        "type": "int",
+        "description": "Physical micro-batch size",
+        "default": "512",
+        "tip": "<b>Physical micro-batch size</b> at the hardware level (default: 512). When <code>batch > ubatch</code>, processing is pipelined (e.g., batch=2048 with ubatch=512 = 4-stage pipeline). Lower values reduce VRAM usage during prompt processing. Must satisfy: <code>batch_size >= ubatch_size</code>.",
+    },
+    # GPU flags
+    "gpu_layers": {
+        "cli": "-ngl",
+        "type": "int",
+        "description": "Number of layers to offload to GPU",
+        "default": "99",
+        "tip": "Controls how many model layers are stored in VRAM. Use a specific number, <code>auto</code>, or <code>-1</code>/all to offload everything. <b>Higher values = faster inference but more VRAM.</b> Start with <code>auto</code> and adjust based on available memory.",
+    },
+    "split_mode": {
+        "cli": "-sm",
+        "type": "string",
+        "description": "Multi-GPU split mode (none|layer|row)",
+        "default": "layer",
+        "tip": "Determines how models distribute across multiple GPUs. <code>none</code> = single GPU; <code>layer</code> (default) = sequential layer distribution; <code>row</code> = parallel tensor splitting where all GPUs work simultaneously per layer. <b>Use <code>row</code> for better multi-GPU utilization.</b>",
+    },
+    "main_gpu": {
+        "cli": "-mg",
+        "type": "int",
+        "description": "Primary GPU index for computations",
+        "default": "0",
+        "tip": "Specifies which GPU (by index, default: 0) handles primary processing. With <code>split-mode=none</code>, the entire model runs here. With <code>row</code> mode, this GPU manages intermediate results and KV cache. <b>Set to your fastest GPU.</b>",
+    },
+    "no_kv_offload": {
+        "cli": "-nkvo",
+        "type": "bool",
+        "description": "Disable KV cache offload to GPU (0|1)",
+        "default": "0",
+        "tip": "Keeps the KV cache in system RAM instead of VRAM. By default, KV cache uses VRAM. <b>Enable if you're VRAM-constrained but have plenty of RAM</b> — trades GPU memory for slower CPU memory access.",
+    },
+    "tensor_split": {
+        "cli": "-ts",
+        "type": "string",
+        "description": "Fraction of work per GPU (comma-separated)",
+        "default": "0",
+        "tip": "Defines custom proportions for distributing model weights across GPUs (e.g., <code>3,1</code> = 75%/25% split). <b>Use when GPUs have different VRAM capacities</b> to allocate smaller portions to weaker GPUs and prevent bottlenecks.",
+    },
+    "device": {
+        "cli": "-dev",
+        "type": "string",
+        "description": "Device selection",
+        "default": "auto",
+        "tip": "Specifies which compute devices to use as a comma-separated list. Set to <code>none</code> to disable offloading entirely. <b>Run with <code>--list-devices</code> first</b> to see available devices. Useful for mixed GPU/CPU setups.",
+    },
+    "no_op_offload": {
+        "cli": "--no-op-offload",
+        "type": "bool",
+        "description": "Disable operation offloading (0|1)",
+        "default": "0",
+        "tip": "Disables GPU acceleration for host tensor operations, forcing them onto CPU. <b>Enable only for debugging</b> or if you encounter GPU operation errors — it will significantly slow down inference.",
+    },
+    # Memory flags
+    "flash_attn": {
+        "cli": "-fa",
+        "type": "bool",
+        "description": "Enable flash attention (0|1)",
+        "default": "0",
+        "tip": "Enables flash attention, which reduces memory bandwidth and improves GPU performance through tiling and kernel fusion. <b>Enable (set to 1) when using GPU</b> for up to ~15% throughput gains and better long-context support. Required for KV cache quantization (<code>-ctk</code>/<code>-ctv</code>).",
+    },
+    "cache_type_k": {
+        "cli": "-ctk",
+        "type": "string",
+        "description": "KV cache type for K (f16, q8_0, q4_0, etc.)",
+        "default": "f16",
+        "tip": "Data type for the <b>key</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss — useful for long contexts or fitting more layers on GPU. Requires <code>-fa 1</code>.",
+    },
+    "cache_type_v": {
+        "cli": "-ctv",
+        "type": "string",
+        "description": "KV cache type for V (f16, q8_0, q4_0, etc.)",
+        "default": "f16",
+        "tip": "Data type for the <b>value</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss. Should typically match <code>-ctk</code> setting. Requires <code>-fa 1</code>.",
+    },
+    "mmap": {
+        "cli": "--mmap",
+        "type": "bool",
+        "description": "Use memory-mapped model loading (0|1)",
+        "default": "1",
+        "tip": "Controls memory-mapped file loading (default: enabled). When on, the model maps directly from disk via the OS page cache, enabling <b>instant loads on subsequent runs</b>. Disable (set to 0) to force loading the full model into RAM upfront — useful if your model is larger than available RAM or you want consistent performance without page faults.",
+    },
+    "embeddings": {
+        "cli": "--embeddings",
+        "type": "bool",
+        "description": "Embeddings mode (0|1)",
+        "default": "0",
+        "tip": "Switches from text generation to <b>embedding generation</b> mode. Enable (set to 1) when benchmarking vector embedding performance for semantic search, similarity tasks, or RAG applications. Requires a model designed for embeddings.",
+    },
+    # CPU flags
+    "threads": {
+        "cli": "-t",
+        "type": "int",
+        "description": "Number of threads for computation",
+        "default": "auto",
+        "tip": "Number of CPU threads for computation (default: auto-detected core count). <b>Higher values improve performance on multi-core systems</b> but may cause diminishing returns beyond the optimal count. Experiment with values like 4, 8, 16, 32 to find the sweet spot for your hardware.",
+    },
+    "cpu_mask": {
+        "cli": "-C",
+        "type": "string",
+        "description": "CPU affinity bitmask",
+        "default": "0x0",
+        "tip": "CPU affinity bitmask in hex (default: <code>0x0</code> = unrestricted). <b>Restricts execution to specific CPU cores.</b> Example: <code>0xFF</code> pins to CPUs 0-7. Useful on NUMA systems or when running multiple workloads to reduce cross-socket memory access.",
+    },
+    "cpu_strict": {
+        "cli": "--cpu-strict",
+        "type": "bool",
+        "description": "Use strict CPU thread pinning (0|1)",
+        "default": "0",
+        "tip": "Enforces <b>strict thread-to-core binding</b> to reduce context switching (default: disabled). Most beneficial when combined with <code>--cpu-mask</code> for maximum performance isolation and predictability in multi-threaded environments.",
+    },
+    "poll": {
+        "cli": "--poll",
+        "type": "int",
+        "description": "Polling percentage for thread sync",
+        "default": "50",
+        "tip": "Controls how aggressively threads <b>spin-check for new work</b> (0-100, default: 50). Higher values reduce latency but consume more CPU power. Lower values save power by using passive waiting. Tune based on your latency vs. power efficiency needs.",
+    },
+    "numa": {
+        "cli": "--numa",
+        "type": "string",
+        "description": "NUMA scheduling (distribute|isolate|numactl)",
+        "default": "disabled",
+        "tip": "NUMA scheduling mode: <code>distribute</code> (spread across all nodes), <code>isolate</code> (current node only), or <code>numactl</code> (use numactl CPU map). <b>Essential for multi-socket systems</b> to optimize memory access. <code>distribute</code> with memory interleave often provides the best throughput.",
+    },
+    "n_cpu_moe": {
+        "cli": "-ncmoe",
+        "type": "int",
+        "description": "CPU layers for MoE models",
+        "default": "0",
+        "tip": "Number of MoE layers to keep on CPU, counting from the <b>highest layer number</b> (default: 0). Offloads expert FFN layers to CPU to reduce VRAM usage on large MoE models. llama.cpp may still copy CPU weights to GPU for batch processing when enough tokens are available.",
+    },
+    # Other flags
+    "prio": {
+        "cli": "--prio",
+        "type": "int",
+        "description": "Process/thread priority (0-3)",
+        "default": "0",
+        "tip": "CPU scheduling priority: <code>-1</code> (low), <code>0</code> (normal), <code>1</code> (medium), <code>2</code> (high), <code>3</code> (realtime). Higher priorities allocate more CPU time to llama.cpp. Use <b>low for background benchmarking</b>, high for dedicated performance testing.",
+    },
+    "rpc": {
+        "cli": "--rpc",
+        "type": "string",
+        "description": "RPC server addresses (comma-separated)",
+        "default": "",
+        "tip": "Enables distributed benchmarking across machines by specifying RPC server addresses (e.g., <code>192.168.1.10:50052,192.168.1.11:50052</code>). Model weights and KV cache are automatically distributed proportional to available memory. <b>Experimental — do not use on open networks.</b>",
+    },
+    "override_tensors": {
+        "cli": "-ot",
+        "type": "string",
+        "description": "Override tensor buffer types",
+        "default": "",
+        "tip": "Fine-grained control over which device specific tensors load to, using regex patterns (e.g., <code>-ot \".*_exps.*=CPU\"</code> or <code>-ot \"blk.[0-5].*=CUDA0\"</code>). Buffer types: <code>CPU</code>, <code>CUDA0</code>, <code>CUDA1</code>. <b>Essential for MoE models</b> to selectively offload expert layers while keeping attention on GPU.",
+    },
+}
+
+_LLAMACPP_LLAMA_BENCH_CATEGORIES = {
+    "model": "Benchmark",
+    "output": "Benchmark",
+    "n_prompt": "Benchmark",
+    "n_gen": "Benchmark",
+    "repetitions": "Benchmark",
+    "pg": "Benchmark",
+    "n_depth": "Benchmark",
+    "output_err": "Benchmark",
+    "verbose": "Benchmark",
+    "delay": "Benchmark",
+    "list_devices": "Benchmark",
+    "batch_size": "Batching",
+    "ubatch_size": "Batching",
+    "gpu_layers": "GPU",
+    "split_mode": "GPU",
+    "main_gpu": "GPU",
+    "no_kv_offload": "GPU",
+    "tensor_split": "GPU",
+    "device": "GPU",
+    "no_op_offload": "GPU",
+    "flash_attn": "Memory",
+    "cache_type_k": "Memory",
+    "cache_type_v": "Memory",
+    "mmap": "Memory",
+    "embeddings": "Memory",
+    "threads": "CPU",
+    "cpu_mask": "CPU",
+    "cpu_strict": "CPU",
+    "poll": "CPU",
+    "numa": "CPU",
+    "n_cpu_moe": "CPU",
+    "prio": "Other",
+    "rpc": "Other",
+    "override_tensors": "Other",
+}
+
+for _key, _cat in _LLAMACPP_LLAMA_BENCH_CATEGORIES.items():
+    if _key in LLAMACPP_LLAMA_BENCH_FLAGS:
+        LLAMACPP_LLAMA_BENCH_FLAGS[_key]["category"] = _cat
+
 VLLM_FLAGS = {
     # ========== CONTEXT & MEMORY (Top Priority) ==========
     "max_model_len": {
@@ -767,7 +1060,7 @@ VLLM_FLAGS = {
 # VALIDATION RULES
 # ============================================
 
-LLAMACPP_VALIDATION = {
+LLAMACPP_LLAMA_SERVER_VALIDATION = {
     "context_length": {"type": "int", "min": 512, "max": 1000000},
     "gpu_layers": {"type": "int", "min": 0, "max": 999},
     "batch_size": {"type": "int", "min": 1, "max": 16384},
@@ -799,7 +1092,7 @@ VLLM_VALIDATION = {
 # LLAMACPP CATEGORIES (applied programmatically)
 # ============================================
 
-_LLAMACPP_CATEGORIES = {
+_LLAMACPP_LLAMA_SERVER_CATEGORIES = {
     "mmproj_path": "Features",
     "context_length": "Context",
     "gpu_layers": "GPU",
@@ -876,9 +1169,9 @@ _LLAMACPP_CATEGORIES = {
     "rope_freq_scale": "RoPE",
 }
 
-for _key, _cat in _LLAMACPP_CATEGORIES.items():
-    if _key in LLAMACPP_FLAGS:
-        LLAMACPP_FLAGS[_key]["category"] = _cat
+for _key, _cat in _LLAMACPP_LLAMA_SERVER_CATEGORIES.items():
+    if _key in LLAMACPP_LLAMA_SERVER_FLAGS:
+        LLAMACPP_LLAMA_SERVER_FLAGS[_key]["category"] = _cat
 
 # ============================================
 # HELPER FUNCTIONS
@@ -888,7 +1181,9 @@ for _key, _cat in _LLAMACPP_CATEGORIES.items():
 def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     """Get flag metadata for template type"""
     if template_type == "llamacpp":
-        return LLAMACPP_FLAGS
+        return LLAMACPP_LLAMA_SERVER_FLAGS
+    elif template_type == "llamacpp_bench":
+        return LLAMACPP_LLAMA_BENCH_FLAGS
     elif template_type == "vllm":
         return VLLM_FLAGS
     else:
@@ -898,7 +1193,7 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
 def get_validation_rules(template_type: str) -> Dict[str, Any]:
     """Get validation rules for template type"""
     if template_type == "llamacpp":
-        return LLAMACPP_VALIDATION
+        return LLAMACPP_LLAMA_SERVER_VALIDATION
     elif template_type == "vllm":
         return VLLM_VALIDATION
     else:
