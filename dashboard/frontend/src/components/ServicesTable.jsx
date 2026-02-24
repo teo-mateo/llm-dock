@@ -173,11 +173,12 @@ function Toast({ message, onDone }) {
 }
 
 export default function ServicesTable() {
-  const navigate = useNavigate()
-  const [services, setServices] = useState(null)
-  const [error, setError] = useState(null)
-  const [transitioning, setTransitioning] = useState({})
-  const [toast, setToast] = useState(null)
+   const navigate = useNavigate()
+   const [services, setServices] = useState(null)
+   const [error, setError] = useState(null)
+   const [transitioning, setTransitioning] = useState({})
+   const [toast, setToast] = useState(null)
+   const [searchQuery, setSearchQuery] = useState('')
 
   const fetchServices = useCallback(async () => {
     try {
@@ -262,54 +263,58 @@ export default function ServicesTable() {
     return <p className="text-gray-500 mt-6">Loading services...</p>
   }
 
-  if (!services.length) {
-    return <p className="text-gray-400 mt-6">No services configured</p>
-  }
+if (!services.length) {
+     return <p className="text-gray-400 mt-6">No services configured</p>
+   }
 
-  return (
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-gray-200">Services</h2>
-        <button
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
-        >
-          + New Service
-        </button>
-      </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-700">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-gray-800 text-gray-400 uppercase text-xs">
-            <tr>
-              <th className="px-6 py-3">Service</th>
-              <th className="px-6 py-3">Status</th>
-              <th className="px-6 py-3">Port</th>
-              <th className="px-6 py-3">Engine</th>
-              <th className="px-6 py-3">Size</th>
-              <th className="px-6 py-3">Open WebUI</th>
-              <th className="px-6 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {services.map(svc => (
-              <ServiceRow
-                key={svc.name}
-                service={svc}
-                transitioning={transitioning}
-                onStart={handleStart}
-                onStop={handleStop}
-                onRestart={handleRestart}
-                onSetPublicPort={handleSetPublicPort}
-                onEdit={handleEdit}
-                onViewLogs={handleViewLogs}
-                onDelete={handleDelete}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
-    </div>
-  )
+   const hasMatch = searchQuery.length >= 3
+
+   return (
+     <div className="mt-6">
+<div className="flex flex-col items-center mb-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search services (min 3 chars)"
+            className="px-4 py-2 bg-gray-700 border border-gray-600 rounded text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full max-w-md"
+          />
+        </div>
+<div className="overflow-x-auto rounded-lg border border-gray-700">
+          <table className="w-full text-sm text-left">
+           <thead className="bg-gray-800 text-gray-400 uppercase text-xs">
+             <tr>
+               <th className="px-6 py-3">Service</th>
+               <th className="px-6 py-3">Status</th>
+               <th className="px-6 py-3">Port</th>
+               <th className="px-6 py-3">Engine</th>
+               <th className="px-6 py-3">Size</th>
+               <th className="px-6 py-3">Open WebUI</th>
+               <th className="px-6 py-3">Actions</th>
+             </tr>
+           </thead>
+           <tbody>
+             {services.map(svc => (
+               <ServiceRow
+                 key={svc.name}
+                 service={svc}
+                 transitioning={transitioning}
+                 onStart={handleStart}
+                 onStop={handleStop}
+                 onRestart={handleRestart}
+                 onSetPublicPort={handleSetPublicPort}
+                 onEdit={handleEdit}
+                 onViewLogs={handleViewLogs}
+                 onDelete={handleDelete}
+                 searchQuery={searchQuery}
+               />
+             ))}
+</tbody>
+         </table>
+       </div>
+       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+     </div>
+   )
 }
 
 function PortCell({ service, onSetPublicPort }) {
@@ -356,12 +361,20 @@ function PortCell({ service, onSetPublicPort }) {
   )
 }
 
-function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete }) {
-  const engine = getEngine(service.name)
-  const infra = isInfra(service.name)
+function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete, searchQuery }) {
+   const engine = getEngine(service.name)
+   const infra = isInfra(service.name)
+   const hasMatch = searchQuery.length >= 3
+   const isMatch = hasMatch && service.name.toLowerCase().includes(searchQuery.toLowerCase())
 
-  return (
-    <tr className="border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
+const rowClasses = hasMatch
+      ? isMatch
+        ? 'border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-all'
+        : 'border-b border-gray-700 bg-gray-800/50 opacity-40 blur-subtle transition-all'
+      : 'border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-colors'
+
+   return (
+     <tr className={rowClasses}>
       <td className="px-6 py-3">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-gray-200">
