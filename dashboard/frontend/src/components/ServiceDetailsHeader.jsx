@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false)
@@ -409,11 +409,15 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
 }
 
 export default function ServiceDetailsHeader({ serviceName, config, runtime, transitioning, actions, onRename, onSuccess, onError }) {
-  const navigate = useNavigate()
-  const status = runtime?.status || 'not-created'
-  const isRunning = status === 'running'
-  const templateType = config?.template_type
-  const [editing, setEditing] = useState(false)
+   const navigate = useNavigate()
+   const location = useLocation()
+   const status = runtime?.status || 'not-created'
+   const isRunning = status === 'running'
+   const templateType = config?.template_type
+   const [editing, setEditing] = useState(false)
+   
+   // Get the previous search query from state if available, or use browser history
+   const prevSearch = location.state?.search || ''
 
   const canRename = !isRunning && !transitioning
 
@@ -432,7 +436,7 @@ export default function ServiceDetailsHeader({ serviceName, config, runtime, tra
       {/* Row 1: Identity */}
       <div className="flex items-center gap-4 flex-wrap">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-gray-400 hover:text-gray-200 cursor-pointer"
           aria-label="Back to services list"
         >

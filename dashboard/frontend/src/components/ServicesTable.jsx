@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchAPI } from '../api'
 import { startService, stopService, restartService } from '../services/lifecycle'
 
@@ -178,7 +178,8 @@ export default function ServicesTable() {
    const [error, setError] = useState(null)
    const [transitioning, setTransitioning] = useState({})
    const [toast, setToast] = useState(null)
-   const [searchQuery, setSearchQuery] = useState('')
+   const [searchParams, setSearchParams] = useSearchParams()
+   const searchQuery = searchParams.get('search') || ''
 
   const fetchServices = useCallback(async () => {
     try {
@@ -238,11 +239,11 @@ export default function ServicesTable() {
   }
 
   const handleEdit = (name) => {
-    navigate(`/services/${name}`)
+    navigate(`/services/${name}`, { state: { search: searchQuery } })
   }
 
   const handleViewLogs = (name) => {
-    navigate(`/services/${name}/logs`)
+    navigate(`/services/${name}/logs`, { state: { search: searchQuery } })
   }
 
   const handleDelete = async (name) => {
@@ -275,7 +276,15 @@ if (!services.length) {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value
+              if (value) {
+                searchParams.set('search', value)
+              } else {
+                searchParams.delete('search')
+              }
+              setSearchParams(searchParams)
+            }}
             placeholder="Search services (min 3 chars)"
             className="px-4 py-2 bg-gray-700 border border-gray-600 rounded text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full max-w-md"
           />
