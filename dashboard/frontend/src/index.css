@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+@layer components {
+  .blur-subtle {
+    filter: blur(1px);
+  }
+}

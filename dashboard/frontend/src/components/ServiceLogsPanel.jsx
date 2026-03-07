@@ -85,18 +85,16 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
   return (
     <div className="h-full bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-700 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-            Container Logs
-          </h2>
+      <div className="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-gray-200">
+          <i className="fa-solid fa-terminal mr-2 text-gray-400"></i>Container Logs
           {hasContainer && !paused && (
             <span
-              className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"
+              className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse ml-3 align-middle"
               aria-label="Log updates active"
             />
           )}
-        </div>
+        </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
