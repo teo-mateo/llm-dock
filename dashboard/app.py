@@ -7,6 +7,7 @@ from flask_cors import CORS
 from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
 from routes import gpu_bp, services_bp, system_bp, openwebui_bp
 from benchmarking.routes import benchmarks_bp, init_benchmarking
+from chat.routes import chat_bp, init_chat
 
 
 def create_app(config=None):
@@ -30,11 +31,16 @@ def create_app(config=None):
     app.register_blueprint(services_bp)
     app.register_blueprint(openwebui_bp)
     app.register_blueprint(benchmarks_bp)
+    app.register_blueprint(chat_bp)
 
     # Initialize benchmarking subsystem
     compose_file = app.config.get("COMPOSE_FILE", COMPOSE_FILE)
     db_path = app.config.get("BENCHMARK_DB_PATH")
     init_benchmarking(app, compose_file, db_path=db_path)
+
+    # Initialize chat subsystem
+    chat_db_path = app.config.get("CHAT_DB_PATH")
+    init_chat(app, db_path=chat_db_path)
 
     @app.route("/")
     def index():
