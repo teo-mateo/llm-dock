@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:v0.15.1
+FROM vllm/vllm-openai:v0.19.1
 
 # Build metadata
 ARG BUILD_DATE
