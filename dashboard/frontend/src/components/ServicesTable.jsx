@@ -178,6 +178,7 @@ export default function ServicesTable() {
   const [error, setError] = useState(null)
   const [transitioning, setTransitioning] = useState({})
   const [toast, setToast] = useState(null)
+  const [search, setSearch] = useState('')
 
   const fetchServices = useCallback(async () => {
     try {
@@ -262,19 +263,45 @@ export default function ServicesTable() {
     return <p className="text-gray-500 mt-6">Loading services...</p>
   }
 
-  if (!services.length) {
+  const term = search.trim().toLowerCase()
+  const visible = term ? services.filter(s => s.name.toLowerCase().includes(term)) : services
+
+  if (!visible.length && !services.length) {
     return <p className="text-gray-400 mt-6">No services configured</p>
+  }
+
+  if (!visible.length && services.length) {
+    return <p className="text-gray-400 mt-6">No services matching "{search}"</p>
   }
 
   return (
     <div className="mt-6">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <h2 className="text-lg font-semibold text-gray-200">Services</h2>
-        <button
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
-        >
-          + New Service
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Filter by name..."
+              className="w-48 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <button
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+          >
+            + New Service
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-gray-700">
         <table className="w-full text-sm text-left">
@@ -290,7 +317,7 @@ export default function ServicesTable() {
             </tr>
           </thead>
           <tbody>
-            {services.map(svc => (
+            {visible.map(svc => (
               <ServiceRow
                 key={svc.name}
                 service={svc}
