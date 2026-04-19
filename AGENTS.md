@@ -207,9 +207,10 @@ Services are auto-registered as OpenAI-compatible endpoints in Open WebUI when c
 - **Params:** CLI flags directly (e.g. `-ngl 99`, `-fa 1`, `-c 8192`)
 
 ### vLLM
-- **Format:** safetensors
-- **Image:** `vllm/vllm-openai:v0.11.0`
+- **Format:** safetensors (incl. FP8 quantized checkpoints)
+- **Image:** custom `llm-dock-vllm` built from `vllm/Dockerfile` (currently based on vLLM v0.19.1)
 - **Params:** `--max-model-len`, `--gpu-memory-utilization`, `--tensor-parallel-size`, etc.
+- **FP8 models:** use `--dtype auto` — vLLM auto-detects `quantization=fp8` from the HF config. Forcing `--dtype bfloat16` on an FP8 checkpoint will error.
 
 ## API Routes
 
@@ -232,6 +233,29 @@ All routes are under the Flask app and require Bearer token auth (except static 
 - **File updates:** Always use atomic writes (temp file + rename) with backup/rollback
 - **Security:** Constant-time token comparison, security headers on all responses (X-Content-Type-Options, X-Frame-Options, etc.)
 - **No comments** unless explicitly requested
+- **Python strings:** Always use **double quotes** for all strings, except when a string contains double quotes — then use single quotes. This matches `ruff`/`black` default behavior.
+
+```python
+# Correct — double quotes everywhere
+logger.info(f"Service '{name}' added successfully")
+config = {"services": {}, "version": "3.8"}
+error_msg = "Port must be between 1024 and 65535"
+
+# Correct — single quotes when string contains double quotes
+msg = 'Invalid JSON in services.json: expected value'
+
+# Wrong — single quotes as default
+config = {'services': {}, 'version': '3.8'}
+logger.error(f"Failed to add service: {e}")
+```
+
+## Scope of Changes
+
+When fixing a bug or implementing a feature, modify only lines related to the task. Do not reformat, re-quote (e.g. `' → "`), re-indent, or restyle unrelated code, even if it looks inconsistent with the rest of the file. Stylistic changes belong in a separate, clearly-labeled commit (e.g. `style: apply ruff format`).
+
+This keeps diffs reviewable — a bug fix should read as a bug fix, not as a bug fix buried in hundreds of cosmetic changes.
+
+If you believe the codebase genuinely needs a formatter pass, say so and ask before doing it.
 
 ## Key Files Reference
 
@@ -246,3 +270,56 @@ All routes are under the Flask app and require Bearer token auth (except static 
 | `dashboard/service_templates.py` | Service config generators |
 | `services.json` | Service definitions (source of truth) |
 | `docker-compose.yml.template` | Base compose template |
+| `scripts/bench/vllm/bench.sh` | vLLM online-serving benchmark runner |
+
+## services.json Schema
+
+Each top-level key is a service name (matches `container_name`). Fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `alias` | string | Usually equals the service name; also passed to `llama-server --alias` |
+| `port` | int | Host port (container maps to 8080 for llama.cpp, 8000 for vLLM) |
+| `api_key` | string | Per-service API key; shared key `llmd-...` is common, some services have unique keys |
+| `model_path` | string | llama.cpp only — absolute path inside container to GGUF file |
+| `model_name` | string | vLLM only — HF model ID (e.g. `Qwen/Qwen3.6-35B-A3B-FP8`) |
+| `params` | object | CLI flag → value. Empty string `""` means flag is passed with no value (e.g. `"--enable-prefix-caching": ""`). Values with spaces/JSON should be pre-quoted with single quotes |
+| `template_type` | `"llamacpp"` \| `"vllm"` | Selects Jinja template |
+| `model_size`, `model_size_str` | int, string | Optional metadata |
+
+### Port Conventions
+- `3300` — Open WebUI (static, not dashboard-managed)
+- `3301–33xx` — dynamic model services; pick the next free port when adding one
+- `3399` — dashboard
+
+### Container-internal Ports
+- llama.cpp: `8080` (mapped via `"<host>:8080"`)
+- vLLM: `8000` (mapped via `"<host>:8000"`)
+
+## Checking Service Logs
+
+Services run as Docker containers — use `docker logs` with the container name (same as the services.json key / alias):
+
+```bash
+docker logs --tail 100 <container-name>           # last 100 lines
+docker logs -f <container-name>                   # follow (stream)
+docker logs --since 2m <container-name>           # last 2 minutes
+docker logs --tail 50 <container-name> 2>&1 | less
+```
+
+**Readiness signals:**
+- vLLM: look for `Uvicorn running on http://0.0.0.0:8000` — startup can take 1–3 min (weight load + torch.compile + cudagraph capture)
+- llama.cpp: look for `main: HTTP server is listening, hostname: 0.0.0.0, port: 8080`
+- Or probe health: `curl -s http://localhost:<host-port>/health` (vLLM) / `/health` (llama.cpp)
+
+**Common vLLM startup phases in logs:** arg parsing → `Loading safetensors checkpoint shards` → `Model loading took X GiB` → `torch.compile` (Dynamo + inductor, cached after first run) → cudagraph capture → KV profiling → API server ready.
+
+## vLLM Benchmarking
+
+`scripts/bench/vllm/bench.sh <container-name> [extra args]` runs `vllm bench serve` inside the container via `docker exec`, hitting `/v1/chat/completions` with random prompts. Auto-extracts `--api-key` from the container's args. Tunable via env vars: `NUM_PROMPTS` (20), `INPUT_LEN` (256), `OUTPUT_LEN` (128), `REQUEST_RATE` (4).
+
+## GPU Sizing Notes
+
+- Current host: single NVIDIA RTX PRO 6000 Blackwell, **~96 GB VRAM**
+- All services use `devices: count: all` — they share the GPU and can't run concurrently if they oversubscribe memory
+- For single-user vLLM deployments, `--gpu-memory-utilization` well below `0.9` is fine (e.g. `0.55` for a ~35 GB FP8 model at 160K context / `max-num-seqs 1`) — higher values only help throughput under concurrency

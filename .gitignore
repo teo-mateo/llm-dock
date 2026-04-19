@@ -75,3 +75,6 @@ htmlcov/
 
 # Claude Code metadata
 .claude/
+
+# Playwright MCP (screenshots, logs, page captures)
+.playwright-mcp/
