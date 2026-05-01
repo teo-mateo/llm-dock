@@ -6,6 +6,7 @@ import ServiceDetailsHeader from './ServiceDetailsHeader'
 import ServiceConfigPanel from './ServiceConfigPanel'
 import ServiceLogsPanel from './ServiceLogsPanel'
 import ParameterReference from './ParameterReference'
+import MetricsPanel from './MetricsPanel'
 
 function Toast({ message, type, onDone }) {
   useEffect(() => {
@@ -22,29 +23,21 @@ function Toast({ message, type, onDone }) {
   )
 }
 
-function TabBar({ serviceName, isLogsRoute }) {
+function TabBar({ serviceName, isLogsRoute, isMetricsRoute }) {
+  const isActive = (route) => {
+    if (route === 'config') return !isLogsRoute && !isMetricsRoute
+    if (route === 'logs') return isLogsRoute
+    if (route === 'metrics') return isMetricsRoute
+    return false
+  }
+
+  const tabClass = (route) => `pb-3 text-sm font-medium cursor-pointer ${isActive(route) ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-gray-200'}`
+
   return (
     <div className="flex gap-6 border-b border-gray-700 mb-6">
-      <Link
-        to={`/services/${serviceName}`}
-        className={`pb-3 text-sm font-medium cursor-pointer ${
-          !isLogsRoute
-            ? 'border-b-2 border-blue-500 text-white'
-            : 'text-gray-400 hover:text-gray-200'
-        }`}
-      >
-        Configuration
-      </Link>
-      <Link
-        to={`/services/${serviceName}/logs`}
-        className={`pb-3 text-sm font-medium cursor-pointer ${
-          isLogsRoute
-            ? 'border-b-2 border-blue-500 text-white'
-            : 'text-gray-400 hover:text-gray-200'
-        }`}
-      >
-        Logs
-      </Link>
+      <Link to={`/services/${serviceName}`} className={tabClass('config')}>Configuration</Link>
+      <Link to={`/services/${serviceName}/logs`} className={tabClass('logs')}>Logs</Link>
+      <Link to={`/services/${serviceName}/metrics`} className={tabClass('metrics')}>Metrics</Link>
     </div>
   )
 }
@@ -127,6 +120,7 @@ export default function ServiceDetailsPage() {
   const metadataFetchId = useRef(0)
 
   const isLogsRoute = location.pathname.endsWith('/logs')
+  const isMetricsRoute = location.pathname.endsWith('/metrics')
   const templateType = config?.template_type
 
   // Fetch flag metadata at page level for both ConfigPanel and ParameterReference
@@ -183,9 +177,13 @@ export default function ServiceDetailsPage() {
         onError={handleError}
       />
 
-      <TabBar serviceName={serviceName} isLogsRoute={isLogsRoute} />
+      <TabBar serviceName={serviceName} isLogsRoute={isLogsRoute} isMetricsRoute={isMetricsRoute} />
 
-      {isLogsRoute ? (
+      {isMetricsRoute ? (
+        <div className="flex-1 overflow-auto">
+          <MetricsPanel serviceName={serviceName} enabled={templateType === 'vllm' && runtime?.status === 'running'} />
+        </div>
+      ) : isLogsRoute ? (
         <div className="flex-1 min-h-0">
           <ServiceLogsPanel serviceName={serviceName} runtime={runtime} />
         </div>
