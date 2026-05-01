@@ -53,7 +53,7 @@ describe('MetricsPanel', () => {
     expect(screen.getByText('Requests')).toBeTruthy()
     expect(screen.getByText('Token Throughput')).toBeTruthy()
     expect(screen.getByText('Utilization')).toBeTruthy()
-    expect(screen.getByText('KV Cache')).toBeTruthy()
+    expect(screen.getByText('Active KV')).toBeTruthy()
   })
 
   it('render green pulse dot when polling active', () => {

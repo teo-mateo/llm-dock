@@ -4,22 +4,7 @@ import TokenSparkline from './TokenSparkline'
 import RequestStrip from './RequestStrip'
 import GaugesRow from './GaugesRow'
 import SpecDecodeBar from './SpecDecodeBar'
-
-function timeAgo(iso) {
-  if (!iso) return '—'
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60) return `${Math.round(diff)}s ago`
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
-  return `${Math.round(diff / 3600)}h ago`
-}
-
-function getValue(metrics, metricName) {
-  const obj = metrics[metricName]
-  if (!obj || typeof obj !== 'object') return undefined
-  const keys = Object.keys(obj)
-  if (keys.length === 0) return undefined
-  return obj[keys[0]]
-}
+import { getValue, timeAgo } from '../utils'
 
 export default function MetricsPanel({ serviceName, enabled }) {
   const { metrics, history, loading, error, lastScraped } = useServiceMetrics({ serviceName, enabled })
@@ -49,43 +34,44 @@ export default function MetricsPanel({ serviceName, enabled }) {
     )
   }
 
-  const hasHistory = history.length > 0
+   const hasHistory = history.length > 0
+   const hasMetrics = Object.keys(metrics).length > 0
 
-  return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`} />
-        <h3 className="text-base font-semibold text-gray-100">Live Metrics</h3>
-        <span className="text-gray-500 text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
-        {error && <span className="text-red-400 text-xs ml-auto">{error}</span>}
-      </div>
+   return (
+     <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+       <div className="flex items-center gap-3 mb-5">
+         <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`} />
+         <h3 className="text-base font-semibold text-gray-100">Live Metrics</h3>
+         <span className="text-gray-500 text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
+         {error && <span className="text-red-400 text-xs ml-auto">{error}</span>}
+       </div>
 
-      {!hasHistory && !loading && !error ? (
-        <div className="flex flex-col items-center justify-center py-12">
-          <i className="fa-solid fa-chart-line text-3xl text-gray-600 mb-3" />
-          <p className="text-gray-400 text-sm mb-1">No metrics available</p>
-          <p className="text-gray-500 text-xs">The vLLM prometheus endpoint returned no data or is unreachable.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-4">
-            <RequestStrip
-              running={latest.running}
-              waiting={latest.waiting}
-              preemptRate={latest.preemptRate}
-            />
-            <TokenSparkline history={history} />
-          </div>
-          <div className="flex flex-col gap-4">
-            <GaugesRow
-              kvCache={getValue(metrics, 'vllm:kv_cache_usage_perc')}
-              prefixHitRatio={latest.prefixHitRatio}
-              specAcceptRatio={latest.specAcceptRatio}
-            />
-            {specPerPos && <SpecDecodeBar specPerPos={specPerPos} />}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+       {!hasHistory && !hasMetrics && !loading && !error ? (
+         <div className="flex flex-col items-center justify-center py-12">
+           <i className="fa-solid fa-chart-line text-3xl text-gray-600 mb-3" />
+           <p className="text-gray-400 text-sm mb-1">No metrics available</p>
+           <p className="text-gray-500 text-xs">The vLLM prometheus endpoint returned no data or is unreachable.</p>
+         </div>
+       ) : (
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-4">
+              <RequestStrip
+                running={latest.running}
+                waiting={latest.waiting}
+                preemptRate={latest.preemptRate}
+              />
+              <TokenSparkline history={history} />
+            </div>
+           <div className="flex flex-col gap-4">
+             <GaugesRow
+               kvCache={getValue(metrics, 'vllm:kv_cache_usage_perc')}
+               prefixHitRatio={latest.prefixHitRatio}
+               specAcceptRatio={latest.specAcceptRatio}
+             />
+             {specPerPos && <SpecDecodeBar specPerPos={specPerPos} />}
+           </div>
+         </div>
+       )}
+     </div>
+   )
 }

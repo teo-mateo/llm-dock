@@ -1,5 +1,11 @@
 const CIRCUMFERENCE = 2 * Math.PI * 18
 
+const kvColor = (pct) => {
+  if (pct < 60) return '#22c55e'
+  if (pct <= 85) return '#eab308'
+  return '#ef4444'
+}
+
 function DonutGauge({ value, label, colorGetter }) {
   const displayVal = value !== undefined && value !== null ? value : undefined
   const displayPct = displayVal !== undefined && !Number.isNaN(displayVal) ? Math.max(0, Math.min(100, displayVal)) : undefined
@@ -45,17 +51,13 @@ export default function GaugesRow({ kvCache, prefixHitRatio, specAcceptRatio }) 
   const prefixPct = prefixHitRatio !== undefined && prefixHitRatio !== null ? prefixHitRatio * 100 : undefined
   const specPct = specAcceptRatio !== undefined && specAcceptRatio !== null ? specAcceptRatio * 100 : undefined
 
-  const kvColor = (pct) => {
-    if (pct < 60) return '#22c55e'
-    if (pct <= 85) return '#eab308'
-    return '#ef4444'
-  }
-
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
       <h3 className="text-sm font-medium text-gray-400 mb-3">Utilization</h3>
       <div className="flex justify-around items-center">
-        <DonutGauge value={kvPct} label="KV Cache" colorGetter={kvColor} />
+        <div title="KV blocks actively used by running/waiting requests (not prefix-cached blocks).">
+          <DonutGauge value={kvPct} label="Active KV" colorGetter={kvColor} />
+        </div>
         <DonutGauge value={prefixPct} label="Prefix Hit %" colorGetter="#3b82f6" />
         <DonutGauge value={specPct} label="Spec Accept %" colorGetter="#a855f7" />
       </div>
