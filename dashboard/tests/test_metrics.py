@@ -228,6 +228,41 @@ class TestErrorStates:
             assert data["metrics"] == {}
 
 
+SAMPLE_PROMETHEUS_TEXT_LABELED = """# HELP vllm:num_requests_running Number of requests currently running on the GPU.
+# TYPE vllm:num_requests_running gauge
+vllm:num_requests_running{engine="0",model_name="vllm-test"} 3.0
+# HELP vllm:kv_cache_usage_perc KV cache usage percentage.
+# TYPE vllm:kv_cache_usage_perc gauge
+vllm:kv_cache_usage_perc{engine="0",model_name="vllm-test"} 0.73
+"""
+
+
+class TestLabeledMetrics:
+    @patch("routes.metrics.requests.get")
+    def test_labeled_samples_serialize_to_json(self, mock_get, metrics_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_PROMETHEUS_TEXT_LABELED
+        mock_get.return_value = mock_resp
+
+        resp = metrics_client.get(
+            "/api/services/vllm-test/metrics", headers=_auth_headers()
+        )
+
+        # This will raise TypeError if tuple keys are not converted to strings
+        assert resp.status_code == 200
+        data = resp.get_json()
+        metrics = data["metrics"]
+
+        running = metrics["vllm:num_requests_running"]
+        assert "engine=0;model_name=vllm-test" in running
+        assert running["engine=0;model_name=vllm-test"] == 3.0
+
+        kv = metrics["vllm:kv_cache_usage_perc"]
+        assert "engine=0;model_name=vllm-test" in kv
+        assert kv["engine=0;model_name=vllm-test"] == 0.73
+
+
 class TestAuth:
     def test_no_auth_returns_401(self, metrics_client):
         resp = metrics_client.get("/api/services/vllm-test/metrics")

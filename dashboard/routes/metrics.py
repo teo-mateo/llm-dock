@@ -71,9 +71,8 @@ def _parse_metrics(text: str) -> dict:
         else:
             metric_data = {}
             for sample in family.samples:
-                # Use JSON-serializable label key
                 if sample.labels:
-                    key = tuple(sorted(sample.labels.items()))
+                    key = ";".join(f"{k}={v}" for k, v in sorted(sample.labels.items()))
                 else:
                     key = "{}"
                 metric_data[key] = sample.value
