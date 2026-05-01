@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
+import { getValue } from '../utils'
 
 const POLL_INTERVAL = 3000
 const MAX_HISTORY = 60
-
-function getValue(metrics, metricName) {
-  const obj = metrics[metricName]
-  if (!obj || typeof obj !== 'object') return undefined
-  const keys = Object.keys(obj)
-  if (keys.length === 0) return undefined
-  return obj[keys[0]]
-}
 
 export default function useServiceMetrics({ serviceName, enabled }) {
   const [metrics, setMetrics] = useState({})
@@ -89,8 +82,15 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         }
 
         let specAcceptRatio = undefined
-        if (specDrafts !== undefined && specDrafts > 0) {
-          specAcceptRatio = (specAccepted || 0) / specDrafts
+        const specPerPosRaw = raw['vllm:spec_decode_num_accepted_tokens_per_pos_total']
+        if (specPerPosRaw && typeof specPerPosRaw === 'object') {
+          const pos0Val = specPerPosRaw['position_0'] || 0
+          const numPositions = Object.keys(specPerPosRaw).length
+          const totalProposed = pos0Val * numPositions
+          const totalAccepted = Object.values(specPerPosRaw).reduce((s, v) => s + v, 0)
+          if (totalProposed > 0) {
+            specAcceptRatio = totalAccepted / totalProposed
+          }
         }
 
         const dataPoint = {

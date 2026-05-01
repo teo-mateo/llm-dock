@@ -8,8 +8,11 @@ const mockMetrics = {
   'vllm:kv_cache_usage_perc': { 'gpu_id=0': 0.72 },
   'vllm:prefix_cache_queries_total': { '{}': 1000 },
   'vllm:prefix_cache_hits_total': { '{}': 800 },
-  'vllm:spec_decode_num_drafts_total': { '{}': 10000 },
-  'vllm:spec_decode_num_accepted_tokens_total': { '{}': 5000 },
+  'vllm:spec_decode_num_accepted_tokens_per_pos_total': {
+    'position_0': 1000,
+    'position_1': 500,
+    'position_2': 0
+  },
   'vllm:num_requests_running': { '{}': 3 },
   'vllm:num_requests_waiting': { '{}': 1 },
   'vllm:num_preemptions_total': { '{}': 0 }
@@ -122,7 +125,7 @@ describe('useServiceMetrics', () => {
     expect(result.current.history[0].prefixHitRatio).toBeCloseTo(0.8)
   })
 
-  it('correctly computes spec decode accept ratio', async () => {
+  it('correctly computes spec decode accept ratio from per-position histogram', async () => {
     mockFetchAPI.mockResolvedValue({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:00Z' })
     const { result } = renderHook(() => useServiceMetrics({ serviceName: 'test', enabled: true }))
     await act(async () => {

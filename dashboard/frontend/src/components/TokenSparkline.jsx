@@ -16,8 +16,7 @@ function draw(canvas, history) {
 
   const pad = 2
 
-  const gridMax = Math.max(1, ...history.flatMap(dp => [dp.promptTokensRate || 0, dp.generationTokensRate || 0]))
-
+  // Grid lines
   ctx.strokeStyle = '#374151'
   ctx.lineWidth = 0.5
   for (let i = 0; i <= 4; i++) {
@@ -28,13 +27,23 @@ function draw(canvas, history) {
     ctx.stroke()
   }
 
-  if (history.length < 2) return
+  // Limit history to MAX_POINTS to prevent canvas spill
+  const points = history.slice(-MAX_POINTS)
+  const len = points.length
+
+  if (len < 2) {
+    ctx.fillStyle = '#6b7280'
+    ctx.font = '13px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('Awaiting data points...', width / 2, height / 2)
+    return
+  }
 
   const pointW = (width - 2 * pad) / (MAX_POINTS - 1)
-  const len = history.length
 
   const drawLine = (selector, color) => {
-    const data = history.map(selector)
+    const data = points.map(selector)
     const lineMax = Math.max(1, ...data)
     ctx.strokeStyle = color
     ctx.lineWidth = 2
@@ -61,6 +70,9 @@ export default function TokenSparkline({ history }) {
   const latest = history.length > 0 ? history[history.length - 1] : null
   const promptRate = latest?.promptTokensRate
   const genRate = latest?.generationTokensRate
+  const visiblePoints = history.slice(-MAX_POINTS)
+  const promptMax = visiblePoints.length >= 2 ? Math.max(1, ...visiblePoints.map(p => p.promptTokensRate || 0)) : null
+  const genMax = visiblePoints.length >= 2 ? Math.max(1, ...visiblePoints.map(p => p.generationTokensRate || 0)) : null
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
@@ -70,21 +82,17 @@ export default function TokenSparkline({ history }) {
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-0.5 bg-blue-500 rounded" />
             <span className="text-gray-400">Prompt</span>
+            {promptMax !== null && <span className="text-gray-500">max {promptMax.toFixed(1)}</span>}
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-0.5 bg-green-500 rounded" />
             <span className="text-gray-400">Gen</span>
+            {genMax !== null && <span className="text-gray-500">max {genMax.toFixed(1)}</span>}
           </div>
         </div>
       </div>
-      <div className="relative h-[60px]">
-        {history.length >= 2 ? (
-          <canvas ref={canvasRef} className="w-full h-full" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-            Awaiting data points...
-          </div>
-        )}
+      <div className="relative h-[160px]">
+        <canvas ref={canvasRef} className="w-full h-full" />
       </div>
       {latest && (
         <div className="mt-2 text-xs text-gray-400 font-mono">

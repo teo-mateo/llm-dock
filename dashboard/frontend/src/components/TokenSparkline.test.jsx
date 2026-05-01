@@ -20,9 +20,9 @@ describe('TokenSparkline', () => {
     expect(container.textContent).toMatch(/Gen: 33\.3 t\/s/)
   })
 
-  it('empty history shows placeholder', () => {
+  it('empty history still renders canvas (placeholder drawn on canvas)', () => {
     const { container } = render(<TokenSparkline history={[]} />)
-    expect(container.textContent).toContain('Awaiting data points...')
+    expect(container.querySelector('canvas')).toBeTruthy()
   })
 
   it('renders prompt and gen legend labels', () => {

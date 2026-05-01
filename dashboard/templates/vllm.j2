@@ -21,8 +21,12 @@
 {% if attention_backend %}
       - VLLM_ATTENTION_BACKEND={{ attention_backend }}
 {% endif %}
+{% for k, v in (extra_env or {}).items() if k != "VLLM_ATTENTION_BACKEND" %}
+      - {{ k }}={{ v }}
+{% endfor %}
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
+      - ${HOME}/.cache/huggingface/modules:/root/.cache/huggingface/modules
       - ${HOME}/.cache/torch:/root/.cache/torch
       - ${HOME}/.triton:/root/.triton
       - ${HOME}/.cache/models:/local-models:ro
