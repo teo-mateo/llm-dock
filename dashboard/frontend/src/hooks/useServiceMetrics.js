@@ -52,8 +52,8 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         const kvCache = getValue(raw, 'vllm:kv_cache_usage_perc')
         const prefixHits = getValue(raw, 'vllm:prefix_cache_hits_total')
         const prefixQueries = getValue(raw, 'vllm:prefix_cache_queries_total')
-        const specDrafts = getValue(raw, 'vllm:spec_decode_num_drafts_total')
         const specAccepted = getValue(raw, 'vllm:spec_decode_num_accepted_tokens_total')
+        const specDraftTokens = getValue(raw, 'vllm:spec_decode_num_draft_tokens_total')
         const running = getValue(raw, 'vllm:num_requests_running')
         const waiting = getValue(raw, 'vllm:num_requests_waiting')
         const preemptTotal = getValue(raw, 'vllm:num_preemptions_total')
@@ -82,15 +82,8 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         }
 
         let specAcceptRatio = undefined
-        const specPerPosRaw = raw['vllm:spec_decode_num_accepted_tokens_per_pos_total']
-        if (specPerPosRaw && typeof specPerPosRaw === 'object') {
-          const pos0Val = specPerPosRaw['position_0'] || 0
-          const numPositions = Object.keys(specPerPosRaw).length
-          const totalProposed = pos0Val * numPositions
-          const totalAccepted = Object.values(specPerPosRaw).reduce((s, v) => s + v, 0)
-          if (totalProposed > 0) {
-            specAcceptRatio = totalAccepted / totalProposed
-          }
+        if (specAccepted != null && specDraftTokens != null && specDraftTokens > 0) {
+          specAcceptRatio = specAccepted / specDraftTokens
         }
 
         const dataPoint = {

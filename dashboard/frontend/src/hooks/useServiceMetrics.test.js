@@ -13,6 +13,8 @@ const mockMetrics = {
     'position_1': 500,
     'position_2': 0
   },
+  'vllm:spec_decode_num_accepted_tokens_total': { '{}': 1500 },
+  'vllm:spec_decode_num_draft_tokens_total': { '{}': 3000 },
   'vllm:num_requests_running': { '{}': 3 },
   'vllm:num_requests_waiting': { '{}': 1 },
   'vllm:num_preemptions_total': { '{}': 0 }
@@ -125,7 +127,7 @@ describe('useServiceMetrics', () => {
     expect(result.current.history[0].prefixHitRatio).toBeCloseTo(0.8)
   })
 
-  it('correctly computes spec decode accept ratio from per-position histogram', async () => {
+  it('correctly computes spec decode accept ratio', async () => {
     mockFetchAPI.mockResolvedValue({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:00Z' })
     const { result } = renderHook(() => useServiceMetrics({ serviceName: 'test', enabled: true }))
     await act(async () => {
