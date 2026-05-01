@@ -266,14 +266,6 @@ export default function ServicesTable() {
   const term = search.trim().toLowerCase()
   const visible = term ? services.filter(s => s.name.toLowerCase().includes(term)) : services
 
-  if (!visible.length && !services.length) {
-    return <p className="text-gray-400 mt-6">No services configured</p>
-  }
-
-  if (!visible.length && services.length) {
-    return <p className="text-gray-400 mt-6">No services matching "{search}"</p>
-  }
-
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3 gap-3">
@@ -317,20 +309,33 @@ export default function ServicesTable() {
             </tr>
           </thead>
           <tbody>
-            {visible.map(svc => (
-              <ServiceRow
-                key={svc.name}
-                service={svc}
-                transitioning={transitioning}
-                onStart={handleStart}
-                onStop={handleStop}
-                onRestart={handleRestart}
-                onSetPublicPort={handleSetPublicPort}
-                onEdit={handleEdit}
-                onViewLogs={handleViewLogs}
-                onDelete={handleDelete}
-              />
-            ))}
+            {visible.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="px-6 py-8 text-center text-gray-400"
+                >
+                  {services.length === 0
+                    ? 'No services configured'
+                    : `No services matching "${search}"`}
+                </td>
+              </tr>
+            ) : (
+              visible.map(svc => (
+                <ServiceRow
+                  key={svc.name}
+                  service={svc}
+                  transitioning={transitioning}
+                  onStart={handleStart}
+                  onStop={handleStop}
+                  onRestart={handleRestart}
+                  onSetPublicPort={handleSetPublicPort}
+                  onEdit={handleEdit}
+                  onViewLogs={handleViewLogs}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
           </tbody>
         </table>
       </div>
