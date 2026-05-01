@@ -10,3 +10,4 @@ requests>=2.31.0
 mcp[cli]>=1.0.0
 sympy>=1.13.0
 schemdraw>=0.19
+prometheus-client>=0.18.0
