@@ -35,7 +35,6 @@ export default function MetricsPanel({ serviceName, enabled }) {
   }
 
    const hasHistory = history.length > 0
-   const hasMetrics = Object.keys(metrics).length > 0
 
    return (
      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
@@ -46,7 +45,7 @@ export default function MetricsPanel({ serviceName, enabled }) {
          {error && <span className="text-red-400 text-xs ml-auto">{error}</span>}
        </div>
 
-       {!hasHistory && !hasMetrics && !loading && !error ? (
+       {!hasHistory && !loading && !error ? (
          <div className="flex flex-col items-center justify-center py-12">
            <i className="fa-solid fa-chart-line text-3xl text-gray-600 mb-3" />
            <p className="text-gray-400 text-sm mb-1">No metrics available</p>
