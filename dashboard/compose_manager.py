@@ -527,6 +527,7 @@ class ComposeManager:
             context["api_key"] = config["api_key"]
 
         rendered_flags = []
+        extra_env = {}
 
         params = config.get("params", {})
         for flag_name, flag_value in params.items():
@@ -534,6 +535,7 @@ class ComposeManager:
             if flag_name.startswith("env:"):
                 env_var = flag_name[4:]  # strip "env:" prefix
                 context[env_var.lower()] = flag_value
+                extra_env[env_var] = flag_value
                 continue
 
             rendered = render_cli_flag(flag_name, str(flag_value))
@@ -541,6 +543,7 @@ class ComposeManager:
                 rendered_flags.append(rendered)
 
         context["rendered_flags"] = rendered_flags
+        context["extra_env"] = extra_env
 
         # Render template
         return template.render(**context)
