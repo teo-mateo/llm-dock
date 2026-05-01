@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
 import { getValue } from '../utils'
 
-const POLL_INTERVAL = 3000
+const POLL_INTERVAL = 200
 const MAX_HISTORY = 60
 
 export default function useServiceMetrics({ serviceName, enabled }) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-const MAX_POINTS = 20
+const MAX_POINTS = 50 // 50 × 200ms = 10s of history
 
 function draw(canvas, history) {
   const ctx = canvas.getContext('2d')

@@ -171,9 +171,9 @@ describe('useServiceMetrics', () => {
     expect(result.current.error).toBeNull()
 
     mockFetchAPI.mockRejectedValueOnce(new Error('Connection refused'))
-    mockFetchAPI.mockResolvedValueOnce({ metrics: mockMetrics, scraped_at: '2026-01-01T00:03:00Z' })
+    mockFetchAPI.mockResolvedValueOnce({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:02Z' })
     await act(async () => {
-      vi.advanceTimersByTime(3000)
+      vi.advanceTimersByTime(200)
       await Promise.resolve()
       await Promise.resolve()
     })
