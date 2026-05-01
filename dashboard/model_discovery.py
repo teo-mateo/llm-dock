@@ -4,12 +4,70 @@ Adapted from ai-toolbox/models-backup for dashboard use.
 """
 
 import logging
-from pathlib import Path
-from typing import List, Dict, Any, Set
-import re
 import os
+from pathlib import Path
+from typing import List, Dict, Any, Set, Tuple, Optional
+import re
 
 logger = logging.getLogger(__name__)
+
+# Container-path → host-path prefixes for model file resolution
+_CONTAINER_PATH_MAP = [
+    ("/hf-cache/", os.path.expanduser("~/.cache/huggingface/")),
+    ("/local-models/", os.path.expanduser("~/.cache/models/")),
+]
+
+
+def resolve_host_path(container_path: str) -> Optional[str]:
+    """Translate a container model path to the corresponding host path."""
+    for prefix, host_prefix in _CONTAINER_PATH_MAP:
+        if container_path.startswith(prefix):
+            return host_prefix + container_path[len(prefix):]
+    return None
+
+
+def compute_model_size(
+    model_path: Optional[str], model_name: Optional[str]
+) -> Tuple[Optional[int], Optional[str]]:
+    """
+    Compute model directory size on-the-fly.
+
+    Returns (size_bytes, size_str) or (None, None) if the path cannot be resolved.
+    """
+    try:
+        target = None
+        if model_path:
+            host_path = resolve_host_path(model_path)
+            if not host_path:
+                return None, None
+            p = Path(host_path)
+            target = p.parent if p.is_file() or p.is_symlink() else p
+
+        # vLLM: model_name is an HF identifier like "org/model"
+        if not target and model_name and "/" in model_name:
+            cache_dir = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+            target = cache_dir / ("models--" + model_name.replace("/", "--"))
+
+        if not target or not target.exists():
+            return None, None
+
+        seen_inodes = set()
+        size = 0
+        for f in target.rglob("*"):
+            if f.is_file():
+                real = f.resolve()
+                st = real.stat()
+                inode = (st.st_dev, st.st_ino)
+                if inode not in seen_inodes:
+                    seen_inodes.add(inode)
+                    size += st.st_size
+
+        formatter = ModelDiscovery(Path.home())
+        return size, formatter.format_size(size)
+
+    except Exception as e:
+        logger.debug("Could not compute model size: %s", e)
+        return None, None
 
 
 class ModelDiscovery:
