@@ -80,14 +80,14 @@ export default function TokenSparkline({ history }) {
         <h3 className="text-sm font-medium text-gray-400">Token Throughput</h3>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-0.5 bg-blue-500 rounded" />
-            <span className="text-gray-400">Prompt</span>
-            {promptMax !== null && <span className="text-gray-500">max {promptMax.toFixed(1)}</span>}
+            <span className="w-3 h-0.5 bg-blue-500 rounded inline-block" />
+            <span className="text-gray-400">Prompt:</span>
+            {promptMax !== null && <span className="text-gray-500">max {promptMax.toFixed(1)} t/s</span>}
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-0.5 bg-green-500 rounded" />
-            <span className="text-gray-400">Gen</span>
-            {genMax !== null && <span className="text-gray-500">max {genMax.toFixed(1)}</span>}
+            <span className="w-3 h-0.5 bg-green-500 rounded inline-block" />
+            <span className="text-gray-400">Gen:</span>
+            {genMax !== null && <span className="text-gray-500">max {genMax.toFixed(1)} t/s</span>}
           </div>
         </div>
       </div>
@@ -95,8 +95,17 @@ export default function TokenSparkline({ history }) {
         <canvas ref={canvasRef} className="w-full h-full" />
       </div>
       {latest && (
-        <div className="mt-2 text-xs text-gray-400 font-mono">
-          Prompt: {promptRate !== undefined ? `${promptRate.toFixed(1)} t/s` : '—'} | Gen: {genRate !== undefined ? `${genRate.toFixed(1)} t/s` : '—'}
+        <div className="mt-2 text-xs font-mono flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 bg-blue-500 rounded inline-block" />
+            <span className="text-gray-400">Prompt:</span>
+            <span className="text-gray-300">{promptRate !== undefined ? `${promptRate.toFixed(1)} t/s` : '—'}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 bg-green-500 rounded inline-block" />
+            <span className="text-gray-400">Gen:</span>
+            <span className="text-gray-300">{genRate !== undefined ? `${genRate.toFixed(1)} t/s` : '—'}</span>
+          </div>
         </div>
       )}
     </div>
