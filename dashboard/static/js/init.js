@@ -49,7 +49,7 @@ async function init() {
                 // Token is valid, show dashboard
                 hideLoginModal();
                 loadServices();
-                loadGPU();
+                startGPUStream();
                 loadSystemInfo();
                 loadImageMetadata();
                 loadGlobalApiKey();
@@ -69,11 +69,11 @@ async function init() {
     }
 }
 
-// Auto-refresh every 3 seconds (only if logged in)
+// Auto-refresh services every 3 seconds (only if logged in).
+// GPU stats are pushed via SSE in startGPUStream(), no polling needed here.
 setInterval(() => {
     if (getToken() && !document.getElementById('app').classList.contains('hidden')) {
         loadServices();
-        loadGPU();
     }
 }, 3000);
 

@@ -2,22 +2,97 @@
 const gpuHistory = {
     memory: [],
     compute: [],
-    maxPoints: 20  // 20 points at 3s intervals = 60 seconds
+    maxPoints: 30  // 30 points at 1s intervals = 30 seconds
 };
 
-async function loadGPU() {
+let gpuStreamCtrl = null;
+let gpuReconnectTimer = null;
+
+function renderGPUError(msg) {
+    const el = document.getElementById('gpu-stats');
+    if (!el) return;
+    el.innerHTML = `
+        <div class="bg-red-900 p-4 rounded border border-red-700">
+            <p class="text-red-200">Failed to load GPU stats: ${msg}</p>
+        </div>
+    `;
+}
+
+async function startGPUStream() {
+    if (gpuStreamCtrl) return;
+    const token = getToken();
+    if (!token) return;
+
+    if (gpuReconnectTimer) {
+        clearTimeout(gpuReconnectTimer);
+        gpuReconnectTimer = null;
+    }
+
+    gpuStreamCtrl = new AbortController();
+    const ctrl = gpuStreamCtrl;
+    let aborted = false;
+
     try {
-        const data = await fetchAPI('/gpu');
-        renderGPU(data.gpus);
-        updateGPUHistory(data.gpus);
-        drawGPUGraph();
-    } catch (error) {
-        console.error('Failed to load GPU stats:', error);
-        document.getElementById('gpu-stats').innerHTML = `
-            <div class="bg-red-900 p-4 rounded border border-red-700">
-                <p class="text-red-200">Failed to load GPU stats: ${error.message}</p>
-            </div>
-        `;
+        const response = await fetch(`${API_BASE}/gpu/stream?interval=1`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: ctrl.signal,
+        });
+        if (response.status === 401) {
+            clearToken();
+            showLoginModal();
+            return;
+        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.error) {
+                        renderGPUError(data.error);
+                        continue;
+                    }
+                    renderGPU(data.gpus);
+                    updateGPUHistory(data.gpus);
+                    drawGPUGraph();
+                } catch {
+                    // ignore malformed line
+                }
+            }
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            aborted = true;
+            return;
+        }
+        console.error('GPU stream error:', err);
+        renderGPUError(err.message);
+    } finally {
+        if (gpuStreamCtrl === ctrl) gpuStreamCtrl = null;
+        if (!aborted && getToken()) {
+            gpuReconnectTimer = setTimeout(startGPUStream, 3000);
+        }
+    }
+}
+
+function stopGPUStream() {
+    if (gpuReconnectTimer) {
+        clearTimeout(gpuReconnectTimer);
+        gpuReconnectTimer = null;
+    }
+    if (gpuStreamCtrl) {
+        gpuStreamCtrl.abort();
+        gpuStreamCtrl = null;
     }
 }
 

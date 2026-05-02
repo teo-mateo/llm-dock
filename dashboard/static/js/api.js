@@ -120,7 +120,7 @@ async function handleLogin(event) {
         document.getElementById('token-input').value = '';
         hideLoginModal();
         loadServices();
-        loadGPU();
+        startGPUStream();
         loadSystemInfo();
         loadImageMetadata();
     } catch (error) {
@@ -130,6 +130,7 @@ async function handleLogin(event) {
 }
 
 function logout() {
+    stopGPUStream();
     clearToken();
     showLoginModal();
 }
