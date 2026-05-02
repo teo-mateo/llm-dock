@@ -78,3 +78,8 @@ htmlcov/
 
 # Playwright MCP (screenshots, logs, page captures)
 .playwright-mcp/
+
+# Other AI tool metadata
+.codex/
+.codex
+opencode.json
