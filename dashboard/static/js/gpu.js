@@ -87,6 +87,10 @@ async function startGPUStream() {
             aborted = true;
             return;
         }
+        // Firefox can reject fetch() stream reads for long-lived SSE responses after data has already arrived.
+        if (gpuHasStats && err.name === 'TypeError' && String(err.message).includes('input stream')) {
+            return;
+        }
         console.warn('GPU stream error:', err);
         console.error('Stack trace:', err?.stack || 'No stack trace available');
         console.error('Error type:', typeof err, 'Error name:', err?.name);
