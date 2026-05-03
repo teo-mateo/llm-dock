@@ -316,10 +316,7 @@ Add a visual indicator in the UI to show SSE connection status:
 ### Phase 6: Testing
 
 1. **Manual Testing**
-   - Start/stop services and verify UI updates in real-time
-   - Test reconnection after network interruption
-   - Test with multiple browser tabs
-   - Test logout/login flow
+   - User will do manual testing. 
 
 2. **Automated Tests**
    - Add tests for `useServicesSSE` hook
@@ -370,19 +367,8 @@ If issues arise, revert to polling by:
 2. Revert useRunningServices.js to use polling
 3. Remove useServicesSSE.js (new file)
 
-## Estimated Effort
-
-- **Phase 1**: 2-4 hours (create hook)
-- **Phase 2**: 2-3 hours (update ServicesTable)
-- **Phase 3**: 1-2 hours (update useRunningServices)
-- **Phase 4**: 1-2 hours (optional context)
-- **Phase 5**: 2-3 hours (optional UI indicator)
-- **Phase 6**: 2-4 hours (testing)
-- **Total**: 8-18 hours
-
 ## Notes
 
 - The legacy implementation (`dashboard/static/js/services-stream.js`) serves as a reference
 - The backend SSE endpoint already handles authentication via `@require_auth`
 - The event format (snapshot/delta/error) is already defined and working
-- Consider adding a configuration option to fall back to polling for debugging
