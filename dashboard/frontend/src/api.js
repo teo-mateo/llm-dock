@@ -1,8 +1,8 @@
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+export const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? `${window.location.protocol}//${window.location.hostname}:3399/api`
   : `${window.location.protocol}//${window.location.hostname}/api`
 
-const TOKEN_KEY = 'dashboard_token'
+export const TOKEN_KEY = 'dashboard_token'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)

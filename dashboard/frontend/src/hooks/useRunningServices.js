@@ -1,38 +1,25 @@
-import { useState, useEffect, useRef } from 'react'
-import { fetchAPI } from '../api'
+import { useMemo } from 'react'
+import useServicesSSE from './useServicesSSE'
 
-const POLL_INTERVAL = 5000
-
+/**
+ * Hook for getting running inference services (llama.cpp and vLLM only).
+ * Derives state from the SSE stream via useServicesSSE.
+ * 
+ * @returns {{
+ *   services: Array<Object>,
+ *   loading: boolean
+ * }} Hook return value with running services and loading state
+ */
 export default function useRunningServices() {
-  const [services, setServices] = useState([])
-  const [loading, setLoading] = useState(true)
-  const mountedRef = useRef(true)
+  const { services, loading } = useServicesSSE()
 
-  useEffect(() => {
-    mountedRef.current = true
+  const runningServices = useMemo(() => {
+    if (!services) return []
+    // Filter to only inference services (llama.cpp and vLLM), excluding infrastructure like open-webui
+    return services.filter(s =>
+      s.status === 'running' && (s.name.startsWith('llamacpp-') || s.name.startsWith('vllm-'))
+    )
+  }, [services])
 
-    async function fetchServices() {
-      try {
-        const data = await fetchAPI('/services')
-        if (!mountedRef.current) return
-        const running = (data.services || []).filter(s =>
-          s.status === 'running' && (s.name.startsWith('llamacpp-') || s.name.startsWith('vllm-'))
-        )
-        setServices(running)
-      } catch {
-        // ignore
-      } finally {
-        if (mountedRef.current) setLoading(false)
-      }
-    }
-
-    fetchServices()
-    const id = setInterval(fetchServices, POLL_INTERVAL)
-    return () => {
-      mountedRef.current = false
-      clearInterval(id)
-    }
-  }, [])
-
-  return { services, loading }
+  return { services: runningServices, loading }
 }

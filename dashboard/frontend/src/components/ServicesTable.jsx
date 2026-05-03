@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchAPI } from '../api'
 import { startService, stopService, restartService } from '../services/lifecycle'
-
-const POLL_INTERVAL = 3000
+import useServicesSSE from '../hooks/useServicesSSE'
 
 function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
@@ -14,15 +13,6 @@ function getEngine(name) {
 
 function isInfra(name) {
   return name === 'open-webui'
-}
-
-
-function sortServices(services) {
-  return [...services].sort((a, b) => {
-    if (a.name === 'open-webui') return -1
-    if (b.name === 'open-webui') return 1
-    return a.name.localeCompare(b.name)
-  })
 }
 
 function StatusDot({ status }) {
@@ -174,68 +164,41 @@ function Toast({ message, onDone }) {
 
 export default function ServicesTable() {
   const navigate = useNavigate()
-  const [services, setServices] = useState(null)
-  const [error, setError] = useState(null)
+  const { services, error } = useServicesSSE()
   const [transitioning, setTransitioning] = useState({})
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
 
-  const fetchServices = useCallback(async () => {
+  const withTransition = useCallback(async (name, action, apiCall) => {
+    setTransitioning(prev => ({ ...prev, [name]: action }))
     try {
-      const data = await fetchAPI('/services')
-      setServices(sortServices(data.services || []))
-      setError(null)
+      await apiCall()
     } catch (err) {
-      setError(err.message)
+      setToast(`Failed to ${action} ${name}: ${err.message}`)
+    } finally {
+      setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
     }
   }, [])
 
-  useEffect(() => {
-    let active = true
-    async function poll() {
-      if (!active) return
-      await fetchServices()
-    }
-    poll()
-    const id = setInterval(poll, POLL_INTERVAL)
-    return () => { active = false; clearInterval(id) }
-  }, [fetchServices])
+  const handleStart = useCallback((name) => {
+    withTransition(name, 'starting', () => startService(name))
+  }, [withTransition])
 
-  const handleStart = async (name) => {
-    setTransitioning(prev => ({ ...prev, [name]: 'starting' }))
-    try {
-      await startService(name)
-    } catch { /* poll will update state */ }
-    await fetchServices()
-    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
-  }
+  const handleRestart = useCallback((name) => {
+    withTransition(name, 'restarting', () => restartService(name))
+  }, [withTransition])
 
-  const handleRestart = async (name) => {
-    setTransitioning(prev => ({ ...prev, [name]: 'restarting' }))
-    try {
-      await restartService(name)
-    } catch { /* poll will update state */ }
-    await fetchServices()
-    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
-  }
+  const handleStop = useCallback((name) => {
+    withTransition(name, 'stopping', () => stopService(name))
+  }, [withTransition])
 
-  const handleStop = async (name) => {
-    setTransitioning(prev => ({ ...prev, [name]: 'stopping' }))
-    try {
-      await stopService(name)
-    } catch { /* poll will update state */ }
-    await fetchServices()
-    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
-  }
-
-  const handleSetPublicPort = async (name) => {
+  const handleSetPublicPort = useCallback(async (name) => {
     try {
       await fetchAPI(`/services/${name}/set-public-port`, { method: 'POST' })
     } catch (err) {
-      setToast(`Failed to set public port: ${err.message}`)
+      setToast(`Failed to set public port for ${name}: ${err.message}`)
     }
-    await fetchServices()
-  }
+  }, [])
 
   const handleEdit = (name) => {
     navigate(`/services/${name}`)
@@ -245,15 +208,17 @@ export default function ServicesTable() {
     navigate(`/services/${name}/logs`)
   }
 
-  const handleDelete = async (name) => {
+  const handleDelete = useCallback(async (name) => {
     if (!window.confirm(`Delete service "${name}"? This cannot be undone.`)) return
     setTransitioning(prev => ({ ...prev, [name]: 'deleting' }))
     try {
       await fetchAPI(`/services/${name}`, { method: 'DELETE' })
-    } catch { /* poll will update state */ }
-    await fetchServices()
-    setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
-  }
+    } catch (err) {
+      setToast(`Failed to delete ${name}: ${err.message}`)
+    } finally {
+      setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
+    }
+  }, [])
 
   if (error) {
     return <p className="text-red-400 mt-6">Services: {error}</p>
@@ -289,6 +254,7 @@ export default function ServicesTable() {
             )}
           </div>
           <button
+            onClick={() => navigate('/services/new')}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
           >
             + New Service
