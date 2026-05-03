@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 import subprocess
 from datetime import datetime
@@ -618,6 +619,18 @@ def set_public_port(service_name):
 
 
 # ============================================
+# SSE helpers
+# ============================================
+
+def _sse_data(payload: dict) -> str:
+    return "data: " + json.dumps(payload) + "\n\n"
+
+
+def _now() -> str:
+    return datetime.utcnow().isoformat() + "Z"
+
+
+# ============================================
 # SSE Stream Endpoint
 # ============================================
 
@@ -695,6 +708,56 @@ def services_stream():
         stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ============================================
+# Service Logs SSE Endpoint
+# ============================================
+
+
+@services_bp.route("/api/services/<service_name>/logs/stream", methods=["GET"])
+@require_auth
+def stream_service_logs(service_name):
+    """Stream container logs over SSE.
+
+    Sends an initial tail snapshot followed by live appended lines.
+    Keepalives are sent every ~5 s when the container is quiet.
+    The existing JSON endpoint /api/services/<name>/logs is unchanged.
+    """
+    from services.log_stream import iter_log_events
+
+    container = get_service_container(service_name)
+    if not container:
+        return jsonify({"error": "Service has not been created yet"}), 404
+
+    tail = request.args.get("tail", default=200, type=int)
+    tail = min(max(tail, 1), 1000)
+
+    def generate():
+        stop = threading.Event()
+        try:
+            yield _sse_data({"type": "snapshot_start", "service": service_name, "timestamp": _now()})
+            for event_type, data in iter_log_events(container, tail, stop):
+                if event_type == "log":
+                    yield _sse_data({"type": "log", "service": service_name, "line": data})
+                elif event_type == "snapshot_end":
+                    yield _sse_data({"type": "snapshot_end", "service": service_name, "timestamp": _now()})
+                elif event_type == "stream_end":
+                    yield _sse_data({"type": "stream_end", "service": service_name, "timestamp": _now()})
+                elif event_type == "error":
+                    yield _sse_data({"type": "error", "service": service_name, "message": data})
+                elif event_type == "keepalive":
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            stop.set()
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
