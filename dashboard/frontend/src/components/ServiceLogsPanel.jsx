@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchAPI } from '../api'
+import { streamServiceLogs } from '../services/sse'
 
-const LOG_POLL_INTERVAL = 3000
 const DEFAULT_TAIL = 200
 
 export default function ServiceLogsPanel({ serviceName, runtime }) {
@@ -10,13 +10,16 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [paused, setPaused] = useState(false)
   const [logError, setLogError] = useState(null)
+  const [isStreaming, setIsStreaming] = useState(false)
   const logRef = useRef(null)
   const userScrolledRef = useRef(false)
   const mountedRef = useRef(true)
+  const streamControllerRef = useRef(null)
 
   const status = runtime?.status || 'not-created'
   const hasContainer = status !== 'not-created'
 
+  // Fetch initial logs (for refresh button and fallback)
   const fetchLogs = useCallback(async () => {
     try {
       const data = await fetchAPI(`/services/${serviceName}/logs?tail=${DEFAULT_TAIL}`)
@@ -38,24 +41,101 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
     }
   }, [serviceName])
 
-  // Unmount guard (independent of polling state)
+  // Start SSE stream
+  const startStream = useCallback(() => {
+    if (!hasContainer) return
+
+    // Abort any existing stream
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort()
+      streamControllerRef.current = null
+    }
+
+    const controller = new AbortController()
+    streamControllerRef.current = controller
+
+    // Update state and clear errors
+    setIsStreaming(true)
+    setLogError(null)
+
+    // Start the stream
+    streamServiceLogs(serviceName, {
+      onLog: (logEvent) => {
+        if (mountedRef.current) {
+          setLogs(prev => prev + logEvent.line + '\n')
+          setLineCount(prev => prev + 1)
+          setLastUpdated(new Date())
+        }
+      },
+      onSnapshotStart: () => {
+        if (mountedRef.current) {
+          setLogs('')
+          setLineCount(0)
+        }
+      },
+      onError: (error) => {
+        if (mountedRef.current) {
+          setLogError(error)
+          setIsStreaming(false)
+        }
+      },
+      signal: controller.signal
+    }).catch(err => {
+      if (mountedRef.current && err.name !== 'AbortError') {
+        setLogError(err.message)
+        setIsStreaming(false)
+      }
+    })
+
+    // Return cleanup function
+    return () => {
+      controller.abort()
+      streamControllerRef.current = null
+      if (mountedRef.current) {
+        setIsStreaming(false)
+      }
+    }
+  }, [serviceName, hasContainer])
+
+  // Unmount guard
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      if (streamControllerRef.current) {
+        streamControllerRef.current.abort()
+        streamControllerRef.current = null
+      }
+    }
   }, [])
 
-  // Fetch immediately then poll
+  // Reset state when container status or pause state changes
   useEffect(() => {
-    if (!hasContainer || paused) return
-    const initialId = setTimeout(() => {
+    if (hasContainer && !paused) {
       setLogs('')
       setLineCount(0)
       setLogError(null)
-      fetchLogs()
-    }, 0)
-    const intervalId = setInterval(fetchLogs, LOG_POLL_INTERVAL)
-    return () => { clearTimeout(initialId); clearInterval(intervalId) }
-  }, [hasContainer, paused, fetchLogs])
+    }
+  }, [hasContainer, paused])
+
+  // Start/stop stream based on container status and pause state
+  useEffect(() => {
+    if (!hasContainer || paused) {
+      if (streamControllerRef.current) {
+        streamControllerRef.current.abort()
+        streamControllerRef.current = null
+      }
+      return
+    }
+
+    // Start fresh stream
+    const cleanup = startStream()
+    return () => {
+      if (cleanup) cleanup()
+    }
+  }, [hasContainer, paused, startStream])
+  
+
 
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
@@ -90,7 +170,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
             Container Logs
           </h2>
-          {hasContainer && !paused && (
+          {hasContainer && !paused && isStreaming && (
             <span
               className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"
               aria-label="Log updates active"
@@ -150,7 +230,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
       {/* Footer */}
       <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between" aria-live="polite">
         <span>Last updated: {formatTime(lastUpdated)} | {lineCount} lines</span>
-        <span>{paused ? 'Paused' : 'Polling every 3s'}</span>
+        <span>{paused ? 'Paused' : isStreaming ? 'Streaming live' : 'Ready'}</span>
       </div>
     </div>
   )

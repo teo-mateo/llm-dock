@@ -5,6 +5,76 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
   : `${window.location.protocol}//${window.location.hostname}/api`
 
 /**
+ * Stream service logs via SSE.
+ * Uses fetch + ReadableStream because EventSource doesn't support auth headers.
+ */
+export async function streamServiceLogs(serviceName, { onLog, onSnapshotStart, onSnapshotEnd, onError, signal }) {
+  const token = getToken()
+  if (!token) throw new Error('Not authenticated')
+
+  const response = await fetch(`${API_BASE}/services/${serviceName}/logs/stream`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'text/event-stream',
+    },
+    signal,
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    let msg = `HTTP ${response.status}`
+    try {
+      const data = JSON.parse(text)
+      msg = data.error || msg
+    } catch { /* not JSON */ }
+    onError?.(msg)
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+
+        try {
+          const parsed = JSON.parse(data)
+
+          // Handle different event types
+          if (parsed.type === 'snapshot_start') {
+            onSnapshotStart?.(parsed)
+          } else if (parsed.type === 'log') {
+            onLog?.(parsed)
+          } else if (parsed.type === 'snapshot_end') {
+            onSnapshotEnd?.(parsed)
+          } else if (parsed.type === 'error') {
+            onError?.(parsed.message)
+          }
+        } catch {
+          // Ignore unparseable lines
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      onError?.(err.message)
+    }
+  }
+}
+
+/**
  * Stream a chat completion via SSE.
  * Uses fetch + ReadableStream because EventSource doesn't support auth headers.
  */

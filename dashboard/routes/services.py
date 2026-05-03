@@ -1,15 +1,17 @@
 import json
 import logging
+import queue
+import threading
 import time
 import subprocess
 from datetime import datetime
 from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 
-from auth import require_auth
-from config import COMPOSE_FILE, GLOBAL_API_KEY
-from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service
+from dashboard.auth import require_auth
+from dashboard.config import COMPOSE_FILE, GLOBAL_API_KEY
+from dashboard.compose_manager import ComposeManager
+from dashboard.docker_utils import get_docker_services, get_service_container, control_service
 from model_discovery import compute_model_size
 from service_templates import generate_api_key
 from flag_metadata import (
@@ -625,6 +627,134 @@ def set_public_port(service_name):
 SSE_SNAPSHOT = "snapshot"
 SSE_DELTA = "delta"
 SSE_ERROR = "error"
+
+
+# ============================================
+# Service Logs SSE Endpoint
+# ============================================
+
+
+def _sse_data(payload):
+    """Format payload as SSE data frame."""
+    return "data: " + json.dumps(payload) + "\n\n"
+
+
+class LogStreamer:
+    """Helper class for streaming Docker container logs via SSE."""
+    
+    def __init__(self, container, tail=200, timestamps=True):
+        self.container = container
+        self.tail = min(tail, 1000)  # Clamp to maximum
+        self.timestamps = timestamps
+        self.queue = queue.Queue()
+        self.stop_event = threading.Event()
+        
+    def _reader_thread(self):
+        """Background thread that reads logs and puts them in the queue."""
+        try:
+            logs = self.container.logs(
+                stream=True,
+                follow=True,
+                timestamps=self.timestamps,
+                tail=self.tail
+            )
+            
+            # Store container name as string to avoid MagicMock serialization issues
+            container_name = str(self.container.name)
+            
+            # Send initial snapshot events
+            self.queue.put({"type": "snapshot_start", "service": container_name})
+            
+            # Process log stream
+            buffer = b""
+            for chunk in logs:
+                if self.stop_event.is_set():
+                    break
+                
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    try:
+                        self.queue.put({
+                            "type": "log",
+                            "service": container_name,
+                            "line": line.decode("utf-8", errors="replace")
+                        })
+                    except Exception as e:
+                        self.queue.put({
+                            "type": "error",
+                            "service": container_name,
+                            "message": str(e)
+                        })
+            
+            # Send snapshot end when done with initial tail
+            self.queue.put({"type": "snapshot_end", "service": container_name})
+            
+        except Exception as e:
+            self.queue.put({
+                "type": "error",
+                "service": self.container.name,
+                "message": str(e)
+            })
+        finally:
+            self.queue.put(None)  # Signal end of stream
+
+    def stream(self):
+        """Generator that yields SSE events."""
+        # Start reader thread
+        reader_thread = threading.Thread(target=self._reader_thread, daemon=True)
+        reader_thread.start()
+        
+        # Yield initial events
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    # Get next item with timeout to allow keepalives
+                    item = self.queue.get(timeout=5.0)
+                    
+                    if item is None:  # End of stream
+                        break
+                    
+                    yield _sse_data(item)
+                    
+                except queue.Empty:
+                    # Send keepalive
+                    yield ": keepalive\n\n"
+                    
+        finally:
+            self.stop_event.set()
+            reader_thread.join(timeout=1.0)
+
+
+@services_bp.route("/<service_name>/logs/stream", methods=["GET"])
+@require_auth
+def stream_service_logs(service_name):
+    """Stream service logs over Server-Sent Events."""
+    try:
+        # Get tail parameter (default 200 lines)
+        tail = request.args.get("tail", default=200, type=int)
+        timestamps = request.args.get("timestamps", default=True, type=lambda v: v.lower() == "true")
+        
+        # Get container
+        container = get_service_container(service_name)
+        if not container:
+            return jsonify({"error": "Service has not been created yet"}), 404
+        
+        # Create streamer and return response
+        streamer = LogStreamer(container, tail=tail, timestamps=timestamps)
+        
+        return Response(
+            streamer.stream(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to stream logs for service {service_name}: {e}")
+        return jsonify({"error": f"Failed to stream logs: {str(e)}"}), 500
 
 
 @services_bp.route("/api/services/stream", methods=["GET"])
