@@ -54,5 +54,5 @@ def gpu_stream():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )

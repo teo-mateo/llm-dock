@@ -7,6 +7,7 @@ const gpuHistory = {
 
 let gpuStreamCtrl = null;
 let gpuReconnectTimer = null;
+let gpuHasStats = false;
 
 function renderGPUError(msg) {
     const el = document.getElementById('gpu-stats');
@@ -44,6 +45,7 @@ async function startGPUStream() {
             return;
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.body) throw new Error("Response has no body");
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -53,19 +55,29 @@ async function startGPUStream() {
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop();
+            buffer = lines.pop() || '';
+            if (!Array.isArray(lines)) continue;
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
                 try {
-                    const data = JSON.parse(line.slice(6));
+                    const trimmedLine = line.slice(6).trim();
+                    if (!trimmedLine) continue;
+                    const data = JSON.parse(trimmedLine);
+                    if (!data) continue;
                     if (data.error) {
                         renderGPUError(data.error);
                         continue;
                     }
+                    if (!data.gpus) {
+                        console.warn('Received SSE data without gpus:', data);
+                        continue;
+                    }
+                    gpuHasStats = true;
                     renderGPU(data.gpus);
                     updateGPUHistory(data.gpus);
                     drawGPUGraph();
-                } catch {
+                } catch (parseErr) {
+                    console.warn('Failed to parse SSE line:', line, 'Error:', parseErr?.message);
                     // ignore malformed line
                 }
             }
@@ -75,12 +87,30 @@ async function startGPUStream() {
             aborted = true;
             return;
         }
-        console.error('GPU stream error:', err);
-        renderGPUError(err.message);
+        console.warn('GPU stream error:', err);
+        console.error('Stack trace:', err?.stack || 'No stack trace available');
+        console.error('Error type:', typeof err, 'Error name:', err?.name);
+        await refreshGPUSnapshotAfterStreamError(err);
     } finally {
         if (gpuStreamCtrl === ctrl) gpuStreamCtrl = null;
         if (!aborted && getToken()) {
             gpuReconnectTimer = setTimeout(startGPUStream, 3000);
+        }
+    }
+}
+
+async function refreshGPUSnapshotAfterStreamError(streamErr) {
+    try {
+        const data = await fetchAPI('/gpu');
+        if (!data?.gpus) throw new Error('GPU snapshot response missing gpus');
+        gpuHasStats = true;
+        renderGPU(data.gpus);
+        updateGPUHistory(data.gpus);
+        drawGPUGraph();
+    } catch (snapshotErr) {
+        console.error('GPU snapshot fallback failed:', snapshotErr);
+        if (!gpuHasStats) {
+            renderGPUError(snapshotErr?.message || streamErr?.message || String(streamErr));
         }
     }
 }
@@ -115,7 +145,8 @@ function updateGPUHistory(gpus) {
     }
 
     // Show graph container once we have data
-    document.getElementById('gpu-graph-container').classList.remove('hidden');
+    const graphContainer = document.getElementById('gpu-graph-container');
+    if (graphContainer) graphContainer.classList.remove('hidden');
 }
 
 function drawGPUGraph() {
@@ -193,6 +224,7 @@ function drawGPUGraph() {
 
 function renderGPU(gpus) {
     const container = document.getElementById('gpu-stats');
+    if (!container) return;
 
     if (!gpus || gpus.length === 0) {
         container.innerHTML = '<div class="text-gray-400">No GPU information available</div>';

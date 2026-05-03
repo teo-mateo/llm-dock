@@ -119,7 +119,7 @@ async function handleLogin(event) {
         setToken(token);
         document.getElementById('token-input').value = '';
         hideLoginModal();
-        loadServices();
+        startServicesStream();
         startGPUStream();
         loadSystemInfo();
         loadImageMetadata();
@@ -131,6 +131,7 @@ async function handleLogin(event) {
 
 function logout() {
     stopGPUStream();
+    stopServicesStream();
     clearToken();
     showLoginModal();
 }

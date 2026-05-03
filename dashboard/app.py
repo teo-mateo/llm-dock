@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import atexit
 import os
 import logging
 from flask import Flask, send_from_directory, abort
@@ -8,6 +9,7 @@ from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
 from routes import gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp
 from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
+from services import event_manager
 
 
 def create_app(config=None):
@@ -33,6 +35,9 @@ def create_app(config=None):
     app.register_blueprint(benchmarks_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(metrics_bp)
+
+    # Start Docker event manager for SSE streaming
+    event_manager.start()
 
     # Initialize benchmarking subsystem
     compose_file = app.config.get("COMPOSE_FILE", COMPOSE_FILE)
@@ -94,9 +99,13 @@ def create_app(config=None):
 
 logger = logging.getLogger(__name__)
 
-# Module-level app for WSGI servers (e.g. gunicorn app:app)
-app = create_app()
+# Register cleanup on process exit
+atexit.register(event_manager.stop)
 
 if __name__ == "__main__":
+    app = create_app()
+    from config import DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
     logger.info(f"Starting LLM Dashboard on {DASHBOARD_HOST}:{DASHBOARD_PORT}")
     app.run(host=DASHBOARD_HOST, port=DASHBOARD_PORT, debug=(LOG_LEVEL == "DEBUG"))
+else:
+    app = create_app()

@@ -1,18 +1,7 @@
 async function loadServices() {
     try {
         const data = await fetchAPI('/services');
-
-        // Separate open-webui service and other services
-        const openWebuiService = data.services.find(service => service.name === 'open-webui');
-        const otherServices = data.services.filter(service => service.name !== 'open-webui');
-
-        // Sort other services alphabetically by name
-        const sortedOtherServices = otherServices.sort((a, b) => a.name.localeCompare(b.name));
-
-        // Combine: open-webui first, then sorted other services
-        const orderedServices = openWebuiService ? [openWebuiService, ...sortedOtherServices] : sortedOtherServices;
-
-        renderServices(orderedServices);
+        return processServicesData(data);
     } catch (error) {
         console.error('Failed to load services:', error);
         document.getElementById('services').innerHTML = `
@@ -20,7 +9,22 @@ async function loadServices() {
                 <p class="text-red-200">Failed to load services: ${error.message}</p>
             </div>
         `;
+        throw error;
     }
+}
+
+function processServicesData(data) {
+    // Separate open-webui service and other services
+    const openWebuiService = data.services.find(service => service.name === 'open-webui');
+    const otherServices = data.services.filter(service => service.name !== 'open-webui');
+
+    // Sort other services alphabetically by name
+    const sortedOtherServices = otherServices.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Combine: open-webui first, then sorted other services
+    const orderedServices = openWebuiService ? [openWebuiService, ...sortedOtherServices] : sortedOtherServices;
+
+    renderServices(orderedServices);
 }
 
 function renderServices(services) {
@@ -145,7 +149,8 @@ async function controlService(name, action) {
 
         // container.stop() is blocking, so the container should be stopped
         // by the time we get here. Poll a few times in case Docker's list
-        // query returns stale state.
+        // query returns stale state. With SSE, the delta will update the UI,
+        // but we still poll to ensure we get the latest state quickly.
         const expectedRunning = (action === 'start' || action === 'restart');
         for (let i = 0; i < 5; i++) {
             await loadServices();

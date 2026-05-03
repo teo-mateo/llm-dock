@@ -1,0 +1,1 @@
+add + / - buttons to increase/decrease the  font in the log viewer (v2)

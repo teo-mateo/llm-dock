@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  test-service-1:
+    image: alpine:latest
+    container_name: test-service-1
+    restart: no
+    ports:
+      - "3301:80"
+
+  test-service-2:
+    image: alpine:latest
+    container_name: test-service-2
+    restart: no
+    ports:
+      - "3302:80"
+
+  test-service-3:
+    image: alpine:latest
+    container_name: test-service-3
+    restart: no
+    ports:
+      - "3303:80"

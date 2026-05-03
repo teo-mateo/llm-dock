@@ -1,7 +1,10 @@
+import json
 import logging
+import time
 import subprocess
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from typing import Generator
+from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 
 from auth import require_auth
 from config import COMPOSE_FILE, GLOBAL_API_KEY
@@ -612,6 +615,87 @@ def set_public_port(service_name):
     except Exception as e:
         logger.error(f"Failed to set public port: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# SSE Stream Endpoint
+# ============================================
+
+# Event type constants for SSE messages
+SSE_SNAPSHOT = "snapshot"
+SSE_DELTA = "delta"
+SSE_ERROR = "error"
+
+
+@services_bp.route("/api/services/stream", methods=["GET"])
+@require_auth
+def services_stream():
+    """Stream service status updates over Server-Sent Events.
+
+    Yields an initial snapshot of all services on connect,
+    then streams delta updates as Docker events occur.
+    """
+    from services import event_manager
+
+    def generate() -> Generator[str, None, None]:
+        callback = None
+        try:
+            logger.info("SSE client connected to /api/services/stream")
+
+            snapshot = event_manager.get_services_snapshot()
+            payload = {
+                "type": SSE_SNAPSHOT,
+                "data": {
+                    "services": snapshot,
+                    "total": len(snapshot),
+                    "running": sum(1 for s in snapshot if s["status"] == "running"),
+                    "stopped": sum(1 for s in snapshot if s["status"] != "running"),
+                },
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            }
+            yield "data: " + json.dumps(payload) + "\n\n"
+
+            events_queue = []
+
+            def on_event(event):
+                """Callback that queues events for the SSE stream."""
+                events_queue.append(event)
+
+            callback = on_event
+            event_manager.register_callback(callback)
+
+            while True:
+                if events_queue:
+                    event = events_queue.pop(0)
+                    payload = {
+                        "type": SSE_DELTA,
+                        "service_name": event["service_name"],
+                        "status": event["status"],
+                        "action": event["action"],
+                        "container_id": event["container_id"],
+                        "timestamp": datetime.fromtimestamp(event["timestamp"]).isoformat() + "Z",
+                    }
+                    yield "data: " + json.dumps(payload) + "\n\n"
+                else:
+                    yield ": keepalive\n\n"
+                    time.sleep(5)
+
+        except GeneratorExit:
+            logger.info("SSE client disconnected")
+        except Exception as e:
+            current_app.logger.error("SSE stream error: %s", e)
+            error_payload = {"type": SSE_ERROR, "message": str(e)}
+            yield "data: " + json.dumps(error_payload) + "\n\n"
+        finally:
+            if callback:
+                event_manager.unregister_callback(callback)
+                logger.debug("SSE callback unregistered")
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ============================================

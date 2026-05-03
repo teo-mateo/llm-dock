@@ -45,20 +45,16 @@ async function init() {
                 }
             });
 
-            if (response.ok) {
-                // Token is valid, show dashboard
-                hideLoginModal();
-                loadServices();
-                startGPUStream();
-                loadSystemInfo();
-                loadImageMetadata();
-                loadGlobalApiKey();
-            } else {
-                // Token is invalid, clear it and show login
-                clearToken();
-                showLoginModal();
-            }
-        } catch (error) {
+        if (response.ok) {
+            // Token is valid, show dashboard
+            hideLoginModal();
+            startServicesStream();
+            startGPUStream();
+            loadSystemInfo();
+            loadImageMetadata();
+            loadGlobalApiKey();
+        }
+    } catch (error) {
             console.error('Token verification failed:', error);
             clearToken();
             showLoginModal();
@@ -69,13 +65,7 @@ async function init() {
     }
 }
 
-// Auto-refresh services every 3 seconds (only if logged in).
-// GPU stats are pushed via SSE in startGPUStream(), no polling needed here.
-setInterval(() => {
-    if (getToken() && !document.getElementById('app').classList.contains('hidden')) {
-        loadServices();
-    }
-}, 3000);
+// Services are now streamed via SSE in startServicesStream(), no polling needed
 
 // Initialize on page load
 init();
