@@ -1,5 +1,6 @@
 import logging
 import subprocess
+from typing import Iterator
 import yaml
 import docker
 
@@ -269,6 +270,33 @@ def control_service(service_name, action):
     except Exception as e:
         logger.error(f"Failed to {action} service {service_name}: {e}")
         return {"success": False, "error": str(e)}
+
+
+def _iter_log_lines(
+    container,
+    tail: int,
+    timestamps: bool,
+) -> Iterator[str]:
+    """Iterate over complete log lines from a Docker container.
+
+    Handles partial-line buffering: Docker may split a log line across
+    multiple chunks when using ``stream=True``.  This generator accumulates
+    bytes until a newline is found, then yields the decoded line.
+    """
+    log_gen = container.logs(
+        stream=True,
+        follow=True,
+        timestamps=timestamps,
+        tail=tail,
+    )
+    buf = b""
+    for chunk in log_gen:
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            yield line.decode("utf-8", errors="replace")
+    if buf:
+        yield buf.decode("utf-8", errors="replace")
 
 
 def get_gpu_stats():

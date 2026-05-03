@@ -1,7 +1,9 @@
 import json
 import logging
-import time
+import queue
 import subprocess
+import threading
+import time
 from datetime import datetime
 from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
@@ -9,7 +11,7 @@ from flask import Blueprint, jsonify, request, Response, stream_with_context, cu
 from auth import require_auth
 from config import COMPOSE_FILE, GLOBAL_API_KEY
 from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service
+from docker_utils import _iter_log_lines, get_docker_services, get_service_container, control_service
 from model_discovery import compute_model_size
 from service_templates import generate_api_key
 from flag_metadata import (
@@ -188,6 +190,161 @@ def get_service_logs(service_name):
     except Exception as e:
         logger.error(f"Failed to get logs for service {service_name}: {e}")
         return jsonify({"error": f"Failed to retrieve logs: {str(e)}"}), 500
+
+
+# ============================================
+# SSE Logs Stream
+# ============================================
+
+LOG_STREAM_MAX_TAIL = 1000
+LOG_STREAM_QUEUE_MAX = 2048
+LOG_STREAM_KEEPALIVE = 5
+
+
+@services_bp.route("/api/services/<service_name>/logs/stream", methods=["GET"])
+@require_auth
+def service_logs_stream(service_name):
+    """Stream container logs over Server-Sent Events.
+
+    Sends an initial snapshot of the last N lines, then follows live output.
+    """
+    try:
+        tail = request.args.get("tail", default=200, type=int)
+    except (TypeError, ValueError):
+        tail = 200
+    tail = min(max(tail, 1), LOG_STREAM_MAX_TAIL)
+
+    timestamps = request.args.get("timestamps", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+    container = get_service_container(service_name)
+    if not container:
+        return jsonify({"error": "Service has not been created yet"}), 404
+
+    def generate() -> Generator[str, None, None]:
+        q: queue.Queue = queue.Queue(maxsize=LOG_STREAM_QUEUE_MAX)
+        stop_event = threading.Event()
+
+        def reader():
+            try:
+                for line in _iter_log_lines(container, tail, timestamps):
+                    if stop_event.is_set():
+                        break
+                    try:
+                        q.put_nowait(line)
+                    except queue.Full:
+                        logger.warning(
+                            "Log stream queue full for %s, dropping line",
+                            service_name,
+                        )
+            except Exception as exc:
+                if not stop_event.is_set():
+                    try:
+                        q.put_nowait(f"__error__{exc}")
+                    except queue.Full:
+                        pass
+            finally:
+                try:
+                    q.put_nowait("__end__")
+                except queue.Full:
+                    pass
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+
+        try:
+            payload = {
+                "type": "snapshot_start",
+                "service": service_name,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            }
+            yield "data: " + json.dumps(payload) + "\n\n"
+
+            stream_ended = False
+            snapshot_timeout = 30
+            deadline = time.monotonic() + snapshot_timeout
+            while time.monotonic() < deadline:
+                remaining = max(deadline - time.monotonic(), 0.01)
+                try:
+                    item = q.get(timeout=remaining)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if item == "__end__":
+                    stream_ended = True
+                    break
+                if item.startswith("__error__"):
+                    payload = {
+                        "type": "error",
+                        "service": service_name,
+                        "message": item[len("__error__"):],
+                    }
+                    yield "data: " + json.dumps(payload) + "\n\n"
+                    stream_ended = True
+                    break
+                payload = {
+                    "type": "log",
+                    "service": service_name,
+                    "line": item.rstrip("\n"),
+                }
+                yield "data: " + json.dumps(payload) + "\n\n"
+
+            snapshot_end = {
+                "type": "snapshot_end",
+                "service": service_name,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            }
+            yield "data: " + json.dumps(snapshot_end) + "\n\n"
+
+            if stream_ended:
+                return
+
+            while True:
+                try:
+                    item = q.get(timeout=LOG_STREAM_KEEPALIVE)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if item == "__end__":
+                    payload = {
+                        "type": "stream_end",
+                        "service": service_name,
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }
+                    yield "data: " + json.dumps(payload) + "\n\n"
+                    break
+                if item.startswith("__error__"):
+                    payload = {
+                        "type": "error",
+                        "service": service_name,
+                        "message": item[len("__error__"):],
+                    }
+                    yield "data: " + json.dumps(payload) + "\n\n"
+                    break
+                payload = {
+                    "type": "log",
+                    "service": service_name,
+                    "line": item.rstrip("\n"),
+                }
+                yield "data: " + json.dumps(payload) + "\n\n"
+
+        except GeneratorExit:
+            stop_event.set()
+            logger.info("SSE log stream client disconnected for %s", service_name)
+        finally:
+            stop_event.set()
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ============================================

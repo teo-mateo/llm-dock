@@ -1,86 +1,50 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchAPI } from '../api'
-
-const LOG_POLL_INTERVAL = 3000
-const DEFAULT_TAIL = 200
+import useServiceLogsSSE from '../hooks/useServiceLogsSSE'
 
 export default function ServiceLogsPanel({ serviceName, runtime }) {
-  const [logs, setLogs] = useState('')
-  const [lineCount, setLineCount] = useState(0)
-  const [lastUpdated, setLastUpdated] = useState(null)
   const [paused, setPaused] = useState(false)
-  const [logError, setLogError] = useState(null)
-  const logRef = useRef(null)
-  const userScrolledRef = useRef(false)
-  const mountedRef = useRef(true)
 
   const status = runtime?.status || 'not-created'
   const hasContainer = status !== 'not-created'
 
-  const fetchLogs = useCallback(async () => {
-    try {
-      const data = await fetchAPI(`/services/${serviceName}/logs?tail=${DEFAULT_TAIL}`)
-      if (mountedRef.current) {
-        setLogs(data.logs || '')
-        setLineCount(data.lines || 0)
-        setLastUpdated(new Date())
-        setLogError(null)
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        if (err.message.includes('not been created')) {
-          setLogError(null)
-          setLogs('')
-        } else {
-          setLogError(err.message)
-        }
-      }
-    }
-  }, [serviceName])
+  const {
+    text,
+    lineCount,
+    connected,
+    error: streamError,
+    reconnect,
+  } = useServiceLogsSSE({
+    serviceName,
+    paused: !hasContainer || paused,
+  })
 
-  // Unmount guard (independent of polling state)
-  useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false }
-  }, [])
-
-  // Fetch immediately then poll
-  useEffect(() => {
-    if (!hasContainer || paused) return
-    const initialId = setTimeout(() => {
-      setLogs('')
-      setLineCount(0)
-      setLogError(null)
-      fetchLogs()
-    }, 0)
-    const intervalId = setInterval(fetchLogs, LOG_POLL_INTERVAL)
-    return () => { clearTimeout(initialId); clearInterval(intervalId) }
-  }, [hasContainer, paused, fetchLogs])
+  const logRef = useRef(null)
+  const userScrolledRef = useRef(false)
 
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
     const el = logRef.current
     if (!el || userScrolledRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [logs])
+  }, [text])
 
   const handleScroll = useCallback(() => {
     const el = logRef.current
     if (!el) return
-    // If user is within 50px of the bottom, consider it "at bottom"
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
     userScrolledRef.current = !atBottom
   }, [])
 
   const handleRefresh = useCallback(() => {
-    fetchLogs()
+    reconnect()
     userScrolledRef.current = false
-  }, [fetchLogs])
+  }, [reconnect])
 
-  const formatTime = (date) => {
-    if (!date) return '--:--:--'
-    return date.toLocaleTimeString()
-  }
+  const handlePauseToggle = useCallback(() => {
+    setPaused((prev) => !prev)
+  }, [])
+
+  const isLive = hasContainer && !paused && connected
 
   return (
     <div className="h-full bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
@@ -90,10 +54,16 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
             Container Logs
           </h2>
-          {hasContainer && !paused && (
+          {isLive && (
             <span
               className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"
               aria-label="Log updates active"
+            />
+          )}
+          {hasContainer && !paused && !connected && (
+            <span
+              className="w-2.5 h-2.5 rounded-full bg-yellow-500"
+              aria-label="Connecting to log stream"
             />
           )}
         </div>
@@ -107,10 +77,10 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
             <i className="fa-solid fa-rotate-right text-sm"></i>
           </button>
           <button
-            onClick={() => setPaused(prev => !prev)}
+            onClick={handlePauseToggle}
             disabled={!hasContainer}
             className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 cursor-pointer"
-            title={paused ? 'Resume auto-refresh' : 'Pause auto-refresh'}
+            title={paused ? 'Resume live stream' : 'Pause live stream'}
             aria-label={paused ? 'Log updates paused' : 'Log updates active'}
           >
             <i className={`fa-solid ${paused ? 'fa-play' : 'fa-pause'} text-sm`}></i>
@@ -125,10 +95,10 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
             Service has not been started. Start the service to see logs.
           </p>
         </div>
-      ) : logError ? (
+      ) : streamError && streamError !== 'Service not created' ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-red-400 text-sm">
-            Failed to load logs: {logError}
+            {streamError}
           </p>
         </div>
       ) : (
@@ -137,20 +107,22 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           onScroll={handleScroll}
           className="flex-1 min-h-0 overflow-auto p-4"
         >
-          {logs ? (
+          {text ? (
             <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap leading-relaxed select-text">
-              {logs}
+              {text}
             </pre>
           ) : (
-            <p className="text-gray-500 italic text-sm">No log output yet.</p>
+            <p className="text-gray-500 italic text-sm">
+              {connected ? 'No log output yet.' : 'Connecting...'}
+            </p>
           )}
         </div>
       )}
 
       {/* Footer */}
       <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between" aria-live="polite">
-        <span>Last updated: {formatTime(lastUpdated)} | {lineCount} lines</span>
-        <span>{paused ? 'Paused' : 'Polling every 3s'}</span>
+        <span>{lineCount} lines</span>
+        <span>{paused ? 'Paused' : isLive ? 'Streaming live' : hasContainer ? 'Connecting...' : ''}</span>
       </div>
     </div>
   )
