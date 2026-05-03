@@ -164,7 +164,7 @@ function Toast({ message, onDone }) {
 
 export default function ServicesTable() {
   const navigate = useNavigate()
-  const { services, error } = useServicesSSE()
+  const { services, error, connected, refresh } = useServicesSSE()
   const [transitioning, setTransitioning] = useState({})
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
@@ -195,10 +195,11 @@ export default function ServicesTable() {
   const handleSetPublicPort = useCallback(async (name) => {
     try {
       await fetchAPI(`/services/${name}/set-public-port`, { method: 'POST' })
+      refresh()
     } catch (err) {
       setToast(`Failed to set public port for ${name}: ${err.message}`)
     }
-  }, [])
+  }, [refresh])
 
   const handleEdit = (name) => {
     navigate(`/services/${name}`)
@@ -231,10 +232,41 @@ export default function ServicesTable() {
   const term = search.trim().toLowerCase()
   const visible = term ? services.filter(s => s.name.toLowerCase().includes(term)) : services
 
+  function ConnectionDot({ connected, error }) {
+    let color
+    let label
+
+    if (error) {
+      if (error.includes('reconnecting') && !error.includes('Authentication')) {
+        color = 'bg-yellow-400'
+        label = 'Reconnecting...'
+      } else {
+        color = 'bg-red-400'
+        label = error
+      }
+    } else if (connected) {
+      color = 'bg-green-400'
+      label = 'Connected'
+    } else {
+      color = 'bg-gray-500'
+      label = 'Disconnected'
+    }
+
+    return (
+      <span
+        className={`inline-block w-2 h-2 rounded-full ${color} cursor-help`}
+        title={label}
+      />
+    )
+  }
+
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3 gap-3">
-        <h2 className="text-lg font-semibold text-gray-200">Services</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-200">Services</h2>
+          <ConnectionDot connected={connected} error={error} />
+        </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <input
@@ -359,7 +391,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
   const infra = isInfra(service.name)
 
   return (
-    <tr className="border-b border-gray-700 bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
+    <tr className={`border-b border-gray-700 transition-colors ${service.status === 'running' ? 'bg-green-900/40 hover:bg-green-900/50' : 'bg-gray-800/50 hover:bg-gray-700/50'}`}>
       <td className="px-6 py-3">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-gray-200">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useReducer } from 'react'
 import { getToken, API_BASE, TOKEN_KEY } from '../api'
+
 const RECONNECT_DELAY = 3000
 
 const initialState = {
@@ -73,7 +74,7 @@ export const sortServices = (services) => {
 /**
  * Hook for subscribing to real-time service status updates via SSE.
  * Manages connection, reconnection, and state updates from the server.
- * 
+ *
  * @returns {{
  *   services: Array<Object> | null,
  *   error: string | null,
@@ -94,6 +95,9 @@ export default function useServicesSSE() {
   const mountedRef = useRef(true)
   const abortControllerRef = useRef(null)
   const reconnectTimerRef = useRef(null)
+
+  // Use a ref for startStream so we can call it from closures without
+  // needing it as a dependency (avoids reconnection loops and exhaustive-deps warnings).
   const startStreamRef = useRef(null)
 
   const handleMessage = useCallback((event) => {
@@ -128,7 +132,7 @@ export default function useServicesSSE() {
       setConnected(false)
       setError(`Connection lost: ${err?.message || 'Unknown error'}, reconnecting...`)
     }
-  }, []) // startStream is accessed via ref, not closure
+  }, [])
 
   const processStream = useCallback(async (response, controller) => {
     if (!response.ok) {
@@ -179,18 +183,19 @@ export default function useServicesSSE() {
           // Keepalive messages are ignored
         }
       }
-     } catch (err) {
-       if (err.name !== 'AbortError' && mountedRef.current) {
-         handleError(err)
-       }
-      } finally {
-        if (mountedRef.current) {
-          setConnected(false)
-          if (!controller.signal.aborted) {
-            reconnectTimerRef.current = setTimeout(() => {
-              if (mountedRef.current && getToken()) startStreamRef.current()
-            }, RECONNECT_DELAY)
-          }
+    } catch (err) {
+      if (err.name !== 'AbortError' && mountedRef.current) {
+        handleError(err)
+      }
+    } finally {
+      if (mountedRef.current) {
+        setConnected(false)
+        if (!controller.signal.aborted) {
+          reconnectTimerRef.current = setTimeout(() => {
+            if (mountedRef.current && getToken()) {
+              startStreamRef.current()
+            }
+          }, RECONNECT_DELAY)
         }
       }
     }
@@ -229,15 +234,16 @@ export default function useServicesSSE() {
       .catch(err => {
         if (err.name !== 'AbortError' && mountedRef.current) {
           handleError(err)
-          reconnectTimerRef.current = setTimeout(() => startStreamRef.current(), RECONNECT_DELAY)
+          reconnectTimerRef.current = setTimeout(
+            () => startStreamRef.current(),
+            RECONNECT_DELAY,
+          )
         }
       })
   }, [handleError, processStream])
 
-  // Update ref whenever startStream changes
-  useEffect(() => {
-    startStreamRef.current = startStream
-  }, [startStream])
+  // Keep ref stable for closures that need to call startStream
+  startStreamRef.current = startStream
 
   const stopStream = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -260,7 +266,7 @@ export default function useServicesSSE() {
     const handleStorageChange = (e) => {
       if (e.key === TOKEN_KEY) {
         if (e.newValue) {
-          startStream()
+          startStreamRef.current()
         } else {
           stopStream()
           if (mountedRef.current) setError('Not authenticated')
@@ -270,19 +276,19 @@ export default function useServicesSSE() {
 
     window.addEventListener('storage', handleStorageChange)
     return () => window.removeEventListener('storage', handleStorageChange)
-  }, [startStream, stopStream])
+  }, [stopStream])
 
   // Start stream on mount
   useEffect(() => {
     mountedRef.current = true
-    startStream()
+    startStreamRef.current()
 
     // Handle page visibility changes
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         // Reconnect when tab becomes visible to ensure UI is up-to-date
         if (!abortControllerRef.current && getToken()) {
-          startStream()
+          startStreamRef.current()
         }
       }
       // Don't disconnect on hidden to maintain real-time state for background tabs
@@ -295,7 +301,7 @@ export default function useServicesSSE() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       stopStream()
     }
-  }, [startStream, stopStream])
+  }, [stopStream])
 
   const sortedServices = state.services ? sortServices(state.services) : null
 
