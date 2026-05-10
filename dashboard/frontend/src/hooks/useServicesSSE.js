@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useReducer } from 'react'
-import { getToken, API_BASE, TOKEN_KEY } from '../api'
+import { fetchAPI, getToken, API_BASE, TOKEN_KEY } from '../api'
 
 const RECONNECT_DELAY = 3000
 
@@ -95,6 +95,9 @@ export default function useServicesSSE() {
   const mountedRef = useRef(true)
   const abortControllerRef = useRef(null)
   const reconnectTimerRef = useRef(null)
+  // Tracks whether the SSE stream has delivered a snapshot. Used to avoid
+  // letting a late HTTP-fallback response overwrite a fresher SSE delta.
+  const sseSnapshotReceivedRef = useRef(false)
 
   // Use a ref for startStream so we can call it from closures without
   // needing it as a dependency (avoids reconnection loops and exhaustive-deps warnings).
@@ -108,6 +111,7 @@ export default function useServicesSSE() {
 
       switch (data.type) {
         case 'snapshot':
+          sseSnapshotReceivedRef.current = true
           dispatch({ type: 'SNAPSHOT', payload: data.data })
           setLoading(false)
           setError(null)
@@ -281,6 +285,22 @@ export default function useServicesSSE() {
   // Start stream on mount
   useEffect(() => {
     mountedRef.current = true
+
+    // Kick off a parallel HTTP fetch so the table paints even when the SSE
+    // snapshot is slow or stuck. The SSE snapshot, when it arrives, just
+    // overwrites with identical data. Without this, a stalled stream leaves
+    // the table on "Loading services..." until ctrl+F5.
+    fetchAPI('/services')
+      .then(data => {
+        if (!mountedRef.current) return
+        // Skip if SSE already delivered a snapshot — that data is fresher
+        // and may already include deltas applied since.
+        if (sseSnapshotReceivedRef.current) return
+        dispatch({ type: 'SNAPSHOT', payload: data })
+        setLoading(false)
+      })
+      .catch(() => { /* SSE will surface errors */ })
+
     startStreamRef.current()
 
     // Handle page visibility changes

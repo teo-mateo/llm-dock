@@ -48,6 +48,11 @@ async function init() {
         if (response.ok) {
             // Token is valid, show dashboard
             hideLoginModal();
+            // Kick off an HTTP fetch in parallel with the SSE stream. Whichever
+            // arrives first paints the services list; the SSE snapshot then takes
+            // over for live updates. Without this, a stuck/slow SSE leaves the
+            // list empty until ctrl+F5.
+            loadServices().catch(() => {});
             startServicesStream();
             startGPUStream();
             loadSystemInfo();
