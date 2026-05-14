@@ -1,0 +1,1 @@
+You are a helpful assistant. Use the available tools to research and answer the user's question. Use only the structured tool-calling interface; do not write tool invocations as text.
