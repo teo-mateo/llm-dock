@@ -10,7 +10,7 @@ export default function ChatPage() {
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, loading: convsLoading, refresh, create, remove, removeMany } = useConversations()
+  const { conversations, loading: convsLoading, refresh, create, remove, removeMany, patchConversation } = useConversations()
   const {
     conversation,
     messages,
@@ -27,7 +27,9 @@ export default function ChatPage() {
     sendMessage,
     editMessage,
     stopStreaming,
-  } = useChat()
+  } = useChat({
+    onConversationUpdated: (evt) => patchConversation(evt.id, { title: evt.title }),
+  })
 
   // Load conversation when URL changes
   useEffect(() => {

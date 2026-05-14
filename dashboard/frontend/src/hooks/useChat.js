@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { getConversation } from '../services/chat'
 import { streamChat } from '../services/sse'
 
-export default function useChat() {
+export default function useChat({ onConversationUpdated } = {}) {
   const [conversation, setConversation] = useState(null)
   const [messages, setMessages] = useState([])
   const [critiques, setCritiques] = useState({})
@@ -102,6 +102,7 @@ export default function useChat() {
         onDone: () => {
           // Will be followed by message_saved
         },
+        onConversationUpdated,
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -134,7 +135,7 @@ export default function useChat() {
         },
       }
     )
-  }, [conversation, messages, streaming, loadConversation])
+  }, [conversation, messages, streaming, loadConversation, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     if (!conversation || streaming) return
@@ -175,6 +176,7 @@ export default function useChat() {
           }
         },
         onDone: () => {},
+        onConversationUpdated,
         onMessageSaved: () => {
           setStreamingContent('')
           setStreamingReasoning('')
@@ -190,7 +192,7 @@ export default function useChat() {
         },
       }
     )
-  }, [conversation, messages, streaming, loadConversation])
+  }, [conversation, messages, streaming, loadConversation, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {

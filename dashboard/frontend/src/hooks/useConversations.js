@@ -47,5 +47,12 @@ export default function useConversations() {
     await refresh()
   }, [refresh])
 
-  return { conversations, loading, refresh, create, remove, removeMany, rename }
+  // In-place patch — used by the SSE conversation_updated handler so the
+  // server-pushed auto-title lands in the sidebar without a full refetch
+  // (and without racing one).
+  const patchConversation = useCallback((id, patch) => {
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c))
+  }, [])
+
+  return { conversations, loading, refresh, create, remove, removeMany, rename, patchConversation }
 }
