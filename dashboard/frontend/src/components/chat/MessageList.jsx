@@ -8,6 +8,7 @@ import MessageBubble from './MessageBubble'
 import ThinkingBlock from './ThinkingBlock'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
+import { formatArgValue } from './toolCallUtils'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -87,7 +88,7 @@ export default function MessageList({
                         {evt.arguments && Object.keys(evt.arguments).length > 0 && (
                           <div className="text-gray-400 font-mono pl-5">
                             {Object.entries(evt.arguments).map(([k, v]) => (
-                              <div key={k}><span className="text-gray-500">{k}:</span> {String(v)}</div>
+                              <div key={k} className="truncate"><span className="text-gray-500">{k}:</span> {formatArgValue(v)}</div>
                             ))}
                           </div>
                         )}

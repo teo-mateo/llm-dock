@@ -13,6 +13,34 @@ function downloadArtifact(artifact) {
   URL.revokeObjectURL(url)
 }
 
+function popoutArtifact(artifact) {
+  // A blob: URL inherits the dashboard's origin, so anything we open at
+  // the top level shares localStorage with the dashboard — and the
+  // bearer token lives there (api.js). Opening model-authored HTML as a
+  // top-level page would give it script access to the token. Instead,
+  // wrap the artifact in a tiny script-free shell whose only job is to
+  // host a sandboxed iframe; the model HTML runs inside the iframe with
+  // an opaque origin and cannot reach the dashboard's storage.
+  const escaped = artifact.content
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+  const title = (artifact.title || 'Artifact')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const wrapper = `<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>${title}</title>
+<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%}</style>
+</head><body>
+<iframe srcdoc="${escaped}" sandbox="allow-scripts"></iframe>
+</body></html>`
+  const blob = new Blob([wrapper], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export default function ArtifactRenderer({ artifact }) {
   const [expanded, setExpanded] = useState(true)
   // Normalize: SSE sends artifact_type, DB sends type
@@ -33,6 +61,15 @@ export default function ArtifactRenderer({ artifact }) {
           <span className="text-gray-500 text-[10px]">{artType.toUpperCase()}</span>
         </div>
         <div className="flex items-center gap-1">
+          {artType === 'html' && (
+            <button
+              onClick={() => popoutArtifact(artifact)}
+              className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"
+              title="Pop out to new tab"
+            >
+              <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
+            </button>
+          )}
           <button
             onClick={() => downloadArtifact(artifact)}
             className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"

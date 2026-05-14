@@ -10,4 +10,5 @@ requests>=2.31.0
 mcp[cli]>=1.0.0
 sympy>=1.13.0
 schemdraw>=0.19
+markdown-it-py>=3.0.0
 prometheus-client>=0.20.0
