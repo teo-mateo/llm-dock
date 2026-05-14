@@ -9,6 +9,7 @@ import ThinkingBlock from './ThinkingBlock'
 import CritiqueButton from './CritiqueButton'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
+import { formatArgValue } from './toolCallUtils'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -63,7 +64,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 {tc.arguments && Object.keys(tc.arguments).length > 0 && (
                   <div className="text-gray-400 font-mono pl-5">
                     {Object.entries(tc.arguments).map(([k, v]) => (
-                      <div key={k}><span className="text-gray-500">{k}:</span> {String(v)}</div>
+                      <div key={k} className="truncate"><span className="text-gray-500">{k}:</span> {formatArgValue(v)}</div>
                     ))}
                   </div>
                 )}
