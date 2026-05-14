@@ -5,6 +5,11 @@ import sys
 
 _SERVERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_servers")
 
+_WEBSEARCH_MCP_ROOT = os.environ.get(
+    "LLM_DOCK_WEBSEARCH_MCP_ROOT",
+    "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp",
+)
+
 MCP_SERVERS = {
     "sympy-math": {
         "name": "SymPy Math",
@@ -120,6 +125,18 @@ Important rules:
 - Prioritize clean, readable layout over compact layout. Spread components out.
 
 The diagram will be rendered automatically as an artifact.""",
+    },
+    "websearch": {
+        "name": "Web Search",
+        "description": "Search the web via the configured websearch MCP provider (SerpAPI / Exa)",
+        "command": [
+            os.path.join(_WEBSEARCH_MCP_ROOT, ".venv/bin/python"),
+            os.path.join(_WEBSEARCH_MCP_ROOT, "main.py"),
+            "--transport",
+            "stdio",
+        ],
+        "icon": "fa-magnifying-glass",
+        "tool_hint": "You have access to web search via the web_search tool. Use it whenever the user asks for current, recent, external, or source-backed information — news, prices, version numbers, documentation, anything where your training data may be stale or insufficient. Pass a focused query string; n_results defaults to 10. Search results are pointers only: cite URLs from the results, quote sparingly, and say so when the snippets don't fully answer the question rather than inventing details.",
     },
 }
 
