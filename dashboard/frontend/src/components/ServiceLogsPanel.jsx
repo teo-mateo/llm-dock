@@ -15,9 +15,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
   )
 
   // Track last activity time for footer display
-  const lastUpdatedRef = useRef(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
   useEffect(() => {
-    if (lines.length > 0) lastUpdatedRef.current = new Date()
+    if (lines.length > 0) setLastUpdated(new Date())
   }, [lines.length])
 
   // Auto-scroll unless the user scrolled up
@@ -70,9 +70,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            disabled={!hasContainer}
-            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 cursor-pointer"
-            title="Refresh logs"
+            disabled={!hasContainer || paused}
+            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            title={paused ? 'Resume to refresh' : 'Refresh logs'}
           >
             <i className="fa-solid fa-rotate-right text-sm"></i>
           </button>
@@ -118,7 +118,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
 
       {/* Footer */}
       <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between">
-        <span>Last updated: {formatTime(lastUpdatedRef.current)} | {lines.length} lines</span>
+        <span>Last updated: {formatTime(lastUpdated)} | {lines.length} lines</span>
         <span>{footerStatus()}</span>
       </div>
     </div>

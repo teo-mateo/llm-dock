@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getToken, API_BASE } from '../api'
 
 const RECONNECT_DELAY = 3000
+const MAX_LINES = 2000
 
 export default function useServiceLogsSSE(serviceName, { enabled = true, tail = 200 } = {}) {
   const [lines, setLines] = useState([])
@@ -84,7 +85,12 @@ export default function useServiceLogsSSE(serviceName, { enabled = true, tail = 
                 const data = JSON.parse(line.slice(6))
                 if (!mountedRef.current) break
                 if (data.type === 'snapshot_start') { setLines([]); setLoading(true) }
-                else if (data.type === 'log') setLines(prev => [...prev, data.line])
+                else if (data.type === 'log') setLines(prev => {
+                  const next = prev.length >= MAX_LINES
+                    ? [...prev.slice(prev.length - MAX_LINES + 1), data.line]
+                    : [...prev, data.line]
+                  return next
+                })
                 else if (data.type === 'snapshot_end') setLoading(false)
                 else if (data.type === 'stream_end') { cleanEnd = true; setStreamEnded(true); setConnected(false) }
                 else if (data.type === 'error') { setError(data.message); setConnected(false) }
