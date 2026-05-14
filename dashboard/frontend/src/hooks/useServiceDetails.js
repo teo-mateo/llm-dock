@@ -14,7 +14,7 @@ export default function useServiceDetails(serviceName) {
   // shared SSE stream. No polling here; lifecycle actions don't need to
   // call back to refresh because the Docker event manager pushes a delta
   // within ~1s of the container state change.
-  const { services, loading: sseLoading, error: sseError } = useServicesSSE()
+  const { services, loading: sseLoading, error: sseError, refresh: refreshSSE } = useServicesSSE()
   const runtime = useMemo(() => {
     if (!services) return null
     return services.find(s => s.name === serviceName) || null
@@ -103,12 +103,15 @@ export default function useServiceDetails(serviceName) {
 
   const setPublicPort = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/set-public-port`, { method: 'POST' })
-    // set-public-port changes the host port, which is part of the config
-    // (services.json) — runtime status is unaffected, but config needs a
-    // refresh because the change isn't on the SSE feed.
+    // set-public-port mutates the host port. The SSE delta channel
+    // carries only lifecycle fields (name/status/container_id), so the
+    // cached runtime.host_port would otherwise stay stale until a full
+    // reload. Re-open the SSE stream to pull a fresh snapshot, and
+    // refresh the per-service config too.
     await fetchConfig()
+    refreshSSE()
     return data
-  }, [serviceName, fetchConfig])
+  }, [serviceName, fetchConfig, refreshSSE])
 
   const fetchYamlPreview = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/preview`)
