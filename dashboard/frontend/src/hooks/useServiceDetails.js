@@ -1,111 +1,94 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { fetchAPI } from '../api'
 import { startService, stopService, restartService } from '../services/lifecycle'
-
-const POLL_INTERVAL = 3000
+import useServicesSSE from './useServicesSSE'
 
 export default function useServiceDetails(serviceName) {
   const [config, setConfig] = useState(null)
-  const [runtime, setRuntime] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [configError, setConfigError] = useState(null)
+  const [configLoading, setConfigLoading] = useState(true)
   const [transitioning, setTransitioning] = useState(null)
   const mountedRef = useRef(true)
+
+  // Runtime state (status, container_id, host_port, etc.) comes from the
+  // shared SSE stream. No polling here; lifecycle actions don't need to
+  // call back to refresh because the Docker event manager pushes a delta
+  // within ~1s of the container state change.
+  const { services, loading: sseLoading, error: sseError } = useServicesSSE()
+  const runtime = useMemo(() => {
+    if (!services) return null
+    return services.find(s => s.name === serviceName) || null
+  }, [services, serviceName])
 
   const fetchConfig = useCallback(async () => {
     try {
       const data = await fetchAPI(`/services/${serviceName}`)
       if (mountedRef.current) {
         setConfig(data.config)
+        setConfigError(null)
       }
     } catch (err) {
       if (mountedRef.current) {
         if (err.message.includes('404') || err.message.includes('not found')) {
-          setError('not-found')
+          setConfigError('not-found')
         } else {
-          setError(err.message)
+          setConfigError(err.message)
         }
       }
     }
   }, [serviceName])
 
-  const fetchRuntime = useCallback(async () => {
-    try {
-      const data = await fetchAPI('/services')
-      if (mountedRef.current) {
-        const svc = (data.services || []).find(s => s.name === serviceName)
-        if (svc) {
-          setRuntime(svc)
-          setError(null)
-        } else {
-          // Don't set 'not-found' here — the list endpoint may be transiently
-          // incomplete during compose reloads. fetchConfig hitting the
-          // per-service endpoint is the authoritative existence check.
-          setRuntime(null)
-        }
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(err.message)
-      }
-    }
-  }, [serviceName])
-
-  // Initial fetch: config + runtime in parallel
+  // Initial config fetch (and refetch when serviceName changes)
   useEffect(() => {
     mountedRef.current = true
-    setLoading(true)
-    setError(null)
-
-    Promise.all([fetchConfig(), fetchRuntime()]).then(() => {
-      if (mountedRef.current) setLoading(false)
+    setConfigLoading(true)
+    setConfigError(null)
+    fetchConfig().finally(() => {
+      if (mountedRef.current) setConfigLoading(false)
     })
-
     return () => { mountedRef.current = false }
-  }, [fetchConfig, fetchRuntime])
+  }, [fetchConfig])
 
-  // Poll runtime every 3s
-  useEffect(() => {
-    if (loading || error === 'not-found') return
-
-    const id = setInterval(fetchRuntime, POLL_INTERVAL)
-    return () => clearInterval(id)
-  }, [loading, error, fetchRuntime])
+  // 'not-found' from the config endpoint is authoritative — it's the only
+  // surface that distinguishes "deleted" from "transiently absent from the
+  // list during compose reloads". SSE errors are surfaced as a secondary
+  // signal (connection problems), and the SSE snapshot may take a tick
+  // longer than the config call to arrive.
+  const error = configError === 'not-found' ? 'not-found' : (configError || sseError)
+  const loading = configLoading || sseLoading
 
   const refetchConfig = useCallback(async () => {
     await fetchConfig()
   }, [fetchConfig])
 
-  // Lifecycle actions
+  // Lifecycle actions. No manual runtime refresh — the SSE stream will
+  // deliver the new status as soon as docker emits the event.
   const start = useCallback(async () => {
     setTransitioning('starting')
     try {
       await startService(serviceName)
-      await fetchRuntime()
     } finally {
       if (mountedRef.current) setTransitioning(null)
     }
-  }, [serviceName, fetchRuntime])
+  }, [serviceName])
 
   const stop = useCallback(async () => {
     setTransitioning('stopping')
     try {
       await stopService(serviceName)
-      await fetchRuntime()
     } finally {
       if (mountedRef.current) setTransitioning(null)
     }
-  }, [serviceName, fetchRuntime])
+  }, [serviceName])
 
   const restart = useCallback(async () => {
     setTransitioning('restarting')
     try {
       await restartService(serviceName)
-      await fetchRuntime()
     } finally {
       if (mountedRef.current) setTransitioning(null)
     }
-  }, [serviceName, fetchRuntime])
+  }, [serviceName])
 
   const rename = useCallback(async (newName) => {
     await fetchAPI(`/services/${serviceName}/rename`, {
@@ -120,10 +103,12 @@ export default function useServiceDetails(serviceName) {
 
   const setPublicPort = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/set-public-port`, { method: 'POST' })
-    await fetchRuntime()
+    // set-public-port changes the host port, which is part of the config
+    // (services.json) — runtime status is unaffected, but config needs a
+    // refresh because the change isn't on the SSE feed.
     await fetchConfig()
     return data
-  }, [serviceName, fetchRuntime, fetchConfig])
+  }, [serviceName, fetchConfig])
 
   const fetchYamlPreview = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/preview`)
@@ -132,15 +117,13 @@ export default function useServiceDetails(serviceName) {
 
   const registerOpenWebUI = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/register-openwebui`, { method: 'POST' })
-    await fetchRuntime()
     return data
-  }, [serviceName, fetchRuntime])
+  }, [serviceName])
 
   const unregisterOpenWebUI = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/unregister-openwebui`, { method: 'POST' })
-    await fetchRuntime()
     return data
-  }, [serviceName, fetchRuntime])
+  }, [serviceName])
 
   return {
     config, runtime, loading, error, transitioning,
