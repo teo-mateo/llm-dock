@@ -54,6 +54,9 @@ def _registry_view(state: dict) -> dict:
             cmd = cfg["command"]
             entry["command"] = cmd[0]
             entry["args"] = cmd[1:]
+            entry["command_exists"] = bool(cmd) and os.path.exists(cmd[0])
+        else:
+            entry["command_exists"] = True
         servers.append(entry)
     return {
         "servers": servers,

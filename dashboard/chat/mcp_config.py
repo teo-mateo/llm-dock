@@ -133,10 +133,14 @@ def reload() -> dict:
         builtin_ids = set(BUILTIN.keys())
         external, errors, load_error = _load_external(builtin_ids)
 
-        # Don't drop the in-memory merged view on a top-level parse error —
-        # the user's editing the file and the dashboard should keep serving
-        # the last known-good config.
+        # On a top-level parse error: keep the previous external entries
+        # (the user is editing the file), but always re-merge built-ins so
+        # they survive even on a first-time load against a broken file.
         if load_error is not None:
+            previous_external = {
+                sid: cfg for sid, cfg in _state["merged"].items() if cfg.get("external")
+            }
+            _state["merged"] = _merge(BUILTIN, previous_external)
             _state["load_error"] = load_error
             _state["external_errors"] = []
             logger.warning("MCP registry external file failed to load: %s", load_error)
@@ -183,22 +187,40 @@ def get_state() -> dict:
         return _snapshot_locked()
 
 
+def _chat_available(cfg: dict) -> bool:
+    """Is this entry usable from the chat path?
+
+    Built-in entries are always available. External entries must be enabled
+    AND have an existing command on disk — otherwise the model would be
+    told it has a tool that tool discovery can't actually surface, risking
+    fabricated "I used the tool" answers. The Tools page reads the raw
+    state and still shows unavailable external entries so the user can
+    debug them.
+    """
+    if not cfg.get("enabled", True):
+        return False
+    if not cfg.get("external"):
+        return True
+    command = cfg.get("command") or []
+    return bool(command) and os.path.exists(command[0])
+
+
 def get_config(server_id: str) -> Optional[dict]:
-    """Return config for an enabled server, or None."""
+    """Return config for a chat-available server, or None."""
     reg = get_registry()
     cfg = reg.get(server_id)
-    if cfg is None or not cfg.get("enabled", True):
+    if cfg is None or not _chat_available(cfg):
         return None
     return cfg
 
 
 def list_enabled() -> list:
-    """Return [{id, name, description, icon}] for enabled servers."""
+    """Return [{id, name, description, icon}] for chat-available servers."""
     reg = get_registry()
     return [
         {"id": sid, "name": cfg["name"], "description": cfg["description"], "icon": cfg["icon"]}
         for sid, cfg in reg.items()
-        if cfg.get("enabled", True)
+        if _chat_available(cfg)
     ]
 
 

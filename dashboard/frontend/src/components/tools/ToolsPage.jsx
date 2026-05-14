@@ -22,6 +22,9 @@ function ServerRow({ server, selected, onSelect }) {
         {!server.enabled && (
           <span className="text-[10px] uppercase tracking-wide text-gray-500 border border-gray-700 px-1.5 py-0.5 rounded">disabled</span>
         )}
+        {server.command_exists === false && (
+          <span className="text-[10px] uppercase tracking-wide text-red-300 border border-red-800 px-1.5 py-0.5 rounded">no command</span>
+        )}
       </div>
     </button>
   )
@@ -56,11 +59,20 @@ function ServerDetails({ server, registryErrors }) {
           <div>
             <span className="text-gray-500">command:</span>{' '}
             <span className="font-mono text-gray-200">{server.command}</span>
+            {server.command_exists === false && (
+              <span className="ml-2 text-red-300">(not found on disk)</span>
+            )}
           </div>
           {server.args && server.args.length > 0 && (
             <div>
               <span className="text-gray-500">args:</span>{' '}
               <span className="font-mono text-gray-200">{server.args.join(' ')}</span>
+            </div>
+          )}
+          {server.command_exists === false && (
+            <div className="text-red-300 mt-1">
+              <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+              Hidden from chat until the command exists.
             </div>
           )}
         </div>
