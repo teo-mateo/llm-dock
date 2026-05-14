@@ -105,7 +105,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
 
             # Accumulate content
             content_piece = delta.get("content", "")
-            reasoning_piece = delta.get("reasoning_content", "")
+            reasoning_piece = delta.get("reasoning_content") or delta.get("reasoning") or ""
             if content_piece:
                 collected_content += content_piece
             if reasoning_piece:
