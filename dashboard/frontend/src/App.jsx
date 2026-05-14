@@ -5,6 +5,7 @@ import GpuMonitor from './components/GpuMonitor'
 import ServicesTable from './components/ServicesTable'
 import ServiceDetailsPage from './components/ServiceDetailsPage'
 import ChatPage from './components/chat/ChatPage'
+import ToolsPage from './components/tools/ToolsPage'
 
 function DefaultLayout({ children }) {
   return (
@@ -25,6 +26,7 @@ function App() {
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/chat/:conversationId" element={<ChatPage />} />
+          <Route path="/tools" element={<DefaultLayout><ToolsPage /></DefaultLayout>} />
           <Route path="/" element={<DefaultLayout><GpuMonitor /><ServicesTable /></DefaultLayout>} />
           <Route path="/services/:serviceName/*" element={<DefaultLayout><ServiceDetailsPage /></DefaultLayout>} />
         </Routes>

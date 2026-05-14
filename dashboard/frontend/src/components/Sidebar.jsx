@@ -45,6 +45,19 @@ function Sidebar() {
           <i className="fa-solid fa-comments w-5 text-center"></i>
           <span>Chat</span>
         </NavLink>
+        <NavLink
+          to="/tools"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-2.5 ${
+              isActive
+                ? 'text-white bg-gray-800/70'
+                : 'text-gray-400 hover:bg-gray-800/50'
+            }`
+          }
+        >
+          <i className="fa-solid fa-toolbox w-5 text-center"></i>
+          <span>Tools</span>
+        </NavLink>
       </nav>
 
       {/* User section */}

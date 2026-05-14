@@ -9,6 +9,9 @@ docker-compose.yml
 docker-compose.yml.backup
 docker-compose.lock
 
+# Machine-local MCP registry (declared external servers)
+dashboard/mcp_servers.json
+
 # Logs
 *.log
 dashboard/dashboard.log

@@ -56,6 +56,22 @@ class MCPClientManager:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result(timeout=30)
 
+    def run_with_timeout(self, coro, timeout: float):
+        """Run a coroutine on the manager's event loop with a custom timeout.
+
+        Exposed for one-shot admin operations (the Tools page test endpoint)
+        that want a tighter deadline than the 30s default and don't want to
+        touch the cached chat path. On timeout, cancel the future so the
+        running coroutine (and its `stdio_client` subprocess) gets a chance
+        to clean up instead of leaking past the HTTP response.
+        """
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=timeout)
+        except Exception:
+            future.cancel()
+            raise
+
     def get_tools(self, server_id: str) -> list:
         """Get tools for a server in OpenAI format. Uses cache."""
         if server_id in self._tools_cache:
