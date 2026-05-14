@@ -37,6 +37,22 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
     { enabled: hasContainer && !paused, tail: 200 },
   )
 
+  // Re-attach the SSE stream when the container transitions INTO 'running'.
+  // The hook itself doesn't reconnect after a clean stream_end (which fires
+  // when the container exits), and `enabled` doesn't change on a normal
+  // stop→start cycle, so without this the panel would freeze at "Container
+  // stopped" until a page reload. Also handles --force-recreate via the
+  // container_id dep. The !paused guard keeps an explicit pause sticky.
+  const prevStatusRef = useRef(status)
+  const containerId = runtime?.container_id
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    if (prev !== 'running' && status === 'running' && !paused) {
+      refresh()
+    }
+  }, [status, containerId, paused, refresh])
+
   // Track last activity time for footer display
   const [lastUpdated, setLastUpdated] = useState(null)
   useEffect(() => {
