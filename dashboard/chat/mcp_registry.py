@@ -1,14 +1,14 @@
-"""Registry of available MCP servers."""
+"""Built-in MCP servers.
+
+External servers (machine-local, declared in JSON) are layered on top of
+these by `mcp_config.py`. This file holds only the in-tree servers that
+ship with the repo and run under the dashboard's own interpreter.
+"""
 
 import os
 import sys
 
 _SERVERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_servers")
-
-_WEBSEARCH_MCP_ROOT = os.environ.get(
-    "LLM_DOCK_WEBSEARCH_MCP_ROOT",
-    "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp",
-)
 
 MCP_SERVERS = {
     "sympy-math": {
@@ -126,24 +126,6 @@ Important rules:
 
 The diagram will be rendered automatically as an artifact.""",
     },
-    "websearch": {
-        "name": "Web Search",
-        "description": "Search the web via the configured websearch MCP provider (SerpAPI / Exa)",
-        "command": [
-            os.path.join(_WEBSEARCH_MCP_ROOT, ".venv/bin/python"),
-            os.path.join(_WEBSEARCH_MCP_ROOT, "main.py"),
-            "--transport",
-            "stdio",
-        ],
-        "icon": "fa-magnifying-glass",
-        "tool_hint": "You have access to web search via the web_search tool. Use it whenever the user asks for current, recent, external, or source-backed information — news, prices, version numbers, documentation, anything where your training data may be stale or insufficient. Pass a focused query string; n_results defaults to 10. Search results are pointers only: cite URLs from the results, quote sparingly, and say so when the snippets don't fully answer the question rather than inventing details.",
-        # External — only enable when the configured executable exists.
-        # Without this gate the UI would advertise the toggle and the system
-        # prompt would tell the model it has web_search even when tool
-        # discovery fails silently (mcp_client returns []), risking
-        # fabricated "I searched the web" answers.
-        "external": True,
-    },
     "render-html": {
         "name": "Render HTML",
         "description": "Render HTML or Markdown as an artifact in the chat",
@@ -154,51 +136,27 @@ The diagram will be rendered automatically as an artifact.""",
 }
 
 
-def _server_available(server_id: str, server: dict) -> bool:
-    """Return False for external servers whose configured executable is missing.
-
-    Built-in servers (no `external` flag) are always treated as available;
-    they live inside this repo and run under the dashboard's own interpreter.
-    """
-    if not server.get("external"):
-        return True
-    command = server.get("command") or []
-    if not command:
-        return False
-    return os.path.exists(command[0])
-
-
 def get_tool_hints(server_ids: list) -> str:
-    """Build a system prompt suffix describing enabled tools.
+    """Build a system prompt suffix describing enabled tools."""
+    from . import mcp_config
 
-    Skips servers whose executable isn't present — otherwise the model would
-    be told it has a tool that tool discovery can't actually surface.
-    """
     hints = []
     for sid in server_ids:
-        server = MCP_SERVERS.get(sid)
-        if not server or not server.get("tool_hint"):
-            continue
-        if not _server_available(sid, server):
-            continue
-        hints.append(server["tool_hint"])
+        cfg = mcp_config.get_config(sid)
+        if cfg and cfg.get("tool_hint"):
+            hints.append(cfg["tool_hint"])
     return "\n\n".join(hints)
 
 
 def list_available_servers() -> list:
-    """Return list of available MCP servers for the API."""
-    return [
-        {"id": sid, "name": s["name"], "description": s["description"], "icon": s["icon"]}
-        for sid, s in MCP_SERVERS.items()
-        if _server_available(sid, s)
-    ]
+    """Return list of enabled MCP servers for the API."""
+    from . import mcp_config
+
+    return mcp_config.list_enabled()
 
 
-def get_server_config(server_id: str) -> dict:
-    """Get the config for a specific server, or None if unavailable."""
-    server = MCP_SERVERS.get(server_id)
-    if server is None:
-        return None
-    if not _server_available(server_id, server):
-        return None
-    return server
+def get_server_config(server_id: str):
+    """Return the config for an enabled server, or None."""
+    from . import mcp_config
+
+    return mcp_config.get_config(server_id)

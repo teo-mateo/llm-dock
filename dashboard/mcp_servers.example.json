@@ -1,0 +1,15 @@
+{
+  "websearch": {
+    "enabled": true,
+    "name": "Web Search",
+    "description": "Search the web via the configured websearch MCP provider (SerpAPI / Exa)",
+    "command": "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp/.venv/bin/python",
+    "args": [
+      "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp/main.py",
+      "--transport",
+      "stdio"
+    ],
+    "icon": "fa-magnifying-glass",
+    "tool_hint": "You have access to web search via the web_search tool. Use it whenever the user asks for current, recent, external, or source-backed information — news, prices, version numbers, documentation, anything where your training data may be stale or insufficient. Pass a focused query string; n_results defaults to 10. Search results are pointers only: cite URLs from the results, quote sparingly, and say so when the snippets don't fully answer the question rather than inventing details."
+  }
+}

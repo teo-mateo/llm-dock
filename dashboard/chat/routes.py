@@ -27,7 +27,11 @@ def init_chat(app, db_path: str = None):
     app.config["CHAT_DB"] = db
 
     from .mcp_client import MCPClientManager
-    app.config["MCP_MANAGER"] = MCPClientManager()
+    from . import mcp_config, mcp_admin_routes  # noqa: F401  (admin routes register on chat_bp)
+    mgr = MCPClientManager()
+    app.config["MCP_MANAGER"] = mgr
+    mcp_config.bind_manager(mgr)
+    mcp_config.reload()
 
     logger.info("Chat subsystem initialized")
 

@@ -86,6 +86,53 @@ entries — but it also means a **typo** in the flag name (e.g. `--gpu-mem`)
 ships to the container as-is and fails at startup, not at config time.
 Verify with `mgr.preview_service(name)` before bringing the container up.
 
+## Adding an external MCP server
+
+Built-in MCP tools live in `dashboard/chat/mcp_registry.py` and ship with
+the repo. External MCP servers (machine-local — their venv, path, and
+config live outside this repo) are declared in a JSON file on disk,
+default `dashboard/mcp_servers.json` (gitignored). Override via
+`LLM_DOCK_MCP_SERVERS_FILE`.
+
+Shape — one entry per server id, top-level object keyed by id. See
+`dashboard/mcp_servers.example.json` for a working example.
+
+```json
+{
+  "my-tool": {
+    "enabled": true,
+    "name": "My Tool",
+    "description": "What the user sees in the chat toggle",
+    "command": "/abs/path/to/venv/bin/python",
+    "args": ["/abs/path/to/server.py", "--transport", "stdio"],
+    "icon": "fa-magnifying-glass",
+    "tool_hint": "System-prompt suffix telling the model when to use this tool."
+  }
+}
+```
+
+Rules enforced at load time:
+
+- `command` must be an **absolute path**. No `shell=True`, no PATH lookup.
+- `id` must not contain `__` (collides with `server_id__tool_name`
+  namespacing in `mcp_client.py`).
+- `id` must not collide with a built-in (`sympy-math`, `schemdraw-circuits`,
+  `render-html`). Built-ins always win.
+- All of `name`, `description`, `command`, `args`, `icon`, `tool_hint` are
+  required; `enabled` defaults to `true`.
+
+Editing the file:
+
+- **From the UI**: `/tools` page in the dashboard. Edit the JSON, hit Save
+  (server-side validation, atomic write, auto-reload), or fix on disk and
+  hit Reload from disk.
+- **From the CLI**: edit the file with your editor, then `curl -X POST
+  -H "Authorization: Bearer $TOKEN"
+  http://localhost:3399/api/chat/mcp-registry/reload`.
+
+Secrets stay in the external MCP server's own `.env`; the registry only
+holds paths.
+
 ## Reference: working embedding service
 
 `vllm-nomic-embed-text-v1.5` (port 3320) — see `services.json`. Smoke
