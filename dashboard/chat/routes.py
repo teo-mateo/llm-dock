@@ -27,7 +27,7 @@ def init_chat(app, db_path: str = None):
     app.config["CHAT_DB"] = db
 
     from .mcp_client import MCPClientManager
-    from . import mcp_config, mcp_admin_routes  # noqa: F401  (admin routes register on chat_bp)
+    from . import mcp_config
     mgr = MCPClientManager()
     app.config["MCP_MANAGER"] = mgr
     mcp_config.bind_manager(mgr)
@@ -527,3 +527,11 @@ def spinoff():
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# Register admin routes onto chat_bp at module-load time. Importing this
+# from inside init_chat() runs after app.register_blueprint(chat_bp), which
+# Flask 3 rejects with "The setup method 'route' can no longer be called on
+# the blueprint 'chat'". This bottom-of-file import runs while chat.routes
+# is being imported by app.py — before the blueprint is registered.
+from . import mcp_admin_routes  # noqa: E402,F401
