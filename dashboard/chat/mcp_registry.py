@@ -10,6 +10,11 @@ _WEBSEARCH_MCP_ROOT = os.environ.get(
     "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp",
 )
 
+_RENDER_HTML_MCP_COMMAND = os.environ.get(
+    "LLM_DOCK_RENDER_HTML_MCP_COMMAND",
+    "/github/teo-mateo/ai-toolbox/mcp/render-html-mcp/.venv/bin/render-html-mcp",
+)
+
 MCP_SERVERS = {
     "sympy-math": {
         "name": "SymPy Math",
@@ -142,6 +147,14 @@ The diagram will be rendered automatically as an artifact.""",
         # prompt would tell the model it has web_search even when tool
         # discovery fails silently (mcp_client returns []), risking
         # fabricated "I searched the web" answers.
+        "external": True,
+    },
+    "render-html": {
+        "name": "Render HTML",
+        "description": "Render HTML or Markdown in a local desktop browser window (requires GUI session)",
+        "command": [_RENDER_HTML_MCP_COMMAND],
+        "icon": "fa-window-restore",
+        "tool_hint": "You can render HTML or Markdown in a local desktop browser window when the user asks for a preview of a document, report, table, chart, or any formatted output. Prefer render_html for generated HTML you've just produced and render_html_from_markdown for generated markdown. The *_from_file variants open arbitrary local paths — only use them when the user has explicitly named a file to open, never on a path you inferred or guessed. The tool requires a graphical session; if it returns a DISPLAY/WAYLAND error, tell the user the dashboard is running headless and stop trying.",
         "external": True,
     },
 }
