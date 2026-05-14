@@ -10,11 +10,6 @@ _WEBSEARCH_MCP_ROOT = os.environ.get(
     "/github/teo-mateo/ai-toolbox/mcp/websearch-mcp",
 )
 
-_RENDER_HTML_MCP_COMMAND = os.environ.get(
-    "LLM_DOCK_RENDER_HTML_MCP_COMMAND",
-    "/github/teo-mateo/ai-toolbox/mcp/render-html-mcp/.venv/bin/render-html-mcp",
-)
-
 MCP_SERVERS = {
     "sympy-math": {
         "name": "SymPy Math",
@@ -151,11 +146,10 @@ The diagram will be rendered automatically as an artifact.""",
     },
     "render-html": {
         "name": "Render HTML",
-        "description": "Render HTML or Markdown in a local desktop browser window (requires GUI session)",
-        "command": [_RENDER_HTML_MCP_COMMAND],
+        "description": "Render HTML or Markdown as an artifact in the chat",
+        "command": [sys.executable, os.path.join(_SERVERS_DIR, "render_html_server.py")],
         "icon": "fa-window-restore",
-        "tool_hint": "You can render HTML or Markdown in a local desktop browser window when the user asks for a preview of a document, report, table, chart, or any formatted output. Prefer render_html for generated HTML you've just produced and render_html_from_markdown for generated markdown. The *_from_file variants open arbitrary local paths — only use them when the user has explicitly named a file to open, never on a path you inferred or guessed. The tool requires a graphical session; if it returns a DISPLAY/WAYLAND error, tell the user the dashboard is running headless and stop trying.",
-        "external": True,
+        "tool_hint": "You can render HTML or Markdown directly in this chat window. Use render_html when you've produced an HTML document or fragment the user should see formatted (reports, tables, dashboards, mock UI, charts, etc.) — pass a complete <!doctype html> document if you want full control over styling, or just a fragment if you don't care. Use render_html_from_markdown when the content is markdown and you want it styled nicely without writing HTML yourself. The output appears as an artifact panel attached to your message, inside a sandboxed iframe — the user can also pop it out to a full-window tab. There is NO file-system access: you cannot pass paths, only literal content.",
     },
 }
 

@@ -13,6 +13,15 @@ function downloadArtifact(artifact) {
   URL.revokeObjectURL(url)
 }
 
+function popoutArtifact(artifact) {
+  // Open the HTML in a new tab via a blob URL. Don't revoke immediately —
+  // the new window needs the URL alive until it has finished loading.
+  // The blob is small and short-lived in practice.
+  const blob = new Blob([artifact.content], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export default function ArtifactRenderer({ artifact }) {
   const [expanded, setExpanded] = useState(true)
   // Normalize: SSE sends artifact_type, DB sends type
@@ -33,6 +42,15 @@ export default function ArtifactRenderer({ artifact }) {
           <span className="text-gray-500 text-[10px]">{artType.toUpperCase()}</span>
         </div>
         <div className="flex items-center gap-1">
+          {artType === 'html' && (
+            <button
+              onClick={() => popoutArtifact(artifact)}
+              className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"
+              title="Pop out to new tab"
+            >
+              <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
+            </button>
+          )}
           <button
             onClick={() => downloadArtifact(artifact)}
             className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"
