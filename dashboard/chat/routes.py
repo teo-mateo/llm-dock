@@ -157,62 +157,142 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
 
     assistant_msg_id = str(uuid.uuid4())
     done = False
+    had_error = False              # gate _save_partial against the error path
+    saved_partial = False          # avoid double-save
+    accumulated_content = ""       # per-delta accumulators for partial-save
+    accumulated_reasoning = ""
     collected_tool_calls = []
     collected_artifacts = []
 
-    for event_type, data in stream:
-        if event_type == "delta":
-            yield f"data: {data['raw']}\n\n"
-        elif event_type == "tool_call":
-            collected_tool_calls.append({
-                "name": data["name"],
-                "arguments": data["arguments"],
-                "server_id": data["server_id"],
-            })
-            yield f"data: {json.dumps({'type': 'tool_call', 'name': data['name'], 'arguments': data['arguments'], 'server_id': data['server_id']})}\n\n"
-        elif event_type == "tool_result":
-            for tc in reversed(collected_tool_calls):
-                if tc["name"] == data["name"] and "result" not in tc:
-                    tc["result"] = data["result"]
-                    break
-            yield f"data: {json.dumps({'type': 'tool_result', 'name': data['name'], 'result': data['result'], 'server_id': data['server_id']})}\n\n"
-        elif event_type == "artifact":
-            collected_artifacts.append(data)
-            # Send artifact to frontend (without full content to keep SSE lean)
-            yield f"data: {json.dumps({'type': 'artifact', 'artifact_type': data['type'], 'title': data.get('title'), 'content': data['content']}, default=str)}\n\n"
-        elif event_type == "done":
-            next_seq = db.next_seq(conv.id)
-            assistant_msg = Message(
+    def _save_partial():
+        """Persist whatever we accumulated when the client disconnects mid-stream.
+
+        Called from the GeneratorExit handler and the finally clause. No-op
+        when the stream completed normally, errored, already saved, or never
+        produced any text. Includes stale-stream guards so an old
+        disconnected stream can't append a partial after newer state has
+        landed (a user edit or a fresh user turn).
+        """
+        nonlocal saved_partial
+        if saved_partial or done or had_error:
+            return
+        if not (accumulated_content or accumulated_reasoning):
+            return
+        # Stale-stream guard:
+        #   (1) user message deleted — edit_message at routes.py:340 calls
+        #       delete_messages_from_seq, dropping user_msg from the DB.
+        #   (2) newer messages have landed — next_seq advanced past
+        #       user_msg.seq, so a partial inserted now would attach after
+        #       unrelated history.
+        if db.get_message(user_msg.id) is None:
+            logger.info(
+                "Skipping partial-save for %s: user message %s no longer exists (edited?)",
+                assistant_msg_id, user_msg.id,
+            )
+            return
+        if db.next_seq(conv.id) - 1 != user_msg.seq:
+            logger.info(
+                "Skipping partial-save for %s: conversation advanced past user_msg.seq=%d",
+                assistant_msg_id, user_msg.seq,
+            )
+            return
+        try:
+            db.add_message(Message(
                 id=assistant_msg_id,
                 conversation_id=conv.id,
                 role="assistant",
-                content=data["content"],
-                reasoning_content=data["reasoning_content"],
+                content=accumulated_content,
+                reasoning_content=accumulated_reasoning or None,
                 model_service=conv.main_service,
-                tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
-                seq=next_seq,
-            )
-            db.add_message(assistant_msg)
-            # Save artifacts linked to this message
-            for art_data in collected_artifacts:
-                db.save_artifact(Artifact(
-                    id=str(uuid.uuid4()),
-                    message_id=assistant_msg_id,
-                    artifact_type=art_data["type"],
-                    content=art_data["content"],
-                    title=art_data.get("title"),
-                    language=art_data.get("language"),
-                ))
+                # Skip partial tool_calls: a tool_call without its result is
+                # misleading in the UI. Text content is the primary value.
+                seq=db.next_seq(conv.id),
+            ))
             db.touch_conversation(conv.id)
-            done = True
-            yield "data: [DONE]\n\n"
-            yield f"data: {json.dumps({'type': 'message_saved', 'message_id': assistant_msg_id, 'seq': next_seq})}\n\n"
-        elif event_type == "error":
-            yield f"data: {json.dumps({'error': data['message']})}\n\n"
-            return
+            saved_partial = True
+            logger.info(
+                "Saved partial assistant message %s (%d content chars, %d reasoning chars)",
+                assistant_msg_id, len(accumulated_content), len(accumulated_reasoning),
+            )
+        except Exception:
+            logger.exception("Failed to save partial assistant message on disconnect")
 
-    if not done:
-        yield f"data: {json.dumps({'error': 'Stream ended unexpectedly'})}\n\n"
+    try:
+        for event_type, data in stream:
+            if event_type == "delta":
+                accumulated_content += data.get("content", "") or ""
+                accumulated_reasoning += data.get("reasoning_content", "") or ""
+                yield f"data: {data['raw']}\n\n"
+            elif event_type == "tool_call":
+                collected_tool_calls.append({
+                    "name": data["name"],
+                    "arguments": data["arguments"],
+                    "server_id": data["server_id"],
+                })
+                yield f"data: {json.dumps({'type': 'tool_call', 'name': data['name'], 'arguments': data['arguments'], 'server_id': data['server_id']})}\n\n"
+            elif event_type == "tool_result":
+                for tc in reversed(collected_tool_calls):
+                    if tc["name"] == data["name"] and "result" not in tc:
+                        tc["result"] = data["result"]
+                        break
+                yield f"data: {json.dumps({'type': 'tool_result', 'name': data['name'], 'result': data['result'], 'server_id': data['server_id']})}\n\n"
+            elif event_type == "artifact":
+                collected_artifacts.append(data)
+                # Send artifact to frontend (without full content to keep SSE lean)
+                yield f"data: {json.dumps({'type': 'artifact', 'artifact_type': data['type'], 'title': data.get('title'), 'content': data['content']}, default=str)}\n\n"
+            elif event_type == "done":
+                next_seq = db.next_seq(conv.id)
+                assistant_msg = Message(
+                    id=assistant_msg_id,
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=data["content"],
+                    reasoning_content=data["reasoning_content"],
+                    model_service=conv.main_service,
+                    tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
+                    seq=next_seq,
+                )
+                db.add_message(assistant_msg)
+                # Flip done IMMEDIATELY after the assistant row is in. If an
+                # artifact save throws below, the finally clause must NOT
+                # attempt a second insert with the same assistant_msg_id.
+                done = True
+                # Save artifacts linked to this message
+                for art_data in collected_artifacts:
+                    db.save_artifact(Artifact(
+                        id=str(uuid.uuid4()),
+                        message_id=assistant_msg_id,
+                        artifact_type=art_data["type"],
+                        content=art_data["content"],
+                        title=art_data.get("title"),
+                        language=art_data.get("language"),
+                    ))
+                db.touch_conversation(conv.id)
+                yield "data: [DONE]\n\n"
+                yield f"data: {json.dumps({'type': 'message_saved', 'message_id': assistant_msg_id, 'seq': next_seq})}\n\n"
+            elif event_type == "error":
+                # Set had_error BEFORE yielding — a client disconnect during
+                # the yield would otherwise fire GeneratorExit -> finally
+                # without the flag set, and a server-side model failure with
+                # accumulated deltas would still write a partial.
+                had_error = True
+                yield f"data: {json.dumps({'error': data['message']})}\n\n"
+                return
+
+        if not done:
+            yield f"data: {json.dumps({'error': 'Stream ended unexpectedly'})}\n\n"
+    except GeneratorExit:
+        # Client disconnected mid-stream (navigation, tab close, network
+        # drop). Flask raises this at the next yield after the WSGI layer
+        # notices the broken socket. Persist whatever we have so the user
+        # doesn't lose the in-progress reply when they return.
+        _save_partial()
+        raise                       # MUST re-raise so the generator closes
+    finally:
+        # Belt and suspenders: any non-GeneratorExit exit that didn't already
+        # save still tries to flush. No-op when done=True, had_error=True,
+        # or already saved.
+        _save_partial()
 
 
 def _auto_generate_title(db, conv_id: str, first_user_content: str, service_name: str) -> Optional[str]:
