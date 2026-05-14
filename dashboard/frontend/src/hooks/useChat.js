@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { getConversation } from '../services/chat'
 import { streamChat } from '../services/sse'
 
-export default function useChat() {
+export default function useChat({ onConversationUpdated } = {}) {
   const [conversation, setConversation] = useState(null)
   const [messages, setMessages] = useState([])
   const [critiques, setCritiques] = useState({})
@@ -14,20 +14,24 @@ export default function useChat() {
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
+  // True between message_saved and stream-end — the title-tail phase where
+  // the backend is generating the auto-title and about to emit one more
+  // conversation_updated event. Skip aborting in this window so the title
+  // event still arrives (and the backend isn't BrokenPiped mid-generation).
+  // Reset on every new send/load/stop so it can't be stuck on stale.
+  const drainingRef = useRef(false)
+  // All controllers whose streams have not yet ended (active + draining).
+  // Tracked separately from abortRef so the unmount cleanup can abort a
+  // controller that loadConversation detached from abortRef but left
+  // running on purpose (post-message_saved drain phase). Entries are
+  // removed in the streamChat `finally` block when the stream resolves.
+  const liveControllersRef = useRef(new Set())
 
-  const loadConversation = useCallback(async (convId) => {
-    // Abort any in-flight stream before switching
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setStreaming(false)
-    setStreamingContent('')
-    setStreamingReasoning('')
-    setToolEvents([])
-    setStreamingArtifacts([])
-    setError(null)
-
+  // Refetch the conversation from the server WITHOUT touching the active
+  // SSE stream. Used by the message_saved handler so we don't cancel our
+  // own pipe before the trailing conversation_updated event (auto-title)
+  // arrives.
+  const refetchMessages = useCallback(async (convId) => {
     try {
       const data = await getConversation(convId)
       setConversation(data)
@@ -38,6 +42,27 @@ export default function useChat() {
       setError(err.message)
     }
   }, [])
+
+  const loadConversation = useCallback(async (convId) => {
+    // Abort any in-flight stream before switching, UNLESS it's draining the
+    // post-message_saved title tail (see drainingRef). Aborting that tail
+    // would cancel auto-title generation server-side and drop the trailing
+    // conversation_updated event. The drained stream's callbacks remain
+    // valid via closures and will still patch the original conversation's
+    // title in the sidebar.
+    if (abortRef.current) {
+      if (!drainingRef.current) abortRef.current.abort()
+      abortRef.current = null
+    }
+    drainingRef.current = false
+    setStreaming(false)
+    setStreamingContent('')
+    setStreamingReasoning('')
+    setToolEvents([])
+    setStreamingArtifacts([])
+    setError(null)
+    await refetchMessages(convId)
+  }, [refetchMessages])
 
   const sendMessage = useCallback(async (content, images) => {
     if (!conversation || streaming) return
@@ -60,6 +85,8 @@ export default function useChat() {
 
     const controller = new AbortController()
     abortRef.current = controller
+    drainingRef.current = false
+    liveControllersRef.current.add(controller)
 
     let fullContent = ''
     let fullReasoning = ''
@@ -67,7 +94,8 @@ export default function useChat() {
     const body = { content }
     if (images && images.length > 0) body.images = images
 
-    await streamChat(
+    try {
+      await streamChat(
       `/chat/conversations/${conversation.id}/messages`,
       body,
       {
@@ -102,6 +130,7 @@ export default function useChat() {
         onDone: () => {
           // Will be followed by message_saved
         },
+        onConversationUpdated,
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -121,20 +150,30 @@ export default function useChat() {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
-          // Reload to get proper IDs from server
-          loadConversation(conversation.id)
+          // Enter drain: keep abortRef alive so the trailing
+          // conversation_updated event can arrive, but tell loadConversation
+          // not to abort if the user switches conversations now.
+          drainingRef.current = true
+          // Refetch from DB to get the real message IDs. MUST NOT call
+          // loadConversation here — it would abort the SSE pipe and we'd
+          // miss the trailing conversation_updated event (auto-title).
+          refetchMessages(conversation.id)
         },
         onError: (msg) => {
           setError(msg)
           setStreaming(false)
           setStreamingContent('')
           setStreamingReasoning('')
+          drainingRef.current = false
           // Remove temp message on error
           setMessages(prev => prev.filter(m => m.id !== 'temp-user'))
         },
       }
-    )
-  }, [conversation, messages, streaming, loadConversation])
+      )
+    } finally {
+      liveControllersRef.current.delete(controller)
+    }
+  }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     if (!conversation || streaming) return
@@ -154,59 +193,76 @@ export default function useChat() {
 
     const controller = new AbortController()
     abortRef.current = controller
+    drainingRef.current = false
+    liveControllersRef.current.add(controller)
 
     let fullContent = ''
     let fullReasoning = ''
 
-    await streamChat(
-      `/chat/conversations/${conversation.id}/messages/${msgId}`,
-      { content },
-      {
-        method: 'PUT',
-        signal: controller.signal,
-        onDelta: ({ content: c, reasoning_content: r }) => {
-          if (c) {
-            fullContent += c
-            setStreamingContent(prev => prev + c)
-          }
-          if (r) {
-            fullReasoning += r
-            setStreamingReasoning(prev => prev + r)
-          }
-        },
-        onDone: () => {},
-        onMessageSaved: () => {
-          setStreamingContent('')
-          setStreamingReasoning('')
-          setStreaming(false)
-          loadConversation(conversation.id)
-        },
-        onError: (msg) => {
-          setError(msg)
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingReasoning('')
-          loadConversation(conversation.id)
-        },
-      }
-    )
-  }, [conversation, messages, streaming, loadConversation])
+    try {
+      await streamChat(
+        `/chat/conversations/${conversation.id}/messages/${msgId}`,
+        { content },
+        {
+          method: 'PUT',
+          signal: controller.signal,
+          onDelta: ({ content: c, reasoning_content: r }) => {
+            if (c) {
+              fullContent += c
+              setStreamingContent(prev => prev + c)
+            }
+            if (r) {
+              fullReasoning += r
+              setStreamingReasoning(prev => prev + r)
+            }
+          },
+          onDone: () => {},
+          onConversationUpdated,
+          onMessageSaved: () => {
+            setStreamingContent('')
+            setStreamingReasoning('')
+            setStreaming(false)
+            // See note in sendMessage: refetch only, don't abort the stream,
+            // and enter the drain window so loadConversation also leaves it
+            // alone if the user navigates now.
+            drainingRef.current = true
+            refetchMessages(conversation.id)
+          },
+          onError: (msg) => {
+            setError(msg)
+            setStreaming(false)
+            setStreamingContent('')
+            setStreamingReasoning('')
+            drainingRef.current = false
+            loadConversation(conversation.id)
+          },
+        }
+      )
+    } finally {
+      liveControllersRef.current.delete(controller)
+    }
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
-      setStreaming(false)
     }
+    drainingRef.current = false
+    setStreaming(false)
   }, [])
 
-  // Abort streaming on unmount (e.g. navigating away)
+  // Abort streaming on unmount (e.g. navigating away). Aborts BOTH the
+  // active stream (abortRef) and any detached draining streams whose
+  // controllers loadConversation cleared from abortRef but left running so
+  // the auto-title event could land. Without the liveControllersRef sweep,
+  // those fetches would outlive the component and keep firing callbacks
+  // against an unmounted React tree.
   useEffect(() => {
     return () => {
-      if (abortRef.current) {
-        abortRef.current.abort()
-        abortRef.current = null
-      }
+      for (const c of liveControllersRef.current) c.abort()
+      liveControllersRef.current.clear()
+      abortRef.current = null
     }
   }, [])
 

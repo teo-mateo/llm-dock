@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-import threading
 import uuid
+from typing import Optional
 
 from flask import Blueprint, jsonify, request, current_app, Response, stream_with_context
 
@@ -215,42 +215,53 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         yield f"data: {json.dumps({'error': 'Stream ended unexpectedly'})}\n\n"
 
 
-def _auto_generate_title(app, db_path: str, conv_id: str, first_user_content: str, service_name: str):
-    """Background thread to auto-generate a conversation title."""
-    try:
-        from .db import ChatDB as _ChatDB
-        _db = _ChatDB(db_path)
-        conv = _db.get_conversation(conv_id)
-        if conv is None or conv.title != "New Conversation":
-            return
+def _auto_generate_title(db, conv_id: str, first_user_content: str, service_name: str) -> Optional[str]:
+    """Generate a 3–6 word title for a fresh conversation and persist it.
 
-        title_messages = [
-            {"role": "system", "content": "Generate a concise 3-6 word title for a conversation that starts with the following message. Return ONLY the title, nothing else. Do not explain or add anything."},
-            {"role": "user", "content": first_user_content},
-        ]
+    Runs synchronously inside the SSE response that delivered the assistant
+    reply — see send_message. Returns the new title on success so the caller
+    can emit a conversation_updated event to the open client, or None if
+    nothing should be pushed (manual rename already won, model produced
+    empty output, etc).
+    """
+    conv = db.get_conversation(conv_id)
+    if conv is None or conv.title != "New Conversation":
+        return None
 
-        full_content = ""
-        full_reasoning = ""
-        for event_type, data in stream_chat_completion(service_name, title_messages):
-            if event_type == "delta":
-                full_content += data.get("content", "")
-            elif event_type == "done":
-                full_content = data["content"]
-                full_reasoning = data.get("reasoning_content") or ""
-                break
+    title_messages = [
+        {"role": "system", "content": "Generate a concise 3-6 word title for a conversation that starts with the following message. Return ONLY the title, nothing else. Do not explain or add anything."},
+        {"role": "user", "content": first_user_content},
+    ]
 
-        # Some models put short responses in reasoning_content instead of content
-        title = full_content.strip() or full_reasoning.strip()
-        # Extract last non-empty line as the likely title if reasoning is verbose
-        if '\n' in title:
-            lines = [l.strip().strip('"\'').strip() for l in title.split('\n') if l.strip()]
-            title = lines[-1] if lines else title
-        title = title.strip('"\'*#').strip()
-        if title:
-            _db.update_conversation(conv_id, title=title[:100])
-            logger.info(f"Auto-generated title for {conv_id}: {title}")
-    except Exception:
-        logger.exception("Failed to auto-generate conversation title")
+    full_content = ""
+    full_reasoning = ""
+    for event_type, data in stream_chat_completion(service_name, title_messages):
+        if event_type == "delta":
+            full_content += data.get("content", "")
+        elif event_type == "done":
+            full_content = data["content"]
+            full_reasoning = data.get("reasoning_content") or ""
+            break
+
+    # Some models put short responses in reasoning_content instead of content
+    title = full_content.strip() or full_reasoning.strip()
+    if '\n' in title:
+        lines = [l.strip().strip('"\'').strip() for l in title.split('\n') if l.strip()]
+        title = lines[-1] if lines else title
+    title = title.strip('"\'*#').strip()
+    if not title:
+        return None
+
+    # Re-check before write: a rename arriving DURING the model call would
+    # otherwise be clobbered.
+    conv2 = db.get_conversation(conv_id)
+    if conv2 is None or conv2.title != "New Conversation":
+        return None
+
+    final = title[:100]
+    db.update_conversation(conv_id, title=final)
+    logger.info(f"Auto-generated title for {conv_id}: {final}")
+    return final
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages", methods=["POST"])
@@ -288,15 +299,16 @@ def send_message(conv_id):
 
     def generate():
         yield from _stream_response(db, conv, user_msg, mcp_manager=mcp_manager)
-        # Generate title after the main response is done (same model, single slot)
+        # Generate the title inline so we can push it to the client over the
+        # same SSE pipe before closing — otherwise the sidebar shows
+        # "New Conversation" until the next manual refetch.
         if is_first:
-            db_path = db.db_path
-            t = threading.Thread(
-                target=_auto_generate_title,
-                args=(None, db_path, conv_id, content, conv.main_service),
-                daemon=True,
-            )
-            t.start()
+            try:
+                new_title = _auto_generate_title(db, conv_id, content, conv.main_service)
+                if new_title:
+                    yield f"data: {json.dumps({'type': 'conversation_updated', 'id': conv_id, 'title': new_title})}\n\n"
+            except Exception:
+                logger.exception("auto-title failed")
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
