@@ -22,9 +22,14 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
       {isSpinoff ? (
-        <div className="group/iconslot relative w-7 h-7 -m-1.5 flex items-center justify-center flex-shrink-0">
+        <div
+          className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
+          onClick={e => {
+            if (checkboxShown) { e.stopPropagation(); onToggleSelect(conv.id) }
+          }}
+        >
           <i
-            className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity ${spinoffIconVisibilityClass}`}
+            className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${spinoffIconVisibilityClass}`}
           ></i>
           <input
             type="checkbox"
@@ -36,7 +41,12 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           />
         </div>
       ) : (
-        <div className="group/iconslot relative w-7 h-7 -m-1.5 flex items-center justify-center flex-shrink-0">
+        <div
+          className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
+          onClick={e => {
+            if (checkboxShown) { e.stopPropagation(); onToggleSelect(conv.id) }
+          }}
+        >
           <input
             type="checkbox"
             checked={selected}
