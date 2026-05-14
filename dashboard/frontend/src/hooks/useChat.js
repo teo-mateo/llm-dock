@@ -14,6 +14,12 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
+  // True between message_saved and stream-end — the title-tail phase where
+  // the backend is generating the auto-title and about to emit one more
+  // conversation_updated event. Skip aborting in this window so the title
+  // event still arrives (and the backend isn't BrokenPiped mid-generation).
+  // Reset on every new send/load/stop so it can't be stuck on stale.
+  const drainingRef = useRef(false)
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -32,11 +38,17 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [])
 
   const loadConversation = useCallback(async (convId) => {
-    // Abort any in-flight stream before switching
+    // Abort any in-flight stream before switching, UNLESS it's draining the
+    // post-message_saved title tail (see drainingRef). Aborting that tail
+    // would cancel auto-title generation server-side and drop the trailing
+    // conversation_updated event. The drained stream's callbacks remain
+    // valid via closures and will still patch the original conversation's
+    // title in the sidebar.
     if (abortRef.current) {
-      abortRef.current.abort()
+      if (!drainingRef.current) abortRef.current.abort()
       abortRef.current = null
     }
+    drainingRef.current = false
     setStreaming(false)
     setStreamingContent('')
     setStreamingReasoning('')
@@ -67,6 +79,7 @@ export default function useChat({ onConversationUpdated } = {}) {
 
     const controller = new AbortController()
     abortRef.current = controller
+    drainingRef.current = false
 
     let fullContent = ''
     let fullReasoning = ''
@@ -129,6 +142,10 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
+          // Enter drain: keep abortRef alive so the trailing
+          // conversation_updated event can arrive, but tell loadConversation
+          // not to abort if the user switches conversations now.
+          drainingRef.current = true
           // Refetch from DB to get the real message IDs. MUST NOT call
           // loadConversation here — it would abort the SSE pipe and we'd
           // miss the trailing conversation_updated event (auto-title).
@@ -139,6 +156,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreaming(false)
           setStreamingContent('')
           setStreamingReasoning('')
+          drainingRef.current = false
           // Remove temp message on error
           setMessages(prev => prev.filter(m => m.id !== 'temp-user'))
         },
@@ -164,6 +182,7 @@ export default function useChat({ onConversationUpdated } = {}) {
 
     const controller = new AbortController()
     abortRef.current = controller
+    drainingRef.current = false
 
     let fullContent = ''
     let fullReasoning = ''
@@ -190,7 +209,10 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
-          // See note in sendMessage: refetch only, don't abort the stream.
+          // See note in sendMessage: refetch only, don't abort the stream,
+          // and enter the drain window so loadConversation also leaves it
+          // alone if the user navigates now.
+          drainingRef.current = true
           refetchMessages(conversation.id)
         },
         onError: (msg) => {
@@ -198,6 +220,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreaming(false)
           setStreamingContent('')
           setStreamingReasoning('')
+          drainingRef.current = false
           loadConversation(conversation.id)
         },
       }
@@ -208,8 +231,9 @@ export default function useChat({ onConversationUpdated } = {}) {
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
-      setStreaming(false)
     }
+    drainingRef.current = false
+    setStreaming(false)
   }, [])
 
   // Abort streaming on unmount (e.g. navigating away)
