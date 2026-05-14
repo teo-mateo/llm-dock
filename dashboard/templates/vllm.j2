@@ -18,6 +18,9 @@
 
     environment:
       - HF_HUB_OFFLINE=1
+      - VLLM_CACHE_ROOT=/root/.cache/vllm
+      - TORCHINDUCTOR_CACHE_DIR=/root/.cache/torch/inductor
+      - TRITON_CACHE_DIR=/root/.triton/cache
 {% if attention_backend %}
       - VLLM_ATTENTION_BACKEND={{ attention_backend }}
 {% endif %}
@@ -27,6 +30,7 @@
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
       - ${HOME}/.cache/huggingface/modules:/root/.cache/huggingface/modules
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
       - ${HOME}/.cache/torch:/root/.cache/torch
       - ${HOME}/.triton:/root/.triton
       - ${HOME}/.cache/models:/local-models:ro
