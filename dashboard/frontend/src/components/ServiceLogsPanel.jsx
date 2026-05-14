@@ -1,85 +1,52 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchAPI } from '../api'
-
-const LOG_POLL_INTERVAL = 3000
-const DEFAULT_TAIL = 200
+import useServiceLogsSSE from '../hooks/useServiceLogsSSE'
 
 export default function ServiceLogsPanel({ serviceName, runtime }) {
-  const [logs, setLogs] = useState('')
-  const [lineCount, setLineCount] = useState(0)
-  const [lastUpdated, setLastUpdated] = useState(null)
   const [paused, setPaused] = useState(false)
-  const [logError, setLogError] = useState(null)
   const logRef = useRef(null)
   const userScrolledRef = useRef(false)
-  const mountedRef = useRef(true)
 
   const status = runtime?.status || 'not-created'
   const hasContainer = status !== 'not-created'
 
-  const fetchLogs = useCallback(async () => {
-    try {
-      const data = await fetchAPI(`/services/${serviceName}/logs?tail=${DEFAULT_TAIL}`)
-      if (mountedRef.current) {
-        setLogs(data.logs || '')
-        setLineCount(data.lines || 0)
-        setLastUpdated(new Date())
-        setLogError(null)
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        if (err.message.includes('not been created')) {
-          setLogError(null)
-          setLogs('')
-        } else {
-          setLogError(err.message)
-        }
-      }
-    }
-  }, [serviceName])
+  const { lines, connected, loading, error, streamEnded, refresh } = useServiceLogsSSE(
+    serviceName,
+    { enabled: hasContainer && !paused, tail: 200 },
+  )
 
-  // Unmount guard (independent of polling state)
+  // Track last activity time for footer display
+  const [lastUpdated, setLastUpdated] = useState(null)
   useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false }
-  }, [])
+    if (lines.length > 0) setLastUpdated(new Date())
+  }, [lines.length])
 
-  // Fetch immediately then poll
-  useEffect(() => {
-    if (!hasContainer || paused) return
-    const initialId = setTimeout(() => {
-      setLogs('')
-      setLineCount(0)
-      setLogError(null)
-      fetchLogs()
-    }, 0)
-    const intervalId = setInterval(fetchLogs, LOG_POLL_INTERVAL)
-    return () => { clearTimeout(initialId); clearInterval(intervalId) }
-  }, [hasContainer, paused, fetchLogs])
-
-  // Auto-scroll to bottom unless user scrolled up
+  // Auto-scroll unless the user scrolled up
   useEffect(() => {
     const el = logRef.current
     if (!el || userScrolledRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [logs])
+  }, [lines])
 
   const handleScroll = useCallback(() => {
     const el = logRef.current
     if (!el) return
-    // If user is within 50px of the bottom, consider it "at bottom"
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    userScrolledRef.current = !atBottom
+    userScrolledRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 50
   }, [])
 
   const handleRefresh = useCallback(() => {
-    fetchLogs()
     userScrolledRef.current = false
-  }, [fetchLogs])
+    refresh()
+  }, [refresh])
 
-  const formatTime = (date) => {
-    if (!date) return '--:--:--'
-    return date.toLocaleTimeString()
+  const formatTime = (date) => date ? date.toLocaleTimeString() : '--:--:--'
+
+  const footerStatus = () => {
+    if (!hasContainer) return 'No container'
+    if (paused) return 'Paused'
+    if (streamEnded) return 'Container stopped'
+    if (connected) return 'Live'
+    if (loading) return 'Connecting…'
+    return 'Reconnecting…'
   }
 
   return (
@@ -90,19 +57,22 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
             Container Logs
           </h2>
-          {hasContainer && !paused && (
-            <span
-              className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"
-              aria-label="Log updates active"
-            />
+          {hasContainer && !paused && connected && (
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+          )}
+          {hasContainer && !paused && !connected && !streamEnded && (
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse" />
+          )}
+          {streamEnded && (
+            <span className="text-xs text-gray-500 italic">stopped</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            disabled={!hasContainer}
-            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 cursor-pointer"
-            title="Refresh logs"
+            disabled={!hasContainer || paused}
+            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            title={paused ? 'Resume to refresh' : 'Refresh logs'}
           >
             <i className="fa-solid fa-rotate-right text-sm"></i>
           </button>
@@ -110,8 +80,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
             onClick={() => setPaused(prev => !prev)}
             disabled={!hasContainer}
             className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 cursor-pointer"
-            title={paused ? 'Resume auto-refresh' : 'Pause auto-refresh'}
-            aria-label={paused ? 'Log updates paused' : 'Log updates active'}
+            title={paused ? 'Resume' : 'Pause'}
           >
             <i className={`fa-solid ${paused ? 'fa-play' : 'fa-pause'} text-sm`}></i>
           </button>
@@ -125,11 +94,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
             Service has not been started. Start the service to see logs.
           </p>
         </div>
-      ) : logError ? (
+      ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-red-400 text-sm">
-            Failed to load logs: {logError}
-          </p>
+          <p className="text-red-400 text-sm">Failed to load logs: {error}</p>
         </div>
       ) : (
         <div
@@ -137,10 +104,12 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           onScroll={handleScroll}
           className="flex-1 min-h-0 overflow-auto p-4"
         >
-          {logs ? (
+          {lines.length > 0 ? (
             <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap leading-relaxed select-text">
-              {logs}
+              {lines.join('\n')}
             </pre>
+          ) : loading ? (
+            <p className="text-gray-500 italic text-sm">Loading logs…</p>
           ) : (
             <p className="text-gray-500 italic text-sm">No log output yet.</p>
           )}
@@ -148,9 +117,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
       )}
 
       {/* Footer */}
-      <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between" aria-live="polite">
-        <span>Last updated: {formatTime(lastUpdated)} | {lineCount} lines</span>
-        <span>{paused ? 'Paused' : 'Polling every 3s'}</span>
+      <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between">
+        <span>Last updated: {formatTime(lastUpdated)} | {lines.length} lines</span>
+        <span>{footerStatus()}</span>
       </div>
     </div>
   )
