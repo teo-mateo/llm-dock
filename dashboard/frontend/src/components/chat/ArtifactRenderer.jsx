@@ -14,10 +14,29 @@ function downloadArtifact(artifact) {
 }
 
 function popoutArtifact(artifact) {
-  // Open the HTML in a new tab via a blob URL. Don't revoke immediately —
-  // the new window needs the URL alive until it has finished loading.
-  // The blob is small and short-lived in practice.
-  const blob = new Blob([artifact.content], { type: 'text/html' })
+  // A blob: URL inherits the dashboard's origin, so anything we open at
+  // the top level shares localStorage with the dashboard — and the
+  // bearer token lives there (api.js). Opening model-authored HTML as a
+  // top-level page would give it script access to the token. Instead,
+  // wrap the artifact in a tiny script-free shell whose only job is to
+  // host a sandboxed iframe; the model HTML runs inside the iframe with
+  // an opaque origin and cannot reach the dashboard's storage.
+  const escaped = artifact.content
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+  const title = (artifact.title || 'Artifact')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const wrapper = `<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>${title}</title>
+<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%}</style>
+</head><body>
+<iframe srcdoc="${escaped}" sandbox="allow-scripts"></iframe>
+</body></html>`
+  const blob = new Blob([wrapper], { type: 'text/html' })
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank', 'noopener,noreferrer')
 }
