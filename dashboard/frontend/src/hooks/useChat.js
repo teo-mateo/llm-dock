@@ -15,6 +15,22 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
 
+  // Refetch the conversation from the server WITHOUT touching the active
+  // SSE stream. Used by the message_saved handler so we don't cancel our
+  // own pipe before the trailing conversation_updated event (auto-title)
+  // arrives.
+  const refetchMessages = useCallback(async (convId) => {
+    try {
+      const data = await getConversation(convId)
+      setConversation(data)
+      setMessages(data.messages || [])
+      setCritiques(data.critiques || {})
+      setArtifacts(data.artifacts || {})
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [])
+
   const loadConversation = useCallback(async (convId) => {
     // Abort any in-flight stream before switching
     if (abortRef.current) {
@@ -27,17 +43,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     setToolEvents([])
     setStreamingArtifacts([])
     setError(null)
-
-    try {
-      const data = await getConversation(convId)
-      setConversation(data)
-      setMessages(data.messages || [])
-      setCritiques(data.critiques || {})
-      setArtifacts(data.artifacts || {})
-    } catch (err) {
-      setError(err.message)
-    }
-  }, [])
+    await refetchMessages(convId)
+  }, [refetchMessages])
 
   const sendMessage = useCallback(async (content, images) => {
     if (!conversation || streaming) return
@@ -122,8 +129,10 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
-          // Reload to get proper IDs from server
-          loadConversation(conversation.id)
+          // Refetch from DB to get the real message IDs. MUST NOT call
+          // loadConversation here — it would abort the SSE pipe and we'd
+          // miss the trailing conversation_updated event (auto-title).
+          refetchMessages(conversation.id)
         },
         onError: (msg) => {
           setError(msg)
@@ -135,7 +144,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         },
       }
     )
-  }, [conversation, messages, streaming, loadConversation, onConversationUpdated])
+  }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     if (!conversation || streaming) return
@@ -181,7 +190,8 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
-          loadConversation(conversation.id)
+          // See note in sendMessage: refetch only, don't abort the stream.
+          refetchMessages(conversation.id)
         },
         onError: (msg) => {
           setError(msg)
@@ -192,7 +202,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         },
       }
     )
-  }, [conversation, messages, streaming, loadConversation, onConversationUpdated])
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) {

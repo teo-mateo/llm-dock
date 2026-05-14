@@ -22,11 +22,9 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
       {isSpinoff ? (
-        <div
+        <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => {
-            if (checkboxShown) { e.stopPropagation(); onToggleSelect(conv.id) }
-          }}
+          onClick={e => e.stopPropagation()}
         >
           <i
             className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${spinoffIconVisibilityClass}`}
@@ -35,29 +33,25 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
             type="checkbox"
             checked={selected}
             onChange={() => onToggleSelect(conv.id)}
-            onClick={e => e.stopPropagation()}
             className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
             title="Select"
           />
-        </div>
+        </label>
       ) : (
-        <div
+        <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => {
-            if (checkboxShown) { e.stopPropagation(); onToggleSelect(conv.id) }
-          }}
+          onClick={e => e.stopPropagation()}
         >
           <input
             type="checkbox"
             checked={selected}
             onChange={() => onToggleSelect(conv.id)}
-            onClick={e => e.stopPropagation()}
             className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${
               checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
             }`}
             title="Select"
           />
-        </div>
+        </label>
       )}
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{conv.title}</div>
