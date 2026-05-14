@@ -138,6 +138,13 @@ def delete_conversations_batch():
 # -- Messages --
 
 HEARTBEAT_INTERVAL_S = 3.0
+# Bounded queue size between producer and consumer. Large enough to absorb a
+# burst of token deltas without blocking the producer in normal operation;
+# small enough that an abandoned producer can't grow unbounded memory.
+HEARTBEAT_QUEUE_MAX = 64
+# Polling interval on the producer side. Caps how long after the consumer
+# sets `stop` the producer waits before noticing on a full-queue path.
+HEARTBEAT_PRODUCER_POLL_S = 0.5
 
 
 def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
@@ -145,42 +152,97 @@ def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
 
     The inner stream blocks on upstream HTTP (`requests.iter_lines`), so a
     naive `for ev in it:` can sit for seconds without emitting anything. We
-    drive the inner iterator on a worker thread feeding a queue, and the
-    outer loop pops with a timeout — on every timeout we yield a heartbeat
-    event so the SSE pipe stays visibly alive.
+    drive the inner iterator on a worker thread feeding a bounded queue, and
+    the outer loop pops with a timeout — on every timeout we yield a
+    heartbeat event so the SSE pipe stays visibly alive.
 
-    The thread is a daemon. If the client disconnects we cannot reach into
-    `requests.iter_lines` to interrupt it, but the upstream connection will
-    finish the model turn and drain naturally (same as the pre-heartbeat
-    behavior that backs partial-save).
+    Cancellation contract (client disconnect / Stop button / navigation):
+
+    - The consumer's `finally` sets `stop` and drains the queue, which both
+      caps memory and unblocks the producer if it's parked on a full queue.
+    - The producer checks `stop` between events and on every full-queue
+      retry. Once it notices, it closes the inner generator and exits.
+    - Closing the inner generator (`it.close()`) propagates `GeneratorExit`
+      into `stream_with_tools` / `stream_chat_completion` at their next
+      yield, which short-circuits any further tool execution in
+      `tool_loop.py` and prevents new MCP side-effects after disconnect.
+
+    Caveat: this is cooperative. If the producer is currently inside
+    `requests.iter_lines` waiting on a socket read, it won't notice `stop`
+    until the next chunk arrives (or the upstream times out). Likewise, a
+    tool call already in progress in `mcp_manager.call_tool()` runs to
+    completion — those subprocess calls aren't interruptible from here.
+    True interruption would need a cancel token threaded through to
+    `stream_chat_completion`/`stream_with_tools`; tracked as a follow-up.
     """
-    q = queue.Queue()
+    q = queue.Queue(maxsize=HEARTBEAT_QUEUE_MAX)
     sentinel = object()
+    stop = threading.Event()
 
     def producer():
         try:
             for ev in it:
-                q.put(("ev", ev))
+                if stop.is_set():
+                    break
+                # Bounded put with periodic stop checks so a dead consumer
+                # can't permanently park us here.
+                while True:
+                    try:
+                        q.put(("ev", ev), timeout=HEARTBEAT_PRODUCER_POLL_S)
+                        break
+                    except queue.Full:
+                        if stop.is_set():
+                            break
+                if stop.is_set():
+                    break
         except BaseException as e:
-            q.put(("exc", e))
+            try:
+                q.put(("exc", e), timeout=HEARTBEAT_PRODUCER_POLL_S)
+            except queue.Full:
+                logger.warning("_with_heartbeat: dropped exception on full queue", exc_info=e)
         finally:
-            q.put(sentinel)
+            # Close the inner generator FROM THIS THREAD. The generator
+            # protocol forbids closing a generator that's running on another
+            # thread, so the consumer-side `finally` only sets `stop` and
+            # leaves the actual close to us.
+            try:
+                it.close()
+            except Exception:
+                logger.exception("_with_heartbeat: error closing inner stream")
+            try:
+                q.put(sentinel, timeout=HEARTBEAT_PRODUCER_POLL_S)
+            except queue.Full:
+                pass
 
     threading.Thread(target=producer, daemon=True).start()
     idle_since = time.monotonic()
-    while True:
+    try:
+        while True:
+            try:
+                item = q.get(timeout=interval)
+            except queue.Empty:
+                yield ("__heartbeat__", {"elapsed_s": round(time.monotonic() - idle_since, 1)})
+                continue
+            if item is sentinel:
+                return
+            kind, payload = item
+            if kind == "exc":
+                raise payload
+            idle_since = time.monotonic()
+            yield payload
+    finally:
+        # Consumer is exiting (normal completion, GeneratorExit from client
+        # disconnect, or an exception thrown into us). Signal the producer
+        # to stop and drain anything pending so it isn't blocked on a full
+        # queue put. The drain is required: without it, a producer parked
+        # in q.put() at maxsize won't notice the stop event until its 0.5s
+        # timeout fires, and meanwhile would still process its next event.
+        stop.set()
         try:
-            item = q.get(timeout=interval)
+            while True:
+                q.get_nowait()
         except queue.Empty:
-            yield ("__heartbeat__", {"elapsed_s": round(time.monotonic() - idle_since, 1)})
-            continue
-        if item is sentinel:
-            return
-        kind, payload = item
-        if kind == "exc":
-            raise payload
-        idle_since = time.monotonic()
-        yield payload
+            pass
 
 
 def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_manager=None):
@@ -271,18 +333,27 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         except Exception:
             logger.exception("Failed to save partial assistant message on disconnect")
 
+    stream_start = time.monotonic()
+
+    def _log_evt(label, extra=""):
+        logger.info("[stream %s] +%.2fs %s %s", conv.id[:8], time.monotonic() - stream_start, label, extra)
+
     try:
         for event_type, data in stream:
             if event_type == "__heartbeat__":
+                _log_evt("heartbeat", f"elapsed={data['elapsed_s']}")
                 yield f"data: {json.dumps({'type': 'heartbeat', 'elapsed_s': data['elapsed_s']})}\n\n"
                 continue
             if event_type == "delta":
+                _log_evt("delta", f"content_len={len(data.get('content') or '')} reasoning_len={len(data.get('reasoning_content') or '')}")
                 accumulated_content += data.get("content", "") or ""
                 accumulated_reasoning += data.get("reasoning_content", "") or ""
                 yield f"data: {data['raw']}\n\n"
             elif event_type == "tool_call_pending":
+                _log_evt("tool_call_pending", f"name={data['name']}")
                 yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
             elif event_type == "tool_call":
+                _log_evt("tool_call", f"name={data['name']} server={data['server_id']}")
                 collected_tool_calls.append({
                     "name": data["name"],
                     "arguments": data["arguments"],
