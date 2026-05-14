@@ -7,6 +7,9 @@ import rehypeKatex from 'rehype-katex'
 import MessageBubble from './MessageBubble'
 import ThinkingBlock from './ThinkingBlock'
 import ArtifactRenderer from './ArtifactRenderer'
+import CopyablePre from './CopyablePre'
+
+const MD_COMPONENTS = { pre: CopyablePre }
 
 export default function MessageList({
   messages,
@@ -47,7 +50,7 @@ export default function MessageList({
       onScroll={handleScroll}
       className="flex-1 overflow-auto p-4 space-y-4"
     >
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="max-w-6xl mx-auto space-y-4">
         {messages.map(msg => (
           <MessageBubble
             key={msg.id}
@@ -67,7 +70,7 @@ export default function MessageList({
           <div className="space-y-1.5">
             {toolEvents.map((evt, i) => (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[80%]">
+                <div className="max-w-[90%]">
                   {/* Reasoning before this tool call */}
                   {evt.type === 'call' && evt.reasoning && (
                     <div className="mb-1">
@@ -105,7 +108,7 @@ export default function MessageList({
 
         {/* Streaming artifacts — show as soon as they arrive, before the response */}
         {streaming && streamingArtifacts.length > 0 && (
-          <div className="max-w-[80%]">
+          <div className="max-w-[90%]">
             {streamingArtifacts.map((art, i) => (
               <ArtifactRenderer key={i} artifact={art} />
             ))}
@@ -115,7 +118,7 @@ export default function MessageList({
         {/* Streaming response */}
         {streaming && (
           <div className="flex justify-start">
-            <div className="max-w-[80%]">
+            <div className="max-w-[90%]">
               <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
               {streamingReasoning && (
                 <ThinkingBlock content={streamingReasoning} />
@@ -123,7 +126,7 @@ export default function MessageList({
               {streamingContent ? (
                 <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700 text-gray-200">
                   <div className="text-sm prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                       {streamingContent}
                     </ReactMarkdown>
                   </div>

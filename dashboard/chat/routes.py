@@ -117,6 +117,17 @@ def delete_conversation(conv_id):
     return jsonify({"error": "Conversation not found"}), 404
 
 
+@chat_bp.route("/api/chat/conversations/delete", methods=["POST"])
+@require_auth
+def delete_conversations_batch():
+    data = request.get_json() or {}
+    ids = data.get("ids")
+    if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+        return jsonify({"error": "ids must be a list of strings"}), 400
+    deleted = _get_db().delete_conversations(ids)
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 # -- Messages --
 
 def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_manager=None):

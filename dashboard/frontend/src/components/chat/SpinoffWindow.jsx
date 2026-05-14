@@ -6,6 +6,9 @@ import rehypeRaw from 'rehype-raw'
 import rehypeKatex from 'rehype-katex'
 import { streamChat } from '../../services/sse'
 import { createConversation, getConversation } from '../../services/chat'
+import CopyablePre from './CopyablePre'
+
+const MD_COMPONENTS = { pre: CopyablePre }
 
 export default function SpinoffWindow({ id, conversationId: initialConvId, selectedText, serviceName, parentConversationId, position, onClose, onMinimize, onFocus, onConversationCreated, zIndex }) {
   const [convId, setConvId] = useState(initialConvId || null)
@@ -217,7 +220,7 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
             }`}>
               {msg.role === 'assistant' ? (
                 <div className="prose prose-invert prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                     {msg.content}
                   </ReactMarkdown>
                 </div>
@@ -232,7 +235,7 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
           <div className="flex justify-start">
             <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-gray-800 border border-gray-700 text-gray-200">
               <div className="prose prose-invert prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                   {streamingContent}
                 </ReactMarkdown>
               </div>

@@ -1,10 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import useServiceLogsSSE from '../hooks/useServiceLogsSSE'
 
+const FONT_SIZE_KEY = 'dashboard_logs_font_size'
+const FONT_SIZE_MIN = 10
+const FONT_SIZE_MAX = 22
+const FONT_SIZE_DEFAULT = 14
+const FONT_SIZE_STEP = 1
+
+function readFontSize() {
+  try {
+    const v = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10)
+    if (Number.isFinite(v) && v >= FONT_SIZE_MIN && v <= FONT_SIZE_MAX) return v
+  } catch { /* ignore */ }
+  return FONT_SIZE_DEFAULT
+}
+
 export default function ServiceLogsPanel({ serviceName, runtime }) {
   const [paused, setPaused] = useState(false)
+  const [fontSize, setFontSize] = useState(readFontSize)
   const logRef = useRef(null)
   const userScrolledRef = useRef(false)
+
+  const bumpFontSize = useCallback((delta) => {
+    setFontSize(prev => {
+      const next = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, prev + delta))
+      try { localStorage.setItem(FONT_SIZE_KEY, String(next)) } catch { /* ignore */ }
+      return next
+    })
+  }, [])
 
   const status = runtime?.status || 'not-created'
   const hasContainer = status !== 'not-created'
@@ -68,6 +91,27 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center text-gray-400" title="Log font size">
+            <button
+              onClick={() => bumpFontSize(-FONT_SIZE_STEP)}
+              disabled={fontSize <= FONT_SIZE_MIN}
+              className="p-1.5 hover:text-gray-200 disabled:opacity-40 cursor-pointer"
+              title="Smaller text"
+              aria-label="Decrease log font size"
+            >
+              <i className="fa-solid fa-minus text-xs"></i>
+            </button>
+            <span className="text-[10px] tabular-nums w-5 text-center select-none">{fontSize}</span>
+            <button
+              onClick={() => bumpFontSize(FONT_SIZE_STEP)}
+              disabled={fontSize >= FONT_SIZE_MAX}
+              className="p-1.5 hover:text-gray-200 disabled:opacity-40 cursor-pointer"
+              title="Larger text"
+              aria-label="Increase log font size"
+            >
+              <i className="fa-solid fa-plus text-xs"></i>
+            </button>
+          </div>
           <button
             onClick={handleRefresh}
             disabled={!hasContainer || paused}
@@ -105,7 +149,10 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           className="flex-1 min-h-0 overflow-auto p-4"
         >
           {lines.length > 0 ? (
-            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap leading-relaxed select-text">
+            <pre
+              className="font-mono text-gray-300 whitespace-pre-wrap leading-relaxed select-text"
+              style={{ fontSize: `${fontSize}px` }}
+            >
               {lines.join('\n')}
             </pre>
           ) : loading ? (

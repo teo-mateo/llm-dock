@@ -87,7 +87,7 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
           if (delta) {
             onDelta?.({
               content: delta.content || '',
-              reasoning_content: delta.reasoning_content || '',
+              reasoning_content: delta.reasoning_content || delta.reasoning || '',
             })
           }
         } catch {

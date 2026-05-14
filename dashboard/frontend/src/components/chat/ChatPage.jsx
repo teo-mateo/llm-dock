@@ -10,7 +10,7 @@ export default function ChatPage() {
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, loading: convsLoading, refresh, create, remove } = useConversations()
+  const { conversations, loading: convsLoading, refresh, create, remove, removeMany } = useConversations()
   const {
     conversation,
     messages,
@@ -56,12 +56,35 @@ export default function ChatPage() {
     navigate(`/chat/${id}`)
   }, [navigate])
 
-  const handleDelete = useCallback(async (id) => {
-    await remove(id)
-    if (convId === id) {
-      navigate('/chat')
+  // Deletes cascade to descendant spinoffs server-side. If the active
+  // conversation is one of the deleted rows OR a descendant of any of
+  // them, navigate away — otherwise the URL would point at a now-404
+  // conversation. Walk the parent chain client-side using the in-memory
+  // conversation list (captured before the delete fires).
+  const activeWillBeDeleted = useCallback((deletedIds) => {
+    if (!convId) return false
+    const deleted = new Set(deletedIds)
+    const byId = new Map(conversations.map(c => [c.id, c]))
+    let cursor = convId
+    while (cursor) {
+      if (deleted.has(cursor)) return true
+      cursor = byId.get(cursor)?.parent_conversation_id || null
     }
-  }, [remove, convId, navigate])
+    return false
+  }, [convId, conversations])
+
+  const handleDelete = useCallback(async (id) => {
+    const shouldNavigate = activeWillBeDeleted([id])
+    await remove(id)
+    if (shouldNavigate) navigate('/chat')
+  }, [remove, activeWillBeDeleted, navigate])
+
+  const handleDeleteMany = useCallback(async (ids) => {
+    if (!ids || ids.length === 0) return
+    const shouldNavigate = activeWillBeDeleted(ids)
+    await removeMany(ids)
+    if (shouldNavigate) navigate('/chat')
+  }, [removeMany, activeWillBeDeleted, navigate])
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -71,6 +94,7 @@ export default function ChatPage() {
         onSelect={handleSelect}
         onCreate={handleCreate}
         onDelete={handleDelete}
+        onDeleteMany={handleDeleteMany}
       />
       <ChatArea
         conversation={conversation}

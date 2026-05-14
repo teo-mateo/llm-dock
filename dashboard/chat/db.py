@@ -194,12 +194,52 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
+    def _delete_conversations_recursive(self, conn: sqlite3.Connection, conv_ids: List[str]) -> int:
+        """Delete the named conversations and every descendant spinoff in one
+        recursive CTE. Messages cascade via FK. Returns the number of
+        conversation rows deleted (sqlite3 reports -1 for DELETE-with-subquery,
+        so we count via the same CTE first).
+        """
+        if not conv_ids:
+            return 0
+        placeholders = ",".join("?" for _ in conv_ids)
+        cte = f"""
+            WITH RECURSIVE d(id) AS (
+                SELECT id FROM conversations WHERE id IN ({placeholders})
+                UNION ALL
+                SELECT c.id FROM conversations c JOIN d ON c.parent_conversation_id = d.id
+            )
+        """
+        params = list(conv_ids)
+        # COUNT(DISTINCT id) — UNION ALL in the recursive arm means the CTE
+        # may yield duplicates when the input list already includes both a
+        # parent and one of its descendants. The subsequent DELETE dedupes
+        # naturally, but the raw COUNT(*) would over-report.
+        count = conn.execute(cte + "SELECT COUNT(DISTINCT id) FROM d", params).fetchone()[0]
+        if count == 0:
+            return 0
+        conn.execute(cte + "DELETE FROM conversations WHERE id IN (SELECT id FROM d)", params)
+        return count
+
     def delete_conversation(self, conv_id: str) -> bool:
         conn = self._get_conn()
         try:
-            cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+            rowcount = self._delete_conversations_recursive(conn, [conv_id])
             conn.commit()
-            return cursor.rowcount > 0
+            return rowcount > 0
+        finally:
+            self._close_conn(conn)
+
+    def delete_conversations(self, conv_ids: List[str]) -> int:
+        """Delete multiple conversations (plus their descendant spinoffs) in
+        one statement. Returns rowcount."""
+        if not conv_ids:
+            return 0
+        conn = self._get_conn()
+        try:
+            rowcount = self._delete_conversations_recursive(conn, list(conv_ids))
+            conn.commit()
+            return rowcount
         finally:
             self._close_conn(conn)
 

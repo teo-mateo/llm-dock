@@ -4,6 +4,9 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeRaw from 'rehype-raw'
 import rehypeKatex from 'rehype-katex'
+import CopyablePre from './CopyablePre'
+
+const MD_COMPONENTS = { pre: CopyablePre }
 
 export default function ThinkingBlock({ content }) {
   const [open, setOpen] = useState(false)
@@ -22,7 +25,7 @@ export default function ThinkingBlock({ content }) {
       </button>
       {open && (
         <div className="mt-1 p-3 bg-gray-900/50 border border-gray-700 rounded text-xs text-gray-400 max-h-60 overflow-auto prose prose-invert prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
             {content}
           </ReactMarkdown>
         </div>

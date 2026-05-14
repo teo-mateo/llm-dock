@@ -81,7 +81,7 @@ export default function ChatInput({ onSend, disabled, pendingInserts = [], onCle
     <div className="border-t border-gray-700">
       {/* Pending inserts */}
       {pendingInserts.length > 0 && (
-        <div className="px-4 pt-3 max-w-4xl mx-auto">
+        <div className="px-4 pt-3 max-w-6xl mx-auto">
           <div className="text-[10px] text-yellow-400 mb-1.5 uppercase tracking-wide">
             <i className="fa-solid fa-arrow-right-to-bracket mr-1"></i>
             Issues to include ({pendingInserts.length})
@@ -106,7 +106,7 @@ export default function ChatInput({ onSend, disabled, pendingInserts = [], onCle
 
       {/* Image previews */}
       {images.length > 0 && (
-        <div className="px-4 pt-3 max-w-4xl mx-auto">
+        <div className="px-4 pt-3 max-w-6xl mx-auto">
           <div className="flex gap-2 flex-wrap">
             {images.map((img, i) => (
               <div key={i} className="relative group">
@@ -129,7 +129,7 @@ export default function ChatInput({ onSend, disabled, pendingInserts = [], onCle
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-4">
-        <div className="flex gap-3 items-end max-w-4xl mx-auto">
+        <div className="flex gap-3 items-end max-w-6xl mx-auto">
           <textarea
             ref={textareaRef}
             value={value}

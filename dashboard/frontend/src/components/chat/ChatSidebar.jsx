@@ -1,21 +1,54 @@
 import { useState, useMemo } from 'react'
 
-function ConversationItem({ conv, activeId, depth, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
+function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
   const isSpinoff = !!conv.parent_conversation_id
-  const icon = isSpinoff ? 'fa-code-branch' : 'fa-message'
-  const iconColor = isSpinoff ? 'text-purple-400' : ''
+
+  // Spinoffs keep their branch icon and swap to a checkbox on hover; main
+  // conversations show the checkbox permanently.
+  const checkboxShown = selectMode || selected
+  const spinoffIconVisibilityClass = checkboxShown ? 'opacity-0' : 'group-hover/iconslot:opacity-0'
+  const spinoffCheckboxVisibilityClass = checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
 
   return (
     <div
       onClick={() => onSelect(conv.id)}
       className={`group flex items-center gap-2 py-2 cursor-pointer border-b border-gray-800/30 ${
-        activeId === conv.id
-          ? 'bg-gray-800 text-white'
-          : 'text-gray-400 hover:bg-gray-800/50'
+        selected
+          ? 'bg-blue-900/30 text-white'
+          : activeId === conv.id
+            ? 'bg-gray-800 text-white'
+            : 'text-gray-400 hover:bg-gray-800/50'
       }`}
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
-      <i className={`fa-solid ${icon} text-[10px] opacity-50 flex-shrink-0 ${iconColor}`}></i>
+      {isSpinoff ? (
+        <div className="group/iconslot relative w-7 h-7 -m-1.5 flex items-center justify-center flex-shrink-0">
+          <i
+            className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity ${spinoffIconVisibilityClass}`}
+          ></i>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(conv.id)}
+            onClick={e => e.stopPropagation()}
+            className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
+            title="Select"
+          />
+        </div>
+      ) : (
+        <div className="group/iconslot relative w-7 h-7 -m-1.5 flex items-center justify-center flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(conv.id)}
+            onClick={e => e.stopPropagation()}
+            className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${
+              checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
+            }`}
+            title="Select"
+          />
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{conv.title}</div>
         <div className="text-[10px] text-gray-600">
@@ -45,8 +78,10 @@ function ConversationItem({ conv, activeId, depth, confirmDelete, setConfirmDele
   )
 }
 
-export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete }) {
+export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
 
   // Build tree: top-level conversations + their children
   const tree = useMemo(() => {
@@ -61,6 +96,44 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     return { roots, childrenMap }
   }, [conversations])
 
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+    setConfirmBulk(false)
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    clearSelection()
+    if (onDeleteMany) await onDeleteMany(ids)
+  }
+
+  const selectionCount = selectedIds.size
+  // Once anything is selected, every row swaps its icon for a checkbox.
+  const selectMode = selectionCount > 0
+
+  const allRootsSelected = tree.roots.length > 0 && tree.roots.every(c => selectedIds.has(c.id))
+
+  const toggleSelectAllRoots = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (allRootsSelected) {
+        for (const c of tree.roots) next.delete(c.id)
+      } else {
+        for (const c of tree.roots) next.add(c.id)
+      }
+      return next
+    })
+  }
+
   function renderConv(conv, depth) {
     const children = tree.childrenMap[conv.id] || []
     return (
@@ -69,6 +142,9 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           conv={conv}
           activeId={activeId}
           depth={depth}
+          selectMode={selectMode}
+          selected={selectedIds.has(conv.id)}
+          onToggleSelect={toggleSelect}
           confirmDelete={confirmDelete}
           setConfirmDelete={setConfirmDelete}
           onSelect={onSelect}
@@ -90,6 +166,65 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           <i className="fa-solid fa-plus"></i>
           New Conversation
         </button>
+      </div>
+
+      {/* Always-visible header row: shows count + select-all in browse mode,
+          morphs to selection toolbar in select mode. Same outer div / height
+          either way so the conversation list never shifts vertically. */}
+      <div
+        className={`h-9 px-3 border-b border-gray-800 flex items-center justify-between text-xs ${
+          selectionCount > 0 ? 'bg-gray-800/60' : ''
+        }`}
+      >
+        {selectionCount === 0 ? (
+          <>
+            <span className="text-gray-500">
+              {conversations.length} {conversations.length === 1 ? 'chat' : 'chats'}
+            </span>
+            {tree.roots.length > 0 && (
+              <button
+                onClick={toggleSelectAllRoots}
+                className="text-[11px] text-gray-500 hover:text-gray-300"
+                title="Selects only top-level conversations; spinoffs follow their parent"
+              >
+                {allRootsSelected ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="text-gray-300">{selectionCount} selected</span>
+            <div className="flex items-center gap-2">
+              {confirmBulk ? (
+                <>
+                  <button
+                    onClick={handleBulkDelete}
+                    className="px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-white"
+                  >Delete {selectionCount}</button>
+                  <button
+                    onClick={() => setConfirmBulk(false)}
+                    className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-white"
+                  >Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setConfirmBulk(true)}
+                    className="px-2 py-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
+                    title="Delete selected"
+                  >
+                    <i className="fa-solid fa-trash"></i>
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="px-2 py-1 text-gray-400 hover:text-gray-200"
+                    title="Clear selection"
+                  >Clear</button>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Conversation tree */}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { listConversations, createConversation, deleteConversation, updateConversation } from '../services/chat'
+import { listConversations, createConversation, deleteConversation, deleteConversations, updateConversation } from '../services/chat'
 
 export default function useConversations() {
   const [conversations, setConversations] = useState([])
@@ -36,10 +36,16 @@ export default function useConversations() {
     await refresh()
   }, [refresh])
 
+  const removeMany = useCallback(async (ids) => {
+    if (!ids || ids.length === 0) return
+    await deleteConversations(ids)
+    await refresh()
+  }, [refresh])
+
   const rename = useCallback(async (id, title) => {
     await updateConversation(id, { title })
     await refresh()
   }, [refresh])
 
-  return { conversations, loading, refresh, create, remove, rename }
+  return { conversations, loading, refresh, create, remove, removeMany, rename }
 }
