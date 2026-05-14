@@ -1,9 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 
-export default function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert }) {
+const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
   const textareaRef = useRef(null)
+
+  // Imperative API for parents that want to inject text from outside the
+  // composer (e.g. the text-selection context menu's "Quote in reply" and
+  // "Critique this" actions). Prepends the snippet so an existing draft
+  // stays where the user left it, and re-focuses the textarea.
+  useImperativeHandle(ref, () => ({
+    insertText: (snippet) => {
+      if (!snippet) return
+      setValue(prev => prev ? `${snippet}\n\n${prev}` : snippet)
+      textareaRef.current?.focus()
+    },
+  }), [])
 
   useEffect(() => {
     if (!disabled && textareaRef.current) {
@@ -152,4 +164,6 @@ export default function ChatInput({ onSend, disabled, pendingInserts = [], onCle
       </form>
     </div>
   )
-}
+})
+
+export default ChatInput
