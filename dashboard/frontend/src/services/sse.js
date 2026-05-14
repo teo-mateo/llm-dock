@@ -8,7 +8,7 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
  * Stream a chat completion via SSE.
  * Uses fetch + ReadableStream because EventSource doesn't support auth headers.
  */
-export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolResult, onArtifact, onConversationUpdated, signal, method = 'POST' }) {
+export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolCallPending, onToolResult, onArtifact, onConversationUpdated, onHeartbeat, signal, method = 'POST' }) {
   const token = getToken()
   if (!token) throw new Error('Not authenticated')
 
@@ -67,8 +67,16 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
             onToolCall?.(parsed)
             continue
           }
+          if (parsed.type === 'tool_call_pending') {
+            onToolCallPending?.(parsed)
+            continue
+          }
           if (parsed.type === 'tool_result') {
             onToolResult?.(parsed)
+            continue
+          }
+          if (parsed.type === 'heartbeat') {
+            onHeartbeat?.(parsed)
             continue
           }
           if (parsed.type === 'artifact') {

@@ -73,6 +73,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     collected_content = ""
     collected_reasoning = ""
     collected_tool_calls = []  # accumulated from streaming chunks
+    pending_emitted = set()    # tool-call indices we've already announced via tool_call_pending
     finish_reason = None
 
     try:
@@ -125,6 +126,15 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
                             collected_tool_calls[idx]["function"]["name"] += fn["name"]
                         if "arguments" in fn and fn["arguments"]:
                             collected_tool_calls[idx]["function"]["arguments"] += fn["arguments"]
+                    # Surface a "pending" event the first time this index has any
+                    # name fragment — the full tool_calls event only fires at
+                    # finish_reason, which can leave the UI silent for seconds
+                    # while the model assembles the call.
+                    if idx not in pending_emitted:
+                        current_name = collected_tool_calls[idx]["function"]["name"]
+                        if current_name:
+                            pending_emitted.add(idx)
+                            yield ("tool_call_pending", {"index": idx, "name": current_name})
 
             # Forward content deltas to frontend
             if content_piece or reasoning_piece:

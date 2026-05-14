@@ -10,6 +10,8 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [toolEvents, setToolEvents] = useState([])
+  const [pendingToolCalls, setPendingToolCalls] = useState([]) // {index, name}
+  const [heartbeat, setHeartbeat] = useState(null) // {elapsed_s} | null
   const [artifacts, setArtifacts] = useState({}) // {messageId: [artifact]}
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
   const [error, setError] = useState(null)
@@ -59,6 +61,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingContent('')
     setStreamingReasoning('')
     setToolEvents([])
+    setPendingToolCalls([])
+    setHeartbeat(null)
     setStreamingArtifacts([])
     setError(null)
     await refetchMessages(convId)
@@ -71,6 +75,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingContent('')
     setStreamingReasoning('')
     setToolEvents([])
+    setPendingToolCalls([])
+    setHeartbeat(null)
     setStreamingArtifacts([])
 
     // Optimistically add user message
@@ -101,6 +107,7 @@ export default function useChat({ onConversationUpdated } = {}) {
       {
         signal: controller.signal,
         onDelta: ({ content: c, reasoning_content: r }) => {
+          setHeartbeat(null)
           if (c) {
             fullContent += c
             setStreamingContent(prev => prev + c)
@@ -110,7 +117,19 @@ export default function useChat({ onConversationUpdated } = {}) {
             setStreamingReasoning(prev => prev + r)
           }
         },
+        onHeartbeat: (evt) => {
+          setHeartbeat({ elapsed_s: evt.elapsed_s })
+        },
+        onToolCallPending: (evt) => {
+          setHeartbeat(null)
+          setPendingToolCalls(prev => {
+            const others = prev.filter(p => p.index !== evt.index)
+            return [...others, { index: evt.index, name: evt.name }]
+          })
+        },
         onToolCall: (evt) => {
+          setHeartbeat(null)
+          setPendingToolCalls([])
           // Save any reasoning that happened before this tool call
           const reasoning = fullReasoning || undefined
           setToolEvents(prev => [...prev, { type: 'call', ...evt, reasoning }])
@@ -119,6 +138,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           fullReasoning = ''
         },
         onToolResult: (evt) => {
+          setHeartbeat(null)
           setToolEvents(prev => [...prev, { type: 'result', ...evt }])
           // Reset streaming content — model will start a new response
           setStreamingContent('')
@@ -150,6 +170,8 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreamingContent('')
           setStreamingReasoning('')
           setStreaming(false)
+          setPendingToolCalls([])
+          setHeartbeat(null)
           // Enter drain: keep abortRef alive so the trailing
           // conversation_updated event can arrive, but tell loadConversation
           // not to abort if the user switches conversations now.
@@ -164,6 +186,8 @@ export default function useChat({ onConversationUpdated } = {}) {
           setStreaming(false)
           setStreamingContent('')
           setStreamingReasoning('')
+          setPendingToolCalls([])
+          setHeartbeat(null)
           drainingRef.current = false
           // Remove temp message on error
           setMessages(prev => prev.filter(m => m.id !== 'temp-user'))
@@ -207,6 +231,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           method: 'PUT',
           signal: controller.signal,
           onDelta: ({ content: c, reasoning_content: r }) => {
+            setHeartbeat(null)
             if (c) {
               fullContent += c
               setStreamingContent(prev => prev + c)
@@ -216,12 +241,16 @@ export default function useChat({ onConversationUpdated } = {}) {
               setStreamingReasoning(prev => prev + r)
             }
           },
+          onHeartbeat: (evt) => {
+            setHeartbeat({ elapsed_s: evt.elapsed_s })
+          },
           onDone: () => {},
           onConversationUpdated,
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
             setStreaming(false)
+            setHeartbeat(null)
             // See note in sendMessage: refetch only, don't abort the stream,
             // and enter the drain window so loadConversation also leaves it
             // alone if the user navigates now.
@@ -233,6 +262,7 @@ export default function useChat({ onConversationUpdated } = {}) {
             setStreaming(false)
             setStreamingContent('')
             setStreamingReasoning('')
+            setHeartbeat(null)
             drainingRef.current = false
             loadConversation(conversation.id)
           },
@@ -250,6 +280,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     }
     drainingRef.current = false
     setStreaming(false)
+    setHeartbeat(null)
+    setPendingToolCalls([])
   }, [])
 
   // Abort streaming on unmount (e.g. navigating away). Aborts BOTH the
@@ -275,6 +307,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     streamingContent,
     streamingReasoning,
     toolEvents,
+    pendingToolCalls,
+    heartbeat,
     artifacts,
     streamingArtifacts,
     error,

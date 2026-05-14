@@ -22,6 +22,8 @@ export default function ChatArea({
   streamingContent,
   streamingReasoning,
   toolEvents,
+  pendingToolCalls,
+  heartbeat,
   artifacts,
   streamingArtifacts,
   error,
@@ -179,6 +181,8 @@ export default function ChatArea({
           streamingContent={streamingContent}
           streamingReasoning={streamingReasoning}
           toolEvents={toolEvents}
+          pendingToolCalls={pendingToolCalls}
+          heartbeat={heartbeat}
           artifacts={artifacts}
           streamingArtifacts={streamingArtifacts}
           activeCritiqueId={critiqueTarget}

@@ -23,6 +23,8 @@ export default function MessageList({
   streamingContent,
   streamingReasoning,
   toolEvents = [],
+  pendingToolCalls = [],
+  heartbeat = null,
   artifacts = {},
   streamingArtifacts = [],
   activeCritiqueId,
@@ -116,6 +118,25 @@ export default function MessageList({
           </div>
         )}
 
+        {/* Pending tool call pills — model has started naming a tool but
+            hasn't finished assembling the call yet. Replaced by the full
+            panel in toolEvents once finish_reason==tool_calls lands. */}
+        {streaming && pendingToolCalls.length > 0 && (
+          <div className="space-y-1.5">
+            {pendingToolCalls.map((p) => (
+              <div key={p.index} className="flex justify-start">
+                <div className="max-w-[90%]">
+                  <div className="rounded px-3 py-2 text-xs border bg-gray-800/30 border-gray-700/50 border-dashed flex items-center gap-2 text-yellow-400/80">
+                    <i className="fa-solid fa-wrench fa-fade"></i>
+                    <span className="font-mono">{p.name || 'tool'}</span>
+                    <span className="text-gray-500">assembling call…</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Streaming response */}
         {streaming && (
           <div className="flex justify-start">
@@ -132,14 +153,37 @@ export default function MessageList({
                     </ReactMarkdown>
                   </div>
                 </div>
-              ) : !streamingReasoning && toolEvents.length === 0 ? (
+              ) : !streamingReasoning && toolEvents.length === 0 && pendingToolCalls.length === 0 ? (
                 <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700">
                   <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <i className="fa-solid fa-spinner fa-spin"></i>
-                    <span>Thinking...</span>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span>
+                      {heartbeat
+                        ? `Waiting for model… ${heartbeat.elapsed_s.toFixed(1)}s`
+                        : 'Thinking…'}
+                    </span>
                   </div>
                 </div>
               ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Live heartbeat ribbon — shown whenever the SSE pipe has been idle
+            and the "Thinking…" panel above isn't already displayed (because
+            partial content / reasoning / tool events are already on screen).
+            Covers between-tool-round gaps and reasoning-without-content phases. */}
+        {streaming && heartbeat && (streamingContent || streamingReasoning || toolEvents.length > 0 || pendingToolCalls.length > 0) && (
+          <div className="flex justify-start">
+            <div className="text-[11px] text-gray-500 flex items-center gap-2 pl-1">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+              </span>
+              <span>Waiting for model… {heartbeat.elapsed_s.toFixed(1)}s</span>
             </div>
           </div>
         )}

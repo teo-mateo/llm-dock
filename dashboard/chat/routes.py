@@ -1,6 +1,9 @@
 import json
 import logging
 import os
+import queue
+import threading
+import time
 import uuid
 from typing import Optional
 
@@ -134,6 +137,52 @@ def delete_conversations_batch():
 
 # -- Messages --
 
+HEARTBEAT_INTERVAL_S = 3.0
+
+
+def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
+    """Yield items from `it` and inject ("__heartbeat__", {elapsed_s}) on idle.
+
+    The inner stream blocks on upstream HTTP (`requests.iter_lines`), so a
+    naive `for ev in it:` can sit for seconds without emitting anything. We
+    drive the inner iterator on a worker thread feeding a queue, and the
+    outer loop pops with a timeout — on every timeout we yield a heartbeat
+    event so the SSE pipe stays visibly alive.
+
+    The thread is a daemon. If the client disconnects we cannot reach into
+    `requests.iter_lines` to interrupt it, but the upstream connection will
+    finish the model turn and drain naturally (same as the pre-heartbeat
+    behavior that backs partial-save).
+    """
+    q = queue.Queue()
+    sentinel = object()
+
+    def producer():
+        try:
+            for ev in it:
+                q.put(("ev", ev))
+        except BaseException as e:
+            q.put(("exc", e))
+        finally:
+            q.put(sentinel)
+
+    threading.Thread(target=producer, daemon=True).start()
+    idle_since = time.monotonic()
+    while True:
+        try:
+            item = q.get(timeout=interval)
+        except queue.Empty:
+            yield ("__heartbeat__", {"elapsed_s": round(time.monotonic() - idle_since, 1)})
+            continue
+        if item is sentinel:
+            return
+        kind, payload = item
+        if kind == "exc":
+            raise payload
+        idle_since = time.monotonic()
+        yield payload
+
+
 def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_manager=None):
     """Generator that streams SSE events for a chat completion."""
     # Save user message
@@ -158,6 +207,7 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         stream = stream_with_tools(conv.main_service, messages_array, tools, mcp_manager)
     else:
         stream = stream_chat_completion(conv.main_service, messages_array)
+    stream = _with_heartbeat(stream)
 
     assistant_msg_id = str(uuid.uuid4())
     done = False
@@ -223,10 +273,15 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
 
     try:
         for event_type, data in stream:
+            if event_type == "__heartbeat__":
+                yield f"data: {json.dumps({'type': 'heartbeat', 'elapsed_s': data['elapsed_s']})}\n\n"
+                continue
             if event_type == "delta":
                 accumulated_content += data.get("content", "") or ""
                 accumulated_reasoning += data.get("reasoning_content", "") or ""
                 yield f"data: {data['raw']}\n\n"
+            elif event_type == "tool_call_pending":
+                yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
             elif event_type == "tool_call":
                 collected_tool_calls.append({
                     "name": data["name"],
