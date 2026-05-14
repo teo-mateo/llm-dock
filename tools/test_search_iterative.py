@@ -283,12 +283,20 @@ def load_system_prompt(path_or_keyword):
 
     - 'default' (or unset): import DEFAULT_MAIN_SYSTEM_PROMPT from the
       dashboard module so the harness mirrors a fresh conversation's
-      starting state.
-    - any other value: treat as a path to a text file.
+      starting state — and append the same date line `_stream_response`
+      injects at request time.
+    - any other value: treat as a path to a text file. No date injection;
+      put a date in your prompt file yourself if you need it.
     """
     if path_or_keyword in (None, "", "default"):
+        import datetime
         from chat.constants import DEFAULT_MAIN_SYSTEM_PROMPT
-        return DEFAULT_MAIN_SYSTEM_PROMPT
+        today = datetime.date.today()
+        date_line = (
+            f"Current date: {today.isoformat()} ({today.strftime('%A')}). "
+            "Use this as \"today\" when interpreting time-sensitive questions."
+        )
+        return f"{DEFAULT_MAIN_SYSTEM_PROMPT}\n\n{date_line}"
     return Path(path_or_keyword).read_text()
 
 

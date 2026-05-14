@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -251,7 +252,10 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
     db.add_message(user_msg)
     db.touch_conversation(conv.id)
 
-    # Build messages array, augmenting system prompt with tool hints
+    # Build messages array, augmenting system prompt with tool hints and
+    # an explicit "today's date" line. Models keep training on data with a
+    # past cutoff, so without this they'll write 2024/2025 in queries even
+    # when the user is asking about now.
     messages = db.get_messages(conv.id)
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
     system_prompt = conv.main_system_prompt
@@ -259,6 +263,9 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         hints = get_tool_hints(enabled_servers)
         if hints:
             system_prompt = f"{system_prompt}\n\n{hints}" if system_prompt else hints
+    today = datetime.date.today()
+    date_line = f"Current date: {today.isoformat()} ({today.strftime('%A')}). Use this as \"today\" when interpreting time-sensitive questions."
+    system_prompt = f"{system_prompt}\n\n{date_line}" if system_prompt else date_line
     messages_array = build_messages_array(system_prompt, messages)
 
     # Get MCP tools
