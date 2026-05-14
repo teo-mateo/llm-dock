@@ -10,6 +10,7 @@ import CritiqueButton from './CritiqueButton'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
+import ToolResultBlock from './ToolResultBlock'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -69,9 +70,8 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                   </div>
                 )}
                 {tc.result && (
-                  <div className="text-green-400 pl-5">
-                    <i className="fa-solid fa-arrow-right mr-1"></i>
-                    <span className="font-mono">{tc.result}</span>
+                  <div className="pl-5">
+                    <ToolResultBlock text={tc.result} />
                   </div>
                 )}
               </div>

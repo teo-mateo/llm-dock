@@ -9,6 +9,7 @@ import ThinkingBlock from './ThinkingBlock'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
+import ToolResultBlock from './ToolResultBlock'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -68,38 +69,45 @@ export default function MessageList({
           />
         ))}
 
+        {/* Assistant header + continuous thinking trace — renders ABOVE the
+            tool events so the visual order matches the saved view (one
+            Thinking block at top, then tool calls). streamingReasoning is
+            never cleared on tool_call now; it grows across all rounds. */}
+        {streaming && (toolEvents.length > 0 || streamingReasoning) && (
+          <div className="flex justify-start">
+            <div className="max-w-[90%]">
+              <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
+              {streamingReasoning && (
+                <ThinkingBlock content={streamingReasoning} />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Tool events during streaming */}
         {streaming && toolEvents.length > 0 && (
           <div className="space-y-1.5">
             {toolEvents.map((evt, i) => (
               <div key={i} className="flex justify-start">
                 <div className="max-w-[90%]">
-                  {/* Reasoning before this tool call */}
-                  {evt.type === 'call' && evt.reasoning && (
-                    <div className="mb-1">
-                      <ThinkingBlock content={evt.reasoning} />
-                    </div>
-                  )}
                   <div className="rounded px-3 py-2 text-xs border bg-gray-800/50 border-gray-700/50 space-y-1">
-                    {evt.type === 'call' ? (
-                      <>
-                        <div className="text-yellow-400">
-                          <i className="fa-solid fa-wrench mr-1.5"></i>
-                          <span className="font-mono">{evt.name}</span>
-                        </div>
-                        {evt.arguments && Object.keys(evt.arguments).length > 0 && (
-                          <div className="text-gray-400 font-mono pl-5">
-                            {Object.entries(evt.arguments).map(([k, v]) => (
-                              <div key={k} className="truncate"><span className="text-gray-500">{k}:</span> {formatArgValue(v)}</div>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-green-400">
-                        <i className="fa-solid fa-check mr-1.5"></i>
-                        <span className="font-mono">{evt.name}</span>
-                        <span className="text-gray-300 ml-1">→ <span className="font-mono">{evt.result}</span></span>
+                    <div className={'result' in evt ? 'text-green-400' : 'text-yellow-400'}>
+                      <i className={`fa-solid ${'result' in evt ? 'fa-check' : 'fa-wrench fa-fade'} mr-1.5`}></i>
+                      <span className="font-mono">{evt.name}</span>
+                      {!('result' in evt) && (
+                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500">running…</span>
+                      )}
+                    </div>
+                    {evt.arguments && Object.keys(evt.arguments).length > 0 && (
+                      <div className="text-gray-400 font-mono pl-5">
+                        {Object.entries(evt.arguments).map(([k, v]) => (
+                          <div key={k} className="truncate"><span className="text-gray-500">{k}:</span> {formatArgValue(v)}</div>
+                        ))}
+                      </div>
+                    )}
+                    {'result' in evt && (
+                      <div className="pl-5">
+                        <ToolResultBlock text={evt.result} />
                       </div>
                     )}
                   </div>
@@ -137,13 +145,13 @@ export default function MessageList({
           </div>
         )}
 
-        {/* Streaming response */}
+        {/* Streaming response — only the content/fallback. The Assistant
+            header + reasoning render above (alongside tool events). */}
         {streaming && (
           <div className="flex justify-start">
             <div className="max-w-[90%]">
-              <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
-              {streamingReasoning && (
-                <ThinkingBlock content={streamingReasoning} />
+              {!toolEvents.length && !streamingReasoning && (
+                <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
               )}
               {streamingContent ? (
                 <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700 text-gray-200">

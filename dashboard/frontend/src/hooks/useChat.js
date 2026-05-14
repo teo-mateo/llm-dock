@@ -130,16 +130,28 @@ export default function useChat({ onConversationUpdated } = {}) {
         onToolCall: (evt) => {
           setHeartbeat(null)
           setPendingToolCalls([])
-          // Save any reasoning that happened before this tool call
-          const reasoning = fullReasoning || undefined
-          setToolEvents(prev => [...prev, { type: 'call', ...evt, reasoning }])
-          // Reset reasoning for next segment
-          setStreamingReasoning('')
-          fullReasoning = ''
+          // Keep streamingReasoning growing across rounds — one continuous
+          // thinking trace renders above the tool calls (mirrors the saved
+          // view's single Thinking block).
+          setToolEvents(prev => [...prev, { type: 'call', ...evt }])
         },
         onToolResult: (evt) => {
           setHeartbeat(null)
-          setToolEvents(prev => [...prev, { type: 'result', ...evt }])
+          setToolEvents(prev => {
+            // Attach result to the matching call entry (last one with this
+            // name and no result yet). Falls back to appending if no match —
+            // shouldn't happen in practice but keeps the UI from dropping
+            // a stray result event.
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const e = prev[i]
+              if (e.type === 'call' && e.name === evt.name && !('result' in e)) {
+                const next = [...prev]
+                next[i] = { ...e, result: evt.result, server_id: evt.server_id }
+                return next
+              }
+            }
+            return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
+          })
           // Reset streaming content — model will start a new response
           setStreamingContent('')
           fullContent = ''
@@ -208,6 +220,10 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreaming(true)
     setStreamingContent('')
     setStreamingReasoning('')
+    setToolEvents([])
+    setPendingToolCalls([])
+    setHeartbeat(null)
+    setStreamingArtifacts([])
 
     // Truncate messages from this point
     setMessages(prev => {
@@ -244,6 +260,37 @@ export default function useChat({ onConversationUpdated } = {}) {
           onHeartbeat: (evt) => {
             setHeartbeat({ elapsed_s: evt.elapsed_s })
           },
+          onToolCallPending: (evt) => {
+            setHeartbeat(null)
+            setPendingToolCalls(prev => {
+              const others = prev.filter(p => p.index !== evt.index)
+              return [...others, { index: evt.index, name: evt.name }]
+            })
+          },
+          onToolCall: (evt) => {
+            setHeartbeat(null)
+            setPendingToolCalls([])
+            setToolEvents(prev => [...prev, { type: 'call', ...evt }])
+          },
+          onToolResult: (evt) => {
+            setHeartbeat(null)
+            setToolEvents(prev => {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const e = prev[i]
+                if (e.type === 'call' && e.name === evt.name && !('result' in e)) {
+                  const next = [...prev]
+                  next[i] = { ...e, result: evt.result, server_id: evt.server_id }
+                  return next
+                }
+              }
+              return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
+            })
+            setStreamingContent('')
+            fullContent = ''
+          },
+          onArtifact: (evt) => {
+            setStreamingArtifacts(prev => [...prev, evt])
+          },
           onDone: () => {},
           onConversationUpdated,
           onMessageSaved: () => {
@@ -263,6 +310,7 @@ export default function useChat({ onConversationUpdated } = {}) {
             setStreamingContent('')
             setStreamingReasoning('')
             setHeartbeat(null)
+            setPendingToolCalls([])
             drainingRef.current = false
             loadConversation(conversation.id)
           },

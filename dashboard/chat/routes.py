@@ -333,27 +333,18 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         except Exception:
             logger.exception("Failed to save partial assistant message on disconnect")
 
-    stream_start = time.monotonic()
-
-    def _log_evt(label, extra=""):
-        logger.info("[stream %s] +%.2fs %s %s", conv.id[:8], time.monotonic() - stream_start, label, extra)
-
     try:
         for event_type, data in stream:
             if event_type == "__heartbeat__":
-                _log_evt("heartbeat", f"elapsed={data['elapsed_s']}")
                 yield f"data: {json.dumps({'type': 'heartbeat', 'elapsed_s': data['elapsed_s']})}\n\n"
                 continue
             if event_type == "delta":
-                _log_evt("delta", f"content_len={len(data.get('content') or '')} reasoning_len={len(data.get('reasoning_content') or '')}")
                 accumulated_content += data.get("content", "") or ""
                 accumulated_reasoning += data.get("reasoning_content", "") or ""
                 yield f"data: {data['raw']}\n\n"
             elif event_type == "tool_call_pending":
-                _log_evt("tool_call_pending", f"name={data['name']}")
                 yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
             elif event_type == "tool_call":
-                _log_evt("tool_call", f"name={data['name']} server={data['server_id']}")
                 collected_tool_calls.append({
                     "name": data["name"],
                     "arguments": data["arguments"],
