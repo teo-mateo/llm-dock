@@ -8,6 +8,9 @@ import 'katex/dist/katex.min.css'
 import ThinkingBlock from './ThinkingBlock'
 import CritiqueButton from './CritiqueButton'
 import ArtifactRenderer from './ArtifactRenderer'
+import CopyablePre from './CopyablePre'
+
+const MD_COMPONENTS = { pre: CopyablePre }
 
 export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, isActiveCritique, artifacts }) {
   const [editing, setEditing] = useState(false)
@@ -37,7 +40,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}>
-      <div className={`max-w-[80%] ${isUser ? 'order-1' : ''}`}>
+      <div className={`max-w-[90%] ${isUser ? 'order-1' : ''}`}>
         {/* Role label */}
         <div className={`text-[10px] text-gray-500 mb-1 ${isUser ? 'text-right' : ''}`}>
           {isUser ? 'You' : message.model_service || 'Assistant'}
@@ -109,13 +112,13 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
 
           {/* Text content */}
           {editing ? (
-            <div>
+            <div className="w-[60vw] max-w-[800px]">
               <textarea
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleEditKeyDown}
-                rows={3}
-                className="w-full bg-blue-700 text-white rounded px-2 py-1 text-sm resize-none focus:outline-none"
+                rows={6}
+                className="w-full min-h-[140px] bg-blue-700 text-white rounded px-3 py-2 text-sm resize-y focus:outline-none"
                 autoFocus
               />
               <div className="flex gap-2 mt-2 text-xs">
@@ -128,7 +131,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
           ) : (
             message.content && (
               <div className="text-sm prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                   {message.content}
                 </ReactMarkdown>
               </div>
