@@ -36,6 +36,19 @@ export default function ChatArea({
   const [pendingInserts, setPendingInserts] = useState([])
   const [spinoffs, setSpinoffs] = useState([]) // [{id, text, minimized, zIndex}]
   const topZRef = useRef(100)
+  const composerRef = useRef(null)
+
+  const quoteSelection = useCallback((text) => {
+    if (!text) return
+    const quoted = text.split('\n').map(line => `> ${line}`).join('\n')
+    composerRef.current?.insertText(quoted)
+  }, [])
+
+  const critiqueSelection = useCallback((text) => {
+    if (!text) return
+    const quoted = text.split('\n').map(line => `> ${line}`).join('\n')
+    composerRef.current?.insertText(`Please critique the following:\n\n${quoted}`)
+  }, [])
 
   const createSpinoff = useCallback((text) => {
     const id = ++spinoffCounter
@@ -173,6 +186,7 @@ export default function ChatArea({
 
         {/* Input */}
         <ChatInput
+          ref={composerRef}
           onSend={(msg, images) => { onSend(msg, images); setPendingInserts([]) }}
           disabled={streaming || !conversation.main_service}
           pendingInserts={pendingInserts}
@@ -194,7 +208,11 @@ export default function ChatArea({
       )}
 
       {/* Context menu for text selection */}
-      <TextContextMenu onSpinoff={createSpinoff} />
+      <TextContextMenu
+        onSpinoff={createSpinoff}
+        onQuote={quoteSelection}
+        onCritique={critiqueSelection}
+      />
 
       {/* Spinoff windows */}
       {spinoffs.filter(s => !s.minimized).map(s => (

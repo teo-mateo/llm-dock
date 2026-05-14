@@ -1,6 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
 
-export default function TextContextMenu({ onSpinoff }) {
+// Copies text to the clipboard. Falls back to a hidden textarea +
+// execCommand for insecure origins (HTTP through the tunnel) where
+// navigator.clipboard is unavailable. Mirrors the pattern in
+// CopyablePre.jsx.
+async function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(text); return true } catch { /* fall through */ }
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try { ok = document.execCommand('copy') } catch { ok = false }
+  document.body.removeChild(ta)
+  return ok
+}
+
+export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
   const [menu, setMenu] = useState(null) // { x, y, text }
 
   const handleContextMenu = useCallback((e) => {
@@ -46,6 +67,36 @@ export default function TextContextMenu({ onSpinoff }) {
       >
         <i className="fa-solid fa-code-branch text-purple-400 text-xs"></i>
         Spin off...
+      </button>
+      <button
+        onClick={async () => {
+          await copyToClipboard(menu.text)
+          setMenu(null)
+        }}
+        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+      >
+        <i className="fa-solid fa-copy text-gray-400 text-xs"></i>
+        Copy
+      </button>
+      <button
+        onClick={() => {
+          onQuote?.(menu.text)
+          setMenu(null)
+        }}
+        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+      >
+        <i className="fa-solid fa-quote-right text-blue-400 text-xs"></i>
+        Quote in reply
+      </button>
+      <button
+        onClick={() => {
+          onCritique?.(menu.text)
+          setMenu(null)
+        }}
+        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+      >
+        <i className="fa-solid fa-magnifying-glass text-amber-400 text-xs"></i>
+        Critique this
       </button>
     </div>
   )
