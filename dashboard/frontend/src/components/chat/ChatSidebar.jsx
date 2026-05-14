@@ -73,9 +73,11 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       ) : (
         <button
           onClick={e => { e.stopPropagation(); setConfirmDelete(conv.id) }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+          title="Delete conversation"
+          aria-label="Delete conversation"
         >
-          <i className="fa-solid fa-trash text-[10px]"></i>
+          <i className="fa-solid fa-trash text-xs"></i>
         </button>
       )}
     </div>
