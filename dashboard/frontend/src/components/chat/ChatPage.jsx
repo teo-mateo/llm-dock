@@ -10,7 +10,7 @@ export default function ChatPage() {
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, loading: convsLoading, refresh, create, remove } = useConversations()
+  const { conversations, loading: convsLoading, refresh, create, remove, removeMany } = useConversations()
   const {
     conversation,
     messages,
@@ -63,6 +63,14 @@ export default function ChatPage() {
     }
   }, [remove, convId, navigate])
 
+  const handleDeleteMany = useCallback(async (ids) => {
+    if (!ids || ids.length === 0) return
+    await removeMany(ids)
+    if (convId && ids.includes(convId)) {
+      navigate('/chat')
+    }
+  }, [removeMany, convId, navigate])
+
   return (
     <div className="flex-1 flex overflow-hidden">
       <ChatSidebar
@@ -71,6 +79,7 @@ export default function ChatPage() {
         onSelect={handleSelect}
         onCreate={handleCreate}
         onDelete={handleDelete}
+        onDeleteMany={handleDeleteMany}
       />
       <ChatArea
         conversation={conversation}

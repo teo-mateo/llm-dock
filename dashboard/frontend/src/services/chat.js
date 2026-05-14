@@ -28,6 +28,13 @@ export async function deleteConversation(id) {
   })
 }
 
+export async function deleteConversations(ids) {
+  return fetchAPI('/chat/conversations/delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  })
+}
+
 export async function requestCritique(messageId, { contextWindow = 10, extraInstructions = '' } = {}) {
   return fetchAPI(`/chat/messages/${messageId}/critique`, {
     method: 'POST',
