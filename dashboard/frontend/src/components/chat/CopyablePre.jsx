@@ -11,15 +11,41 @@ function extractText(node) {
 export default function CopyablePre({ children, ...rest }) {
   const [copied, setCopied] = useState(false)
 
-  const handleCopy = (e) => {
+  const handleCopy = async (e) => {
     e.stopPropagation()
     const codeNode = Children.toArray(children).find(isValidElement)
     const text = extractText(codeNode || children)
     if (!text) return
-    navigator.clipboard.writeText(text).then(() => {
+
+    const flash = () => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    }).catch(() => { /* ignore */ })
+    }
+
+    // navigator.clipboard is unavailable on insecure origins (HTTP from
+    // another host — common when the dashboard is reached over the tunnel
+    // without TLS termination). Use the legacy textarea + execCommand path
+    // as a fallback so the button works regardless of origin.
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        flash()
+        return
+      } catch { /* fall through to legacy path */ }
+    }
+
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    try {
+      if (document.execCommand('copy')) flash()
+    } catch { /* clipboard genuinely unavailable */ }
+    document.body.removeChild(ta)
   }
 
   return (

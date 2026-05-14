@@ -211,7 +211,11 @@ class ChatDB:
             )
         """
         params = list(conv_ids)
-        count = conn.execute(cte + "SELECT COUNT(*) FROM d", params).fetchone()[0]
+        # COUNT(DISTINCT id) — UNION ALL in the recursive arm means the CTE
+        # may yield duplicates when the input list already includes both a
+        # parent and one of its descendants. The subsequent DELETE dedupes
+        # naturally, but the raw COUNT(*) would over-report.
+        count = conn.execute(cte + "SELECT COUNT(DISTINCT id) FROM d", params).fetchone()[0]
         if count == 0:
             return 0
         conn.execute(cte + "DELETE FROM conversations WHERE id IN (SELECT id FROM d)", params)

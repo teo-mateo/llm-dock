@@ -93,7 +93,7 @@ test:
 
 ```
 curl -s -X POST http://localhost:3320/v1/embeddings \
-  -H "Authorization: Bearer llmd-3379c4e668fe175d2a279d64e3f664112833" \
+  -H "Authorization: Bearer <API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"model":"vllm-nomic-embed-text-v1.5","input":"search_document: hello"}'
 ```
