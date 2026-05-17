@@ -81,6 +81,77 @@ def test_rotate_is_idempotent(compose_manager):
     assert all(cfg["api_key"] == "same-key" for cfg in db.values())
 
 
+def test_rotate_rolls_back_services_json_on_compose_failure(compose_manager, monkeypatch):
+    """If the compose rebuild fails, services.json must be restored and the
+    exception propagated — no half-rotated state."""
+    def boom():
+        raise RuntimeError("compose validation failed")
+
+    monkeypatch.setattr(compose_manager, "rebuild_compose_file", boom)
+
+    with pytest.raises(RuntimeError, match="compose validation failed"):
+        rotate_keys_in_db(compose_manager, "new-shared-key")
+
+    db = compose_manager.list_services_in_db()
+    assert all(cfg["api_key"] == "old-key" for cfg in db.values()), (
+        "services.json should be rolled back to the pre-rotation key"
+    )
+
+
+def test_route_does_not_commit_env_before_services_and_compose(tmp_path, monkeypatch):
+    """Route-level: a compose failure must NOT have touched .env /
+    GLOBAL_API_KEY, and services.json must be unchanged (codex iter 1)."""
+    import config
+    from compose_manager import ComposeManager
+    import routes.services as svc
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    services_path = tmp_path / "services.json"
+    services_path.write_text(
+        json.dumps({"svc-a": {"template_type": "vllm", "port": 3301,
+                              "model_name": "o/m", "api_key": "old-key",
+                              "params": {}}})
+    )
+
+    monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
+    monkeypatch.setattr(
+        svc, "_affected_services_state", lambda: (["svc-a"], [], [])
+    )
+    monkeypatch.setattr(
+        svc, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
+    # Force the compose rebuild to fail mid-rotation.
+    monkeypatch.setattr(
+        ComposeManager, "rebuild_compose_file",
+        lambda self: (_ for _ in ()).throw(RuntimeError("rebuild failed")),
+    )
+    # Guard: .env writer must never run in this failure path.
+    monkeypatch.setattr(
+        config, "set_global_api_key",
+        lambda *a, **k: pytest.fail("set_global_api_key called before services/compose committed"),
+    )
+
+    os.environ["DASHBOARD_TOKEN"] = "test-token"
+    from app import create_app
+    app = create_app(config={"TESTING": True, "DASHBOARD_TOKEN": "test-token"})
+    client = app.test_client()
+
+    resp = client.post(
+        "/api/default-api-key/rotate",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert resp.status_code == 500
+    assert config.GLOBAL_API_KEY == "old-key"
+    db = json.loads(services_path.read_text())
+    assert db["svc-a"]["api_key"] == "old-key"
+
+
 def test_set_global_api_key_persists_and_updates_in_process(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     env_path.write_text("LLM_DOCK_API_KEY=old-key\nOTHER=keepme\n")

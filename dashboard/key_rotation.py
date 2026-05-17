@@ -29,19 +29,40 @@ def rotate_keys_in_db(compose_mgr, new_key: str | None = None) -> dict:
         ``{"new_key": str, "updated": [service_name, ...]}`` — ``updated`` lists
         services whose key actually changed (already-matching entries are left
         untouched, but compose is still rebuilt for consistency).
+
+    Atomicity: ``services.json`` is written in a single replace (not
+    per-service), and if the compose rebuild fails the original
+    ``services.json`` is restored before re-raising — so a failure leaves
+    ``services.json`` and ``docker-compose.yml`` consistent with each other
+    and with the pre-rotation key. The caller is responsible for ordering
+    the ``.env`` commit *after* this returns successfully.
     """
     if not new_key:
         new_key = generate_api_key()
 
+    # Two independent fresh loads: one to mutate, one kept as the rollback
+    # snapshot of the on-disk state before any write.
     services = compose_mgr.list_services_in_db()
-    updated = []
-    for name, config in services.items():
-        if config.get("api_key") != new_key:
-            config["api_key"] = new_key
-            compose_mgr.update_service_in_db(name, config)
-            updated.append(name)
+    original = compose_mgr.list_services_in_db()
 
-    compose_mgr.rebuild_compose_file()
+    updated = [
+        name
+        for name, cfg in services.items()
+        if cfg.get("api_key") != new_key
+    ]
+    for cfg in services.values():
+        cfg["api_key"] = new_key
+
+    compose_mgr.save_services_db(services)
+    try:
+        compose_mgr.rebuild_compose_file()
+    except Exception:
+        # Restore services.json so it stays consistent with the compose
+        # file (rebuild_compose_file already rolled docker-compose.yml back
+        # to its pre-call backup on failure).
+        compose_mgr.save_services_db(original)
+        raise
+
     logger.info(
         "Rotated default API key across %d service(s) (%d changed)",
         len(services),

@@ -412,6 +412,16 @@ class ComposeManager:
         with open(self.services_db_path, "w") as f:
             json.dump(services, f, indent=2)
 
+    def save_services_db(self, services: Dict[str, Any]):
+        """Replace the entire services database in one write.
+
+        Used by atomic multi-service operations (e.g. default API key
+        rotation) that must commit all entries together rather than
+        per-service, so a mid-operation failure can't leave services.json
+        half-rotated.
+        """
+        self._save_services_db(services)
+
     def add_service_to_db(self, service_name: str, config: Dict[str, Any]):
         """Add service to database"""
         services = self._load_services_db()
