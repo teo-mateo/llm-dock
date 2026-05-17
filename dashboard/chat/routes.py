@@ -399,7 +399,16 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
                     conversation_id=conv.id,
                     role="assistant",
                     content=data["content"],
-                    reasoning_content=data["reasoning_content"],
+                    # `data["reasoning_content"]` is only the FINAL model
+                    # round's reasoning. In a multi-round tool flow the
+                    # reasoning emitted before each `finish_reason=tool_calls`
+                    # is streamed to the UI (continuous reasoning display) but
+                    # would be dropped on the post-save refetch if we persisted
+                    # only the last round. `accumulated_reasoning` is the full
+                    # cross-round trace the user actually saw; persist that.
+                    # Falls back to the done payload for the single-round case
+                    # where they are identical.
+                    reasoning_content=(accumulated_reasoning or data["reasoning_content"]) or None,
                     model_service=conv.main_service,
                     tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
                     parse_warning_json=json.dumps(last_parse_warning) if last_parse_warning else None,
