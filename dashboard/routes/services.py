@@ -30,6 +30,13 @@ from openwebui_integration import (
 logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
+
+# Serializes default API key rotation. Two concurrent rotations could
+# otherwise interleave their services.json/compose vs .env writes and leave
+# the default key un-mirrored across stores. The dashboard runs as a single
+# process (systemd: `python app.py`), so a process-wide lock fully
+# serializes; it is held across the whole commit + container-stop sequence.
+_ROTATION_LOCK = threading.Lock()
 def _recreate_if_running(service_name):
     """Recreate the container if it was running. Returns restart status dict."""
     container = get_service_container(service_name)
@@ -888,37 +895,39 @@ def rotate_default_api_key():
     services are reported back so the user can re-enter the key manually.
     """
     try:
-        db_services, running, openwebui_registered = _affected_services_state()
+        with _ROTATION_LOCK:
+            db_services, running, openwebui_registered = _affected_services_state()
 
-        new_key = generate_api_key()
-        compose_mgr = ComposeManager(COMPOSE_FILE)
+            new_key = generate_api_key()
+            compose_mgr = ComposeManager(COMPOSE_FILE)
 
-        # Snapshot before any mutation so a late failure can fully roll back.
-        services_before = compose_mgr.list_services_in_db()
+            # Snapshot before any mutation so a late failure can fully roll back.
+            services_before = compose_mgr.list_services_in_db()
 
-        # Commit the riskiest, validated work (services.json + compose) FIRST.
-        # rotate_keys_in_db self-rolls-back services.json/compose on failure,
-        # so if this raises nothing has been changed and .env is untouched.
-        result = rotate_keys_in_db(compose_mgr, new_key)
+            # Commit the riskiest, validated work (services.json + compose)
+            # FIRST. rotate_keys_in_db self-rolls-back services.json/compose
+            # on failure, so if this raises nothing has been changed and .env
+            # is untouched.
+            result = rotate_keys_in_db(compose_mgr, new_key)
 
-        # Only now commit .env / in-process key. If this fails, undo the
-        # services.json + compose changes so we never advertise a new key
-        # while files still hold the old one (or vice versa).
-        try:
-            config.set_global_api_key(new_key)
-        except Exception:
-            compose_mgr.save_services_db(services_before)
-            compose_mgr.rebuild_compose_file()
-            raise
+            # Only now commit .env / in-process key. If this fails, undo the
+            # services.json + compose changes so we never advertise a new key
+            # while files still hold the old one (or vice versa).
+            try:
+                config.set_global_api_key(new_key)
+            except Exception:
+                compose_mgr.save_services_db(services_before)
+                compose_mgr.rebuild_compose_file()
+                raise
 
-        stopped = []
-        stop_errors = {}
-        for name in running:
-            res = control_service(name, "stop")
-            if res.get("success"):
-                stopped.append(name)
-            else:
-                stop_errors[name] = res.get("error", "unknown error")
+            stopped = []
+            stop_errors = {}
+            for name in running:
+                res = control_service(name, "stop")
+                if res.get("success"):
+                    stopped.append(name)
+                else:
+                    stop_errors[name] = res.get("error", "unknown error")
 
         logger.info(
             "Default API key rotated: %d services updated, %d containers stopped",
