@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchAPI } from '../api'
 import { startService, stopService, restartService } from '../services/lifecycle'
 import useServicesSSE from '../hooks/useServicesSSE'
+import RotateDefaultKeyModal from './RotateDefaultKeyModal'
 
 function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
@@ -168,6 +169,7 @@ export default function ServicesTable() {
   const [transitioning, setTransitioning] = useState({})
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
+  const [showRotateKey, setShowRotateKey] = useState(false)
 
   const withTransition = useCallback(async (name, action, apiCall) => {
     setTransitioning(prev => ({ ...prev, [name]: action }))
@@ -286,6 +288,14 @@ export default function ServicesTable() {
             )}
           </div>
           <button
+            onClick={() => setShowRotateKey(true)}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded transition-colors flex items-center gap-1.5"
+            title="Generate a new shared API key for all services"
+          >
+            <i className="fa-solid fa-key text-xs"></i>
+            Rotate default key
+          </button>
+          <button
             onClick={() => navigate('/services/new')}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
           >
@@ -338,6 +348,12 @@ export default function ServicesTable() {
         </table>
       </div>
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      {showRotateKey && (
+        <RotateDefaultKeyModal
+          onClose={() => setShowRotateKey(false)}
+          onDone={refresh}
+        />
+      )}
     </div>
   )
 }

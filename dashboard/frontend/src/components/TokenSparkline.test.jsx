@@ -16,8 +16,10 @@ describe('TokenSparkline', () => {
     const { container } = render(<TokenSparkline history={[
       { promptTokensRate: 12.5, generationTokensRate: 33.3 }
     ]} />)
-    expect(container.textContent).toMatch(/Prompt: 12\.5 t\/s/)
-    expect(container.textContent).toMatch(/Gen: 33\.3 t\/s/)
+    // Label and value are separate spans (spaced via CSS flex gap), so
+    // textContent has no literal space between them — match optionally.
+    expect(container.textContent).toMatch(/Prompt:\s*12\.5 t\/s/)
+    expect(container.textContent).toMatch(/Gen:\s*33\.3 t\/s/)
   })
 
   it('empty history still renders canvas (placeholder drawn on canvas)', () => {
