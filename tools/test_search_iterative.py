@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "dashboard"))
 
 DEFAULT_SERVICE_URL = "http://localhost:3307/v1/chat/completions"
-DEFAULT_API_KEY = "llmd-cfc6b6ef75620adc289764238a831f10cb21"
+DEFAULT_API_KEY = os.environ.get("LLM_DOCK_API_KEY")
 DEFAULT_MODEL = "vllm-qwen3-6-27b-bf16"
 
 USER_PROMPT = (
@@ -425,7 +425,8 @@ def summarize(trace):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--url", default=DEFAULT_SERVICE_URL)
-    ap.add_argument("--api-key", default=DEFAULT_API_KEY)
+    ap.add_argument("--api-key", default=DEFAULT_API_KEY,
+                    help="model-service API key; defaults to $LLM_DOCK_API_KEY")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--system-prompt", default="default", help="'default' or path to a .txt file")
     ap.add_argument("--max-rounds", type=int, default=8)
@@ -434,6 +435,9 @@ def main():
     ap.add_argument("--no-parallel-tool-calls", dest="parallel", action="store_false")
     ap.add_argument("--output", default=None, help="JSON trace path (default: tools/traces/<ts>.json)")
     args = ap.parse_args()
+
+    if not args.api_key:
+        ap.error("no API key: pass --api-key or set $LLM_DOCK_API_KEY (the model-service key from services.json)")
 
     output = args.output
     if not output:
