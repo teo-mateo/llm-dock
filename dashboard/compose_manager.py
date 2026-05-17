@@ -5,6 +5,7 @@ Docker Compose file manager with safe atomic updates.
 import os
 import shutil
 import subprocess
+import tempfile
 import fcntl
 import yaml
 import json
@@ -408,9 +409,37 @@ class ComposeManager:
             return {}
 
     def _save_services_db(self, services: Dict[str, Any]):
-        """Save services database to JSON file"""
-        with open(self.services_db_path, "w") as f:
-            json.dump(services, f, indent=2)
+        """Save services database to JSON file atomically.
+
+        Write to a same-directory temp file, fsync, then ``os.replace()`` so
+        an interrupted/failed write can never leave a truncated or partial
+        ``services.json`` (which ``_load_services_db`` would silently treat as
+        ``{}``, dropping every dynamic service on the next compose rebuild).
+        """
+        directory = self.services_db_path.parent
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".services.", suffix=".json.tmp", dir=str(directory)
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(services, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.services_db_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+    def save_services_db(self, services: Dict[str, Any]):
+        """Replace the entire services database in one write.
+
+        Used by atomic multi-service operations (e.g. default API key
+        rotation) that must commit all entries together rather than
+        per-service, so a mid-operation failure can't leave services.json
+        half-rotated.
+        """
+        self._save_services_db(services)
 
     def add_service_to_db(self, service_name: str, config: Dict[str, Any]):
         """Add service to database"""

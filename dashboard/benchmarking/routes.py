@@ -3,6 +3,7 @@ import os
 from flask import Blueprint, jsonify, request, current_app
 
 from auth import require_auth
+from db_lock import serialize_db
 from .db import BenchmarkDB
 from .executor import BenchmarkExecutor
 from .validators import validate_params, validate_service_name, BENCHMARK_ONLY_FLAGS
@@ -137,6 +138,7 @@ def delete_benchmark(run_id):
 
 @benchmarks_bp.route("/api/benchmarks/<run_id>/apply", methods=["PUT"])
 @require_auth
+@serialize_db
 def apply_benchmark(run_id):
     db = current_app.config["BENCHMARK_DB"]
     run = db.get_run(run_id)

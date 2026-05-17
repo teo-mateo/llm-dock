@@ -8,11 +8,14 @@ from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 
 from auth import require_auth
-from config import COMPOSE_FILE, GLOBAL_API_KEY
+from db_lock import SERVICES_DB_LOCK, serialize_db
+import config
+from config import COMPOSE_FILE
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service
 from model_discovery import compute_model_size
 from service_templates import generate_api_key
+from key_rotation import rotate_keys_in_db
 from flag_metadata import (
     generate_service_name as gen_service_name,
     validate_service_config,
@@ -28,6 +31,11 @@ from openwebui_integration import (
 logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
+
+# Shared across all blueprints — see db_lock.py. Aliased to preserve the
+# existing private-looking names used throughout this module.
+_SERVICES_DB_LOCK = SERVICES_DB_LOCK
+_serialize_db = serialize_db
 def _recreate_if_running(service_name):
     """Recreate the container if it was running. Returns restart status dict."""
     container = get_service_container(service_name)
@@ -112,8 +120,15 @@ def get_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/start", methods=["POST"])
 @require_auth
+@_serialize_db
 def start_service(service_name):
-    """Start a Docker Compose service"""
+    """Start a Docker Compose service.
+
+    Serialized on the shared lock so a start can't `docker compose up` with
+    the pre-rotation compose file mid-rotation and bring a container up on
+    the just-revoked key (rotation only stops the containers it snapshotted
+    as running, so such a container would otherwise be missed).
+    """
     result = control_service(service_name, "start")
 
     if result["success"]:
@@ -126,8 +141,10 @@ def start_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/stop", methods=["POST"])
 @require_auth
+@_serialize_db
 def stop_service(service_name):
-    """Stop a Docker Compose service"""
+    """Stop a Docker Compose service (serialized on the shared lock for
+    symmetry with start/rotation)."""
     result = control_service(service_name, "stop")
 
     if result["success"]:
@@ -198,6 +215,7 @@ def get_service_logs(service_name):
 
 @services_bp.route("/api/services", methods=["POST"])
 @require_auth
+@_serialize_db
 def create_service():
     """
     Create a new service in services database and rebuild compose file.
@@ -278,6 +296,7 @@ def create_service():
 
 @services_bp.route("/api/services/<service_name>", methods=["PUT"])
 @require_auth
+@_serialize_db
 def update_service(service_name):
     """
     Update service configuration and rebuild compose file.
@@ -345,6 +364,7 @@ def update_service(service_name):
 
 @services_bp.route("/api/services/<service_name>", methods=["DELETE"])
 @require_auth
+@_serialize_db
 def delete_service(service_name):
     """Delete service from database and rebuild compose file"""
     try:
@@ -398,6 +418,7 @@ def delete_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/rename", methods=["POST"])
 @require_auth
+@_serialize_db
 def rename_service(service_name):
     """
     Rename a service. Service must be stopped.
@@ -524,6 +545,7 @@ def get_flags_metadata(template_type):
 
 @services_bp.route("/api/services/<service_name>/set-public-port", methods=["POST"])
 @require_auth
+@_serialize_db
 def set_public_port(service_name):
     """
     Set service to use the public port (3301).
@@ -771,13 +793,13 @@ def stream_service_logs(service_name):
 def get_global_api_key():
     """Return the global API key (authentication required)"""
     try:
-        if not GLOBAL_API_KEY:
+        if not config.GLOBAL_API_KEY:
             return jsonify(
                 {"api_key": None, "message": "Global API key not configured"}
             ), 200
 
         return jsonify(
-            {"api_key": GLOBAL_API_KEY, "message": "Global API key is configured"}
+            {"api_key": config.GLOBAL_API_KEY, "message": "Global API key is configured"}
         ), 200
 
     except Exception as e:
@@ -789,13 +811,14 @@ def get_global_api_key():
 
 @services_bp.route("/api/services/<service_name>/set-global-api-key", methods=["PUT"])
 @require_auth
+@_serialize_db
 def set_service_global_api_key(service_name):
     """
     Update a service's API key with the global API key from environment.
     The global API key is read from .env file, not received in the request.
     """
     try:
-        if not GLOBAL_API_KEY:
+        if not config.GLOBAL_API_KEY:
             return jsonify(
                 {
                     "success": False,
@@ -810,7 +833,7 @@ def set_service_global_api_key(service_name):
             return jsonify({"error": f'Service "{service_name}" not found'}), 404
 
         old_api_key = service_config.get("api_key", "")
-        service_config["api_key"] = GLOBAL_API_KEY
+        service_config["api_key"] = config.GLOBAL_API_KEY
         compose_mgr.update_service_in_db(service_name, service_config)
 
         _rebuild_and_restart(compose_mgr, service_name)
@@ -822,11 +845,145 @@ def set_service_global_api_key(service_name):
                 "success": True,
                 "service_name": service_name,
                 "old_api_key": old_api_key[:10] + "..." if old_api_key else None,
-                "new_api_key": GLOBAL_API_KEY[:10] + "...",
+                "new_api_key": config.GLOBAL_API_KEY[:10] + "...",
                 "message": f'Service "{service_name}" API key updated successfully',
             }
         ), 200
 
     except Exception as e:
         logger.error(f"Failed to set global API key: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _affected_services_state():
+    """Return (db_service_names, running, openwebui_registered) for rotation.
+
+    Only services present in services.json are affected by a rotation; infra
+    containers like open-webui are never in services.json so they're excluded
+    naturally.
+    """
+    compose_mgr = ComposeManager(COMPOSE_FILE)
+    db_services = set(compose_mgr.list_services_in_db().keys())
+
+    running = []
+    openwebui_registered = []
+    for svc in get_docker_services():
+        name = svc["name"]
+        if name not in db_services:
+            continue
+        if svc.get("status") == "running":
+            running.append(name)
+        if svc.get("openwebui_registered"):
+            openwebui_registered.append(name)
+
+    return sorted(db_services), sorted(running), sorted(openwebui_registered)
+
+
+@services_bp.route("/api/default-api-key/rotation-preview", methods=["GET"])
+@require_auth
+def default_api_key_rotation_preview():
+    """Describe the impact of rotating the default API key without changing anything."""
+    try:
+        db_services, running, openwebui_registered = _affected_services_state()
+        return jsonify(
+            {
+                "total_services": len(db_services),
+                "running": running,
+                "openwebui_registered": openwebui_registered,
+            }
+        ), 200
+    except Exception as e:
+        logger.error(f"Failed to build rotation preview: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@services_bp.route("/api/default-api-key/rotate", methods=["POST"])
+@require_auth
+def rotate_default_api_key():
+    """Rotate the default API key.
+
+    Generates a new key, persists it to .env (LLM_DOCK_API_KEY), rewrites every
+    service's api_key in services.json, regenerates docker-compose.yml, and
+    stops every running affected container (they keep the revoked key in memory
+    until restarted). Open WebUI's stored copies are NOT touched — registered
+    services are reported back so the user can re-enter the key manually.
+    """
+    try:
+        with _SERVICES_DB_LOCK:
+            db_services, running, openwebui_registered = _affected_services_state()
+
+            new_key = generate_api_key()
+            compose_mgr = ComposeManager(COMPOSE_FILE)
+
+            # Snapshot before any mutation so a late failure can fully roll back.
+            services_before = compose_mgr.list_services_in_db()
+
+            # Commit the riskiest, validated work (services.json + compose)
+            # FIRST. rotate_keys_in_db self-rolls-back services.json/compose
+            # on failure, so if this raises nothing has been changed and .env
+            # is untouched.
+            result = rotate_keys_in_db(compose_mgr, new_key)
+
+            # Only now commit .env / in-process key. If this fails, undo the
+            # services.json + compose changes so we never advertise a new key
+            # while files still hold the old one (or vice versa).
+            try:
+                config.set_global_api_key(new_key)
+            except Exception:
+                compose_mgr.save_services_db(services_before)
+                compose_mgr.rebuild_compose_file()
+                raise
+
+            stopped = []
+            stop_errors = {}
+            for name in running:
+                res = control_service(name, "stop")
+                if res.get("success"):
+                    stopped.append(name)
+                else:
+                    stop_errors[name] = res.get("error", "unknown error")
+
+        # A failed stop is a partial failure: the key is rotated in
+        # services.json/.env, but that container keeps accepting the OLD key
+        # in memory until stopped. Don't report unqualified success — callers
+        # that key off `success`/HTTP status must not treat the old key as
+        # revoked when it isn't.
+        ok = not stop_errors
+
+        logger.info(
+            "Default API key rotated: %d services updated, %d stopped, %d stop failures",
+            len(result["updated"]),
+            len(stopped),
+            len(stop_errors),
+        )
+
+        if ok:
+            message = (
+                f"Default API key rotated across {len(result['updated'])} "
+                f"service(s); {len(stopped)} running container(s) stopped."
+            )
+        else:
+            message = (
+                f"Default API key rotated across {len(result['updated'])} "
+                f"service(s), but {len(stop_errors)} running container(s) "
+                f"could NOT be stopped and still accept the OLD key — stop "
+                f"them manually: {', '.join(sorted(stop_errors))}."
+            )
+
+        return jsonify(
+            {
+                "success": ok,
+                "partial": not ok,
+                "new_api_key": new_key,
+                "services_updated": len(result["updated"]),
+                "total_services": len(db_services),
+                "stopped": stopped,
+                "stop_errors": stop_errors,
+                "openwebui_registered": openwebui_registered,
+                "message": message,
+            }
+        ), (200 if ok else 207)
+
+    except Exception as e:
+        logger.error(f"Failed to rotate default API key: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500

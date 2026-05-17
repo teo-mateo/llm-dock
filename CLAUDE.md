@@ -86,6 +86,35 @@ entries — but it also means a **typo** in the flag name (e.g. `--gpu-mem`)
 ships to the container as-is and fails at startup, not at config time.
 Verify with `mgr.preview_service(name)` before bringing the container up.
 
+## Default API key rotation
+
+All model services share one **default API key**: `LLM_DOCK_API_KEY` in
+`dashboard/.env` (exposed as `config.GLOBAL_API_KEY`), mirrored into every
+service's `api_key` in `services.json`. The dashboard can rotate it in one
+click (Services table → "Rotate default key"):
+
+- `GET /api/default-api-key/rotation-preview` — impact only, mutates
+  nothing: counts services, lists running containers (will be stopped) and
+  Open WebUI-registered services (keys go stale).
+- `POST /api/default-api-key/rotate` — generates a new key, writes it to
+  `.env` via `config.set_global_api_key()`, rewrites every `services.json`
+  entry, rebuilds `docker-compose.yml`, then **stops** every running
+  affected container (they keep the revoked key in memory; they are not
+  auto-restarted — start them manually afterwards).
+
+Gotchas:
+
+- Reference `config.GLOBAL_API_KEY` (the module attribute), not a
+  `from config import GLOBAL_API_KEY` name binding — only the attribute
+  reflects an in-process rotation without a dashboard restart.
+- **Open WebUI is not touched.** It stores its own copy of each
+  connection's key in its sqlite DB; after rotation those are stale and
+  must be re-entered manually under Open WebUI → Admin → Settings →
+  Connections. The preview/rotate responses list the affected services.
+- Core rotation logic is `key_rotation.rotate_keys_in_db()` (pure, unit
+  tested in `dashboard/tests/test_key_rotation.py`); container stops and
+  preview live in `routes/services.py`.
+
 ## Adding an external MCP server
 
 Built-in MCP tools live in `dashboard/chat/mcp_registry.py` and ship with

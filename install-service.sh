@@ -44,7 +44,10 @@ User=${INSTALL_USER}
 WorkingDirectory=${SCRIPT_DIR}/dashboard
 ExecStartPre=/usr/bin/docker compose -f ${SCRIPT_DIR}/docker-compose.yml up -d open-webui
 ExecStart=${SCRIPT_DIR}/dashboard/venv/bin/python ${SCRIPT_DIR}/dashboard/app.py
-ExecStop=/usr/bin/docker compose -f ${SCRIPT_DIR}/docker-compose.yml down
+# Intentionally NO ExecStop=docker compose down: the dashboard process
+# lifecycle is decoupled from the container lifecycle. Restarting/stopping
+# this unit must not tear down running model containers. Bring models down
+# explicitly with: cd ${SCRIPT_DIR} && docker compose down
 Restart=on-failure
 RestartSec=10
 Environment=PATH=/usr/local/bin:/usr/bin:/bin

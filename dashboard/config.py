@@ -1,8 +1,10 @@
 import os
 import logging
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
-load_dotenv()
+# Resolve .env next to this file so it works regardless of CWD.
+DOTENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(DOTENV_PATH)
 
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", 3305))
 DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
@@ -11,6 +13,19 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 COMPOSE_FILE = os.getenv("COMPOSE_FILE", "../docker-compose.yml")
 COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT_NAME", "dockerized-models")
 GLOBAL_API_KEY = os.getenv("LLM_DOCK_API_KEY")
+
+
+def set_global_api_key(new_key: str, dotenv_path: str = DOTENV_PATH):
+    """Persist a new global API key to .env and update the in-process value.
+
+    Other modules must reference ``config.GLOBAL_API_KEY`` (not a name imported
+    via ``from config import GLOBAL_API_KEY``) to observe the rotated value
+    without a process restart.
+    """
+    global GLOBAL_API_KEY
+    set_key(dotenv_path, "LLM_DOCK_API_KEY", new_key)
+    GLOBAL_API_KEY = new_key
+    return new_key
 
 
 _config_initialized = False
