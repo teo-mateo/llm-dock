@@ -120,8 +120,15 @@ def get_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/start", methods=["POST"])
 @require_auth
+@_serialize_db
 def start_service(service_name):
-    """Start a Docker Compose service"""
+    """Start a Docker Compose service.
+
+    Serialized on the shared lock so a start can't `docker compose up` with
+    the pre-rotation compose file mid-rotation and bring a container up on
+    the just-revoked key (rotation only stops the containers it snapshotted
+    as running, so such a container would otherwise be missed).
+    """
     result = control_service(service_name, "start")
 
     if result["success"]:
@@ -134,8 +141,10 @@ def start_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/stop", methods=["POST"])
 @require_auth
+@_serialize_db
 def stop_service(service_name):
-    """Stop a Docker Compose service"""
+    """Stop a Docker Compose service (serialized on the shared lock for
+    symmetry with start/rotation)."""
     result = control_service(service_name, "stop")
 
     if result["success"]:

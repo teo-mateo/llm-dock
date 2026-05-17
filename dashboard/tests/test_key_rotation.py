@@ -458,6 +458,97 @@ def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch)
     assert body["new_api_key"] == config.GLOBAL_API_KEY
 
 
+def test_rotation_vs_concurrent_start_no_stale_key_container(tmp_path, monkeypatch):
+    """A previously-stopped service started concurrently with a rotation must
+    not end up running with the revoked key (codex iter 5)."""
+    import threading
+    import time
+    import config
+    from compose_manager import ComposeManager
+    import routes.services as svc
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    services_path = tmp_path / "services.json"
+    services_path.write_text(
+        json.dumps({"vllm-x": {"template_type": "vllm", "alias": "x",
+                               "port": 3301, "model_name": "o/m",
+                               "api_key": "old-key", "params": {}}})
+    )
+    env_path = tmp_path / ".env"
+    env_path.write_text("LLM_DOCK_API_KEY=old-key\n")
+
+    # Model of running containers: name -> api_key the container booted with.
+    mlock = threading.Lock()
+    running = {}  # vllm-x starts STOPPED
+
+    def fake_affected():
+        with mlock:
+            snap = list(running)
+        return (["vllm-x"], snap, [])
+
+    def fake_control(name, action):
+        if action == "start":
+            time.sleep(0.03)  # widen the window
+            key = json.loads(services_path.read_text())[name]["api_key"]
+            with mlock:
+                running[name] = key
+            return {"success": True}
+        if action == "stop":
+            with mlock:
+                running.pop(name, None)
+            return {"success": True}
+        return {"success": False, "error": "unsupported"}
+
+    def fake_set_global(new_key, dotenv_path=None):
+        time.sleep(0.1)
+        config.GLOBAL_API_KEY = new_key
+        env_path.write_text(f"LLM_DOCK_API_KEY={new_key}\n")
+
+    monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
+    monkeypatch.setattr(config, "set_global_api_key", fake_set_global)
+    monkeypatch.setattr(svc, "_affected_services_state", fake_affected)
+    monkeypatch.setattr(svc, "control_service", fake_control)
+    monkeypatch.setattr(
+        svc, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
+
+    os.environ["DASHBOARD_TOKEN"] = "test-token"
+    from app import create_app
+    app = create_app(config={"TESTING": True, "DASHBOARD_TOKEN": "test-token"})
+    hdr = {"Authorization": "Bearer test-token"}
+    results = {}
+
+    def do_rotate():
+        results["rotate"] = app.test_client().post(
+            "/api/default-api-key/rotate", headers=hdr).status_code
+
+    def do_start():
+        results["start"] = app.test_client().post(
+            "/api/services/vllm-x/start", headers=hdr).status_code
+
+    tr = threading.Thread(target=do_rotate)
+    ts = threading.Thread(target=do_start)
+    tr.start()
+    time.sleep(0.02)
+    ts.start()
+    tr.join(); ts.join()
+
+    assert results["rotate"] in (200, 207), results
+    assert results["start"] == 200, results
+    # Invariant: no container is left running on a key other than the final
+    # rotated key.
+    for name, booted_key in running.items():
+        assert booted_key == config.GLOBAL_API_KEY, (
+            f"{name} is running with stale key {booted_key!r} "
+            f"(current default {config.GLOBAL_API_KEY!r})"
+        )
+
+
 def test_set_global_api_key_persists_and_updates_in_process(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     env_path.write_text("LLM_DOCK_API_KEY=old-key\nOTHER=keepme\n")
