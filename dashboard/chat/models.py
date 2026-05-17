@@ -14,11 +14,13 @@ class Message:
     model_service: Optional[str] = None
     images_json: Optional[str] = None
     tool_calls_json: Optional[str] = None
+    parse_warning_json: Optional[str] = None
     created_at: Optional[str] = None
 
     def to_dict(self):
         images = json.loads(self.images_json) if self.images_json else []
         tool_calls = json.loads(self.tool_calls_json) if self.tool_calls_json else []
+        parse_warning = json.loads(self.parse_warning_json) if self.parse_warning_json else None
         d = {
             "id": self.id,
             "conversation_id": self.conversation_id,
@@ -32,6 +34,8 @@ class Message:
         }
         if tool_calls:
             d["tool_calls"] = tool_calls
+        if parse_warning:
+            d["parse_warning"] = parse_warning
         return d
 
 

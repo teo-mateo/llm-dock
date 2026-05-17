@@ -1,6 +1,10 @@
+import datetime
 import json
 import logging
 import os
+import queue
+import threading
+import time
 import uuid
 from typing import Optional
 
@@ -134,13 +138,141 @@ def delete_conversations_batch():
 
 # -- Messages --
 
+HEARTBEAT_INTERVAL_S = 3.0
+# Bounded queue size between producer and consumer. Large enough to absorb a
+# burst of token deltas without blocking the producer in normal operation;
+# small enough that an abandoned producer can't grow unbounded memory.
+HEARTBEAT_QUEUE_MAX = 64
+# Polling interval on the producer side. Caps how long after the consumer
+# sets `stop` the producer waits before noticing on a full-queue path.
+HEARTBEAT_PRODUCER_POLL_S = 0.5
+
+
+def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
+    """Yield items from `it` and inject ("__heartbeat__", {elapsed_s}) on idle.
+
+    The inner stream blocks on upstream HTTP (`requests.iter_lines`), so a
+    naive `for ev in it:` can sit for seconds without emitting anything. We
+    drive the inner iterator on a worker thread feeding a bounded queue, and
+    the outer loop pops with a timeout — on every timeout we yield a
+    heartbeat event so the SSE pipe stays visibly alive.
+
+    Cancellation contract (client disconnect / Stop button / navigation):
+
+    - The consumer's `finally` sets `stop` and drains the queue, which both
+      caps memory and unblocks the producer if it's parked on a full queue.
+    - The producer checks `stop` between events and on every full-queue
+      retry. Once it notices, it closes the inner generator and exits.
+    - Closing the inner generator (`it.close()`) propagates `GeneratorExit`
+      into `stream_with_tools` / `stream_chat_completion` at their next
+      yield, which short-circuits any further tool execution in
+      `tool_loop.py` and prevents new MCP side-effects after disconnect.
+
+    Caveat: this is cooperative. If the producer is currently inside
+    `requests.iter_lines` waiting on a socket read, it won't notice `stop`
+    until the next chunk arrives (or the upstream times out). Likewise, a
+    tool call already in progress in `mcp_manager.call_tool()` runs to
+    completion — those subprocess calls aren't interruptible from here.
+    True interruption would need a cancel token threaded through to
+    `stream_chat_completion`/`stream_with_tools`; tracked as a follow-up.
+    """
+    q = queue.Queue(maxsize=HEARTBEAT_QUEUE_MAX)
+    sentinel = object()
+    stop = threading.Event()
+    # Out-of-band termination flag. The queued `sentinel` is a fast-path
+    # optimization for prompt shutdown, but it can be dropped if the queue
+    # is full for the whole producer-put timeout (slow/stalled consumer).
+    # `finished` is set unconditionally in the producer's finally, so the
+    # consumer can always detect end-of-stream even when the sentinel never
+    # makes it into the queue.
+    finished = threading.Event()
+
+    def producer():
+        try:
+            for ev in it:
+                if stop.is_set():
+                    break
+                # Bounded put with periodic stop checks so a dead consumer
+                # can't permanently park us here.
+                while True:
+                    try:
+                        q.put(("ev", ev), timeout=HEARTBEAT_PRODUCER_POLL_S)
+                        break
+                    except queue.Full:
+                        if stop.is_set():
+                            break
+                if stop.is_set():
+                    break
+        except BaseException as e:
+            try:
+                q.put(("exc", e), timeout=HEARTBEAT_PRODUCER_POLL_S)
+            except queue.Full:
+                logger.warning("_with_heartbeat: dropped exception on full queue", exc_info=e)
+        finally:
+            # Close the inner generator FROM THIS THREAD. The generator
+            # protocol forbids closing a generator that's running on another
+            # thread, so the consumer-side `finally` only sets `stop` and
+            # leaves the actual close to us.
+            try:
+                it.close()
+            except Exception:
+                logger.exception("_with_heartbeat: error closing inner stream")
+            # Mark completion BEFORE the (droppable) sentinel put so the
+            # consumer can terminate via `finished` even if the queue stays
+            # full and the sentinel never lands.
+            finished.set()
+            try:
+                q.put(sentinel, timeout=HEARTBEAT_PRODUCER_POLL_S)
+            except queue.Full:
+                pass
+
+    threading.Thread(target=producer, daemon=True).start()
+    idle_since = time.monotonic()
+    try:
+        while True:
+            try:
+                item = q.get(timeout=interval)
+            except queue.Empty:
+                # Queue is empty. If the producer already finished, the
+                # sentinel was either consumed or dropped on a full queue —
+                # either way there is nothing more coming, so terminate
+                # instead of emitting heartbeats forever.
+                if finished.is_set():
+                    return
+                yield ("__heartbeat__", {"elapsed_s": round(time.monotonic() - idle_since, 1)})
+                continue
+            if item is sentinel:
+                return
+            kind, payload = item
+            if kind == "exc":
+                raise payload
+            idle_since = time.monotonic()
+            yield payload
+    finally:
+        # Consumer is exiting (normal completion, GeneratorExit from client
+        # disconnect, or an exception thrown into us). Signal the producer
+        # to stop and drain anything pending so it isn't blocked on a full
+        # queue put. The drain is required: without it, a producer parked
+        # in q.put() at maxsize won't notice the stop event until its 0.5s
+        # timeout fires, and meanwhile would still process its next event.
+        stop.set()
+        try:
+            while True:
+                q.get_nowait()
+        except queue.Empty:
+            pass
+
+
 def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_manager=None):
     """Generator that streams SSE events for a chat completion."""
     # Save user message
     db.add_message(user_msg)
     db.touch_conversation(conv.id)
 
-    # Build messages array, augmenting system prompt with tool hints
+    # Build messages array, augmenting system prompt with tool hints and
+    # an explicit "today's date" line. Models keep training on data with a
+    # past cutoff, so without this they'll write 2024/2025 in queries even
+    # when the user is asking about now.
     messages = db.get_messages(conv.id)
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
     system_prompt = conv.main_system_prompt
@@ -148,6 +280,9 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         hints = get_tool_hints(enabled_servers)
         if hints:
             system_prompt = f"{system_prompt}\n\n{hints}" if system_prompt else hints
+    today = datetime.date.today()
+    date_line = f"Current date: {today.isoformat()} ({today.strftime('%A')}). Use this as \"today\" when interpreting time-sensitive questions."
+    system_prompt = f"{system_prompt}\n\n{date_line}" if system_prompt else date_line
     messages_array = build_messages_array(system_prompt, messages)
 
     # Get MCP tools
@@ -158,6 +293,7 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
         stream = stream_with_tools(conv.main_service, messages_array, tools, mcp_manager)
     else:
         stream = stream_chat_completion(conv.main_service, messages_array)
+    stream = _with_heartbeat(stream)
 
     assistant_msg_id = str(uuid.uuid4())
     done = False
@@ -167,6 +303,7 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
     accumulated_reasoning = ""
     collected_tool_calls = []
     collected_artifacts = []
+    last_parse_warning = None      # most recent parse_warning event, persisted on done
 
     def _save_partial():
         """Persist whatever we accumulated when the client disconnects mid-stream.
@@ -223,10 +360,21 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
 
     try:
         for event_type, data in stream:
+            if event_type == "__heartbeat__":
+                yield f"data: {json.dumps({'type': 'heartbeat', 'elapsed_s': data['elapsed_s']})}\n\n"
+                continue
             if event_type == "delta":
                 accumulated_content += data.get("content", "") or ""
                 accumulated_reasoning += data.get("reasoning_content", "") or ""
                 yield f"data: {data['raw']}\n\n"
+            elif event_type == "tool_call_pending":
+                yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
+            elif event_type == "parse_warning":
+                # Format-drift signal from llm_proxy. Stash so we can persist
+                # alongside the message on `done`; also forward live so the UI
+                # shows the chip before the response finishes streaming.
+                last_parse_warning = data
+                yield f"data: {json.dumps({'type': 'parse_warning', **data})}\n\n"
             elif event_type == "tool_call":
                 collected_tool_calls.append({
                     "name": data["name"],
@@ -251,9 +399,19 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
                     conversation_id=conv.id,
                     role="assistant",
                     content=data["content"],
-                    reasoning_content=data["reasoning_content"],
+                    # `data["reasoning_content"]` is only the FINAL model
+                    # round's reasoning. In a multi-round tool flow the
+                    # reasoning emitted before each `finish_reason=tool_calls`
+                    # is streamed to the UI (continuous reasoning display) but
+                    # would be dropped on the post-save refetch if we persisted
+                    # only the last round. `accumulated_reasoning` is the full
+                    # cross-round trace the user actually saw; persist that.
+                    # Falls back to the done payload for the single-round case
+                    # where they are identical.
+                    reasoning_content=(accumulated_reasoning or data["reasoning_content"]) or None,
                     model_service=conv.main_service,
                     tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
+                    parse_warning_json=json.dumps(last_parse_warning) if last_parse_warning else None,
                     seq=next_seq,
                 )
                 db.add_message(assistant_msg)

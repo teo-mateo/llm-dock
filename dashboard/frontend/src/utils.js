@@ -6,6 +6,14 @@ export function getValue(metrics, metricName) {
   return obj[keys[0]]
 }
 
+export function totalValue(metrics, metricName) {
+  const obj = metrics[metricName]
+  if (!obj || typeof obj !== 'object') return null
+  const vals = Object.values(obj).filter(v => typeof v === 'number')
+  if (vals.length === 0) return null
+  return vals.reduce((a, b) => a + b, 0)
+}
+
 export function timeAgo(iso) {
   if (!iso) return '—'
   const diff = (Date.now() - new Date(iso).getTime()) / 1000

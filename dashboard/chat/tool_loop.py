@@ -28,6 +28,12 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
             if event_type == "delta":
                 yield ("delta", data)
 
+            elif event_type == "tool_call_pending":
+                yield ("tool_call_pending", data)
+
+            elif event_type == "parse_warning":
+                yield ("parse_warning", data)
+
             elif event_type == "tool_calls":
                 tool_calls_received = True
                 tool_calls = data["tool_calls"]
@@ -116,6 +122,10 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
     for event_type, data in stream_chat_completion(service_name, messages_array, tools=None):
         if event_type == "delta":
             yield ("delta", data)
+        elif event_type == "tool_call_pending":
+            yield ("tool_call_pending", data)
+        elif event_type == "parse_warning":
+            yield ("parse_warning", data)
         elif event_type == "done":
             yield ("done", data)
             return

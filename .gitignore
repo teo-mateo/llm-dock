@@ -86,3 +86,6 @@ htmlcov/
 .codex/
 .codex
 opencode.json
+
+# test harness output
+tools/traces/

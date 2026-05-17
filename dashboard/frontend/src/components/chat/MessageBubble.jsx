@@ -10,6 +10,9 @@ import CritiqueButton from './CritiqueButton'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
+import ToolResultBlock from './ToolResultBlock'
+import FormatDriftChip from './FormatDriftChip'
+import { detectFormatDrift } from './formatDrift'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -19,6 +22,9 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
   const isUser = message.role === 'user'
   const isTemp = message.id?.startsWith('temp-')
   const messageImages = message.images || []
+  // Prefer the server-persisted warning. Fall back to a client-side scan for
+  // backfill of pre-existing messages whose row doesn't have parse_warning_json.
+  const parseWarning = !isUser ? (message.parse_warning || detectFormatDrift(message)) : null
 
   function handleEditSubmit() {
     const trimmed = editValue.trim()
@@ -52,6 +58,13 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
           <ThinkingBlock content={message.reasoning_content} />
         )}
 
+        {/* Format-drift chip — flags Qwen3.6-style failure modes. Prefers
+            persisted warning, falls back to client-side detection so older
+            messages without parse_warning_json still surface a chip. */}
+        {parseWarning && (
+          <FormatDriftChip warning={parseWarning} rawContent={message.content} />
+        )}
+
         {/* Tool calls (persisted) */}
         {!isUser && message.tool_calls && message.tool_calls.length > 0 && (
           <div className="mb-2 space-y-1.5">
@@ -69,9 +82,8 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                   </div>
                 )}
                 {tc.result && (
-                  <div className="text-green-400 pl-5">
-                    <i className="fa-solid fa-arrow-right mr-1"></i>
-                    <span className="font-mono">{tc.result}</span>
+                  <div className="pl-5">
+                    <ToolResultBlock text={tc.result} />
                   </div>
                 )}
               </div>
