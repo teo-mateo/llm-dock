@@ -242,6 +242,81 @@ def test_concurrent_rotations_keep_stores_consistent(tmp_path, monkeypatch):
     assert final_db_key == config.GLOBAL_API_KEY == final_env
 
 
+def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
+    """A service created while a rotation is in flight must not be silently
+    dropped by rotation's wholesale snapshot write (codex iter 3)."""
+    import threading
+    import time
+    import config
+    from compose_manager import ComposeManager
+    import routes.services as svc
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    services_path = tmp_path / "services.json"
+    services_path.write_text(
+        json.dumps({"vllm-existing": {"template_type": "vllm", "alias": "existing",
+                                      "port": 3301, "model_name": "o/m",
+                                      "api_key": "old-key", "params": {}}})
+    )
+    env_path = tmp_path / ".env"
+    env_path.write_text("LLM_DOCK_API_KEY=old-key\n")
+
+    monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
+    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-existing"], [], []))
+    monkeypatch.setattr(
+        svc, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
+
+    def fake_set_global(new_key, dotenv_path=None):
+        # Hold the rotation critical section open long enough that the
+        # concurrent create would interleave if it weren't serialized.
+        time.sleep(0.1)
+        config.GLOBAL_API_KEY = new_key
+        env_path.write_text(f"LLM_DOCK_API_KEY={new_key}\n")
+
+    monkeypatch.setattr(config, "set_global_api_key", fake_set_global)
+
+    os.environ["DASHBOARD_TOKEN"] = "test-token"
+    from app import create_app
+    app = create_app(config={"TESTING": True, "DASHBOARD_TOKEN": "test-token"})
+    hdr = {"Authorization": "Bearer test-token"}
+    results = {}
+
+    def do_rotate():
+        results["rotate"] = app.test_client().post(
+            "/api/default-api-key/rotate", headers=hdr).status_code
+
+    def do_create():
+        results["create"] = app.test_client().post(
+            "/api/services",
+            headers=hdr,
+            json={"template_type": "vllm", "port": 3302,
+                  "model_name": "o/new", "alias": "created", "params": {}},
+        ).status_code
+
+    tr = threading.Thread(target=do_rotate)
+    tc = threading.Thread(target=do_create)
+    tr.start()
+    time.sleep(0.02)  # let rotation enter its critical section first
+    tc.start()
+    tr.join(); tc.join()
+
+    assert results["rotate"] == 200, results
+    assert results["create"] == 201, results
+
+    db = json.loads(services_path.read_text())
+    # Both the rotated pre-existing service AND the concurrently-created one
+    # must survive — rotation must not clobber the create.
+    assert "vllm-existing" in db
+    assert "vllm-created" in db
+    assert db["vllm-existing"]["api_key"] == config.GLOBAL_API_KEY
+
+
 def test_set_global_api_key_persists_and_updates_in_process(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     env_path.write_text("LLM_DOCK_API_KEY=old-key\nOTHER=keepme\n")

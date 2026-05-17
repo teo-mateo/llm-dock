@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 import subprocess
+from functools import wraps
 from datetime import datetime
 from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
@@ -31,12 +32,29 @@ logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
 
-# Serializes default API key rotation. Two concurrent rotations could
-# otherwise interleave their services.json/compose vs .env writes and leave
-# the default key un-mirrored across stores. The dashboard runs as a single
-# process (systemd: `python app.py`), so a process-wide lock fully
-# serializes; it is held across the whole commit + container-stop sequence.
-_ROTATION_LOCK = threading.Lock()
+# Serializes every services.json read-modify-write + compose rebuild.
+# Flask's dev server runs threaded (app.run defaults threaded=True), so
+# create/update/delete/rename/set-*-key and key rotation can otherwise
+# interleave: e.g. rotation snapshots the DB, a concurrent create adds a
+# service and rebuilds, then rotation writes its stale snapshot back and
+# drops the just-created service. One process-wide RLock around all of
+# these makes each a critical section. RLock (not Lock) so a handler that
+# nests guarded helpers in the same thread can't self-deadlock.
+_SERVICES_DB_LOCK = threading.RLock()
+
+
+def _serialize_db(fn):
+    """Run the view under the shared services-DB lock.
+
+    Placed below @require_auth so unauthenticated requests are rejected
+    without contending for the lock.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _SERVICES_DB_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
 def _recreate_if_running(service_name):
     """Recreate the container if it was running. Returns restart status dict."""
     container = get_service_container(service_name)
@@ -207,6 +225,7 @@ def get_service_logs(service_name):
 
 @services_bp.route("/api/services", methods=["POST"])
 @require_auth
+@_serialize_db
 def create_service():
     """
     Create a new service in services database and rebuild compose file.
@@ -287,6 +306,7 @@ def create_service():
 
 @services_bp.route("/api/services/<service_name>", methods=["PUT"])
 @require_auth
+@_serialize_db
 def update_service(service_name):
     """
     Update service configuration and rebuild compose file.
@@ -354,6 +374,7 @@ def update_service(service_name):
 
 @services_bp.route("/api/services/<service_name>", methods=["DELETE"])
 @require_auth
+@_serialize_db
 def delete_service(service_name):
     """Delete service from database and rebuild compose file"""
     try:
@@ -407,6 +428,7 @@ def delete_service(service_name):
 
 @services_bp.route("/api/services/<service_name>/rename", methods=["POST"])
 @require_auth
+@_serialize_db
 def rename_service(service_name):
     """
     Rename a service. Service must be stopped.
@@ -533,6 +555,7 @@ def get_flags_metadata(template_type):
 
 @services_bp.route("/api/services/<service_name>/set-public-port", methods=["POST"])
 @require_auth
+@_serialize_db
 def set_public_port(service_name):
     """
     Set service to use the public port (3301).
@@ -798,6 +821,7 @@ def get_global_api_key():
 
 @services_bp.route("/api/services/<service_name>/set-global-api-key", methods=["PUT"])
 @require_auth
+@_serialize_db
 def set_service_global_api_key(service_name):
     """
     Update a service's API key with the global API key from environment.
@@ -895,7 +919,7 @@ def rotate_default_api_key():
     services are reported back so the user can re-enter the key manually.
     """
     try:
-        with _ROTATION_LOCK:
+        with _SERVICES_DB_LOCK:
             db_services, running, openwebui_registered = _affected_services_state()
 
             new_key = generate_api_key()
