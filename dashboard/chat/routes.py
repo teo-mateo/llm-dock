@@ -179,6 +179,13 @@ def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
     q = queue.Queue(maxsize=HEARTBEAT_QUEUE_MAX)
     sentinel = object()
     stop = threading.Event()
+    # Out-of-band termination flag. The queued `sentinel` is a fast-path
+    # optimization for prompt shutdown, but it can be dropped if the queue
+    # is full for the whole producer-put timeout (slow/stalled consumer).
+    # `finished` is set unconditionally in the producer's finally, so the
+    # consumer can always detect end-of-stream even when the sentinel never
+    # makes it into the queue.
+    finished = threading.Event()
 
     def producer():
         try:
@@ -210,6 +217,10 @@ def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
                 it.close()
             except Exception:
                 logger.exception("_with_heartbeat: error closing inner stream")
+            # Mark completion BEFORE the (droppable) sentinel put so the
+            # consumer can terminate via `finished` even if the queue stays
+            # full and the sentinel never lands.
+            finished.set()
             try:
                 q.put(sentinel, timeout=HEARTBEAT_PRODUCER_POLL_S)
             except queue.Full:
@@ -222,6 +233,12 @@ def _with_heartbeat(it, interval: float = HEARTBEAT_INTERVAL_S):
             try:
                 item = q.get(timeout=interval)
             except queue.Empty:
+                # Queue is empty. If the producer already finished, the
+                # sentinel was either consumed or dropped on a full queue —
+                # either way there is nothing more coming, so terminate
+                # instead of emitting heartbeats forever.
+                if finished.is_set():
+                    return
                 yield ("__heartbeat__", {"elapsed_s": round(time.monotonic() - idle_since, 1)})
                 continue
             if item is sentinel:
