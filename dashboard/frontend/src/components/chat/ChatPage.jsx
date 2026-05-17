@@ -24,6 +24,7 @@ export default function ChatPage() {
     heartbeat,
     artifacts,
     streamingArtifacts,
+    streamingParseWarning,
     error,
     loadConversation,
     sendMessage,
@@ -113,6 +114,7 @@ export default function ChatPage() {
         heartbeat={heartbeat}
         artifacts={artifacts}
         streamingArtifacts={streamingArtifacts}
+        streamingParseWarning={streamingParseWarning}
         error={error}
         onSend={sendMessage}
         onEdit={editMessage}

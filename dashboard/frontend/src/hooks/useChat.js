@@ -14,6 +14,7 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [heartbeat, setHeartbeat] = useState(null) // {elapsed_s} | null
   const [artifacts, setArtifacts] = useState({}) // {messageId: [artifact]}
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
+  const [streamingParseWarning, setStreamingParseWarning] = useState(null) // {kind, snippet, description} | null
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
   // True between message_saved and stream-end — the title-tail phase where
@@ -64,6 +65,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setPendingToolCalls([])
     setHeartbeat(null)
     setStreamingArtifacts([])
+    setStreamingParseWarning(null)
     setError(null)
     await refetchMessages(convId)
   }, [refetchMessages])
@@ -78,6 +80,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setPendingToolCalls([])
     setHeartbeat(null)
     setStreamingArtifacts([])
+    setStreamingParseWarning(null)
 
     // Optimistically add user message
     const tempUserMsg = {
@@ -119,6 +122,13 @@ export default function useChat({ onConversationUpdated } = {}) {
         },
         onHeartbeat: (evt) => {
           setHeartbeat({ elapsed_s: evt.elapsed_s })
+        },
+        onParseWarning: (evt) => {
+          setStreamingParseWarning({
+            kind: evt.kind,
+            snippet: evt.snippet,
+            description: evt.description,
+          })
         },
         onToolCallPending: (evt) => {
           setHeartbeat(null)
@@ -224,6 +234,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setPendingToolCalls([])
     setHeartbeat(null)
     setStreamingArtifacts([])
+    setStreamingParseWarning(null)
 
     // Truncate messages from this point
     setMessages(prev => {
@@ -259,6 +270,13 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onHeartbeat: (evt) => {
             setHeartbeat({ elapsed_s: evt.elapsed_s })
+          },
+          onParseWarning: (evt) => {
+            setStreamingParseWarning({
+              kind: evt.kind,
+              snippet: evt.snippet,
+              description: evt.description,
+            })
           },
           onToolCallPending: (evt) => {
             setHeartbeat(null)
@@ -359,6 +377,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     heartbeat,
     artifacts,
     streamingArtifacts,
+    streamingParseWarning,
     error,
     loadConversation,
     sendMessage,

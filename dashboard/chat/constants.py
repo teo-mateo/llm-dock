@@ -33,7 +33,11 @@ Tool use
   reasoning. If you have nothing to add, write a brief direct answer rather than
   emitting empty output.
 - Hard cap: at most 5 tool calls per question. If you hit the cap without a confident
-  answer, answer with what you have and flag the uncertainty."""
+  answer, answer with what you have and flag the uncertainty.
+- When constructing web search queries about current state of anything (prices, products,
+  events, rankings, "best X in Y"), use the year from the `Current date:` line below —
+  not years from your training data. Do not append "2024" or "2025" to a query unless
+  the user specifically asked about that year."""
 
 DEFAULT_SIDEKICK_SYSTEM_PROMPT = (
     "You are a critical technical reviewer. When asked to critique a response, "

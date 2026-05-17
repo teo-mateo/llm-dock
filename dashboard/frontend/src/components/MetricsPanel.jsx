@@ -4,7 +4,12 @@ import TokenSparkline from './TokenSparkline'
 import RequestStrip from './RequestStrip'
 import GaugesRow from './GaugesRow'
 import SpecDecodeBar from './SpecDecodeBar'
-import { getValue, timeAgo } from '../utils'
+import { getValue, totalValue, timeAgo } from '../utils'
+
+function fmt(n) {
+  if (n == null) return '—'
+  return n.toLocaleString()
+}
 
 export default function MetricsPanel({ serviceName, enabled }) {
   const { metrics, history, loading, error, lastScraped } = useServiceMetrics({ serviceName, enabled })
@@ -18,6 +23,10 @@ export default function MetricsPanel({ serviceName, enabled }) {
     if (entries.length === 0) return null
     return raw
   }, [metrics])
+
+  const promptTotal = totalValue(metrics, 'vllm:prompt_tokens_total')
+  const genTotal = totalValue(metrics, 'vllm:generation_tokens_total')
+  const showCumulative = promptTotal != null || genTotal != null
 
   if (!enabled) {
     return (
@@ -44,6 +53,25 @@ export default function MetricsPanel({ serviceName, enabled }) {
         <span className="text-gray-500 text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
         {error && <span className="text-red-400 text-xs ml-auto">{error}</span>}
       </div>
+
+      {showCumulative && (
+        <div className="flex items-center gap-6 mb-4 px-1 text-xs font-mono">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="text-gray-400">Prompt:</span>
+            <span className="text-gray-200 font-semibold">{fmt(promptTotal)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-gray-400">Gen:</span>
+            <span className="text-gray-200 font-semibold">{fmt(genTotal)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-gray-500">Total:</span>
+            <span className="text-gray-100 font-semibold">{fmt((promptTotal || 0) + (genTotal || 0))}</span>
+          </div>
+        </div>
+      )}
 
       {!hasHistory && !loading && !error ? (
         <div className="flex flex-col items-center justify-center py-12">

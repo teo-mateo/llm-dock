@@ -26,6 +26,7 @@ export default function ChatArea({
   heartbeat,
   artifacts,
   streamingArtifacts,
+  streamingParseWarning,
   error,
   onSend,
   onEdit,
@@ -185,6 +186,7 @@ export default function ChatArea({
           heartbeat={heartbeat}
           artifacts={artifacts}
           streamingArtifacts={streamingArtifacts}
+          streamingParseWarning={streamingParseWarning}
           activeCritiqueId={critiqueTarget}
         />
 

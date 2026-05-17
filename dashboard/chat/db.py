@@ -99,6 +99,7 @@ class ChatDB:
             ("conversations", "selected_text", "ALTER TABLE conversations ADD COLUMN selected_text TEXT"),
             ("conversations", "mcp_servers_json", "ALTER TABLE conversations ADD COLUMN mcp_servers_json TEXT"),
             ("messages", "tool_calls_json", "ALTER TABLE messages ADD COLUMN tool_calls_json TEXT"),
+            ("messages", "parse_warning_json", "ALTER TABLE messages ADD COLUMN parse_warning_json TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -266,6 +267,7 @@ class ChatDB:
             model_service=row["model_service"],
             images_json=row["images_json"],
             tool_calls_json=row["tool_calls_json"],
+            parse_warning_json=row["parse_warning_json"] if "parse_warning_json" in row.keys() else None,
             seq=row["seq"],
             created_at=row["created_at"],
         )
@@ -313,10 +315,11 @@ class ChatDB:
         try:
             conn.execute(
                 """INSERT INTO messages
-                   (id, conversation_id, role, content, reasoning_content, model_service, images_json, tool_calls_json, seq)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, conversation_id, role, content, reasoning_content, model_service, images_json, tool_calls_json, parse_warning_json, seq)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (msg.id, msg.conversation_id, msg.role, msg.content,
-                 msg.reasoning_content, msg.model_service, msg.images_json, msg.tool_calls_json, msg.seq),
+                 msg.reasoning_content, msg.model_service, msg.images_json, msg.tool_calls_json,
+                 msg.parse_warning_json, msg.seq),
             )
             conn.commit()
             return self.get_message(msg.id)

@@ -10,6 +10,7 @@ import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
 import ToolResultBlock from './ToolResultBlock'
+import FormatDriftChip from './FormatDriftChip'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -28,6 +29,7 @@ export default function MessageList({
   heartbeat = null,
   artifacts = {},
   streamingArtifacts = [],
+  streamingParseWarning = null,
   activeCritiqueId,
 }) {
   const bottomRef = useRef(null)
@@ -152,6 +154,9 @@ export default function MessageList({
             <div className="max-w-[90%]">
               {!toolEvents.length && !streamingReasoning && (
                 <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
+              )}
+              {streamingParseWarning && (
+                <FormatDriftChip warning={streamingParseWarning} rawContent={streamingContent} />
               )}
               {streamingContent ? (
                 <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700 text-gray-200">

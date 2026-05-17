@@ -11,6 +11,8 @@ import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
 import ToolResultBlock from './ToolResultBlock'
+import FormatDriftChip from './FormatDriftChip'
+import { detectFormatDrift } from './formatDrift'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -20,6 +22,9 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
   const isUser = message.role === 'user'
   const isTemp = message.id?.startsWith('temp-')
   const messageImages = message.images || []
+  // Prefer the server-persisted warning. Fall back to a client-side scan for
+  // backfill of pre-existing messages whose row doesn't have parse_warning_json.
+  const parseWarning = !isUser ? (message.parse_warning || detectFormatDrift(message)) : null
 
   function handleEditSubmit() {
     const trimmed = editValue.trim()
@@ -51,6 +56,13 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
         {/* Thinking block for assistant */}
         {!isUser && message.reasoning_content && (
           <ThinkingBlock content={message.reasoning_content} />
+        )}
+
+        {/* Format-drift chip — flags Qwen3.6-style failure modes. Prefers
+            persisted warning, falls back to client-side detection so older
+            messages without parse_warning_json still surface a chip. */}
+        {parseWarning && (
+          <FormatDriftChip warning={parseWarning} rawContent={message.content} />
         )}
 
         {/* Tool calls (persisted) */}

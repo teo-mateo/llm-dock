@@ -286,6 +286,7 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
     accumulated_reasoning = ""
     collected_tool_calls = []
     collected_artifacts = []
+    last_parse_warning = None      # most recent parse_warning event, persisted on done
 
     def _save_partial():
         """Persist whatever we accumulated when the client disconnects mid-stream.
@@ -351,6 +352,12 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
                 yield f"data: {data['raw']}\n\n"
             elif event_type == "tool_call_pending":
                 yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
+            elif event_type == "parse_warning":
+                # Format-drift signal from llm_proxy. Stash so we can persist
+                # alongside the message on `done`; also forward live so the UI
+                # shows the chip before the response finishes streaming.
+                last_parse_warning = data
+                yield f"data: {json.dumps({'type': 'parse_warning', **data})}\n\n"
             elif event_type == "tool_call":
                 collected_tool_calls.append({
                     "name": data["name"],
@@ -378,6 +385,7 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
                     reasoning_content=data["reasoning_content"],
                     model_service=conv.main_service,
                     tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
+                    parse_warning_json=json.dumps(last_parse_warning) if last_parse_warning else None,
                     seq=next_seq,
                 )
                 db.add_message(assistant_msg)
