@@ -3,12 +3,12 @@ import logging
 import threading
 import time
 import subprocess
-from functools import wraps
 from datetime import datetime
 from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 
 from auth import require_auth
+from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
@@ -32,29 +32,10 @@ logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
 
-# Serializes every services.json read-modify-write + compose rebuild.
-# Flask's dev server runs threaded (app.run defaults threaded=True), so
-# create/update/delete/rename/set-*-key and key rotation can otherwise
-# interleave: e.g. rotation snapshots the DB, a concurrent create adds a
-# service and rebuilds, then rotation writes its stale snapshot back and
-# drops the just-created service. One process-wide RLock around all of
-# these makes each a critical section. RLock (not Lock) so a handler that
-# nests guarded helpers in the same thread can't self-deadlock.
-_SERVICES_DB_LOCK = threading.RLock()
-
-
-def _serialize_db(fn):
-    """Run the view under the shared services-DB lock.
-
-    Placed below @require_auth so unauthenticated requests are rejected
-    without contending for the lock.
-    """
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        with _SERVICES_DB_LOCK:
-            return fn(*args, **kwargs)
-
-    return wrapper
+# Shared across all blueprints — see db_lock.py. Aliased to preserve the
+# existing private-looking names used throughout this module.
+_SERVICES_DB_LOCK = SERVICES_DB_LOCK
+_serialize_db = serialize_db
 def _recreate_if_running(service_name):
     """Recreate the container if it was running. Returns restart status dict."""
     container = get_service_container(service_name)
@@ -953,27 +934,46 @@ def rotate_default_api_key():
                 else:
                     stop_errors[name] = res.get("error", "unknown error")
 
+        # A failed stop is a partial failure: the key is rotated in
+        # services.json/.env, but that container keeps accepting the OLD key
+        # in memory until stopped. Don't report unqualified success — callers
+        # that key off `success`/HTTP status must not treat the old key as
+        # revoked when it isn't.
+        ok = not stop_errors
+
         logger.info(
-            "Default API key rotated: %d services updated, %d containers stopped",
+            "Default API key rotated: %d services updated, %d stopped, %d stop failures",
             len(result["updated"]),
             len(stopped),
+            len(stop_errors),
         )
+
+        if ok:
+            message = (
+                f"Default API key rotated across {len(result['updated'])} "
+                f"service(s); {len(stopped)} running container(s) stopped."
+            )
+        else:
+            message = (
+                f"Default API key rotated across {len(result['updated'])} "
+                f"service(s), but {len(stop_errors)} running container(s) "
+                f"could NOT be stopped and still accept the OLD key — stop "
+                f"them manually: {', '.join(sorted(stop_errors))}."
+            )
 
         return jsonify(
             {
-                "success": True,
+                "success": ok,
+                "partial": not ok,
                 "new_api_key": new_key,
                 "services_updated": len(result["updated"]),
                 "total_services": len(db_services),
                 "stopped": stopped,
                 "stop_errors": stop_errors,
                 "openwebui_registered": openwebui_registered,
-                "message": (
-                    f"Default API key rotated across {len(result['updated'])} "
-                    f"service(s); {len(stopped)} running container(s) stopped."
-                ),
+                "message": message,
             }
-        ), 200
+        ), (200 if ok else 207)
 
     except Exception as e:
         logger.error(f"Failed to rotate default API key: {e}", exc_info=True)

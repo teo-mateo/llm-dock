@@ -317,6 +317,147 @@ def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
     assert db["vllm-existing"]["api_key"] == config.GLOBAL_API_KEY
 
 
+def test_shared_lock_is_one_object_across_blueprints():
+    """services routes, benchmarking routes, and db_lock must all serialize
+    on the *same* lock object (codex iter 4)."""
+    import db_lock
+    import routes.services as svc
+    import benchmarking.routes as bench
+
+    assert svc._SERVICES_DB_LOCK is db_lock.SERVICES_DB_LOCK
+    assert svc._serialize_db is db_lock.serialize_db
+    # apply_benchmark is wrapped by serialize_db (shares the lock).
+    assert hasattr(bench.apply_benchmark, "__wrapped__")
+
+
+def test_rotation_not_reverted_by_concurrent_benchmark_apply(tmp_path, monkeypatch):
+    """A benchmark apply running concurrently with a rotation must not write
+    its stale full service config back and revert the api_key (codex iter 4)."""
+    import threading
+    import time
+    import config
+    from compose_manager import ComposeManager
+    from benchmarking.models import BenchmarkRun
+    import routes.services as svc
+    import benchmarking.routes as bench
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    services_path = tmp_path / "services.json"
+    services_path.write_text(
+        json.dumps({"vllm-existing": {"template_type": "vllm", "alias": "existing",
+                                      "port": 3301, "model_name": "o/m",
+                                      "api_key": "old-key", "params": {}}})
+    )
+    env_path = tmp_path / ".env"
+    env_path.write_text("LLM_DOCK_API_KEY=old-key\n")
+
+    def cm(*_a, **_k):
+        return ComposeManager(str(compose_path), services_db_file=str(services_path))
+
+    monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
+    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-existing"], [], []))
+    monkeypatch.setattr(svc, "ComposeManager", cm)
+    monkeypatch.setattr(bench, "_get_compose_manager", cm)
+
+    def fake_set_global(new_key, dotenv_path=None):
+        time.sleep(0.1)
+        config.GLOBAL_API_KEY = new_key
+        env_path.write_text(f"LLM_DOCK_API_KEY={new_key}\n")
+
+    monkeypatch.setattr(config, "set_global_api_key", fake_set_global)
+
+    os.environ["DASHBOARD_TOKEN"] = "test-token"
+    from app import create_app
+    app = create_app(config={
+        "TESTING": True,
+        "DASHBOARD_TOKEN": "test-token",
+        "BENCHMARK_DB_PATH": str(tmp_path / "bench.db"),
+    })
+    db = app.config["BENCHMARK_DB"]
+    db.create_run(BenchmarkRun(
+        id="run-1", service_name="vllm-existing", model_path="",
+        status="completed", params_json={"--gpu-memory-utilization": "0.5"},
+    ))
+
+    hdr = {"Authorization": "Bearer test-token"}
+    results = {}
+
+    def do_rotate():
+        results["rotate"] = app.test_client().post(
+            "/api/default-api-key/rotate", headers=hdr).status_code
+
+    def do_apply():
+        results["apply"] = app.test_client().put(
+            "/api/benchmarks/run-1/apply", headers=hdr).status_code
+
+    tr = threading.Thread(target=do_rotate)
+    ta = threading.Thread(target=do_apply)
+    tr.start()
+    time.sleep(0.02)
+    ta.start()
+    tr.join(); ta.join()
+
+    assert results["rotate"] == 200, results
+    assert results["apply"] == 200, results
+
+    cfg = json.loads(services_path.read_text())["vllm-existing"]
+    # Apply must not have reverted the rotated key...
+    assert cfg["api_key"] == config.GLOBAL_API_KEY
+    # ...and the applied benchmark param must still be present.
+    assert cfg["params"].get("--gpu-memory-utilization") == "0.5"
+
+
+def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch):
+    """If a running affected container can't be stopped, the response must
+    NOT report unqualified success (codex iter 4)."""
+    import config
+    from compose_manager import ComposeManager
+    import routes.services as svc
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    services_path = tmp_path / "services.json"
+    services_path.write_text(
+        json.dumps({"vllm-x": {"template_type": "vllm", "alias": "x",
+                               "port": 3301, "model_name": "o/m",
+                               "api_key": "old-key", "params": {}}})
+    )
+
+    monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
+    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-x"], ["vllm-x"], []))
+    monkeypatch.setattr(
+        svc, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
+    monkeypatch.setattr(config, "set_global_api_key",
+                        lambda *a, **k: setattr(config, "GLOBAL_API_KEY", a[0]))
+    monkeypatch.setattr(
+        svc, "control_service",
+        lambda name, action: {"success": False, "error": "docker daemon unreachable"},
+    )
+
+    os.environ["DASHBOARD_TOKEN"] = "test-token"
+    from app import create_app
+    app = create_app(config={"TESTING": True, "DASHBOARD_TOKEN": "test-token"})
+    resp = app.test_client().post(
+        "/api/default-api-key/rotate", headers={"Authorization": "Bearer test-token"})
+
+    body = resp.get_json()
+    assert resp.status_code == 207
+    assert body["success"] is False
+    assert body["partial"] is True
+    assert "vllm-x" in body["stop_errors"]
+    # Key still rotated in files (that part succeeded) and returned.
+    assert body["new_api_key"] == config.GLOBAL_API_KEY
+
+
 def test_set_global_api_key_persists_and_updates_in_process(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     env_path.write_text("LLM_DOCK_API_KEY=old-key\nOTHER=keepme\n")

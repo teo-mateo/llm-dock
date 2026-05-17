@@ -62,7 +62,11 @@ export default function RotateDefaultKeyModal({ onClose, onDone }) {
       <div className="bg-gray-800 rounded-lg border border-gray-700 max-w-xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
           <h3 className="text-lg font-semibold text-gray-200">
-            {result ? 'Default API Key Rotated' : 'Rotate Default API Key'}
+            {result
+              ? (result.success === false
+                  ? 'Default API Key Rotated — Action Required'
+                  : 'Default API Key Rotated')
+              : 'Rotate Default API Key'}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 cursor-pointer" aria-label="Close">✕</button>
         </div>
