@@ -137,6 +137,7 @@ export default function ChatPage() {
       />
       <ChatArea
         conversation={conversation}
+        awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
         defaultModelName={runningServices[0]?.name || null}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}

@@ -15,6 +15,7 @@ let spinoffCounter = 0
 
 export default function ChatArea({
   conversation,
+  awaitingConversation,
   defaultModelName,
   onCreateAndSend,
   messages,
@@ -91,6 +92,21 @@ export default function ChatArea({
     topZRef.current++
     setSpinoffs(prev => prev.map(s => s.id === id ? { ...s, zIndex: topZRef.current } : s))
   }, [])
+
+  // A conversation is in the URL but its fetch hasn't returned yet. Show a
+  // loading state — NOT the create composer — otherwise typing here would
+  // spawn a different new conversation instead of waiting for the requested
+  // one (codex iteration 1, P1).
+  if (!conversation && awaitingConversation) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-500">
+        <div className="text-center">
+          <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 block opacity-40"></i>
+          <p>Loading conversation…</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!conversation) {
     return (
