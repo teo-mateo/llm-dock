@@ -334,7 +334,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           <button
             type="submit"
             disabled={!canSend}
-            className="px-4 py-3 bg-accent-strong hover:bg-accent text-fg-inverse disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
+            className="px-4 py-3 bg-accent-strong hover:bg-accent-hover text-fg-inverse disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
           >
             <i className="fa-solid fa-paper-plane"></i>
           </button>

@@ -169,7 +169,7 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
         <div className="flex justify-end mb-2"><ThemeSwitcher /></div>
         <button
           onClick={onCreate}
-          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-plus"></i>
           New Conversation

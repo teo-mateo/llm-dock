@@ -146,7 +146,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 autoFocus
               />
               <div className="flex gap-2 mt-2 text-xs">
-                <button onClick={handleEditSubmit} className="px-2 py-1 bg-accent text-fg-inverse rounded hover:bg-accent">Save</button>
+                <button onClick={handleEditSubmit} className="px-2 py-1 bg-accent-strong text-fg-inverse rounded hover:bg-accent-hover">Save</button>
                 <button onClick={() => { setEditing(false); setEditValue(message.content) }} className="px-2 py-1 bg-border-strong rounded hover:bg-border-strong">Cancel</button>
               </div>
             </div>
