@@ -46,12 +46,20 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
   }
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}>
-      <div className={`max-w-[90%] ${isUser ? 'order-1' : ''}`}>
-        {/* Role label */}
-        <div className={`text-[10px] text-gray-500 mb-1 ${isUser ? 'text-right' : ''}`}>
-          {isUser ? 'You' : message.model_service || 'Assistant'}
-        </div>
+    <div className="relative pl-8 group">
+      {/* Timeline tick node — sits in the left gutter on the shared spine. */}
+      <span
+        aria-hidden="true"
+        className={`absolute left-[10px] top-[7px] w-[9px] h-[9px] rounded-full bg-gray-850 border ${
+          isUser ? 'border-accent-strong' : 'border-accent'
+        }`}
+      ></span>
+      <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div className={`max-w-[90%] ${isUser ? 'order-1' : ''}`}>
+          {/* Role label — light/minimal, no mono meta line */}
+          <div className={`text-[10px] text-gray-500 mb-1 ${isUser ? 'text-right' : ''}`}>
+            {isUser ? 'You' : message.model_service || 'Assistant'}
+          </div>
 
         {/* Thinking block for assistant */}
         {!isUser && message.reasoning_content && (
@@ -100,11 +108,12 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
           </div>
         )}
 
-        {/* Message content */}
-        <div className={`rounded-lg px-4 py-3 ${
+        {/* Message content — hairline block with a colored left accent
+            spine, not a filled rounded bubble. */}
+        <div className={`rounded border border-line border-l-2 px-4 py-3 ${
           isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-800 border border-gray-700 text-gray-200'
+            ? 'border-l-accent-strong bg-gray-850 text-gray-100'
+            : 'border-l-accent bg-gray-800 text-gray-200'
         } ${isTemp ? 'opacity-70' : ''} ${
           isActiveCritique ? 'ring-2 ring-yellow-500/50' : ''
         }`}>
@@ -131,7 +140,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleEditKeyDown}
                 rows={6}
-                className="w-full min-h-[140px] bg-blue-700 text-white rounded px-3 py-2 text-sm resize-y focus:outline-none"
+                className="w-full min-h-[140px] bg-gray-800 border border-gray-700 text-gray-100 font-mono rounded px-3 py-2 text-sm resize-y focus:outline-none focus:border-accent"
                 autoFocus
               />
               <div className="flex gap-2 mt-2 text-xs">
@@ -140,10 +149,10 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
               </div>
             </div>
           ) : isUser ? (
-            message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            message.content && <p className="text-sm whitespace-pre-wrap font-mono">{message.content}</p>
           ) : (
             message.content && (
-              <div className="text-sm prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+              <div className="prose prose-invert max-w-none text-[15px] leading-relaxed font-serif [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                   {message.content}
                 </ReactMarkdown>
@@ -173,6 +182,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   )

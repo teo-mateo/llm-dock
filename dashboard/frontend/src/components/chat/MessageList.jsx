@@ -56,7 +56,19 @@ export default function MessageList({
       onScroll={handleScroll}
       className="flex-1 overflow-auto p-4 space-y-4"
     >
-      <div className="max-w-6xl mx-auto space-y-4">
+      <div className="relative max-w-6xl mx-auto space-y-4">
+        {/* Timeline spine — a hairline rule down the left gutter with
+            faded ends; per-turn tick nodes sit on it (rendered per turn). */}
+        {(messages.length > 0 || streaming) && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-[14px] top-1 bottom-6 w-px"
+            style={{
+              background:
+                'linear-gradient(180deg, transparent, var(--color-line-strong) 4%, var(--color-line-strong) 96%, transparent)',
+            }}
+          ></div>
+        )}
         {messages.map(msg => (
           <MessageBubble
             key={msg.id}
@@ -70,6 +82,15 @@ export default function MessageList({
             artifacts={artifacts[msg.id]}
           />
         ))}
+
+        {/* Streaming assistant turn — one timeline node for the whole
+            in-flight turn, aligned to the shared spine via the gutter. */}
+        {streaming && (
+        <div className="relative pl-8 space-y-4">
+          <span
+            aria-hidden="true"
+            className="absolute left-[10px] top-[7px] w-[9px] h-[9px] rounded-full bg-gray-850 border border-accent"
+          ></span>
 
         {/* Assistant header + continuous thinking trace — renders ABOVE the
             tool events so the visual order matches the saved view (one
@@ -159,15 +180,15 @@ export default function MessageList({
                 <FormatDriftChip warning={streamingParseWarning} rawContent={streamingContent} />
               )}
               {streamingContent ? (
-                <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700 text-gray-200">
-                  <div className="text-sm prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-gray-800 text-gray-200">
+                  <div className="prose prose-invert max-w-none text-[15px] leading-relaxed font-serif [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                       {streamingContent}
                     </ReactMarkdown>
                   </div>
                 </div>
               ) : !streamingReasoning && toolEvents.length === 0 && pendingToolCalls.length === 0 ? (
-                <div className="rounded-lg px-4 py-3 bg-gray-800 border border-gray-700">
+                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-gray-800">
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
@@ -199,6 +220,8 @@ export default function MessageList({
               <span>Waiting for model… {heartbeat.elapsed_s.toFixed(1)}s</span>
             </div>
           </div>
+        )}
+        </div>
         )}
 
         {/* Empty state */}
