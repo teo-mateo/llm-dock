@@ -2,15 +2,15 @@ export default function GpuStats({ gpu }) {
   const memPct = Math.round((gpu.memory.used / gpu.memory.total) * 100)
 
   return (
-    <div className="w-[500px] shrink-0 bg-surface border border-border rounded-lg p-4">
+    <div className="w-full max-w-[500px] md:w-[500px] md:shrink-0 bg-surface border border-border rounded-lg p-4">
       {/* GPU Name */}
-      <div className="flex items-center gap-2 mb-4">
-        <i className="fa-solid fa-microchip text-success-fg" />
-        <span className="font-bold text-base">{gpu.name}</span>
+      <div className="flex items-center gap-2 mb-4 min-w-0">
+        <i className="fa-solid fa-microchip text-success-fg shrink-0" />
+        <span className="font-bold text-base truncate" title={gpu.name}>{gpu.name}</span>
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         {/* Memory */}
         <div>
           <p className="text-fg-muted mb-1">Memory</p>

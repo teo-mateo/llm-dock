@@ -47,7 +47,7 @@ export default function GpuMonitor() {
       {gpus.map(gpu => {
         const h = histories[gpu.index] || { memory: [], compute: [] }
         return (
-          <div key={gpu.index} className="flex gap-4 items-center">
+          <div key={gpu.index} className="flex flex-col md:flex-row gap-4 md:items-center">
             <GpuStats gpu={gpu} />
             <GpuGraph memoryHistory={h.memory} computeHistory={h.compute} />
           </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { NAV_ITEMS } from './navItems'
 
 const STORAGE_KEY = 'llmdock.sidebar.collapsed'
 
@@ -12,12 +13,6 @@ function readCollapsed() {
     return true
   }
 }
-
-const NAV_ITEMS = [
-  { to: '/', end: true, icon: 'fa-server', label: 'Services' },
-  { to: '/chat', end: false, icon: 'fa-comments', label: 'Chat' },
-  { to: '/tools', end: false, icon: 'fa-toolbox', label: 'Tools' },
-]
 
 function Sidebar() {
   const [collapsed, setCollapsed] = useState(readCollapsed)

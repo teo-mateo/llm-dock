@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
+import MobileNav from './components/MobileNav'
 import Header from './components/Header'
 import GpuMonitor from './components/GpuMonitor'
 import ServicesTable from './components/ServicesTable'
@@ -11,7 +12,7 @@ function DefaultLayout({ children }) {
   return (
     <>
       <Header />
-      <div className="flex-1 overflow-auto p-6 mx-auto w-full max-w-[1900px]">
+      <div className="flex-1 overflow-auto p-3 md:p-6 mx-auto w-full max-w-[1900px]">
         {children}
       </div>
     </>
@@ -22,7 +23,8 @@ function App() {
   return (
     <div className="flex h-screen bg-app text-fg">
       <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <MobileNav />
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/chat/:conversationId" element={<ChatPage />} />

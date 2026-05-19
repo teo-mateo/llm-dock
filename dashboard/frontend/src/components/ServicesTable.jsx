@@ -264,19 +264,19 @@ export default function ServicesTable() {
 
   return (
     <div className="mt-6">
-      <div className="flex items-center justify-between mb-3 gap-3">
+      <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-fg">Services</h2>
           <ConnectionDot connected={connected} error={error} />
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="relative w-full sm:w-auto">
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter by name..."
-              className="w-48 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg placeholder-fg-subtle focus:outline-none focus:border-accent transition-colors"
+              className="w-full sm:w-48 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg placeholder-fg-subtle focus:outline-none focus:border-accent transition-colors"
             />
             {search && (
               <button
@@ -303,7 +303,34 @@ export default function ServicesTable() {
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Mobile: stacked cards (no horizontal scroll) */}
+      <div className="md:hidden space-y-2">
+        {visible.length === 0 ? (
+          <div className="rounded-lg border border-border px-4 py-8 text-center text-fg-muted">
+            {services.length === 0
+              ? 'No services configured'
+              : `No services matching "${search}"`}
+          </div>
+        ) : (
+          visible.map(svc => (
+            <ServiceCard
+              key={svc.name}
+              service={svc}
+              transitioning={transitioning}
+              onStart={handleStart}
+              onStop={handleStop}
+              onRestart={handleRestart}
+              onSetPublicPort={handleSetPublicPort}
+              onEdit={handleEdit}
+              onViewLogs={handleViewLogs}
+              onDelete={handleDelete}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm text-left">
           <thead className="bg-surface text-fg-muted uppercase text-xs">
             <tr>
@@ -358,17 +385,16 @@ export default function ServicesTable() {
   )
 }
 
-function PortCell({ service, onSetPublicPort }) {
+function PortInline({ service, onSetPublicPort }) {
   const infra = isInfra(service.name)
   const port = service.host_port && service.host_port !== 9999 ? service.host_port : null
   const engine = getEngine(service.name)
   const isLlamaCpp = engine === 'llama.cpp'
   const isPublicPort = port === 3301
 
-  if (!port) return <td className="px-6 py-3 font-mono text-fg-subtle">N/A</td>
+  if (!port) return <span className="font-mono text-fg-subtle">N/A</span>
 
   return (
-    <td className="px-6 py-3">
       <div className="flex items-center gap-1.5">
         {isLlamaCpp ? (
           <a
@@ -398,7 +424,91 @@ function PortCell({ service, onSetPublicPort }) {
           </button>
         ))}
       </div>
+  )
+}
+
+function PortCell({ service, onSetPublicPort }) {
+  const port = service.host_port && service.host_port !== 9999 ? service.host_port : null
+  return (
+    <td className={`px-6 py-3${port ? '' : ' font-mono text-fg-subtle'}`}>
+      <PortInline service={service} onSetPublicPort={onSetPublicPort} />
     </td>
+  )
+}
+
+// Mobile (md:hidden) stacked card — same data/actions as a table row,
+// no horizontal scroll (issue #39).
+function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete }) {
+  const engine = getEngine(service.name)
+  const infra = isInfra(service.name)
+
+  return (
+    <div className={`rounded-lg border border-border p-3 ${service.status === 'running' ? 'bg-success-subtle' : 'bg-surface-muted'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex items-center font-medium text-fg">
+          {!infra ? (
+            <button
+              onClick={() => onEdit(service.name)}
+              className="text-accent-fg hover:text-accent-fg-hover hover:underline cursor-pointer text-left break-all"
+            >
+              {service.name}
+            </button>
+          ) : (
+            <span className="break-all">{service.name}</span>
+          )}
+          <CopyButton text={service.name} />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusDot status={service.status} />
+          <StatusLabel service={service} />
+        </div>
+      </div>
+
+      {service.api_key && (
+        <p className="text-fg-muted font-mono text-xs mt-1 break-all">
+          {service.api_key.slice(0, 12)}...
+          <CopyButton text={service.api_key} />
+        </p>
+      )}
+
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div>
+          <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Port</p>
+          <PortInline service={service} onSetPublicPort={onSetPublicPort} />
+        </div>
+        <div>
+          <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Engine</p>
+          <EngineBadge engine={engine} />
+        </div>
+        <div>
+          <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Size</p>
+          <span className="text-fg-muted text-xs">{service.model_size_str || '—'}</span>
+        </div>
+        <div>
+          <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Open WebUI</p>
+          {infra ? (
+            <span className="text-fg-faint">—</span>
+          ) : service.openwebui_registered ? (
+            <span className="text-success-fg text-xs">✓ Registered</span>
+          ) : (
+            <span className="text-fg-subtle text-xs">Not registered</span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 pt-2 border-t border-border-subtle flex justify-end">
+        <ActionButtons
+          service={service}
+          transitioning={transitioning}
+          onStart={onStart}
+          onStop={onStop}
+          onRestart={onRestart}
+          onEdit={onEdit}
+          onViewLogs={onViewLogs}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -408,7 +518,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
 
   return (
     <tr className={`border-b border-border transition-colors ${service.status === 'running' ? 'bg-success-subtle hover:bg-success-subtle' : 'bg-surface-muted hover:bg-surface-strong'}`}>
-      <td className="px-6 py-3">
+      <td className="px-6 py-3 whitespace-nowrap">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-fg">
             {!infra ? (
