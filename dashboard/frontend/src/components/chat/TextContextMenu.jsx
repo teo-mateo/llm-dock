@@ -66,7 +66,7 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
         className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
       >
         <i className="fa-solid fa-code-branch text-purple-400 text-xs"></i>
-        Spin off...
+        Spin-off...
       </button>
       <button
         onClick={async () => {

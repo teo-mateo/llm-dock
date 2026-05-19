@@ -53,7 +53,7 @@ export default function CritiquePanel({ messageId, originalContent, critique, lo
         {loading && !critique && (
           <div className="text-center text-gray-500 py-8">
             <i className="fa-solid fa-spinner fa-spin text-xl mb-3 block"></i>
-            <p className="text-xs">Sidekick is reviewing...</p>
+            <p className="text-xs">Critic is reviewing...</p>
           </div>
         )}
 
@@ -63,7 +63,7 @@ export default function CritiquePanel({ messageId, originalContent, critique, lo
 
         {!critique && !loading && (
           <div className="text-center text-gray-600 py-8 text-xs">
-            Click "Run Critique" to have the sidekick review this response
+            Click "Run Critique" to have the critic review this response
           </div>
         )}
       </div>

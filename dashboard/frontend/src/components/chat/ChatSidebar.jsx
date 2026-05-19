@@ -191,7 +191,7 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
               <button
                 onClick={toggleSelectAllRoots}
                 className="text-[11px] text-gray-500 hover:text-gray-300"
-                title="Selects only top-level conversations; spinoffs follow their parent"
+                title="Selects only top-level conversations; spin-offs follow their parent"
               >
                 {allRootsSelected ? 'Deselect all' : 'Select all'}
               </button>
