@@ -269,7 +269,7 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
           disabled={streaming}
           className="flex-1 bg-surface border border-border rounded px-2.5 py-1.5 text-xs text-fg placeholder-fg-subtle focus:outline-none focus:border-accent disabled:opacity-50"
         />
-        <button type="submit" disabled={streaming || !input.trim()} className="px-2.5 py-1.5 bg-accent-strong hover:bg-accent disabled:bg-surface-strong disabled:text-fg-subtle rounded text-xs transition-colors">
+        <button type="submit" disabled={streaming || !input.trim()} className="px-2.5 py-1.5 bg-accent-strong hover:bg-accent text-fg-inverse disabled:bg-surface-strong disabled:text-fg-subtle rounded text-xs transition-colors">
           <i className="fa-solid fa-paper-plane"></i>
         </button>
       </form>

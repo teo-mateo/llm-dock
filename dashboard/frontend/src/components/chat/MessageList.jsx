@@ -67,7 +67,7 @@ export default function MessageList({
             className="pointer-events-none absolute left-[14px] top-1 bottom-6 w-px"
             style={{
               background:
-                'linear-gradient(180deg, transparent, var(--color-line-strong) 4%, var(--color-line-strong) 96%, transparent)',
+                'linear-gradient(180deg, transparent, var(--color-hairline-strong) 4%, var(--color-hairline-strong) 96%, transparent)',
             }}
           ></div>
         )}
@@ -182,7 +182,7 @@ export default function MessageList({
                 <FormatDriftChip warning={streamingParseWarning} rawContent={streamingContent} />
               )}
               {streamingContent ? (
-                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-surface text-fg">
+                <div className="rounded border border-hairline border-l-2 border-l-accent px-4 py-3 bg-surface text-fg">
                   <div className={proseClass}>
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                       {streamingContent}
@@ -190,7 +190,7 @@ export default function MessageList({
                   </div>
                 </div>
               ) : !streamingReasoning && toolEvents.length === 0 && pendingToolCalls.length === 0 ? (
-                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-surface">
+                <div className="rounded border border-hairline border-l-2 border-l-accent px-4 py-3 bg-surface">
                   <div className="flex items-center gap-2 text-sm text-fg-muted">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-60"></span>

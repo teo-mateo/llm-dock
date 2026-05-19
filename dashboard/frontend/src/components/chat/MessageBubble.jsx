@@ -112,7 +112,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
 
         {/* Message content — hairline block with a colored left accent
             spine, not a filled rounded bubble. */}
-        <div className={`rounded border border-line border-l-2 px-4 py-3 ${
+        <div className={`rounded border border-hairline border-l-2 px-4 py-3 ${
           isUser
             ? 'border-l-accent-strong bg-elevated text-fg'
             : 'border-l-accent bg-surface text-fg'
@@ -146,7 +146,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 autoFocus
               />
               <div className="flex gap-2 mt-2 text-xs">
-                <button onClick={handleEditSubmit} className="px-2 py-1 bg-accent rounded hover:bg-accent">Save</button>
+                <button onClick={handleEditSubmit} className="px-2 py-1 bg-accent text-fg-inverse rounded hover:bg-accent">Save</button>
                 <button onClick={() => { setEditing(false); setEditValue(message.content) }} className="px-2 py-1 bg-border-strong rounded hover:bg-border-strong">Cancel</button>
               </div>
             </div>

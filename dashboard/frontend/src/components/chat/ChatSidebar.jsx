@@ -68,7 +68,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           >Yes</button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(null) }}
-            className="text-[10px] px-1.5 py-0.5 bg-border-strong rounded text-white"
+            className="text-[10px] px-1.5 py-0.5 bg-surface-strong rounded text-fg"
           >No</button>
         </div>
       ) : (
@@ -169,7 +169,7 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
         <div className="flex justify-end mb-2"><ThemeSwitcher /></div>
         <button
           onClick={onCreate}
-          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-plus"></i>
           New Conversation
@@ -211,7 +211,7 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
                   >Delete {selectionCount}</button>
                   <button
                     onClick={() => setConfirmBulk(false)}
-                    className="px-2 py-1 bg-border-strong hover:bg-border-strong rounded text-white"
+                    className="px-2 py-1 bg-surface-strong hover:bg-surface-strong rounded text-fg"
                   >Cancel</button>
                 </>
               ) : (

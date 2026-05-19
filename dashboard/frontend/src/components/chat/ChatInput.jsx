@@ -233,7 +233,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           </div>
           <div className="space-y-1">
             {pendingInserts.map((ann, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs bg-elevated border border-line border-l-2 border-l-critique rounded px-2 py-1.5">
+              <div key={i} className="flex items-start gap-2 text-xs bg-elevated border border-hairline border-l-2 border-l-critique rounded px-2 py-1.5">
                 <span className="flex-1 text-fg-muted truncate" title={ann.comment}>
                   <span className="font-mono text-critique">{ann.issue_type}:</span> {ann.comment}
                 </span>
@@ -259,7 +259,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
                 <img
                   src={img.dataUrl}
                   alt={img.name}
-                  className="w-20 h-20 object-cover rounded border border-line"
+                  className="w-20 h-20 object-cover rounded border border-hairline"
                 />
                 <button
                   onClick={() => removeImage(i)}
@@ -281,7 +281,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
             {attachments.map((att, i) => (
               <div
                 key={i}
-                className="group flex items-center gap-2 text-xs bg-elevated border border-line border-l-2 border-l-accent rounded px-2 py-1.5 max-w-[260px]"
+                className="group flex items-center gap-2 text-xs bg-elevated border border-hairline border-l-2 border-l-accent rounded px-2 py-1.5 max-w-[260px]"
               >
                 <i className="fa-solid fa-file-lines text-accent flex-shrink-0"></i>
                 <span className="font-mono text-fg-muted truncate" title={att.name}>{att.name}</span>
@@ -334,7 +334,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           <button
             type="submit"
             disabled={!canSend}
-            className="px-4 py-3 bg-accent-strong hover:bg-accent disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
+            className="px-4 py-3 bg-accent-strong hover:bg-accent text-fg-inverse disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
           >
             <i className="fa-solid fa-paper-plane"></i>
           </button>
