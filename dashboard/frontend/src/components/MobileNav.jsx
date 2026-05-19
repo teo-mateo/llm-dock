@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS } from './navItems'
 import ThemeSwitcher from './ThemeSwitcher'
@@ -9,6 +9,14 @@ import ThemeSwitcher from './ThemeSwitcher'
 // drawer. Rendered alongside <Sidebar/> in App so it covers every route.
 export default function MobileNav() {
   const [open, setOpen] = useState(false)
+
+  // Standard keyboard dismissal for the dialog drawer (codex PR #40).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
 
   return (
     <div className="md:hidden">
@@ -40,6 +48,7 @@ export default function MobileNav() {
           <nav
             className="fixed inset-y-0 left-0 z-50 w-64 bg-app border-r border-border flex flex-col"
             role="dialog"
+            aria-modal="true"
             aria-label="Navigation"
           >
             <div className="h-14 flex items-center justify-between px-4 border-b border-border-subtle">
