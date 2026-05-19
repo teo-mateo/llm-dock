@@ -15,6 +15,9 @@ let spinoffCounter = 0
 
 export default function ChatArea({
   conversation,
+  awaitingConversation,
+  defaultModelName,
+  onCreateAndSend,
   messages,
   critiques,
   setCritiques,
@@ -90,12 +93,41 @@ export default function ChatArea({
     setSpinoffs(prev => prev.map(s => s.id === id ? { ...s, zIndex: topZRef.current } : s))
   }, [])
 
-  if (!conversation) {
+  // The route points at a conversation whose fetch hasn't resolved yet
+  // (direct load, or switching from another conversation). Authoritative
+  // over a possibly-stale `conversation`: render loading, never the active
+  // chat or the create composer. Otherwise typing would either spawn a
+  // different new conversation (codex iter 1) or, worse, send into the
+  // previously-loaded chat via its stale sendMessage closure (codex iter 2).
+  if (awaitingConversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500">
         <div className="text-center">
-          <i className="fa-solid fa-comments text-5xl mb-4 block opacity-20"></i>
-          <p>Select or create a conversation</p>
+          <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 block opacity-40"></i>
+          <p>Loading conversation…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!conversation) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="w-full max-w-2xl flex flex-col items-center">
+          <i className="fa-solid fa-comments text-6xl mb-5 text-blue-500/40"></i>
+          <h2 className="text-2xl font-semibold text-gray-200 mb-2">Start a new conversation</h2>
+          <p className="text-sm text-gray-500 mb-6 text-center">
+            {defaultModelName
+              ? <>Type a message below — a chat will be created with <span className="text-gray-400">{defaultModelName}</span>.</>
+              : 'No running model services available. Start a model first.'}
+          </p>
+          <div className="w-full">
+            <ChatInput
+              focusKey="empty-state"
+              onSend={(msg, images) => onCreateAndSend?.(msg, images)}
+              disabled={!defaultModelName}
+            />
+          </div>
         </div>
       </div>
     )
@@ -193,6 +225,7 @@ export default function ChatArea({
         {/* Input */}
         <ChatInput
           ref={composerRef}
+          focusKey={conversation.id}
           onSend={(msg, images) => { onSend(msg, images); setPendingInserts([]) }}
           disabled={streaming || !conversation.main_service}
           pendingInserts={pendingInserts}

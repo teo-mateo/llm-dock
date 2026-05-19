@@ -1,16 +1,19 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
 import useConversations from '../../hooks/useConversations'
 import useChat from '../../hooks/useChat'
+import useRunningServices from '../../hooks/useRunningServices'
+import { pendingFlushDecision } from './pendingFlush'
 
 export default function ChatPage() {
   const { conversationId } = useParams()
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, loading: convsLoading, refresh, create, remove, removeMany, patchConversation } = useConversations()
+  const { conversations, refresh, create, remove, removeMany, patchConversation } = useConversations()
+  const { services: runningServices } = useRunningServices()
   const {
     conversation,
     messages,
@@ -34,12 +37,37 @@ export default function ChatPage() {
     onConversationUpdated: (evt) => patchConversation(evt.id, { title: evt.title }),
   })
 
+  // Holds the first message typed in the empty-state composer. The
+  // conversation has to exist (and be loaded into useChat) before
+  // sendMessage can fire, so we stash it here and flush it from an effect
+  // once the freshly-created conversation is the active one.
+  const pendingMsgRef = useRef(null)
+
   // Load conversation when URL changes
   useEffect(() => {
     if (convId) {
       loadConversation(convId)
     }
   }, [convId, loadConversation])
+
+  // Flush the queued first message once its conversation is loaded.
+  // loadConversation() has no request sequencing, so a late getConversation
+  // for the just-created chat C can resolve and set `conversation` to C
+  // even after the user has already navigated to a different chat B. Gate
+  // the flush on the live route too, and abandon the queued message the
+  // moment the route no longer points at it — otherwise a stale fetch
+  // would fire a background send into a non-active conversation (codex
+  // iteration 3, P1).
+  useEffect(() => {
+    const pending = pendingMsgRef.current
+    const decision = pendingFlushDecision(pending, convId, conversation, streaming)
+    if (decision === 'abandon') {
+      pendingMsgRef.current = null
+    } else if (decision === 'send') {
+      pendingMsgRef.current = null
+      sendMessage(pending.content, pending.images)
+    }
+  }, [convId, conversation, streaming, sendMessage])
 
   // Refresh conversation list when streaming completes (for auto-title)
   useEffect(() => {
@@ -49,13 +77,30 @@ export default function ChatPage() {
   }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = useCallback(async () => {
-    // Use first available running service as default
+    // Default the main model to the first running service. When exactly
+    // one model is up this preselects it; the backend requires a non-empty
+    // main_service so we can't create without one.
+    if (runningServices.length === 0) {
+      window.alert('No running model services available. Start a model first.')
+      return
+    }
     const conv = await create({
-      main_service: 'llamacpp-gemma-4-31b-it-q8',
-      sidekick_service: 'llamacpp-UNSLOTH-qwen3-5-27b-q8',
+      main_service: runningServices[0].name,
     })
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate])
+  }, [create, navigate, runningServices])
+
+  // Empty-state composer: create a conversation, then queue the typed
+  // message so it sends as soon as the new conversation loads.
+  const handleCreateAndSend = useCallback(async (content, images) => {
+    if (runningServices.length === 0) {
+      window.alert('No running model services available. Start a model first.')
+      return
+    }
+    const conv = await create({ main_service: runningServices[0].name })
+    pendingMsgRef.current = { convId: conv.id, content, images }
+    navigate(`/chat/${conv.id}`)
+  }, [create, navigate, runningServices])
 
   const handleSelect = useCallback((id) => {
     navigate(`/chat/${id}`)
@@ -103,6 +148,9 @@ export default function ChatPage() {
       />
       <ChatArea
         conversation={conversation}
+        awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
+        defaultModelName={runningServices[0]?.name || null}
+        onCreateAndSend={handleCreateAndSend}
         messages={messages}
         critiques={critiques}
         setCritiques={setCritiques}
