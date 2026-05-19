@@ -23,7 +23,7 @@ describe('SpecDecodeBar', () => {
 
   it('normalizes bar width to max value', () => {
     const { container } = render(<SpecDecodeBar specPerPos={{ position_0: 200, position_1: 100 }} />)
-    const bars = container.querySelectorAll('.bg-amber-500')
+    const bars = container.querySelectorAll('.bg-warning')
     expect(bars.length).toBe(2)
     expect(bars[0].style.width).toBe('100%')
     expect(bars[1].style.width).toBe('50%')

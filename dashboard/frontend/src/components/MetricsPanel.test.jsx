@@ -65,7 +65,7 @@ describe('MetricsPanel', () => {
       lastScraped: new Date().toISOString()
     })
     const { container } = render(<MetricsPanel serviceName="test" enabled={true} />)
-    const dot = container.querySelector('.bg-green-500')
+    const dot = container.querySelector('.bg-success')
     expect(dot).toBeTruthy()
   })
 
@@ -90,7 +90,7 @@ describe('MetricsPanel', () => {
       lastScraped: null
     })
     const { container } = render(<MetricsPanel serviceName="test" enabled={true} />)
-    expect(container.querySelector('.bg-red-500')).toBeTruthy()
+    expect(container.querySelector('.bg-danger')).toBeTruthy()
     expect(screen.getByText('Connection refused')).toBeTruthy()
   })
 })

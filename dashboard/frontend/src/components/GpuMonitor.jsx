@@ -31,15 +31,15 @@ export default function GpuMonitor() {
   }, [gpus])
 
   if (error) {
-    return <p className="text-red-400">GPU: {error}</p>
+    return <p className="text-danger-fg">GPU: {error}</p>
   }
 
   if (gpus === null) {
-    return <p className="text-gray-500">Loading GPU info...</p>
+    return <p className="text-fg-subtle">Loading GPU info...</p>
   }
 
   if (!gpus.length) {
-    return <p className="text-gray-400">No GPU detected</p>
+    return <p className="text-fg-muted">No GPU detected</p>
   }
 
   return (
