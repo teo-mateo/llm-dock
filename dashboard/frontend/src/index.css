@@ -71,8 +71,17 @@
   --color-border-strong: #36404f;
   --color-border-subtle: #161c27;
 
-  /* Accent (reuses #29's accent pair; adds fg/subtle roles). */
-  --color-accent-hover:    #3b82f6;
+  /* Themed hairline / timeline-spine. Semantic counterpart to the
+     brand-fixed #29 --color-line; translucent so it reads on any
+     surface, and overridden for light below (issue #5 §8). */
+  --color-hairline:        rgba(148, 163, 184, 0.10);
+  --color-hairline-strong: rgba(148, 163, 184, 0.20);
+
+  /* Accent (reuses #29's accent pair; adds fg/subtle roles).
+     accent-hover is the *darker* filled-button hover — it must keep
+     white text >= AA, so it stays at/below accent-strong (#2563eb).
+     #3b82f6 (the lighter accent) drops white text to ~3.7:1. */
+  --color-accent-hover:    #1d4ed8;
   --color-accent-fg:       #60a5fa;
   --color-accent-fg-hover: #93c5fd;
   --color-accent-subtle:   rgb(37 99 235 / 0.25);
@@ -163,6 +172,13 @@
 
   --color-chart-grid:       #cbd5e1;
   --color-chart-axis-label: #475569;
+
+  /* Semantic hairline: the dark slate-alpha is near-invisible on a light
+     surface, so darken for light (issue #5 §8 — hairlines must stay
+     visible across themes). The brand-fixed #29 --color-line tokens are
+     intentionally NOT overridden. */
+  --color-hairline:        rgba(15, 23, 42, 0.10);
+  --color-hairline-strong: rgba(15, 23, 42, 0.18);
 }
 
 [data-theme="dark"] {

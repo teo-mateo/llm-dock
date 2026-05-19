@@ -53,7 +53,7 @@ export default function CopyablePre({ children, ...rest }) {
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 z-10 px-2 py-1 text-[10px] font-medium rounded bg-gray-700/80 text-gray-300 hover:bg-gray-600 hover:text-white opacity-0 group-hover/code:opacity-100 focus:opacity-100 transition-opacity"
+        className="absolute top-1.5 right-1.5 z-10 px-2 py-1 text-[10px] font-medium rounded bg-surface-strong text-fg-muted hover:bg-surface-muted hover:text-fg opacity-0 group-hover/code:opacity-100 focus:opacity-100 transition-opacity"
         title={copied ? 'Copied' : 'Copy code'}
         aria-label={copied ? 'Code copied' : 'Copy code'}
       >

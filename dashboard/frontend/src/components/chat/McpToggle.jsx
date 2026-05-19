@@ -33,14 +33,14 @@ export default function McpToggle({ conversationId, enabledServers, onUpdate, di
             disabled={disabled}
             className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] border transition-colors ${
               isOn
-                ? 'bg-green-600/20 text-green-400 border-green-600/40 hover:bg-green-600/30'
-                : 'bg-gray-800 text-gray-500 border-gray-700 hover:bg-gray-700 hover:text-gray-400'
+                ? 'bg-success-subtle text-success-fg border-success hover:bg-success-subtle'
+                : 'bg-surface text-fg-subtle border-border hover:bg-surface-strong hover:text-fg-muted'
             } disabled:opacity-50`}
             title={server.description}
           >
             <i className={`fa-solid ${server.icon} text-[10px]`}></i>
             <span>{server.name}</span>
-            <span className={`text-[9px] ${isOn ? 'text-green-500' : 'text-gray-600'}`}>
+            <span className={`text-[9px] ${isOn ? 'text-success-fg' : 'text-fg-faint'}`}>
               {isOn ? 'ON' : 'OFF'}
             </span>
           </button>

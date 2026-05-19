@@ -5,8 +5,8 @@ export default function CritiqueButton({ messageId, hasCritique, loading, onClic
       disabled={loading}
       className={`text-xs px-2 py-1 rounded transition-colors ${
         hasCritique
-          ? 'text-yellow-400 hover:text-yellow-300'
-          : 'text-gray-500 hover:text-gray-400'
+          ? 'text-warning-fg hover:text-warning-fg'
+          : 'text-fg-subtle hover:text-fg-muted'
       } ${loading ? 'opacity-50 cursor-wait' : ''}`}
       title={hasCritique ? 'View / refresh critique' : 'Request critique'}
     >

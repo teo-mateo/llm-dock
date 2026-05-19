@@ -54,7 +54,7 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
 
   return (
     <div
-      className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+      className="fixed z-50 bg-surface border border-border-strong rounded-lg shadow-xl py-1 min-w-[160px]"
       style={{ left: menu.x, top: menu.y }}
       onClick={e => e.stopPropagation()}
     >
@@ -63,7 +63,7 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
           onSpinoff(menu.text)
           setMenu(null)
         }}
-        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+        className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-strong flex items-center gap-2"
       >
         <i className="fa-solid fa-code-branch text-purple-400 text-xs"></i>
         Spin-off...
@@ -73,9 +73,9 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
           await copyToClipboard(menu.text)
           setMenu(null)
         }}
-        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+        className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-strong flex items-center gap-2"
       >
-        <i className="fa-solid fa-copy text-gray-400 text-xs"></i>
+        <i className="fa-solid fa-copy text-fg-muted text-xs"></i>
         Copy
       </button>
       <button
@@ -83,9 +83,9 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
           onQuote?.(menu.text)
           setMenu(null)
         }}
-        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+        className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-strong flex items-center gap-2"
       >
-        <i className="fa-solid fa-quote-right text-blue-400 text-xs"></i>
+        <i className="fa-solid fa-quote-right text-accent-fg text-xs"></i>
         Quote in reply
       </button>
       <button
@@ -93,9 +93,9 @@ export default function TextContextMenu({ onSpinoff, onQuote, onCritique }) {
           onCritique?.(menu.text)
           setMenu(null)
         }}
-        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+        className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-strong flex items-center gap-2"
       >
-        <i className="fa-solid fa-magnifying-glass text-amber-400 text-xs"></i>
+        <i className="fa-solid fa-magnifying-glass text-warning-fg text-xs"></i>
         Critique this
       </button>
     </div>

@@ -47,24 +47,24 @@ export default function ArtifactRenderer({ artifact }) {
   const artType = artifact.type || artifact.artifact_type
 
   return (
-    <div className="rounded-lg border border-blue-500/30 overflow-hidden bg-gray-900/50 my-2">
+    <div className="rounded-lg border border-accent overflow-hidden bg-surface-muted my-2">
       {/* Title bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-blue-500/10 border-b border-blue-500/20">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-accent-subtle border-b border-accent">
         <div className="flex items-center gap-2 text-xs">
           <i className={`fa-solid ${
             artType === 'svg' ? 'fa-image' :
             artType === 'code' ? 'fa-code' :
             artType === 'html' ? 'fa-globe' :
             'fa-file'
-          } text-blue-400 text-[10px]`}></i>
-          <span className="text-blue-300 font-medium">{artifact.title || 'Artifact'}</span>
-          <span className="text-gray-500 text-[10px]">{artType.toUpperCase()}</span>
+          } text-accent-fg text-[10px]`}></i>
+          <span className="text-accent-fg-hover font-medium">{artifact.title || 'Artifact'}</span>
+          <span className="text-fg-subtle text-[10px]">{artType.toUpperCase()}</span>
         </div>
         <div className="flex items-center gap-1">
           {artType === 'html' && (
             <button
               onClick={() => popoutArtifact(artifact)}
-              className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"
+              className="text-fg-subtle hover:text-accent-fg px-1.5 py-0.5 rounded hover:bg-accent-subtle"
               title="Pop out to new tab"
             >
               <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
@@ -72,14 +72,14 @@ export default function ArtifactRenderer({ artifact }) {
           )}
           <button
             onClick={() => downloadArtifact(artifact)}
-            className="text-gray-500 hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-500/10"
+            className="text-fg-subtle hover:text-accent-fg px-1.5 py-0.5 rounded hover:bg-accent-subtle"
             title="Download"
           >
             <i className="fa-solid fa-download text-[10px]"></i>
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-gray-500 hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-700"
+            className="text-fg-subtle hover:text-fg-muted px-1.5 py-0.5 rounded hover:bg-surface-strong"
           >
             <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'} text-[10px]`}></i>
           </button>
@@ -105,7 +105,7 @@ export default function ArtifactRenderer({ artifact }) {
           )}
 
           {artType === 'code' && (
-            <pre className="bg-gray-950 rounded p-3 text-xs text-gray-300 overflow-auto max-h-96">
+            <pre className="bg-app rounded p-3 text-xs text-fg-muted overflow-auto max-h-96">
               <code>{artifact.content}</code>
             </pre>
           )}
