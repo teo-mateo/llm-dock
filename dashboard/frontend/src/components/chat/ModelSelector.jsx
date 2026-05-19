@@ -24,7 +24,7 @@ export default function ModelSelector({ mainService, sidekickService, onChangeMa
         </select>
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-400 whitespace-nowrap">Sidekick:</label>
+        <label className="text-xs text-gray-400 whitespace-nowrap">Critic:</label>
         <select
           value={sidekickService || ''}
           onChange={e => onChangeSidekick(e.target.value || null)}

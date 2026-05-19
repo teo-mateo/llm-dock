@@ -25,7 +25,7 @@ export default function SystemPromptEditor({ mainPrompt, sidekickPrompt, onChang
             />
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Sidekick Model</label>
+            <label className="text-xs text-gray-400 mb-1 block">Critic Model</label>
             <textarea
               value={sidekickPrompt}
               onChange={e => onChangeSidekick(e.target.value)}
