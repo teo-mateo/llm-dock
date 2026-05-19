@@ -85,19 +85,11 @@ export function ThemeProvider({ children }) {
     })
   }, [])
 
-  // Follow the OS only while the user has NOT chosen explicitly.
-  useEffect(() => {
-    if (readUserOverride()) return
-    const mql = window.matchMedia('(prefers-color-scheme: light)')
-    const handler = (e) => {
-      if (readUserOverride()) return
-      const next = e.matches ? 'light' : 'dark'
-      applyThemeToDom(next)
-      setThemeState(next)
-    }
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [])
+  // OS-following is first-load-only (owner decision): prefers-color-scheme
+  // is sampled once during initial resolution (resolveInitial + the inline
+  // anti-FOUC script), never live. Intentionally no matchMedia change
+  // listener — a mid-session OS flip must not silently change the theme
+  // when there is no visible "system" mode to explain it.
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, cycleTheme, themes: AVAILABLE_THEMES }}>
