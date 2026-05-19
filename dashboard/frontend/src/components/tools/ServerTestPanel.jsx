@@ -34,18 +34,18 @@ function ToolRow({ serverId, tool }) {
   }
 
   return (
-    <div className="border border-gray-700 rounded bg-gray-900 p-3 space-y-2">
+    <div className="border border-border rounded bg-app p-3 space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <div>
-          <span className="font-mono text-sm text-yellow-300">{tool.name}</span>
+          <span className="font-mono text-sm text-warning-fg">{tool.name}</span>
           {tool.description && (
-            <span className="ml-2 text-xs text-gray-400">{tool.description}</span>
+            <span className="ml-2 text-xs text-fg-muted">{tool.description}</span>
           )}
         </div>
         <button
           onClick={run}
           disabled={busy}
-          className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white"
+          className="text-xs px-2 py-1 rounded bg-accent-strong hover:bg-accent-hover disabled:opacity-50 text-white"
         >
           {busy ? 'Running…' : 'Run'}
         </button>
@@ -55,27 +55,27 @@ function ToolRow({ serverId, tool }) {
         onChange={(e) => setArgs(e.target.value)}
         spellCheck={false}
         rows={3}
-        className="w-full bg-gray-950 text-gray-200 font-mono text-xs p-2 rounded border border-gray-700 focus:outline-none focus:border-gray-500"
+        className="w-full bg-surface-muted text-fg font-mono text-xs p-2 rounded border border-border focus:outline-none focus:border-accent"
         placeholder='{"query": "example"}'
       />
       {error && (
-        <div className="text-xs text-red-400">
+        <div className="text-xs text-danger-fg">
           <i className="fa-solid fa-triangle-exclamation mr-1"></i>{error}
         </div>
       )}
       {result && (
         <div className="text-xs space-y-1">
-          <div className="text-green-400">
+          <div className="text-success-fg">
             <i className="fa-solid fa-check mr-1"></i>Result
           </div>
           {result.artifacts && result.artifacts.length > 0 && (
-            <div className="text-gray-400">
+            <div className="text-fg-muted">
               Artifacts: {result.artifacts.map((a, i) => (
                 <span key={i} className="ml-1 font-mono">[{a.type}{a.content_size ? ` ${a.content_size}b` : ''}]</span>
               ))}
             </div>
           )}
-          <pre className="bg-gray-950 border border-gray-800 rounded p-2 text-gray-200 max-h-72 overflow-auto whitespace-pre-wrap">{result.result_text}</pre>
+          <pre className="bg-surface-muted border border-border rounded p-2 text-fg max-h-72 overflow-auto whitespace-pre-wrap">{result.result_text}</pre>
         </div>
       )}
     </div>
@@ -107,7 +107,7 @@ export default function ServerTestPanel({ server }) {
 
   if (!server.enabled) {
     return (
-      <div className="text-xs text-gray-500 italic">
+      <div className="text-xs text-fg-subtle italic">
         Server is disabled in config. Enable it to test.
       </div>
     )
@@ -119,18 +119,18 @@ export default function ServerTestPanel({ server }) {
         <button
           onClick={discover}
           disabled={busy}
-          className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+          className="text-xs px-3 py-1.5 rounded bg-surface hover:bg-surface-strong disabled:opacity-50"
         >
           {busy ? 'Discovering…' : 'List tools'}
         </button>
         {tools && (
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-fg-muted">
             {tools.length} tool{tools.length === 1 ? '' : 's'}
           </span>
         )}
       </div>
       {error && (
-        <div className="text-xs text-red-400">
+        <div className="text-xs text-danger-fg">
           <i className="fa-solid fa-triangle-exclamation mr-1"></i>{error}
         </div>
       )}
@@ -142,7 +142,7 @@ export default function ServerTestPanel({ server }) {
         </div>
       )}
       {tools && tools.length === 0 && (
-        <div className="text-xs text-gray-500 italic">Server advertises no tools.</div>
+        <div className="text-xs text-fg-subtle italic">Server advertises no tools.</div>
       )}
     </div>
   )
