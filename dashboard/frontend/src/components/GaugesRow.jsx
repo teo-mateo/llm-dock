@@ -1,5 +1,9 @@
 const CIRCUMFERENCE = 2 * Math.PI * 18
 
+// Categorical threshold hexes stay JS constants (not theme-driven): they
+// must read identically and are asserted by GaugesRow.test (issue #5 §8).
+// Only the non-threshold SVG chrome (track, label text) is themed, via
+// CSS-driven stroke-/fill- utilities that re-resolve on a theme swap.
 const kvColor = (pct) => {
   if (pct < 60) return '#22c55e'
   if (pct <= 85) return '#eab308'
@@ -14,7 +18,7 @@ function DonutGauge({ value, label, colorGetter }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
       <svg width="48" height="48" viewBox="0 0 48 48">
-        <circle cx="24" cy="24" r={18} fill="none" stroke="#374151" strokeWidth={4} strokeDasharray={CIRCUMFERENCE} />
+        <circle className="stroke-chart-grid" cx="24" cy="24" r={18} fill="none" strokeWidth={4} strokeDasharray={CIRCUMFERENCE} />
         {displayPct !== undefined && color && (
           <circle
             cx="24"
@@ -34,14 +38,14 @@ function DonutGauge({ value, label, colorGetter }) {
           y="24"
           dominantBaseline="central"
           textAnchor="middle"
-          fill="#d1d5db"
+          className="fill-chart-axis-label"
           fontSize="9"
           fontWeight="600"
         >
           {displayPct !== undefined ? `${Math.round(displayPct)}%` : '—'}
         </text>
       </svg>
-      <span className="text-gray-400 text-xs">{label}</span>
+      <span className="text-fg-muted text-xs">{label}</span>
     </div>
   )
 }
@@ -52,8 +56,8 @@ export default function GaugesRow({ kvCache, prefixHitRatio, specAcceptRatio }) 
   const specPct = specAcceptRatio !== undefined && specAcceptRatio !== null ? specAcceptRatio * 100 : undefined
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-      <h3 className="text-sm font-medium text-gray-400 mb-3">Utilization</h3>
+    <div className="bg-surface rounded-lg border border-border p-4">
+      <h3 className="text-sm font-medium text-fg-muted mb-3">Utilization</h3>
       <div className="flex justify-around items-center">
         <div title="KV blocks actively used by running/waiting requests (not prefix-cached blocks).">
           <DonutGauge value={kvPct} label="Active KV" colorGetter={kvColor} />

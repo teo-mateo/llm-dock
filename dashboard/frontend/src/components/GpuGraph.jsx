@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'react'
+import { useTheme } from '../contexts/ThemeContext'
 
 const MAX_POINTS = 20
+
+// Canvas is immediate-mode, so it can't ride the CSS cascade on a theme
+// swap — read the resolved token values at draw time and repaint when the
+// theme changes (issue #5 §8).
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
 
 function draw(canvas, memoryHistory, computeHistory) {
   const ctx = canvas.getContext('2d')
@@ -17,7 +25,7 @@ function draw(canvas, memoryHistory, computeHistory) {
   const pad = 2
 
   // Grid lines
-  ctx.strokeStyle = '#374151'
+  ctx.strokeStyle = cssVar('--color-chart-grid')
   ctx.lineWidth = 0.5
   for (let i = 0; i <= 4; i++) {
     const y = pad + (height - 2 * pad) * (i / 4)
@@ -44,30 +52,31 @@ function draw(canvas, memoryHistory, computeHistory) {
     ctx.stroke()
   }
 
-  drawLine(memoryHistory, '#3b82f6')
-  drawLine(computeHistory, '#22c55e')
+  drawLine(memoryHistory, cssVar('--color-chart-memory'))
+  drawLine(computeHistory, cssVar('--color-chart-compute'))
 }
 
 export default function GpuGraph({ memoryHistory, computeHistory }) {
   const canvasRef = useRef(null)
+  const { theme } = useTheme()
 
   useEffect(() => {
     if (canvasRef.current) {
       draw(canvasRef.current, memoryHistory, computeHistory)
     }
-  }, [memoryHistory, computeHistory])
+  }, [memoryHistory, computeHistory, theme])
 
   return (
     <div className="flex-1 min-w-0 pt-1">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-gray-400 text-xs">GPU History (60s)</p>
+        <p className="text-fg-muted text-xs">GPU History (60s)</p>
         <div className="flex gap-3 text-xs">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 h-0.5 bg-blue-500 rounded" />
+            <span className="inline-block w-3 h-0.5 bg-chart-memory rounded" />
             Memory
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 h-0.5 bg-green-500 rounded" />
+            <span className="inline-block w-3 h-0.5 bg-chart-compute rounded" />
             Compute
           </span>
         </div>
