@@ -111,15 +111,14 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
   }
 
   function handlePaste(e) {
-    const items = e.clipboardData?.items
-    if (!items) return
     if (disabled) return
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault()
-        const file = item.getAsFile()
-        if (file) addImageFile(file)
-      }
+    // Route pasted files (images and allowlisted non-images, e.g. copied
+    // from the OS file manager) through the same ingest path as the
+    // attach button and drag-and-drop. Text paste falls through.
+    const files = e.clipboardData?.files
+    if (files && files.length > 0) {
+      e.preventDefault()
+      ingestFiles(files)
     }
   }
 
