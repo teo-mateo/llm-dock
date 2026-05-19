@@ -9,6 +9,22 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&display=swap">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LLM-Dock</title>
+    <script>
+      // Anti-FOUC: set the theme before the stylesheet/React so first paint
+      // is correct. Must run before the module bundle (issue #5 §4).
+      (function () {
+        try {
+          var KEY = 'dashboard_theme';
+          var stored = localStorage.getItem(KEY);
+          var theme = (stored === 'dark' || stored === 'light') ? stored
+            : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

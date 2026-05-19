@@ -7,17 +7,23 @@
  * These tokens are the foundation later phases (nav, transcript, composer)
  * build on. Families/values are swappable later; the role structure is the
  * decision.
+ *
+ * Issue #5 — theme system. The `--color-<name>` semantic tokens below
+ * (surfaces / fg / border / state / badge / chart) are the themed layer:
+ * dark is the @theme default; [data-theme="light"] overrides only the
+ * variables. The #29 fixed palette (gray ramp + accent/critique/mcp/
+ * spinoff/error) stays brand-fixed across themes — semantic tokens are
+ * what components migrate onto (issue #5 §2 mapping) over PRs 2–4.
+ * `static` keeps every token in the built CSS even when not yet
+ * referenced, so later-PR consumers can read them as runtime `var(--...)`.
  */
 @theme static {
-  /* §6 — distinctive trio. Replaces the previous undeclared system-sans.
-     `static` keeps every token in the built CSS even when not yet
-     referenced — later phases consume these as runtime `var(--...)`. */
+  /* §6 — distinctive trio. Replaces the previous undeclared system-sans. */
   --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;        /* UI chrome */
   --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", serif; /* assistant prose */
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; /* user input, code, labels */
 
-  /* §7 — refine, don't reinvent. Deepen / de-muddy the gray surfaces and
-     tighten contrast. Keeps blue as primary; rejects the mock's amber/cyan. */
+  /* §7 — #29 fixed gray ramp (brand-fixed; not themed). */
   --color-gray-950: #07090d;
   --color-gray-900: #0b0f15; /* app background */
   --color-gray-850: #11161f; /* raised panels (also makes bg-gray-850 real) */
@@ -25,8 +31,8 @@
   --color-gray-700: #232b38; /* hairline borders */
   --color-gray-600: #36404f; /* strong borders */
 
-  /* Established semantic colors (kept): blue=primary, yellow=critique,
-     green=MCP-on, purple=spin-off, red=error. Available as bg-/text-/border-. */
+  /* #29 brand/semantic colors (brand-fixed; not themed): blue=primary,
+     yellow=critique, green=MCP-on, purple=spin-off, red=error. */
   --color-accent: #3b82f6;
   --color-accent-strong: #2563eb;
   --color-critique: #eab308;
@@ -34,18 +40,158 @@
   --color-spinoff: #a855f7;
   --color-error: #ef4444;
 
-  /* Hairline rules + timeline spine — re-expressed in the neutral/blue palette
-     (consumed by the transcript-as-log work, §4). */
+  /* #29 hairline rules + timeline spine. */
   --color-line: rgba(148, 163, 184, 0.10);
   --color-line-strong: rgba(148, 163, 184, 0.20);
+
+  /* -----------------------------------------------------------------
+   * Issue #5 — semantic theming tokens. Dark = default (values chosen
+   * to preserve pixel parity with the post-#29 look). [data-theme=
+   * "light"] below overrides only what differs. Names map to issue #5
+   * §2: bg-app/surface/..., text-fg/..., border-border/..., etc.
+   * ----------------------------------------------------------------- */
+
+  /* Surfaces */
+  --color-app:            #0b0f15;
+  --color-surface:        #161c27;
+  --color-surface-strong: #232b38;
+  --color-surface-muted:  #11161f;
+  --color-overlay:        #07090d;
+  --color-elevated:       #11161f;
+
+  /* Foreground / text */
+  --color-fg:        #f3f4f6;
+  --color-fg-muted:  #9ca3af;
+  --color-fg-subtle: #6b7280;
+  --color-fg-faint:  #4b5563;
+  --color-fg-inverse:#ffffff;
+
+  /* Borders */
+  --color-border:        #232b38;
+  --color-border-strong: #36404f;
+  --color-border-subtle: #161c27;
+
+  /* Accent (reuses #29's accent pair; adds fg/subtle roles). */
+  --color-accent-hover:    #3b82f6;
+  --color-accent-fg:       #60a5fa;
+  --color-accent-fg-hover: #93c5fd;
+  --color-accent-subtle:   rgb(37 99 235 / 0.25);
+
+  /* State (semantic, not literal) */
+  --color-success:        #22c55e;
+  --color-success-fg:     #4ade80;
+  --color-success-subtle: rgb(20 83 45 / 0.40);
+  --color-danger:         #dc2626;
+  --color-danger-fg:      #f87171;
+  --color-danger-subtle:  rgb(127 29 29 / 0.30);
+  --color-warning:        #facc15;
+  --color-warning-fg:     #fde047;
+  --color-warning-subtle: rgb(120 53 15 / 0.30);
+  --color-info:           #38bdf8;
+  --color-info-fg:        #7dd3fc;
+
+  /* Engine badges (categorical, themed) */
+  --color-badge-llamacpp-bg: rgb(37 99 235 / 0.30);
+  --color-badge-llamacpp-fg: #93c5fd;
+  --color-badge-vllm-bg:     rgb(147 51 234 / 0.30);
+  --color-badge-vllm-fg:     #d8b4fe;
+  --color-badge-webui-bg:    rgb(5 150 105 / 0.30);
+  --color-badge-webui-fg:    #6ee7b7;
+  --color-badge-neutral-bg:  rgb(75 85 99 / 0.30);
+  --color-badge-neutral-fg:  #9ca3af;
+
+  /* Charts (read by canvas/SVG via getComputedStyle; also utilities) */
+  --color-chart-memory:     #3b82f6;
+  --color-chart-compute:    #22c55e;
+  --color-chart-grid:       #232b38;
+  --color-chart-axis-label: #d1d5db;
+  --color-gauge-prefix:     #3b82f6;
+  --color-gauge-spec:       #a855f7;
+  --color-gauge-good:       #22c55e;
+  --color-gauge-warn:       #eab308;
+  --color-gauge-bad:        #ef4444;
+}
+
+/* -------------------------------------------------------------------
+ * Light theme — overrides only. State/brand hues keep their meaning
+ * (running=green, stopped=red, link=blue), using light-friendly
+ * variants rather than inverted lightness (issue #5 §8).
+ * ------------------------------------------------------------------- */
+[data-theme="light"] {
+  --color-app:            #f8fafc;
+  --color-surface:        #ffffff;
+  --color-surface-strong: #f1f5f9;
+  --color-surface-muted:  #e2e8f0;
+  --color-overlay:        #ffffff;
+  --color-elevated:       #ffffff;
+
+  --color-fg:        #0f172a;
+  --color-fg-muted:  #475569;
+  --color-fg-subtle: #64748b;
+  --color-fg-faint:  #94a3b8;
+  --color-fg-inverse:#ffffff;
+
+  --color-border:        #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-border-subtle: #f1f5f9;
+
+  --color-accent-hover:    #1d4ed8;
+  --color-accent-fg:       #2563eb;
+  --color-accent-fg-hover: #1d4ed8;
+  --color-accent-subtle:   rgb(37 99 235 / 0.10);
+
+  --color-success:        #16a34a;
+  --color-success-fg:     #15803d;
+  --color-success-subtle: rgb(34 197 94 / 0.10);
+  --color-danger:         #dc2626;
+  --color-danger-fg:      #b91c1c;
+  --color-danger-subtle:  rgb(220 38 38 / 0.08);
+  --color-warning:        #d97706;
+  --color-warning-fg:     #b45309;
+  --color-warning-subtle: rgb(217 119 6 / 0.10);
+  --color-info:           #0284c7;
+  --color-info-fg:        #0369a1;
+
+  --color-badge-llamacpp-bg: rgb(37 99 235 / 0.12);
+  --color-badge-llamacpp-fg: #1d4ed8;
+  --color-badge-vllm-bg:     rgb(147 51 234 / 0.12);
+  --color-badge-vllm-fg:     #7e22ce;
+  --color-badge-webui-bg:    rgb(5 150 105 / 0.12);
+  --color-badge-webui-fg:    #047857;
+  --color-badge-neutral-bg:  rgb(100 116 139 / 0.12);
+  --color-badge-neutral-fg:  #475569;
+
+  --color-chart-grid:       #cbd5e1;
+  --color-chart-axis-label: #475569;
+}
+
+[data-theme="dark"] {
+  /* intentionally empty — @theme covers dark; selector kept for symmetry */
 }
 
 @layer base {
+  /* Variable-backed so first paint is correct before Tailwind's
+     content-scanned utilities or React mount (issue #5 §8, owner note 3). */
+  html {
+    background-color: var(--color-app);
+    color: var(--color-fg);
+  }
   body {
     font-family: var(--font-sans);
-    background-color: var(--color-gray-900);
-    color: #c7d0db;
+    background-color: var(--color-app);
+    color: var(--color-fg);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* -------------------------------------------------------------------
+ * Anti-transition-flash helper. ThemeProvider toggles this on <html>
+ * for one frame around a swap so transition-colors elements snap
+ * instead of animating through intermediate colors (issue #5 §8).
+ * ------------------------------------------------------------------- */
+.theme-swap-no-transitions *,
+.theme-swap-no-transitions *::before,
+.theme-swap-no-transitions *::after {
+  transition: none !important;
 }

@@ -1,9 +1,12 @@
+import ThemeSwitcher from './ThemeSwitcher'
+
 function Header() {
   return (
-    <header className="h-16 bg-gray-900/80 border-b border-gray-800 px-4 flex items-center justify-end">
+    <header className="h-16 bg-app/80 border-b border-border-subtle px-4 flex items-center justify-end gap-3">
+      <ThemeSwitcher />
       <a
         href="/"
-        className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1.5"
+        className="text-xs text-fg-subtle hover:text-fg-muted flex items-center gap-1.5 transition-colors"
         title="Switch to the legacy dashboard"
       >
         <i className="fa-solid fa-arrow-left text-[10px]"></i>

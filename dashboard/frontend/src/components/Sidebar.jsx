@@ -34,11 +34,11 @@ function Sidebar() {
     <aside
       className={`hidden md:flex ${
         collapsed ? 'w-16' : 'w-56'
-      } bg-gray-900 border-r border-gray-800 flex-col flex-shrink-0 transition-[width] duration-200 ease-in-out`}
+      } bg-app border-r border-border-subtle flex-col flex-shrink-0 transition-[width] duration-200 ease-in-out`}
     >
       {/* Logo + collapse toggle */}
       <div
-        className={`h-16 border-b border-gray-800 flex items-center ${
+        className={`h-16 border-b border-border-subtle flex items-center ${
           collapsed ? 'justify-center px-0' : 'justify-between px-4'
         }`}
       >
@@ -48,8 +48,8 @@ function Sidebar() {
               <i className="fa-solid fa-cube text-white text-sm"></i>
             </div>
             <div className="min-w-0">
-              <h1 className="font-bold text-lg truncate">LLM-Dock</h1>
-              <p className="text-xs text-gray-500">v1.0.0</p>
+              <h1 className="font-bold text-lg truncate text-fg">LLM-Dock</h1>
+              <p className="text-xs text-fg-subtle">v1.0.0</p>
             </div>
           </div>
         )}
@@ -59,7 +59,7 @@ function Sidebar() {
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800/60 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors"
         >
           <i
             className={`fa-solid ${
@@ -82,8 +82,8 @@ function Sidebar() {
                 collapsed ? 'justify-center px-0' : 'px-4'
               } ${
                 isActive
-                  ? 'text-white bg-gray-800/70'
-                  : 'text-gray-400 hover:bg-gray-800/50'
+                  ? 'text-fg bg-surface-strong/70'
+                  : 'text-fg-muted hover:bg-surface/50'
               }`
             }
           >
@@ -92,7 +92,7 @@ function Sidebar() {
             {collapsed && (
               <span
                 role="tooltip"
-                className="pointer-events-none absolute left-full ml-2 z-20 whitespace-nowrap rounded-md bg-gray-800 px-2 py-1 text-xs text-gray-100 border border-gray-700 opacity-0 shadow-lg transition-opacity duration-150 group-hover/nav:opacity-100"
+                className="pointer-events-none absolute left-full ml-2 z-20 whitespace-nowrap rounded-md bg-surface px-2 py-1 text-xs text-fg border border-border opacity-0 shadow-lg transition-opacity duration-150 group-hover/nav:opacity-100"
               >
                 {label}
               </span>
@@ -103,7 +103,7 @@ function Sidebar() {
 
       {/* User section */}
       <div
-        className={`border-t border-gray-800 ${
+        className={`border-t border-border-subtle ${
           collapsed ? 'p-2' : 'p-4'
         }`}
       >
@@ -113,18 +113,18 @@ function Sidebar() {
           }`}
         >
           <div
-            className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center flex-shrink-0"
+            className="w-8 h-8 bg-surface-strong rounded-full flex items-center justify-center flex-shrink-0"
             title={collapsed ? 'Admin' : undefined}
           >
-            <i className="fa-solid fa-user text-gray-400 text-sm"></i>
+            <i className="fa-solid fa-user text-fg-muted text-sm"></i>
           </div>
           {!collapsed && (
             <>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Admin</p>
+                <p className="text-sm font-medium truncate text-fg">Admin</p>
               </div>
               <button
-                className="text-gray-500 hover:text-gray-300"
+                className="text-fg-subtle hover:text-fg-muted"
                 aria-label="Log out"
                 title="Log out"
               >

@@ -20,7 +20,7 @@ function DefaultLayout({ children }) {
 
 function App() {
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100">
+    <div className="flex h-screen bg-app text-fg">
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         <Routes>
