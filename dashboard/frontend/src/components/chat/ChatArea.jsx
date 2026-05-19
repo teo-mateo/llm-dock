@@ -93,11 +93,13 @@ export default function ChatArea({
     setSpinoffs(prev => prev.map(s => s.id === id ? { ...s, zIndex: topZRef.current } : s))
   }, [])
 
-  // A conversation is in the URL but its fetch hasn't returned yet. Show a
-  // loading state — NOT the create composer — otherwise typing here would
-  // spawn a different new conversation instead of waiting for the requested
-  // one (codex iteration 1, P1).
-  if (!conversation && awaitingConversation) {
+  // The route points at a conversation whose fetch hasn't resolved yet
+  // (direct load, or switching from another conversation). Authoritative
+  // over a possibly-stale `conversation`: render loading, never the active
+  // chat or the create composer. Otherwise typing would either spawn a
+  // different new conversation (codex iter 1) or, worse, send into the
+  // previously-loaded chat via its stale sendMessage closure (codex iter 2).
+  if (awaitingConversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500">
         <div className="text-center">

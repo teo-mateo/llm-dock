@@ -46,4 +46,25 @@ describe('ChatArea no-conversation states', () => {
     expect(container.textContent).not.toContain('Start a new conversation')
     expect(container.querySelector('textarea')).toBeNull()
   })
+
+  it('shows loading (not the stale chat) when switching to a different route id', () => {
+    // Regression for codex iteration 2 P1: loadConversation does not clear
+    // the previous conversation before fetching, so when switching from A
+    // to B, `conversation` is still A while awaitingConversation is true.
+    // awaitingConversation must be authoritative — render loading, not A's
+    // composer — or an Enter would send into A via its stale closure.
+    const { container } = render(
+      <ChatArea
+        conversation={{ id: 'conv-A', main_service: 'vllm-test' }}
+        awaitingConversation={true}
+        defaultModelName="vllm-test"
+        onCreateAndSend={() => {}}
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+      />
+    )
+    expect(container.textContent).toContain('Loading conversation')
+    expect(container.querySelector('textarea')).toBeNull()
+  })
 })
