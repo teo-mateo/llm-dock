@@ -8,8 +8,10 @@
  * build on. Families/values are swappable later; the role structure is the
  * decision.
  */
-@theme {
-  /* §6 — distinctive trio. Replaces the previous undeclared system-sans. */
+@theme static {
+  /* §6 — distinctive trio. Replaces the previous undeclared system-sans.
+     `static` keeps every token in the built CSS even when not yet
+     referenced — later phases consume these as runtime `var(--...)`. */
   --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;        /* UI chrome */
   --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", serif; /* assistant prose */
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; /* user input, code, labels */
