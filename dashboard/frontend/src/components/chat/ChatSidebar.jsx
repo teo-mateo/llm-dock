@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import ThemeSwitcher from '../ThemeSwitcher'
 
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
   const isSpinoff = !!conv.parent_conversation_id
@@ -12,12 +13,12 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
   return (
     <div
       onClick={() => onSelect(conv.id)}
-      className={`group flex items-center gap-2 py-2 cursor-pointer border-b border-gray-800/30 ${
+      className={`group flex items-center gap-2 py-2 cursor-pointer border-b border-border-subtle ${
         selected
-          ? 'bg-blue-900/30 text-white'
+          ? 'bg-accent-subtle text-fg'
           : activeId === conv.id
-            ? 'bg-gray-800 text-white'
-            : 'text-gray-400 hover:bg-gray-800/50'
+            ? 'bg-surface text-fg'
+            : 'text-fg-muted hover:bg-surface-muted'
       }`}
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
@@ -33,7 +34,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
             type="checkbox"
             checked={selected}
             onChange={() => onToggleSelect(conv.id)}
-            className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
+            className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
             title="Select"
           />
         </label>
@@ -46,7 +47,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
             type="checkbox"
             checked={selected}
             onChange={() => onToggleSelect(conv.id)}
-            className={`w-3.5 h-3.5 accent-blue-500 cursor-pointer transition-opacity ${
+            className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${
               checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
             }`}
             title="Select"
@@ -55,7 +56,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       )}
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{conv.title}</div>
-        <div className="text-[10px] text-gray-600">
+        <div className="text-[10px] text-fg-faint">
           {new Date(conv.updated_at).toLocaleDateString()}
         </div>
       </div>
@@ -63,17 +64,17 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
         <div className="flex gap-1 flex-shrink-0">
           <button
             onClick={e => { e.stopPropagation(); onDelete(conv.id); setConfirmDelete(null) }}
-            className="text-[10px] px-1.5 py-0.5 bg-red-600 rounded text-white"
+            className="text-[10px] px-1.5 py-0.5 bg-danger rounded text-white"
           >Yes</button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(null) }}
-            className="text-[10px] px-1.5 py-0.5 bg-gray-600 rounded text-white"
+            className="text-[10px] px-1.5 py-0.5 bg-border-strong rounded text-white"
           >No</button>
         </div>
       ) : (
         <button
           onClick={e => { e.stopPropagation(); setConfirmDelete(conv.id) }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+          className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
           title="Delete conversation"
           aria-label="Delete conversation"
         >
@@ -162,12 +163,13 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   }
 
   return (
-    <div className="w-72 border-r border-gray-800 flex flex-col bg-gray-900 flex-shrink-0">
+    <div className="w-72 border-r border-border flex flex-col bg-app flex-shrink-0">
       {/* Header */}
-      <div className="p-3 border-b border-gray-800">
+      <div className="p-3 border-b border-border">
+        <div className="flex justify-end mb-2"><ThemeSwitcher /></div>
         <button
           onClick={onCreate}
-          className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-plus"></i>
           New Conversation
@@ -178,19 +180,19 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           morphs to selection toolbar in select mode. Same outer div / height
           either way so the conversation list never shifts vertically. */}
       <div
-        className={`h-9 px-3 border-b border-gray-800 flex items-center justify-between text-xs ${
-          selectionCount > 0 ? 'bg-gray-800/60' : ''
+        className={`h-9 px-3 border-b border-border flex items-center justify-between text-xs ${
+          selectionCount > 0 ? 'bg-surface-muted' : ''
         }`}
       >
         {selectionCount === 0 ? (
           <>
-            <span className="text-gray-500">
+            <span className="text-fg-subtle">
               {conversations.length} {conversations.length === 1 ? 'chat' : 'chats'}
             </span>
             {tree.roots.length > 0 && (
               <button
                 onClick={toggleSelectAllRoots}
-                className="text-[11px] text-gray-500 hover:text-gray-300"
+                className="text-[11px] text-fg-subtle hover:text-fg-muted"
                 title="Selects only top-level conversations; spin-offs follow their parent"
               >
                 {allRootsSelected ? 'Deselect all' : 'Select all'}
@@ -199,31 +201,31 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           </>
         ) : (
           <>
-            <span className="text-gray-300">{selectionCount} selected</span>
+            <span className="text-fg-muted">{selectionCount} selected</span>
             <div className="flex items-center gap-2">
               {confirmBulk ? (
                 <>
                   <button
                     onClick={handleBulkDelete}
-                    className="px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-white"
+                    className="px-2 py-1 bg-danger hover:bg-danger rounded text-white"
                   >Delete {selectionCount}</button>
                   <button
                     onClick={() => setConfirmBulk(false)}
-                    className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-white"
+                    className="px-2 py-1 bg-border-strong hover:bg-border-strong rounded text-white"
                   >Cancel</button>
                 </>
               ) : (
                 <>
                   <button
                     onClick={() => setConfirmBulk(true)}
-                    className="px-2 py-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
+                    className="px-2 py-1 text-danger-fg hover:text-danger-fg hover:bg-danger-subtle rounded"
                     title="Delete selected"
                   >
                     <i className="fa-solid fa-trash"></i>
                   </button>
                   <button
                     onClick={clearSelection}
-                    className="px-2 py-1 text-gray-400 hover:text-gray-200"
+                    className="px-2 py-1 text-fg-muted hover:text-fg"
                     title="Clear selection"
                   >Clear</button>
                 </>
@@ -236,7 +238,7 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
       {/* Conversation tree */}
       <div className="flex-1 overflow-auto">
         {conversations.length === 0 && (
-          <div className="p-4 text-center text-xs text-gray-500">
+          <div className="p-4 text-center text-xs text-fg-subtle">
             No conversations yet
           </div>
         )}

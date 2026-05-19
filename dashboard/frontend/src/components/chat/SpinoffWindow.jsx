@@ -7,10 +7,12 @@ import rehypeKatex from 'rehype-katex'
 import { streamChat } from '../../services/sse'
 import { createConversation, getConversation } from '../../services/chat'
 import CopyablePre from './CopyablePre'
+import useProseClass from '../../hooks/useProseClass'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
 export default function SpinoffWindow({ id, conversationId: initialConvId, selectedText, serviceName, parentConversationId, position, onClose, onMinimize, onFocus, onConversationCreated, zIndex }) {
+  const proseClass = useProseClass('prose-xs', 'max-w-none', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
   const [convId, setConvId] = useState(initialConvId || null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -181,32 +183,31 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
   return (
     <div
       onClick={onFocus}
-      className="fixed shadow-2xl rounded-xl border border-gray-600 flex flex-col overflow-hidden"
-      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex, backgroundColor: '#111318' }}
+      className="fixed shadow-2xl rounded-xl border border-border-strong flex flex-col overflow-hidden bg-elevated"
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex }}
     >
       {/* Title bar */}
       <div
         onMouseDown={handleMouseDown}
-        className={`px-3 py-2 border-b border-gray-700 flex items-center justify-between flex-shrink-0 select-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={{ backgroundColor: '#191c22' }}
+        className={`px-3 py-2 border-b border-border bg-surface flex items-center justify-between flex-shrink-0 select-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         <div className="flex items-center gap-2 text-xs font-medium min-w-0">
           <i className="fa-solid fa-code-branch text-purple-400 text-[10px]"></i>
-          <span className="truncate text-gray-300" title={title}>{title}</span>
+          <span className="truncate text-fg-muted" title={title}>{title}</span>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-          <button onClick={e => { e.stopPropagation(); onMinimize() }} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-yellow-400 hover:bg-gray-700 rounded" title="Minimize">
+          <button onClick={e => { e.stopPropagation(); onMinimize() }} className="w-6 h-6 flex items-center justify-center text-fg-subtle hover:text-warning-fg hover:bg-surface-strong rounded" title="Minimize">
             <i className="fa-solid fa-minus text-[10px]"></i>
           </button>
-          <button onClick={e => { e.stopPropagation(); onClose() }} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded" title="Close">
+          <button onClick={e => { e.stopPropagation(); onClose() }} className="w-6 h-6 flex items-center justify-center text-fg-subtle hover:text-danger-fg hover:bg-surface-strong rounded" title="Close">
             <i className="fa-solid fa-xmark text-[10px]"></i>
           </button>
         </div>
       </div>
 
       {/* Context */}
-      <div className="px-3 py-1.5 border-b border-gray-800/50 bg-gray-800/20 flex-shrink-0">
-        <div className="text-[10px] text-gray-500 italic max-h-10 overflow-auto leading-tight">
+      <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-muted flex-shrink-0">
+        <div className="text-[10px] text-fg-subtle italic max-h-10 overflow-auto leading-tight">
           "{selectedText.length > 200 ? selectedText.slice(0, 200) + '...' : selectedText}"
         </div>
       </div>
@@ -216,10 +217,10 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
         {messages.map((msg, i) => (
           <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
-              msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-800 border border-gray-700 text-gray-200'
+              msg.role === 'user' ? 'bg-accent-strong text-white' : 'bg-surface border border-border text-fg'
             }`}>
               {msg.role === 'assistant' ? (
-                <div className="prose prose-invert prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <div className={proseClass}>
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                     {msg.content}
                   </ReactMarkdown>
@@ -233,8 +234,8 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
 
         {streaming && streamingContent && (
           <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-gray-800 border border-gray-700 text-gray-200">
-              <div className="prose prose-invert prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-surface border border-border text-fg">
+              <div className={proseClass}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                   {streamingContent}
                 </ReactMarkdown>
@@ -245,20 +246,20 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
 
         {streaming && !streamingContent && (
           <div className="flex justify-start">
-            <div className="rounded-lg px-3 py-2 bg-gray-800 border border-gray-700 text-xs text-gray-400">
+            <div className="rounded-lg px-3 py-2 bg-surface border border-border text-xs text-fg-muted">
               <i className="fa-solid fa-spinner fa-spin mr-1"></i>Thinking...
             </div>
           </div>
         )}
 
         {messages.length === 0 && !streaming && (
-          <div className="text-center text-gray-600 py-4 text-[10px]">Ask about the selected text</div>
+          <div className="text-center text-fg-faint py-4 text-[10px]">Ask about the selected text</div>
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-gray-700 p-2 flex gap-1.5 flex-shrink-0">
+      <form onSubmit={handleSubmit} className="border-t border-border p-2 flex gap-1.5 flex-shrink-0">
         <input
           ref={inputRef}
           value={input}
@@ -266,9 +267,9 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
           onKeyDown={handleKeyDown}
           placeholder="Ask about this..."
           disabled={streaming}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+          className="flex-1 bg-surface border border-border rounded px-2.5 py-1.5 text-xs text-fg placeholder-fg-subtle focus:outline-none focus:border-accent disabled:opacity-50"
         />
-        <button type="submit" disabled={streaming || !input.trim()} className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded text-xs transition-colors">
+        <button type="submit" disabled={streaming || !input.trim()} className="px-2.5 py-1.5 bg-accent-strong hover:bg-accent disabled:bg-surface-strong disabled:text-fg-subtle rounded text-xs transition-colors">
           <i className="fa-solid fa-paper-plane"></i>
         </button>
       </form>

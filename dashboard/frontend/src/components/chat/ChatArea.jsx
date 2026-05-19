@@ -101,7 +101,7 @@ export default function ChatArea({
   // previously-loaded chat via its stale sendMessage closure (codex iter 2).
   if (awaitingConversation) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500">
+      <div className="flex-1 flex items-center justify-center text-fg-subtle">
         <div className="text-center">
           <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 block opacity-40"></i>
           <p>Loading conversation…</p>
@@ -114,11 +114,11 @@ export default function ChatArea({
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-2xl flex flex-col items-center">
-          <i className="fa-solid fa-comments text-6xl mb-5 text-blue-500/40"></i>
-          <h2 className="text-2xl font-semibold text-gray-200 mb-2">Start a new conversation</h2>
-          <p className="text-sm text-gray-500 mb-6 text-center">
+          <i className="fa-solid fa-comments text-6xl mb-5 text-accent-fg/40"></i>
+          <h2 className="text-2xl font-semibold text-fg mb-2">Start a new conversation</h2>
+          <p className="text-sm text-fg-subtle mb-6 text-center">
             {defaultModelName
-              ? <>Type a message below — a chat will be created with <span className="text-gray-400">{defaultModelName}</span>.</>
+              ? <>Type a message below — a chat will be created with <span className="text-fg-muted">{defaultModelName}</span>.</>
               : 'No running model services available. Start a model first.'}
           </p>
           <div className="w-full">
@@ -161,7 +161,7 @@ export default function ChatArea({
       {/* Main chat column */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header bar */}
-        <div className="border-b border-gray-700 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <ModelSelector
               mainService={conversation.main_service}
@@ -180,7 +180,7 @@ export default function ChatArea({
           {streaming && (
             <button
               onClick={onStopStreaming}
-              className="text-xs px-3 py-1 bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30"
+              className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
             >
               <i className="fa-solid fa-stop mr-1"></i>Stop
             </button>
@@ -197,7 +197,7 @@ export default function ChatArea({
 
         {/* Error display */}
         {error && (
-          <div className="mx-4 mt-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
+          <div className="mx-4 mt-2 px-3 py-2 bg-danger-subtle border border-danger rounded text-xs text-danger-fg">
             {error}
           </div>
         )}

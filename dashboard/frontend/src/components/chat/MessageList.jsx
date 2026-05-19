@@ -11,6 +11,7 @@ import CopyablePre from './CopyablePre'
 import { formatArgValue } from './toolCallUtils'
 import ToolResultBlock from './ToolResultBlock'
 import FormatDriftChip from './FormatDriftChip'
+import useProseClass from '../../hooks/useProseClass'
 
 const MD_COMPONENTS = { pre: CopyablePre }
 
@@ -35,6 +36,7 @@ export default function MessageList({
   const bottomRef = useRef(null)
   const containerRef = useRef(null)
   const userScrolledRef = useRef(false)
+  const proseClass = useProseClass('max-w-none', 'text-[15px]', 'leading-relaxed', 'font-serif', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -89,7 +91,7 @@ export default function MessageList({
         <div className="relative pl-8 space-y-4">
           <span
             aria-hidden="true"
-            className="absolute left-[10px] top-[7px] w-[9px] h-[9px] rounded-full bg-gray-850 border border-accent"
+            className="absolute left-[10px] top-[7px] w-[9px] h-[9px] rounded-full bg-elevated border border-accent"
           ></span>
 
         {/* Assistant header + continuous thinking trace — renders ABOVE the
@@ -99,7 +101,7 @@ export default function MessageList({
         {streaming && (toolEvents.length > 0 || streamingReasoning) && (
           <div className="flex justify-start">
             <div className="max-w-[90%]">
-              <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
+              <div className="text-[10px] text-fg-subtle mb-1">Assistant</div>
               {streamingReasoning && (
                 <ThinkingBlock content={streamingReasoning} />
               )}
@@ -113,18 +115,18 @@ export default function MessageList({
             {toolEvents.map((evt, i) => (
               <div key={i} className="flex justify-start">
                 <div className="max-w-[90%]">
-                  <div className="rounded px-3 py-2 text-xs border bg-gray-800/50 border-gray-700/50 space-y-1">
-                    <div className={'result' in evt ? 'text-green-400' : 'text-yellow-400'}>
+                  <div className="rounded px-3 py-2 text-xs border bg-surface-muted border-border space-y-1">
+                    <div className={'result' in evt ? 'text-success-fg' : 'text-warning-fg'}>
                       <i className={`fa-solid ${'result' in evt ? 'fa-check' : 'fa-wrench fa-fade'} mr-1.5`}></i>
                       <span className="font-mono">{evt.name}</span>
                       {!('result' in evt) && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500">running…</span>
+                        <span className="ml-2 text-[10px] uppercase tracking-wide text-fg-subtle">running…</span>
                       )}
                     </div>
                     {evt.arguments && Object.keys(evt.arguments).length > 0 && (
-                      <div className="text-gray-400 font-mono pl-5">
+                      <div className="text-fg-muted font-mono pl-5">
                         {Object.entries(evt.arguments).map(([k, v]) => (
-                          <div key={k} className="truncate"><span className="text-gray-500">{k}:</span> {formatArgValue(v)}</div>
+                          <div key={k} className="truncate"><span className="text-fg-subtle">{k}:</span> {formatArgValue(v)}</div>
                         ))}
                       </div>
                     )}
@@ -157,10 +159,10 @@ export default function MessageList({
             {pendingToolCalls.map((p) => (
               <div key={p.index} className="flex justify-start">
                 <div className="max-w-[90%]">
-                  <div className="rounded px-3 py-2 text-xs border bg-gray-800/30 border-gray-700/50 border-dashed flex items-center gap-2 text-yellow-400/80">
+                  <div className="rounded px-3 py-2 text-xs border bg-surface-muted border-border border-dashed flex items-center gap-2 text-warning-fg">
                     <i className="fa-solid fa-wrench fa-fade"></i>
                     <span className="font-mono">{p.name || 'tool'}</span>
-                    <span className="text-gray-500">assembling call…</span>
+                    <span className="text-fg-subtle">assembling call…</span>
                   </div>
                 </div>
               </div>
@@ -174,25 +176,25 @@ export default function MessageList({
           <div className="flex justify-start">
             <div className="max-w-[90%]">
               {!toolEvents.length && !streamingReasoning && (
-                <div className="text-[10px] text-gray-500 mb-1">Assistant</div>
+                <div className="text-[10px] text-fg-subtle mb-1">Assistant</div>
               )}
               {streamingParseWarning && (
                 <FormatDriftChip warning={streamingParseWarning} rawContent={streamingContent} />
               )}
               {streamingContent ? (
-                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-gray-800 text-gray-200">
-                  <div className="prose prose-invert max-w-none text-[15px] leading-relaxed font-serif [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-surface text-fg">
+                  <div className={proseClass}>
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]} components={MD_COMPONENTS}>
                       {streamingContent}
                     </ReactMarkdown>
                   </div>
                 </div>
               ) : !streamingReasoning && toolEvents.length === 0 && pendingToolCalls.length === 0 ? (
-                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-gray-800">
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                <div className="rounded border border-line border-l-2 border-l-accent px-4 py-3 bg-surface">
+                  <div className="flex items-center gap-2 text-sm text-fg-muted">
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-60"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
                     </span>
                     <span>
                       {heartbeat
@@ -212,10 +214,10 @@ export default function MessageList({
             Covers between-tool-round gaps and reasoning-without-content phases. */}
         {streaming && heartbeat && (streamingContent || streamingReasoning || toolEvents.length > 0 || pendingToolCalls.length > 0) && (
           <div className="flex justify-start">
-            <div className="text-[11px] text-gray-500 flex items-center gap-2 pl-1">
+            <div className="text-[11px] text-fg-subtle flex items-center gap-2 pl-1">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-60"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-accent"></span>
               </span>
               <span>Waiting for model… {heartbeat.elapsed_s.toFixed(1)}s</span>
             </div>
@@ -226,7 +228,7 @@ export default function MessageList({
 
         {/* Empty state */}
         {messages.length === 0 && !streaming && (
-          <div className="text-center text-gray-500 py-20">
+          <div className="text-center text-fg-subtle py-20">
             <i className="fa-solid fa-comments text-4xl mb-4 block opacity-30"></i>
             <p>Start a conversation</p>
           </div>

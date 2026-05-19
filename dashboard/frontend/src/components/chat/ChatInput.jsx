@@ -208,7 +208,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
 
   return (
     <div
-      className={`border-t border-gray-700 ${dragOver ? 'bg-accent/5' : ''}`}
+      className={`border-t border-border ${dragOver ? 'bg-accent/5' : ''}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -233,13 +233,13 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           </div>
           <div className="space-y-1">
             {pendingInserts.map((ann, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs bg-gray-850 border border-line border-l-2 border-l-critique rounded px-2 py-1.5">
-                <span className="flex-1 text-gray-300 truncate" title={ann.comment}>
+              <div key={i} className="flex items-start gap-2 text-xs bg-elevated border border-line border-l-2 border-l-critique rounded px-2 py-1.5">
+                <span className="flex-1 text-fg-muted truncate" title={ann.comment}>
                   <span className="font-mono text-critique">{ann.issue_type}:</span> {ann.comment}
                 </span>
                 <button
                   onClick={() => onClearInsert(i)}
-                  className="text-gray-500 hover:text-error flex-shrink-0"
+                  className="text-fg-subtle hover:text-error flex-shrink-0"
                   aria-label="Remove issue"
                 >
                   <i className="fa-solid fa-xmark text-[10px]"></i>
@@ -281,14 +281,14 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
             {attachments.map((att, i) => (
               <div
                 key={i}
-                className="group flex items-center gap-2 text-xs bg-gray-850 border border-line border-l-2 border-l-accent rounded px-2 py-1.5 max-w-[260px]"
+                className="group flex items-center gap-2 text-xs bg-elevated border border-line border-l-2 border-l-accent rounded px-2 py-1.5 max-w-[260px]"
               >
                 <i className="fa-solid fa-file-lines text-accent flex-shrink-0"></i>
-                <span className="font-mono text-gray-300 truncate" title={att.name}>{att.name}</span>
-                <span className="font-mono text-gray-500 flex-shrink-0">{formatSize(att.size)}</span>
+                <span className="font-mono text-fg-muted truncate" title={att.name}>{att.name}</span>
+                <span className="font-mono text-fg-subtle flex-shrink-0">{formatSize(att.size)}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="text-gray-500 hover:text-error flex-shrink-0"
+                  className="text-fg-subtle hover:text-error flex-shrink-0"
                   aria-label="Remove attachment"
                 >
                   <i className="fa-solid fa-xmark text-[10px]"></i>
@@ -316,7 +316,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
             disabled={disabled}
             aria-label="Attach files"
             title="Attach files"
-            className="px-4 py-3 bg-gray-800 border border-gray-700 hover:border-accent text-gray-400 hover:text-accent disabled:opacity-50 rounded-lg text-sm transition-colors"
+            className="px-4 py-3 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-sm transition-colors"
           >
             <i className="fa-solid fa-paperclip"></i>
           </button>
@@ -329,12 +329,12 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
             placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
             disabled={disabled}
             rows={1}
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:border-accent disabled:opacity-50"
+            className="flex-1 bg-surface border border-border rounded-lg px-4 py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={!canSend}
-            className="px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors"
+            className="px-4 py-3 bg-accent-strong hover:bg-accent disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
           >
             <i className="fa-solid fa-paper-plane"></i>
           </button>
