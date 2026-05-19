@@ -264,19 +264,19 @@ export default function ServicesTable() {
 
   return (
     <div className="mt-6">
-      <div className="flex items-center justify-between mb-3 gap-3">
+      <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-fg">Services</h2>
           <ConnectionDot connected={connected} error={error} />
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="relative w-full sm:w-auto">
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter by name..."
-              className="w-48 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg placeholder-fg-subtle focus:outline-none focus:border-accent transition-colors"
+              className="w-full sm:w-48 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg placeholder-fg-subtle focus:outline-none focus:border-accent transition-colors"
             />
             {search && (
               <button
@@ -408,7 +408,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
 
   return (
     <tr className={`border-b border-border transition-colors ${service.status === 'running' ? 'bg-success-subtle hover:bg-success-subtle' : 'bg-surface-muted hover:bg-surface-strong'}`}>
-      <td className="px-6 py-3">
+      <td className="px-6 py-3 whitespace-nowrap">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-fg">
             {!infra ? (
