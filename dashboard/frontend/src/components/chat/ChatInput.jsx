@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 
-const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert }, ref) {
+const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
   const textareaRef = useRef(null)
@@ -17,11 +17,14 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     },
   }), [])
 
+  // Refocus when the input becomes enabled, and whenever the active
+  // conversation changes (focusKey) — so opening/creating a conversation
+  // lands the cursor in the composer without an extra click.
   useEffect(() => {
     if (!disabled && textareaRef.current) {
       textareaRef.current.focus()
     }
-  }, [disabled])
+  }, [disabled, focusKey])
 
   // Auto-resize textarea
   useEffect(() => {
