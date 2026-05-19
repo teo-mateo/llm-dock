@@ -5,6 +5,7 @@ import ChatArea from './ChatArea'
 import useConversations from '../../hooks/useConversations'
 import useChat from '../../hooks/useChat'
 import useRunningServices from '../../hooks/useRunningServices'
+import { pendingFlushDecision } from './pendingFlush'
 
 export default function ChatPage() {
   const { conversationId } = useParams()
@@ -50,13 +51,23 @@ export default function ChatPage() {
   }, [convId, loadConversation])
 
   // Flush the queued first message once its conversation is loaded.
+  // loadConversation() has no request sequencing, so a late getConversation
+  // for the just-created chat C can resolve and set `conversation` to C
+  // even after the user has already navigated to a different chat B. Gate
+  // the flush on the live route too, and abandon the queued message the
+  // moment the route no longer points at it — otherwise a stale fetch
+  // would fire a background send into a non-active conversation (codex
+  // iteration 3, P1).
   useEffect(() => {
     const pending = pendingMsgRef.current
-    if (pending && conversation && conversation.id === pending.convId && !streaming) {
+    const decision = pendingFlushDecision(pending, convId, conversation, streaming)
+    if (decision === 'abandon') {
+      pendingMsgRef.current = null
+    } else if (decision === 'send') {
       pendingMsgRef.current = null
       sendMessage(pending.content, pending.images)
     }
-  }, [conversation, streaming, sendMessage])
+  }, [convId, conversation, streaming, sendMessage])
 
   // Refresh conversation list when streaming completes (for auto-title)
   useEffect(() => {
