@@ -1,2 +1,49 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+/*
+ * Issue #29 — Phase 1: typography + palette tokens.
+ * Distinctive typography on a refined-but-familiar dark-blue palette.
+ * These tokens are the foundation later phases (nav, transcript, composer)
+ * build on. Families/values are swappable later; the role structure is the
+ * decision.
+ */
+@theme {
+  /* §6 — distinctive trio. Replaces the previous undeclared system-sans. */
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;        /* UI chrome */
+  --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", serif; /* assistant prose */
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; /* user input, code, labels */
+
+  /* §7 — refine, don't reinvent. Deepen / de-muddy the gray surfaces and
+     tighten contrast. Keeps blue as primary; rejects the mock's amber/cyan. */
+  --color-gray-950: #07090d;
+  --color-gray-900: #0b0f15; /* app background */
+  --color-gray-850: #11161f; /* raised panels (also makes bg-gray-850 real) */
+  --color-gray-800: #161c27; /* blocks / inputs */
+  --color-gray-700: #232b38; /* hairline borders */
+  --color-gray-600: #36404f; /* strong borders */
+
+  /* Established semantic colors (kept): blue=primary, yellow=critique,
+     green=MCP-on, purple=spin-off, red=error. Available as bg-/text-/border-. */
+  --color-accent: #3b82f6;
+  --color-accent-strong: #2563eb;
+  --color-critique: #eab308;
+  --color-mcp: #22c55e;
+  --color-spinoff: #a855f7;
+  --color-error: #ef4444;
+
+  /* Hairline rules + timeline spine — re-expressed in the neutral/blue palette
+     (consumed by the transcript-as-log work, §4). */
+  --color-line: rgba(148, 163, 184, 0.10);
+  --color-line-strong: rgba(148, 163, 184, 0.20);
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-gray-900);
+    color: #c7d0db;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
