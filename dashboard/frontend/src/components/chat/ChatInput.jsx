@@ -95,6 +95,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
   // Images flow through the existing image pipeline; other allowlisted
   // files are shown as attachment chips (affordance only — transport is #28).
   function ingestFiles(fileList) {
+    if (disabled) return
     for (const file of fileList) {
       if (!isAllowed(file)) continue
       if (isImage(file)) {
@@ -112,6 +113,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
   function handlePaste(e) {
     const items = e.clipboardData?.items
     if (!items) return
+    if (disabled) return
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         e.preventDefault()
@@ -128,6 +130,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
 
   function handleDragEnter(e) {
     e.preventDefault()
+    if (disabled) return
     dragDepth.current += 1
     if (e.dataTransfer?.types?.includes('Files')) setDragOver(true)
   }
@@ -149,6 +152,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     e.preventDefault()
     dragDepth.current = 0
     setDragOver(false)
+    if (disabled) return
     if (e.dataTransfer?.files?.length) ingestFiles(e.dataTransfer.files)
   }
 
