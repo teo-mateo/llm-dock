@@ -127,18 +127,27 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     e.target.value = '' // allow re-selecting the same file
   }
 
+  // Only intercept file drags. Non-file drags (e.g. selecting text and
+  // dragging it into the textarea) must fall through so the browser's
+  // native text-drop behavior still works.
+  function isFileDrag(e) {
+    return !!e.dataTransfer?.types?.includes('Files')
+  }
+
   function handleDragEnter(e) {
+    if (disabled || !isFileDrag(e)) return
     e.preventDefault()
-    if (disabled) return
     dragDepth.current += 1
-    if (e.dataTransfer?.types?.includes('Files')) setDragOver(true)
+    setDragOver(true)
   }
 
   function handleDragOver(e) {
+    if (disabled || !isFileDrag(e)) return
     e.preventDefault()
   }
 
   function handleDragLeave(e) {
+    if (disabled || !isFileDrag(e)) return
     e.preventDefault()
     dragDepth.current -= 1
     if (dragDepth.current <= 0) {
@@ -148,10 +157,10 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
   }
 
   function handleDrop(e) {
+    if (disabled || !isFileDrag(e)) return
     e.preventDefault()
     dragDepth.current = 0
     setDragOver(false)
-    if (disabled) return
     if (e.dataTransfer?.files?.length) ingestFiles(e.dataTransfer.files)
   }
 
