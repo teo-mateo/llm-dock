@@ -174,12 +174,12 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
   if (!initialized.current && !config) return null
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700">
+    <div className="bg-surface rounded-lg border border-border">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-700 flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-200">Configuration</h2>
+      <div className="px-5 py-4 border-b border-border flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-fg">Configuration</h2>
         {isDirty && (
-          <span className="text-yellow-400 text-sm flex items-center gap-1" role="status" aria-live="polite">
+          <span className="text-warning-fg text-sm flex items-center gap-1" role="status" aria-live="polite">
             <i className="fa-solid fa-circle-exclamation"></i>
             Unsaved changes
           </span>
@@ -190,18 +190,18 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
         {/* Editable fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300" htmlFor="config-port">Port</label>
+            <label className="block text-sm font-medium mb-2 text-fg-muted" htmlFor="config-port">Port</label>
             <input
               id="config-port"
               type="number"
               value={port}
               onChange={e => setPort(e.target.value)}
               disabled={saving}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              className="w-full bg-surface-strong border border-border-strong rounded px-3 py-2 text-fg focus:outline-none focus:border-accent disabled:opacity-50"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300" htmlFor="config-apikey">API Key</label>
+            <label className="block text-sm font-medium mb-2 text-fg-muted" htmlFor="config-apikey">API Key</label>
             <div className="flex gap-2">
               <input
                 id="config-apikey"
@@ -209,12 +209,12 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
                 disabled={saving}
-                className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                className="flex-1 bg-surface-strong border border-border-strong rounded px-3 py-2 text-fg font-mono text-sm focus:outline-none focus:border-accent disabled:opacity-50"
               />
               <button
                 onClick={handleUseGlobalKey}
                 disabled={saving || settingGlobalKey}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-xs text-gray-300 hover:text-white whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="px-3 py-2 bg-surface-strong hover:bg-surface-muted border border-border-strong rounded text-xs text-fg-muted hover:text-fg whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 title="Set API key to the global API key from .env"
               >
                 {settingGlobalKey ? (
@@ -230,13 +230,13 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
         {/* Parameters section */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <label className="block text-sm font-medium text-gray-300">
+            <label className="block text-sm font-medium text-fg-muted">
               Parameters ({params.filter(p => p.flag || p.value).length})
             </label>
             <button
               onClick={handleParamAdd}
               disabled={saving}
-              className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50 cursor-pointer"
+              className="text-sm text-accent-fg hover:text-accent-fg-hover disabled:opacity-50 cursor-pointer"
             >
               <i className="fa-solid fa-plus mr-1"></i>Add parameter
             </button>
@@ -254,7 +254,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                     onChange={e => handleParamFlagChange(id, e.target.value)}
                     disabled={saving}
                     placeholder="-flag"
-                    className={`bg-gray-700 border rounded px-2 py-1 font-mono text-sm w-40 text-white focus:outline-none disabled:opacity-50 ${isDuplicate ? 'border-red-500 focus:border-red-500' : 'border-gray-600 focus:border-blue-500'}`}
+                    className={`bg-surface-strong border rounded px-2 py-1 font-mono text-sm w-40 text-fg focus:outline-none disabled:opacity-50 ${isDuplicate ? 'border-danger focus:border-danger' : 'border-border-strong focus:border-accent'}`}
                     title={isDuplicate ? 'Duplicate flag' : tooltip || undefined}
                   />
                   <input
@@ -262,12 +262,12 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                     onChange={e => handleParamValueChange(id, e.target.value)}
                     disabled={saving}
                     placeholder="value"
-                    className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 font-mono text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                    className="flex-1 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent disabled:opacity-50"
                   />
                   <button
                     onClick={() => handleParamRemove(id)}
                     disabled={saving || isTrailingEmpty}
-                    className={`disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-gray-500 hover:text-red-400'}`}
+                    className={`disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-fg-subtle hover:text-danger-fg'}`}
                     aria-label={`Remove parameter ${flag || '(empty)'}`}
                   >
                     <i className="fa-solid fa-xmark"></i>
@@ -276,7 +276,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
               )
             })}
             {hasDuplicates && (
-              <p className="text-red-400 text-xs mt-1 px-3">
+              <p className="text-danger-fg text-xs mt-1 px-3">
                 Duplicate flags: {[...duplicateFlags].join(', ')}
               </p>
             )}
@@ -287,31 +287,31 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
         <div>
           <button
             onClick={() => setCommandPreviewOpen(prev => !prev)}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer"
+            className="flex items-center gap-2 text-sm text-fg-muted hover:text-fg cursor-pointer"
           >
             <i className={`fa-solid ${commandPreviewOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
             Command Preview
           </button>
           {commandPreviewOpen && (
-            <div className="mt-2 bg-gray-900 rounded p-4 font-mono text-xs text-gray-300 whitespace-pre-wrap">
+            <div className="mt-2 bg-app rounded p-4 font-mono text-xs text-fg-muted whitespace-pre-wrap">
               {renderCommandPreview(config, apiKey, params)}
             </div>
           )}
         </div>
 
         {/* Save/Discard buttons */}
-        <div className="flex gap-3 pt-4 border-t border-gray-700">
+        <div className="flex gap-3 pt-4 border-t border-border">
           <button
             onClick={handleDiscard}
             disabled={!isDirty || saving}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="px-4 py-2 bg-surface-muted hover:bg-surface-strong text-fg rounded font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Discard
           </button>
           <button
             onClick={handleSave}
             disabled={!isDirty || saving || hasDuplicates}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-accent-strong hover:bg-accent-strong text-white rounded font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {saving ? (
               <>

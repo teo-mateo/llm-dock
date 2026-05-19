@@ -18,29 +18,29 @@ function isInfra(name) {
 
 function StatusDot({ status }) {
   const color = status === 'running'
-    ? 'bg-green-400'
+    ? 'bg-success'
     : status === 'exited'
-      ? 'bg-red-400'
-      : 'bg-gray-500'
+      ? 'bg-danger'
+      : 'bg-fg-subtle'
   return <span className={`inline-block w-2.5 h-2.5 rounded-full ${color}`} />
 }
 
 function StatusLabel({ service }) {
   const s = service.status
-  if (s === 'running') return <span className="text-green-400">Running</span>
+  if (s === 'running') return <span className="text-success-fg">Running</span>
   if (s === 'exited') {
     const exitInfo = service.exit_code != null ? ` (exit ${service.exit_code})` : ''
-    return <span className="text-red-400">Stopped{exitInfo}</span>
+    return <span className="text-danger-fg">Stopped{exitInfo}</span>
   }
-  return <span className="text-gray-500">Not Created</span>
+  return <span className="text-fg-subtle">Not Created</span>
 }
 
 function EngineBadge({ engine }) {
   const colors = {
-    'llama.cpp': 'bg-blue-600/30 text-blue-300',
-    'vLLM': 'bg-purple-600/30 text-purple-300',
-    'WebUI': 'bg-emerald-600/30 text-emerald-300',
-    'Unknown': 'bg-gray-600/30 text-gray-400'
+    'llama.cpp': 'bg-badge-llamacpp-bg text-badge-llamacpp-fg',
+    'vLLM': 'bg-badge-vllm-bg text-badge-vllm-fg',
+    'WebUI': 'bg-badge-webui-bg text-badge-webui-fg',
+    'Unknown': 'bg-badge-neutral-bg text-badge-neutral-fg'
   }
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[engine] || colors.Unknown}`}>
@@ -62,7 +62,7 @@ function CopyButton({ text }) {
   return (
     <button
       onClick={handleCopy}
-      className="ml-2 text-gray-400 hover:text-gray-200 text-lg leading-none cursor-pointer"
+      className="ml-2 text-fg-muted hover:text-fg text-lg leading-none cursor-pointer"
       title="Copy"
     >
       {copied ? '✓' : '⧉'}
@@ -85,7 +85,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-gray-200 cursor-pointer"
+            className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-fg cursor-pointer"
             title="Open"
           >
             ↗
@@ -94,7 +94,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onRestart(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-yellow-300 disabled:opacity-50 cursor-pointer"
+          className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-warning-fg disabled:opacity-50 cursor-pointer"
           title="Restart"
         >
           ↻
@@ -109,7 +109,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onStop(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50 cursor-pointer"
+          className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-danger-fg disabled:opacity-50 cursor-pointer"
           title="Stop"
         >
           {isTransitioning === 'stopping' ? '...' : '■'}
@@ -118,7 +118,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
         <button
           onClick={e => { e.stopPropagation(); onStart(service.name) }}
           disabled={!!isTransitioning}
-          className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-green-400 disabled:opacity-50 cursor-pointer"
+          className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-success-fg disabled:opacity-50 cursor-pointer"
           title="Start"
         >
           {isTransitioning === 'starting' ? '...' : '▶'}
@@ -126,14 +126,14 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
       )}
       <button
         onClick={e => { e.stopPropagation(); onEdit(service.name) }}
-        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400 cursor-pointer"
+        className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-accent-fg cursor-pointer"
         title="Edit"
       >
         ✎
       </button>
       <button
         onClick={e => { e.stopPropagation(); onViewLogs(service.name) }}
-        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-purple-400 cursor-pointer"
+        className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-purple-400 cursor-pointer"
         title="View logs"
       >
         <i className="fa-solid fa-terminal text-sm"></i>
@@ -141,7 +141,7 @@ function ActionButtons({ service, transitioning, onStart, onStop, onRestart, onD
       <button
         onClick={e => { e.stopPropagation(); onDelete(service.name) }}
         disabled={!!isTransitioning}
-        className="p-1.5 text-lg leading-none rounded hover:bg-gray-600 text-gray-400 hover:text-red-400 disabled:opacity-50 cursor-pointer"
+        className="p-1.5 text-lg leading-none rounded hover:bg-surface-muted text-fg-muted hover:text-danger-fg disabled:opacity-50 cursor-pointer"
         title="Delete"
       >
         ✕
@@ -157,7 +157,7 @@ function Toast({ message, onDone }) {
   }, [onDone])
 
   return (
-    <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-2 rounded shadow-lg text-sm z-50">
+    <div className="fixed bottom-6 right-6 bg-danger text-white px-4 py-2 rounded shadow-lg text-sm z-50">
       {message}
     </div>
   )
@@ -224,11 +224,11 @@ export default function ServicesTable() {
   }, [])
 
   if (error) {
-    return <p className="text-red-400 mt-6">Services: {error}</p>
+    return <p className="text-danger-fg mt-6">Services: {error}</p>
   }
 
   if (services === null) {
-    return <p className="text-gray-500 mt-6">Loading services...</p>
+    return <p className="text-fg-subtle mt-6">Loading services...</p>
   }
 
   const term = search.trim().toLowerCase()
@@ -240,17 +240,17 @@ export default function ServicesTable() {
 
     if (error) {
       if (error.includes('reconnecting') && !error.includes('Authentication')) {
-        color = 'bg-yellow-400'
+        color = 'bg-warning'
         label = 'Reconnecting...'
       } else {
-        color = 'bg-red-400'
+        color = 'bg-danger'
         label = error
       }
     } else if (connected) {
-      color = 'bg-green-400'
+      color = 'bg-success'
       label = 'Connected'
     } else {
-      color = 'bg-gray-500'
+      color = 'bg-fg-subtle'
       label = 'Disconnected'
     }
 
@@ -266,7 +266,7 @@ export default function ServicesTable() {
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3 gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-200">Services</h2>
+          <h2 className="text-lg font-semibold text-fg">Services</h2>
           <ConnectionDot connected={connected} error={error} />
         </div>
         <div className="flex items-center gap-3">
@@ -276,12 +276,12 @@ export default function ServicesTable() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter by name..."
-              className="w-48 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-48 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg placeholder-fg-subtle focus:outline-none focus:border-accent transition-colors"
             />
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs cursor-pointer"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -289,7 +289,7 @@ export default function ServicesTable() {
           </div>
           <button
             onClick={() => setShowRotateKey(true)}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded transition-colors flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-surface-strong hover:bg-surface-muted text-fg text-sm rounded transition-colors flex items-center gap-1.5"
             title="Generate a new shared API key for all services"
           >
             <i className="fa-solid fa-key text-xs"></i>
@@ -297,15 +297,15 @@ export default function ServicesTable() {
           </button>
           <button
             onClick={() => navigate('/services/new')}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+            className="px-3 py-1.5 bg-accent-strong hover:bg-accent text-white text-sm rounded transition-colors"
           >
             + New Service
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-700">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-800 text-gray-400 uppercase text-xs">
+          <thead className="bg-surface text-fg-muted uppercase text-xs">
             <tr>
               <th className="px-6 py-3">Service</th>
               <th className="px-6 py-3">Status</th>
@@ -321,7 +321,7 @@ export default function ServicesTable() {
               <tr>
                 <td
                   colSpan={7}
-                  className="px-6 py-8 text-center text-gray-400"
+                  className="px-6 py-8 text-center text-fg-muted"
                 >
                   {services.length === 0
                     ? 'No services configured'
@@ -365,7 +365,7 @@ function PortCell({ service, onSetPublicPort }) {
   const isLlamaCpp = engine === 'llama.cpp'
   const isPublicPort = port === 3301
 
-  if (!port) return <td className="px-6 py-3 font-mono text-gray-500">N/A</td>
+  if (!port) return <td className="px-6 py-3 font-mono text-fg-subtle">N/A</td>
 
   return (
     <td className="px-6 py-3">
@@ -376,22 +376,22 @@ function PortCell({ service, onSetPublicPort }) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="font-mono text-blue-400 hover:text-blue-300"
+            className="font-mono text-accent-fg hover:text-accent-fg-hover"
           >
             {port}
           </a>
         ) : (
-          <span className="font-mono text-gray-300">{port}</span>
+          <span className="font-mono text-fg-muted">{port}</span>
         )}
         {!infra && (isPublicPort ? (
-          <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" title="Public port (3301)">
+          <svg className="w-4 h-4 text-success-fg" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" title="Public port (3301)">
             <circle cx="12" cy="12" r="10" />
             <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
         ) : (
           <button
             onClick={e => { e.stopPropagation(); onSetPublicPort(service.name) }}
-            className="text-gray-500 hover:text-blue-400 text-lg leading-none cursor-pointer"
+            className="text-fg-subtle hover:text-accent-fg text-lg leading-none cursor-pointer"
             title="Set to public port (3301)"
           >
             ◎
@@ -407,14 +407,14 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
   const infra = isInfra(service.name)
 
   return (
-    <tr className={`border-b border-gray-700 transition-colors ${service.status === 'running' ? 'bg-green-900/40 hover:bg-green-900/50' : 'bg-gray-800/50 hover:bg-gray-700/50'}`}>
+    <tr className={`border-b border-border transition-colors ${service.status === 'running' ? 'bg-success-subtle hover:bg-success-subtle' : 'bg-surface-muted hover:bg-surface-strong'}`}>
       <td className="px-6 py-3">
         <div className="flex flex-col">
-          <div className="flex items-center font-medium text-gray-200">
+          <div className="flex items-center font-medium text-fg">
             {!infra ? (
               <button
                 onClick={() => onEdit(service.name)}
-                className="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer text-left"
+                className="text-accent-fg hover:text-accent-fg-hover hover:underline cursor-pointer text-left"
               >
                 {service.name}
               </button>
@@ -424,7 +424,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
             <CopyButton text={service.name} />
           </div>
           {service.api_key && (
-            <p className="text-gray-400 font-mono text-xs mt-1">
+            <p className="text-fg-muted font-mono text-xs mt-1">
               {service.api_key.slice(0, 12)}...
               <CopyButton text={service.api_key} />
             </p>
@@ -439,16 +439,16 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
       </td>
       <PortCell service={service} onSetPublicPort={onSetPublicPort} />
       <td className="px-6 py-3"><EngineBadge engine={engine} /></td>
-      <td className="px-6 py-3 text-gray-300 text-xs">
+      <td className="px-6 py-3 text-fg-muted text-xs">
         {service.model_size_str || '—'}
       </td>
       <td className="px-6 py-3">
         {infra ? (
-          <span className="text-gray-600">—</span>
+          <span className="text-fg-faint">—</span>
         ) : service.openwebui_registered ? (
-          <span className="text-green-400 text-xs">✓ Registered</span>
+          <span className="text-success-fg text-xs">✓ Registered</span>
         ) : (
-          <span className="text-gray-500 text-xs">Not registered</span>
+          <span className="text-fg-subtle text-xs">Not registered</span>
         )}
       </td>
       <td className="px-6 py-3">

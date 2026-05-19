@@ -13,19 +13,19 @@ export default function SpecDecodeBar({ specPerPos }) {
   if (entries.length === 0) return null
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-      <h3 className="text-sm font-medium text-gray-400 mb-3">Spec Decode per Position</h3>
+    <div className="bg-surface rounded-lg border border-border p-4">
+      <h3 className="text-sm font-medium text-fg-muted mb-3">Spec Decode per Position</h3>
       <div className="space-y-2">
         {entries.map(([key, val]) => {
           const pct = (val / maxVal) * 100
           const label = key.replace('position_', 'Pos ')
           return (
             <div key={key} className="flex items-center gap-2">
-              <span className="text-gray-400 text-xs w-10 text-right">{label}</span>
-              <div className="flex-1 bg-gray-700 rounded h-4 overflow-hidden">
-                <div className="h-full bg-amber-500 rounded" style={{ width: `${pct}%` }} />
+              <span className="text-fg-muted text-xs w-10 text-right">{label}</span>
+              <div className="flex-1 bg-surface-strong rounded h-4 overflow-hidden">
+                <div className="h-full bg-warning rounded" style={{ width: `${pct}%` }} />
               </div>
-              <span className="text-gray-300 text-xs w-8 text-right">{Math.round(val)}</span>
+              <span className="text-fg-muted text-xs w-8 text-right">{Math.round(val)}</span>
             </div>
           )
         })}

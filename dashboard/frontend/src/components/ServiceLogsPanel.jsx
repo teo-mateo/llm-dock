@@ -89,29 +89,29 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
   }
 
   return (
-    <div className="h-full bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
+    <div className="h-full bg-surface rounded-lg border border-border flex flex-col">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-700 flex justify-between items-center">
+      <div className="px-5 py-3 border-b border-border flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+          <h2 className="text-sm font-semibold text-fg-muted uppercase tracking-wider">
             Container Logs
           </h2>
           {hasContainer && !paused && connected && (
-            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-success animate-pulse" />
           )}
           {hasContainer && !paused && !connected && !streamEnded && (
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-warning animate-pulse" />
           )}
           {streamEnded && (
-            <span className="text-xs text-gray-500 italic">stopped</span>
+            <span className="text-xs text-fg-subtle italic">stopped</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center text-gray-400" title="Log font size">
+          <div className="flex items-center text-fg-muted" title="Log font size">
             <button
               onClick={() => bumpFontSize(-FONT_SIZE_STEP)}
               disabled={fontSize <= FONT_SIZE_MIN}
-              className="p-1.5 hover:text-gray-200 disabled:opacity-40 cursor-pointer"
+              className="p-1.5 hover:text-fg disabled:opacity-40 cursor-pointer"
               title="Smaller text"
               aria-label="Decrease log font size"
             >
@@ -121,7 +121,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
             <button
               onClick={() => bumpFontSize(FONT_SIZE_STEP)}
               disabled={fontSize >= FONT_SIZE_MAX}
-              className="p-1.5 hover:text-gray-200 disabled:opacity-40 cursor-pointer"
+              className="p-1.5 hover:text-fg disabled:opacity-40 cursor-pointer"
               title="Larger text"
               aria-label="Increase log font size"
             >
@@ -131,7 +131,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           <button
             onClick={handleRefresh}
             disabled={!hasContainer || paused}
-            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="p-1.5 text-fg-muted hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             title={paused ? 'Resume to refresh' : 'Refresh logs'}
           >
             <i className="fa-solid fa-rotate-right text-sm"></i>
@@ -139,7 +139,7 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
           <button
             onClick={() => setPaused(prev => !prev)}
             disabled={!hasContainer}
-            className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 cursor-pointer"
+            className="p-1.5 text-fg-muted hover:text-fg disabled:opacity-50 cursor-pointer"
             title={paused ? 'Resume' : 'Pause'}
           >
             <i className={`fa-solid ${paused ? 'fa-play' : 'fa-pause'} text-sm`}></i>
@@ -150,13 +150,13 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
       {/* Log content */}
       {!hasContainer ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500 italic text-sm">
+          <p className="text-fg-subtle italic text-sm">
             Service has not been started. Start the service to see logs.
           </p>
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-red-400 text-sm">Failed to load logs: {error}</p>
+          <p className="text-danger-fg text-sm">Failed to load logs: {error}</p>
         </div>
       ) : (
         <div
@@ -166,21 +166,21 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
         >
           {lines.length > 0 ? (
             <pre
-              className="font-mono text-gray-300 whitespace-pre-wrap leading-relaxed select-text"
+              className="font-mono text-fg-muted whitespace-pre-wrap leading-relaxed select-text"
               style={{ fontSize: `${fontSize}px` }}
             >
               {lines.join('\n')}
             </pre>
           ) : loading ? (
-            <p className="text-gray-500 italic text-sm">Loading logs…</p>
+            <p className="text-fg-subtle italic text-sm">Loading logs…</p>
           ) : (
-            <p className="text-gray-500 italic text-sm">No log output yet.</p>
+            <p className="text-fg-subtle italic text-sm">No log output yet.</p>
           )}
         </div>
       )}
 
       {/* Footer */}
-      <div className="px-5 py-2 border-t border-gray-700 text-xs text-gray-500 flex justify-between">
+      <div className="px-5 py-2 border-t border-border text-xs text-fg-subtle flex justify-between">
         <span>Last updated: {formatTime(lastUpdated)} | {lines.length} lines</span>
         <span>{footerStatus()}</span>
       </div>

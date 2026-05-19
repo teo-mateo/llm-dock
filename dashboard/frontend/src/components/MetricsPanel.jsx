@@ -30,13 +30,13 @@ export default function MetricsPanel({ serviceName, enabled }) {
 
   if (!enabled) {
     return (
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+      <div className="bg-surface rounded-lg border border-border p-5">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-2 h-2 rounded-full bg-gray-600" />
-          <h3 className="text-base font-semibold text-gray-100">Live Metrics</h3>
-          <span className="text-gray-500 text-sm">(disabled)</span>
+          <div className="w-2 h-2 rounded-full bg-surface-muted" />
+          <h3 className="text-base font-semibold text-fg">Live Metrics</h3>
+          <span className="text-fg-subtle text-sm">(disabled)</span>
         </div>
-        <p className="text-gray-400 text-sm">
+        <p className="text-fg-muted text-sm">
           Metrics are only available for running vLLM services. Start the service to see live metrics.
         </p>
       </div>
@@ -46,38 +46,38 @@ export default function MetricsPanel({ serviceName, enabled }) {
   const hasHistory = history.length > 0
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+    <div className="bg-surface rounded-lg border border-border p-5">
       <div className="flex items-center gap-3 mb-5">
-        <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`} />
-        <h3 className="text-base font-semibold text-gray-100">Live Metrics</h3>
-        <span className="text-gray-500 text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
-        {error && <span className="text-red-400 text-xs ml-auto">{error}</span>}
+        <div className={`w-2 h-2 rounded-full ${error ? 'bg-danger' : 'bg-success animate-pulse'}`} />
+        <h3 className="text-base font-semibold text-fg">Live Metrics</h3>
+        <span className="text-fg-subtle text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
+        {error && <span className="text-danger-fg text-xs ml-auto">{error}</span>}
       </div>
 
       {showCumulative && (
         <div className="flex items-center gap-6 mb-4 px-1 text-xs font-mono">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-gray-400">Prompt:</span>
-            <span className="text-gray-200 font-semibold">{fmt(promptTotal)}</span>
+            <span className="w-2 h-2 rounded-full bg-accent" />
+            <span className="text-fg-muted">Prompt:</span>
+            <span className="text-fg font-semibold">{fmt(promptTotal)}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-gray-400">Gen:</span>
-            <span className="text-gray-200 font-semibold">{fmt(genTotal)}</span>
+            <span className="w-2 h-2 rounded-full bg-success" />
+            <span className="text-fg-muted">Gen:</span>
+            <span className="text-fg font-semibold">{fmt(genTotal)}</span>
           </div>
           <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-gray-500">Total:</span>
-            <span className="text-gray-100 font-semibold">{fmt((promptTotal || 0) + (genTotal || 0))}</span>
+            <span className="text-fg-subtle">Total:</span>
+            <span className="text-fg font-semibold">{fmt((promptTotal || 0) + (genTotal || 0))}</span>
           </div>
         </div>
       )}
 
       {!hasHistory && !loading && !error ? (
         <div className="flex flex-col items-center justify-center py-12">
-          <i className="fa-solid fa-chart-line text-3xl text-gray-600 mb-3" />
-          <p className="text-gray-400 text-sm mb-1">No metrics available</p>
-          <p className="text-gray-500 text-xs">The vLLM prometheus endpoint returned no data or is unreachable.</p>
+          <i className="fa-solid fa-chart-line text-3xl text-fg-faint mb-3" />
+          <p className="text-fg-muted text-sm mb-1">No metrics available</p>
+          <p className="text-fg-subtle text-xs">The vLLM prometheus endpoint returned no data or is unreachable.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
