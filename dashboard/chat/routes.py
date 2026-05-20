@@ -17,6 +17,7 @@ from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMP
 from .llm_proxy import stream_chat_completion, build_messages_array, resolve_service
 from .critique import build_critique_context, request_critique, validate_annotations
 from .mcp_registry import list_available_servers, get_tool_hints
+from . import settings_store
 from .tool_loop import stream_with_tools
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,53 @@ def get_mcp_servers():
     return jsonify({"servers": list_available_servers()})
 
 
+# -- Settings: editable default main system prompt --
+
+def _settings_payload() -> dict:
+    """Shape returned by every main-system-prompt settings endpoint."""
+    return {
+        "current": settings_store.get_main_system_prompt(),
+        "builtin": DEFAULT_MAIN_SYSTEM_PROMPT,
+        "customized": settings_store.is_main_system_prompt_customized(),
+    }
+
+
+@chat_bp.route("/api/chat/settings/main-system-prompt", methods=["GET"])
+@require_auth
+def get_main_system_prompt_setting():
+    """Return current default, built-in baseline, and whether they differ.
+
+    The frontend uses ``builtin`` to power the Reset button and
+    ``customized`` for the "modified from built-in" indicator without
+    needing a client-side string compare.
+    """
+    return jsonify(_settings_payload())
+
+
+@chat_bp.route("/api/chat/settings/main-system-prompt", methods=["PUT"])
+@require_auth
+def put_main_system_prompt_setting():
+    data = request.get_json(silent=True) or {}
+    content = data.get("content")
+    if not isinstance(content, str):
+        return jsonify({"error": "body must be {content: string}"}), 400
+    try:
+        settings_store.set_main_system_prompt(content)
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    logger.info("default main_system_prompt updated (%d chars)", len(content))
+    return jsonify(_settings_payload())
+
+
+@chat_bp.route("/api/chat/settings/main-system-prompt", methods=["DELETE"])
+@require_auth
+def delete_main_system_prompt_setting():
+    """Drop any customization, reverting new conversations to the built-in."""
+    settings_store.reset_main_system_prompt()
+    logger.info("default main_system_prompt reset to built-in")
+    return jsonify(_settings_payload())
+
+
 # -- Conversations CRUD --
 
 @chat_bp.route("/api/chat/conversations", methods=["POST"])
@@ -64,12 +112,21 @@ def create_conversation():
     if not main_service:
         return jsonify({"error": "main_service is required"}), 400
 
+    # Honor an explicit prompt from the client (a fork or programmatic
+    # caller may want one), otherwise fall back to whatever the user has
+    # configured as the dashboard-wide default — and only then to the
+    # built-in baked into constants.py.
+    if "main_system_prompt" in data:
+        main_system_prompt = data["main_system_prompt"]
+    else:
+        main_system_prompt = settings_store.get_main_system_prompt()
+
     conv = Conversation(
         id=str(uuid.uuid4()),
         title=data.get("title", "New Conversation"),
         main_service=main_service,
         sidekick_service=data.get("sidekick_service"),
-        main_system_prompt=data.get("main_system_prompt", DEFAULT_MAIN_SYSTEM_PROMPT),
+        main_system_prompt=main_system_prompt,
         sidekick_system_prompt=data.get("sidekick_system_prompt", DEFAULT_SIDEKICK_SYSTEM_PROMPT),
         parent_conversation_id=data.get("parent_conversation_id"),
         selected_text=data.get("selected_text"),
