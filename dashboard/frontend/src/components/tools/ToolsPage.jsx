@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import useRegistry from '../../hooks/useRegistry'
 import RegistryEditor from './RegistryEditor'
+import DefaultPromptEditor from './DefaultPromptEditor'
 import ServerTestPanel from './ServerTestPanel'
 
 function ServerRow({ server, selected, onSelect }) {
@@ -133,6 +134,8 @@ export default function ToolsPage() {
           declared in a JSON file on disk.
         </p>
       </div>
+
+      <DefaultPromptEditor />
 
       <RegistryEditor
         initialContent={json?.content}
