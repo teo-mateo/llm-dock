@@ -187,12 +187,12 @@ export default function ChatArea({
           )}
         </div>
 
-        {/* System prompt editor */}
+        {/* System prompt editor — keyed by conversation so local edit
+            state resets cleanly when the user switches conversations. */}
         <SystemPromptEditor
+          key={conversation.id}
           mainPrompt={conversation.main_system_prompt || ''}
-          sidekickPrompt={conversation.sidekick_system_prompt || ''}
-          onChangeMain={v => handleSystemPromptChange('main_system_prompt', v)}
-          onChangeSidekick={v => handleSystemPromptChange('sidekick_system_prompt', v)}
+          onSaveMain={v => handleSystemPromptChange('main_system_prompt', v)}
         />
 
         {/* Error display */}
