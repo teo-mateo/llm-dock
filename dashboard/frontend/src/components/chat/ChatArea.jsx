@@ -43,6 +43,9 @@ export default function ChatArea({
   const [spinoffs, setSpinoffs] = useState([]) // [{id, text, minimized, zIndex}]
   const topZRef = useRef(100)
   const composerRef = useRef(null)
+  // Tracks an in-flight system-prompt save so a fast send can't POST a
+  // message before the prompt PUT lands (SystemPromptEditor saves on blur).
+  const pendingPromptSaveRef = useRef(null)
 
   const quoteSelection = useCallback((text) => {
     if (!text) return
@@ -153,7 +156,31 @@ export default function ChatArea({
   }
 
   async function handleSystemPromptChange(field, value) {
-    await updateConversation(conversation.id, { [field]: value })
+    const save = updateConversation(conversation.id, { [field]: value })
+    pendingPromptSaveRef.current = save
+    try {
+      await save
+    } finally {
+      // Only clear if a newer save hasn't replaced this one.
+      if (pendingPromptSaveRef.current === save) pendingPromptSaveRef.current = null
+    }
+  }
+
+  async function handleSend(msg, images) {
+    // SystemPromptEditor persists on blur; focusing the composer blurs it,
+    // so a save may be in flight right as the user hits send. Wait it out
+    // so the backend reads the new prompt when it generates the reply.
+    const pending = pendingPromptSaveRef.current
+    if (pending) {
+      try {
+        await pending
+      } catch {
+        // The failure is already surfaced in SystemPromptEditor; don't
+        // block the send on it (the prompt just stays at its old value).
+      }
+    }
+    onSend(msg, images)
+    setPendingInserts([])
   }
 
   return (
@@ -226,7 +253,7 @@ export default function ChatArea({
         <ChatInput
           ref={composerRef}
           focusKey={conversation.id}
-          onSend={(msg, images) => { onSend(msg, images); setPendingInserts([]) }}
+          onSend={handleSend}
           disabled={streaming || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
