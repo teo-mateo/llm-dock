@@ -162,6 +162,41 @@ Editing the file:
 Secrets stay in the external MCP server's own `.env`; the registry only
 holds paths.
 
+## Editing the default chat system prompt
+
+Every new conversation inherits a global default `main_system_prompt`. It
+is **editable from the dashboard** — Tools page → "Default system prompt"
+card — so iterating on it no longer needs a code edit + service restart.
+
+- **Storage:** `dashboard/chat_settings.json` — a JSON singleton,
+  gitignored (machine-local, holds user prompt text). If it's absent,
+  unreadable, malformed, or has no `main_system_prompt` key, the built-in
+  `DEFAULT_MAIN_SYSTEM_PROMPT` in `dashboard/chat/constants.py` is used.
+  Override the path with `LLM_DOCK_CHAT_SETTINGS_FILE`.
+- **API** (bearer auth), `/api/chat/settings/main-system-prompt`:
+  - `GET` → `{current, builtin, customized}` — `customized` is true only
+    when a non-empty override is stored *and* it differs from the
+    built-in, so it's safe to drive a "modified" indicator off it.
+  - `PUT {"content": "..."}` → store the override (rejects empty /
+    whitespace-only content, and non-object JSON bodies, with 400).
+  - `DELETE` → drop the override, reverting to the built-in.
+- `create_conversation` reads the configured default **only** when the
+  request body has no explicit `main_system_prompt`. Existing
+  conversations are unaffected — each carries its own copy in `chat.db`.
+- Core logic is `chat/settings_store.py` (pure, unit-tested in
+  `dashboard/tests/test_settings_store.py`); endpoints + the
+  conversation-creation integration test live in
+  `dashboard/tests/test_chat_settings_routes.py`.
+
+**Keep tool-specific guidance out of this prompt.** Anything about how to
+use a particular tool (web search, sympy, schemdraw, render-html, …)
+belongs in that MCP server's `tool_hint` — it is appended to the system
+prompt by `mcp_registry.get_tool_hints()` only when the server is enabled
+for the conversation. The base prompt should hold only generic style /
+accuracy / tool-posture guidance. See
+`dashboard/mcp_servers.example.json` for the `websearch` `tool_hint`
+carrying the web-research guidance.
+
 ## Reference: working embedding service
 
 `vllm-nomic-embed-text-v1.5` (port 3320) — see `services.json`. Smoke
