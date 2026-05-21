@@ -1,9 +1,9 @@
 """Tests for the editable-default-prompt HTTP API.
 
-These endpoints sit alongside the rest of the chat blueprint but don't
-need the chat DB, MCP manager, or any subprocess infra, so the fixture
-spins up a stripped-down Flask app with just the blueprint and the auth
-token wired in.
+These endpoints sit alongside the rest of the chat blueprint. The settings
+endpoints themselves need no chat DB, but the conversation-creation
+integration tests do, so the fixture wires an in-memory ChatDB into the
+app config. No MCP manager or subprocess infra is needed.
 """
 import json
 import os
@@ -20,20 +20,23 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-chat-settings")
 
 from chat import settings_store
 from chat.constants import DEFAULT_MAIN_SYSTEM_PROMPT
+from chat.db import ChatDB
 from chat.routes import chat_bp
 
 TOKEN = "test-token-chat-settings"
 SETTINGS_PATH = "/api/chat/settings/main-system-prompt"
+CONVERSATIONS_PATH = "/api/chat/conversations"
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """Minimal Flask app exposing only the chat blueprint."""
+    """Minimal Flask app exposing the chat blueprint with an in-memory DB."""
     settings_file = tmp_path / "chat_settings.json"
     monkeypatch.setenv("LLM_DOCK_CHAT_SETTINGS_FILE", str(settings_file))
 
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
+    app.config["CHAT_DB"] = ChatDB(":memory:")
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()
@@ -196,3 +199,63 @@ def test_get_after_put_is_a_consistent_snapshot(client):
     client.put(SETTINGS_PATH, json={"content": "B"}, headers=_auth())
     body = client.get(SETTINGS_PATH, headers=_auth()).get_json()
     assert body["current"] == "B"
+
+
+# -- Integration: create_conversation consumes the configured default ---
+
+
+def test_new_conversation_uses_custom_default_prompt(client):
+    """POST /conversations without main_system_prompt picks up the override.
+
+    This is the actual acceptance criterion the API exists for. A
+    regression that reverted create_conversation to DEFAULT_MAIN_SYSTEM_PROMPT
+    would leave every settings-endpoint test green but fail here.
+    """
+    custom = "Custom global default. Be terse."
+    client.put(SETTINGS_PATH, json={"content": custom}, headers=_auth())
+
+    r = client.post(
+        CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == custom
+
+
+def test_new_conversation_uses_builtin_when_no_customization(client):
+    """With nothing configured, a new conversation gets the built-in prompt."""
+    r = client.post(
+        CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == DEFAULT_MAIN_SYSTEM_PROMPT
+
+
+def test_explicit_prompt_overrides_global_default(client):
+    """An explicit main_system_prompt in the request body still wins."""
+    client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
+
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={"main_service": "svc-a", "main_system_prompt": "explicit override"},
+        headers=_auth(),
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == "explicit override"
+
+
+def test_explicit_empty_prompt_is_honored_not_replaced(client):
+    """An explicit empty-string prompt is a deliberate choice, not 'unset'.
+
+    create_conversation branches on key presence, so passing
+    main_system_prompt="" must store "" rather than silently substituting
+    the global default.
+    """
+    client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
+
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={"main_service": "svc-a", "main_system_prompt": ""},
+        headers=_auth(),
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == ""

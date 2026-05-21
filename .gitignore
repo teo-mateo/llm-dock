@@ -12,6 +12,9 @@ docker-compose.lock
 # Machine-local MCP registry (declared external servers)
 dashboard/mcp_servers.json
 
+# Machine-local chat settings (user-customized default system prompt)
+dashboard/chat_settings.json
+
 # Logs
 *.log
 dashboard/dashboard.log
