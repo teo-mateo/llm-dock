@@ -139,13 +139,13 @@ describe('ChatArea — send gating on a pending system-prompt save', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello model', undefined))
   })
 
-  it('sends immediately when there is no pending prompt save', () => {
+  it('sends when there is no pending prompt save', async () => {
     const onSend = vi.fn()
     const { container } = renderConversation(onSend)
     const composer = container.querySelector('textarea') // prompt editor collapsed
     fireEvent.change(composer, { target: { value: 'hi' } })
     fireEvent.keyDown(composer, { key: 'Enter' })
-    expect(onSend).toHaveBeenCalledWith('hi', undefined)
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('hi', undefined))
   })
 
   it('still sends if the prompt save fails', async () => {
@@ -162,6 +162,47 @@ describe('ChatArea — send gating on a pending system-prompt save', () => {
     fireEvent.change(composer, { target: { value: 'hello' } })
     fireEvent.keyDown(composer, { key: 'Enter' })
 
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
+  })
+
+  it('waits for the whole save chain when an edit lands during a save', async () => {
+    // Regression for PR #44 codex iteration 3: when a second edit is made
+    // while the first save is in flight, SystemPromptEditor's commit loop
+    // issues a follow-up PUT after the first resolves. The send must wait
+    // for that follow-up too — not just the first promise — or the reply
+    // is generated with the intermediate prompt.
+    let resolveA, resolveB
+    mockUpdateConversation
+      .mockImplementationOnce(() => new Promise((r) => { resolveA = r }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveB = r }))
+    const onSend = vi.fn()
+    const { container } = renderConversation(onSend)
+
+    fireEvent.click(screen.getByRole('button', { name: /System Prompt/ }))
+    const promptTextarea = container.querySelectorAll('textarea')[0]
+
+    // Edit to A and blur → save A starts (deferred).
+    fireEvent.change(promptTextarea, { target: { value: 'A' } })
+    fireEvent.blur(promptTextarea)
+    // Edit to B and blur → dropped by the editor's saving guard.
+    fireEvent.change(promptTextarea, { target: { value: 'B' } })
+    fireEvent.blur(promptTextarea)
+
+    // Send while save A is still in flight.
+    const composer = container.querySelectorAll('textarea')[1]
+    fireEvent.change(composer, { target: { value: 'hello' } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+    await Promise.resolve()
+    expect(onSend).not.toHaveBeenCalled()
+
+    // A resolves → the editor enqueues save B → send must STILL be held.
+    resolveA({})
+    await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledTimes(2))
+    expect(mockUpdateConversation).toHaveBeenNthCalledWith(2, 'conv-1', { main_system_prompt: 'B' })
+    expect(onSend).not.toHaveBeenCalled()
+
+    // Only once B lands does the send proceed.
+    resolveB({})
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
   })
 })

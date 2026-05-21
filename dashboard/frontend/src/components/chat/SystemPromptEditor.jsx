@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 
 // Per-conversation main system prompt. The textarea is backed by LOCAL
 // state — the previous version bound `value` straight to the persisted
@@ -10,7 +10,14 @@ import { useRef, useState } from 'react'
 // The parent remounts this component per conversation (key={conversation.id}),
 // so local state initializes cleanly from the prop on every conversation
 // switch without a useEffect resync.
-export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
+//
+// Exposes an imperative `flush()` so the parent can guarantee the latest
+// edit is fully persisted before it sends a message — otherwise the
+// backend would generate the reply with the stale prompt.
+const SystemPromptEditor = forwardRef(function SystemPromptEditor(
+  { mainPrompt, onSaveMain },
+  ref,
+) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState(mainPrompt)
   // Last value known to be persisted. Drives the dirty indicator without
@@ -18,9 +25,12 @@ export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
   const [savedValue, setSavedValue] = useState(mainPrompt)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  // Mirrors `value` so the async commit loop can read the latest text
-  // after an await without a stale closure.
+  // Refs mirror the two values so the async commit loop and flush() can
+  // read the latest state after an await without a stale closure.
   const valueRef = useRef(mainPrompt)
+  const savedValueRef = useRef(mainPrompt)
+  // The in-flight commit loop's promise, or null when idle.
+  const commitRunningRef = useRef(null)
 
   const dirty = value !== savedValue
 
@@ -29,30 +39,45 @@ export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
     valueRef.current = next
   }
 
-  async function commit() {
-    // A blur that lands while a save is already running is a no-op here —
-    // the loop below re-reads `valueRef` after each request, so the edit
-    // is still persisted without its own blur being honored.
-    if (saving) return
-    if (valueRef.current === savedValue) return
-    setSaving(true)
-    setError(null)
-    let persisted = savedValue
-    try {
-      // Persist until what's on disk matches the textarea — covers edits
-      // made while an earlier request was in flight.
-      while (valueRef.current !== persisted) {
-        const snapshot = valueRef.current
-        await onSaveMain(snapshot)
-        persisted = snapshot
+  // Persist the textarea to the server. Idempotent while running: a second
+  // call returns the in-flight promise. The loop re-reads `valueRef` after
+  // every request, so an edit made mid-save (whose blur was swallowed
+  // because a save was already running) is still persisted.
+  function commit() {
+    if (commitRunningRef.current) return commitRunningRef.current
+    if (valueRef.current === savedValueRef.current) return null
+    const run = (async () => {
+      setSaving(true)
+      setError(null)
+      try {
+        while (valueRef.current !== savedValueRef.current) {
+          const snapshot = valueRef.current
+          await onSaveMain(snapshot)
+          savedValueRef.current = snapshot
+          setSavedValue(snapshot)
+        }
+      } catch (e) {
+        setError(e.message || 'Save failed')
+      } finally {
+        setSaving(false)
+        commitRunningRef.current = null
       }
-      setSavedValue(persisted)
-    } catch (e) {
-      setError(e.message || 'Save failed')
-    } finally {
-      setSaving(false)
+    })()
+    commitRunningRef.current = run
+    return run
+  }
+
+  // Resolve once the textarea is fully persisted: kick off a save if the
+  // value is dirty, then wait out the (possibly looping) commit. Used by
+  // the parent to gate message sends on the prompt being saved.
+  async function flush() {
+    commit()
+    while (commitRunningRef.current) {
+      await commitRunningRef.current
     }
   }
+
+  useImperativeHandle(ref, () => ({ flush }))
 
   return (
     <div className="border-b border-border">
@@ -88,4 +113,6 @@ export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
       )}
     </div>
   )
-}
+})
+
+export default SystemPromptEditor

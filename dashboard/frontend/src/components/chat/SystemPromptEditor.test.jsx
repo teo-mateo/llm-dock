@@ -85,6 +85,35 @@ describe('SystemPromptEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
+  it('flush() persists an unsaved (un-blurred) edit and resolves only after it lands', async () => {
+    let resolveSave
+    const onSave = vi.fn().mockImplementationOnce(() => new Promise((r) => { resolveSave = r }))
+    const ref = { current: null }
+    const { container } = render(
+      <SystemPromptEditor ref={ref} mainPrompt="orig" onSaveMain={onSave} />,
+    )
+    expand()
+    // Edit but do NOT blur — flush() must still persist it.
+    fireEvent.change(container.querySelector('textarea'), { target: { value: 'edited' } })
+
+    let flushed = false
+    ref.current.flush().then(() => { flushed = true })
+    await Promise.resolve()
+    expect(onSave).toHaveBeenCalledWith('edited')
+    expect(flushed).toBe(false) // still in flight
+
+    resolveSave()
+    await waitFor(() => expect(flushed).toBe(true))
+  })
+
+  it('flush() resolves immediately when there is nothing to save', async () => {
+    const onSave = vi.fn()
+    const ref = { current: null }
+    render(<SystemPromptEditor ref={ref} mainPrompt="orig" onSaveMain={onSave} />)
+    await ref.current.flush()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   it('persists an edit made while an earlier save is still in flight', async () => {
     // Regression for PR #44 codex iteration 2: a blur during an in-flight
     // save was dropped by the `saving` guard, so the later edit never got

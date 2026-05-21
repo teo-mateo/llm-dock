@@ -43,9 +43,9 @@ export default function ChatArea({
   const [spinoffs, setSpinoffs] = useState([]) // [{id, text, minimized, zIndex}]
   const topZRef = useRef(100)
   const composerRef = useRef(null)
-  // Tracks an in-flight system-prompt save so a fast send can't POST a
-  // message before the prompt PUT lands (SystemPromptEditor saves on blur).
-  const pendingPromptSaveRef = useRef(null)
+  // Lets handleSend flush a just-edited system prompt to the server before
+  // the message is posted (SystemPromptEditor persists on blur).
+  const promptEditorRef = useRef(null)
 
   const quoteSelection = useCallback((text) => {
     if (!text) return
@@ -155,30 +155,17 @@ export default function ChatArea({
     onReloadConversation?.(conversation.id)
   }
 
-  async function handleSystemPromptChange(field, value) {
-    const save = updateConversation(conversation.id, { [field]: value })
-    pendingPromptSaveRef.current = save
-    try {
-      await save
-    } finally {
-      // Only clear if a newer save hasn't replaced this one.
-      if (pendingPromptSaveRef.current === save) pendingPromptSaveRef.current = null
-    }
+  function handleSystemPromptChange(field, value) {
+    return updateConversation(conversation.id, { [field]: value })
   }
 
   async function handleSend(msg, images) {
     // SystemPromptEditor persists on blur; focusing the composer blurs it,
-    // so a save may be in flight right as the user hits send. Wait it out
-    // so the backend reads the new prompt when it generates the reply.
-    const pending = pendingPromptSaveRef.current
-    if (pending) {
-      try {
-        await pending
-      } catch {
-        // The failure is already surfaced in SystemPromptEditor; don't
-        // block the send on it (the prompt just stays at its old value).
-      }
-    }
+    // so a save — or a chain of them, if the user edited again mid-save —
+    // can still be running. flush() resolves only once the prompt is fully
+    // persisted, so the backend reads the new prompt for the reply. A
+    // failed save is surfaced in the editor and does not block the send.
+    await promptEditorRef.current?.flush()
     onSend(msg, images)
     setPendingInserts([])
   }
@@ -218,6 +205,7 @@ export default function ChatArea({
             state resets cleanly when the user switches conversations. */}
         <SystemPromptEditor
           key={conversation.id}
+          ref={promptEditorRef}
           mainPrompt={conversation.main_system_prompt || ''}
           onSaveMain={v => handleSystemPromptChange('main_system_prompt', v)}
         />
