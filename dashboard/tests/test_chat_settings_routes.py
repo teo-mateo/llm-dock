@@ -113,6 +113,25 @@ def test_put_with_no_body(client):
     assert r.status_code == 400
 
 
+@pytest.mark.parametrize("raw_body", ["[1]", '"x"', "123", "true", "null"])
+def test_put_rejects_non_object_json_body(client, raw_body):
+    """A valid-JSON but non-object body must 400, not 500.
+
+    request.get_json(silent=True) returns the parsed value as-is, so a
+    bare list/string/number would reach .get() and raise AttributeError
+    without an isinstance guard.
+    """
+    r = client.put(
+        SETTINGS_PATH,
+        data=raw_body,
+        content_type="application/json",
+        headers=_auth(),
+    )
+    assert r.status_code == 400, f"body {raw_body!r} should 400, got {r.status_code}"
+    assert "body must be" in r.get_json()["error"]
+    assert client.get(SETTINGS_PATH, headers=_auth()).get_json()["customized"] is False
+
+
 # -- DELETE -------------------------------------------------------------
 
 

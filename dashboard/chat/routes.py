@@ -81,7 +81,12 @@ def get_main_system_prompt_setting():
 @chat_bp.route("/api/chat/settings/main-system-prompt", methods=["PUT"])
 @require_auth
 def put_main_system_prompt_setting():
-    data = request.get_json(silent=True) or {}
+    # get_json(silent=True) returns whatever was parsed — including a bare
+    # list/str/number for a non-object body — so guard the type before
+    # calling .get(), otherwise a body like [1] would 500 instead of 400.
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be {content: string}"}), 400
     content = data.get("content")
     if not isinstance(content, str):
         return jsonify({"error": "body must be {content: string}"}), 400
