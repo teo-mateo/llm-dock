@@ -84,4 +84,33 @@ describe('SystemPromptEditor', () => {
     fireEvent.blur(ta)  // nothing changed since the save
     expect(onSave).toHaveBeenCalledTimes(1)
   })
+
+  it('persists an edit made while an earlier save is still in flight', async () => {
+    // Regression for PR #44 codex iteration 2: a blur during an in-flight
+    // save was dropped by the `saving` guard, so the later edit never got
+    // persisted. The commit loop must catch it once the first PUT settles.
+    let resolveFirst
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
+      .mockResolvedValueOnce(undefined)
+    const { container } = render(<SystemPromptEditor mainPrompt="orig" onSaveMain={onSave} />)
+    expand()
+    const ta = container.querySelector('textarea')
+
+    // Edit to A and blur — starts the (deferred) save of A.
+    fireEvent.change(ta, { target: { value: 'A' } })
+    fireEvent.blur(ta)
+    expect(onSave).toHaveBeenNthCalledWith(1, 'A')
+
+    // Edit to B while A's save is in flight; this blur is dropped by the
+    // `saving` guard and must NOT trigger its own save yet.
+    fireEvent.change(ta, { target: { value: 'B' } })
+    fireEvent.blur(ta)
+    expect(onSave).toHaveBeenCalledTimes(1)
+
+    // Once A's save settles, the loop must persist the latest value (B).
+    resolveFirst()
+    await waitFor(() => expect(onSave).toHaveBeenNthCalledWith(2, 'B'))
+    await waitFor(() => expect(container.textContent).not.toContain('Unsaved'))
+  })
 })

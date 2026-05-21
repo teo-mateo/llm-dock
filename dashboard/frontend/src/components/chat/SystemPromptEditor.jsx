@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 // Per-conversation main system prompt. The textarea is backed by LOCAL
 // state — the previous version bound `value` straight to the persisted
@@ -18,16 +18,35 @@ export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
   const [savedValue, setSavedValue] = useState(mainPrompt)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // Mirrors `value` so the async commit loop can read the latest text
+  // after an await without a stale closure.
+  const valueRef = useRef(mainPrompt)
 
   const dirty = value !== savedValue
 
+  function handleChange(next) {
+    setValue(next)
+    valueRef.current = next
+  }
+
   async function commit() {
-    if (!dirty || saving) return
+    // A blur that lands while a save is already running is a no-op here —
+    // the loop below re-reads `valueRef` after each request, so the edit
+    // is still persisted without its own blur being honored.
+    if (saving) return
+    if (valueRef.current === savedValue) return
     setSaving(true)
     setError(null)
+    let persisted = savedValue
     try {
-      await onSaveMain(value)
-      setSavedValue(value)
+      // Persist until what's on disk matches the textarea — covers edits
+      // made while an earlier request was in flight.
+      while (valueRef.current !== persisted) {
+        const snapshot = valueRef.current
+        await onSaveMain(snapshot)
+        persisted = snapshot
+      }
+      setSavedValue(persisted)
     } catch (e) {
       setError(e.message || 'Save failed')
     } finally {
@@ -52,7 +71,7 @@ export default function SystemPromptEditor({ mainPrompt, onSaveMain }) {
           <label className="text-xs text-fg-muted block">Main Model</label>
           <textarea
             value={value}
-            onChange={e => setValue(e.target.value)}
+            onChange={e => handleChange(e.target.value)}
             onBlur={commit}
             rows={3}
             className="w-full bg-surface border border-border rounded px-3 py-2 text-xs text-fg resize-none focus:outline-none focus:border-accent"
