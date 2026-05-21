@@ -205,4 +205,34 @@ describe('ChatArea — send gating on a pending system-prompt save', () => {
     resolveB({})
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
   })
+
+  it('ignores a re-entrant submit while a prompt save is still flushing', async () => {
+    // Regression for PR #44 codex iteration 4: the composer stays enabled
+    // while handleSend awaits flush() (streaming is still false), so a
+    // double-submit must not reach onSend twice and open concurrent
+    // streams.
+    let resolveSave
+    mockUpdateConversation.mockReturnValue(new Promise((r) => { resolveSave = r }))
+    const onSend = vi.fn()
+    const { container } = renderConversation(onSend)
+
+    fireEvent.click(screen.getByRole('button', { name: /System Prompt/ }))
+    const promptTextarea = container.querySelectorAll('textarea')[0]
+    fireEvent.change(promptTextarea, { target: { value: 'edited' } })
+    fireEvent.blur(promptTextarea) // save now in flight
+
+    const composer = container.querySelectorAll('textarea')[1]
+    fireEvent.change(composer, { target: { value: 'first' } })
+    fireEvent.keyDown(composer, { key: 'Enter' }) // submit 1 — awaits flush
+    fireEvent.change(composer, { target: { value: 'second' } })
+    fireEvent.keyDown(composer, { key: 'Enter' }) // submit 2 — must be dropped
+
+    await Promise.resolve()
+    expect(onSend).not.toHaveBeenCalled()
+
+    // After the save resolves, exactly one send goes through.
+    resolveSave({})
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1))
+    expect(onSend).toHaveBeenCalledWith('first', undefined)
+  })
 })

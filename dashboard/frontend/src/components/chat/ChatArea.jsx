@@ -46,6 +46,10 @@ export default function ChatArea({
   // Lets handleSend flush a just-edited system prompt to the server before
   // the message is posted (SystemPromptEditor persists on blur).
   const promptEditorRef = useRef(null)
+  // Guards handleSend against re-entry: the composer stays enabled while
+  // handleSend awaits the prompt flush (streaming is still false), so a
+  // double-submit would otherwise open two concurrent SSE streams.
+  const sendInFlightRef = useRef(false)
 
   const quoteSelection = useCallback((text) => {
     if (!text) return
@@ -160,14 +164,25 @@ export default function ChatArea({
   }
 
   async function handleSend(msg, images) {
-    // SystemPromptEditor persists on blur; focusing the composer blurs it,
-    // so a save — or a chain of them, if the user edited again mid-save —
-    // can still be running. flush() resolves only once the prompt is fully
-    // persisted, so the backend reads the new prompt for the reply. A
-    // failed save is surfaced in the editor and does not block the send.
-    await promptEditorRef.current?.flush()
-    onSend(msg, images)
-    setPendingInserts([])
+    // Drop a re-entrant submit that lands while we're still awaiting the
+    // flush below — otherwise both calls reach onSend with a pre-streaming
+    // sendMessage closure and start concurrent streams. Once onSend runs,
+    // sendMessage flips `streaming` true and the composer's own disabled
+    // guard takes over.
+    if (sendInFlightRef.current) return
+    sendInFlightRef.current = true
+    try {
+      // SystemPromptEditor persists on blur; focusing the composer blurs it,
+      // so a save — or a chain of them, if the user edited again mid-save —
+      // can still be running. flush() resolves only once the prompt is fully
+      // persisted, so the backend reads the new prompt for the reply. A
+      // failed save is surfaced in the editor and does not block the send.
+      await promptEditorRef.current?.flush()
+      onSend(msg, images)
+      setPendingInserts([])
+    } finally {
+      sendInFlightRef.current = false
+    }
   }
 
   return (
