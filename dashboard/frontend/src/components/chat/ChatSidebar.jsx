@@ -22,10 +22,19 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       }`}
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
+      {/* Drive the toggle from the label's click rather than the nested
+          <input>'s. The label is a 32px hit target wrapping a 14px
+          checkbox; clicks on the surrounding padding reach the input
+          only via the browser's label-activation synthetic click, whose
+          modifier-key state is not guaranteed to mirror the original
+          mouse event. Reading shiftKey from the label click — and
+          preventDefault-ing so the synthetic input toggle never fires —
+          keeps the full hit target consistent with the visible checkbox
+          (PR #48 codex iter 2). */}
       {isSpinoff ? (
         <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => e.stopPropagation()}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
         >
           <i
             className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${spinoffIconVisibilityClass}`}
@@ -34,7 +43,6 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
             type="checkbox"
             checked={selected}
             onChange={() => {}}
-            onClick={e => { e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
             title="Select"
           />
@@ -42,13 +50,12 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       ) : (
         <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => e.stopPropagation()}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
         >
           <input
             type="checkbox"
             checked={selected}
             onChange={() => {}}
-            onClick={e => { e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${
               checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
             }`}
