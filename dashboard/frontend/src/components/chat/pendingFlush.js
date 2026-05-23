@@ -7,6 +7,13 @@
 //   'send'    — route + loaded conversation match and not streaming
 export function pendingFlushDecision(pending, convId, conversation, streaming) {
   if (!pending) return 'wait'
+  // convId is null on the empty-state /chat render that runs after
+  // handleCreateAndSend has set pendingMsgRef but before navigate() has
+  // committed the URL change. Treating that as 'abandon' clears the
+  // queued message before the flush effect ever gets a chance to send
+  // it (the bug behind PR #46 not actually fixing /new-chat-issue).
+  // Wait for the route to settle instead.
+  if (!convId) return 'wait'
   if (convId !== pending.convId) return 'abandon'
   if (conversation && conversation.id === pending.convId && !streaming) return 'send'
   return 'wait'
