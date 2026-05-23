@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import ThemeSwitcher from '../ThemeSwitcher'
 
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
@@ -33,7 +33,8 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(conv.id)}
+            onChange={() => {}}
+            onClick={e => { e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
             title="Select"
           />
@@ -46,7 +47,8 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(conv.id)}
+            onChange={() => {}}
+            onClick={e => { e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${
               checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
             }`}
@@ -89,6 +91,10 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [confirmBulk, setConfirmBulk] = useState(false)
+  // Anchor for shift-click range selection. Holds the id of the last
+  // checkbox toggled without shift; a subsequent shift-click selects the
+  // span between anchor and clicked id in render order.
+  const anchorIdRef = useRef(null)
 
   // Build tree: top-level conversations + their children
   const tree = useMemo(() => {
@@ -103,18 +109,50 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     return { roots, childrenMap }
   }, [conversations])
 
-  const toggleSelect = (id) => {
+  // Flat list of conversation ids in render order (root, then its
+  // descendants depth-first, then next root, …). Used to resolve the
+  // [anchor, clicked] span for shift-click range selection.
+  const flatOrder = useMemo(() => {
+    const out = []
+    const walk = (id) => {
+      out.push(id)
+      for (const child of tree.childrenMap[id] || []) walk(child.id)
+    }
+    for (const root of tree.roots) walk(root.id)
+    return out
+  }, [tree])
+
+  const toggleSelect = (id, shiftKey) => {
+    const anchor = anchorIdRef.current
+    if (shiftKey && anchor && anchor !== id) {
+      const ai = flatOrder.indexOf(anchor)
+      const ci = flatOrder.indexOf(id)
+      if (ai !== -1 && ci !== -1) {
+        const [lo, hi] = ai < ci ? [ai, ci] : [ci, ai]
+        const range = flatOrder.slice(lo, hi + 1)
+        setSelectedIds(prev => {
+          const next = new Set(prev)
+          for (const rid of range) next.add(rid)
+          return next
+        })
+        // Leave anchor alone so subsequent shift-clicks extend from the
+        // same origin (standard finder/gmail behavior).
+        return
+      }
+    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+    anchorIdRef.current = id
   }
 
   const clearSelection = () => {
     setSelectedIds(new Set())
     setConfirmBulk(false)
+    anchorIdRef.current = null
   }
 
   const handleBulkDelete = async () => {
