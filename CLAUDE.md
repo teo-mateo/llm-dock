@@ -123,8 +123,12 @@ config live outside this repo) are declared in a JSON file on disk,
 default `dashboard/mcp_servers.json` (gitignored). Override via
 `LLM_DOCK_MCP_SERVERS_FILE`.
 
-Shape — one entry per server id, top-level object keyed by id. See
-`dashboard/mcp_servers.example.json` for a working example.
+Shape — one entry per server id, top-level object keyed by id. Two
+transports are supported: **stdio** (local subprocess, the default) and
+**http** (remote MCP over the SDK's streamable-HTTP transport). See
+`dashboard/mcp_servers.example.json` for working examples of both.
+
+Stdio (local subprocess):
 
 ```json
 {
@@ -140,15 +144,48 @@ Shape — one entry per server id, top-level object keyed by id. See
 }
 ```
 
+HTTP (remote MCP):
+
+```json
+{
+  "ragflow": {
+    "enabled": true,
+    "name": "RagFlow",
+    "description": "Query the local RagFlow knowledge base over HTTP",
+    "transport": "http",
+    "url": "http://localhost:9382/mcp",
+    "headers": { "Authorization": "Bearer ..." },
+    "icon": "fa-cloud",
+    "tool_hint": "..."
+  }
+}
+```
+
 Rules enforced at load time:
 
-- `command` must be an **absolute path**. No `shell=True`, no PATH lookup.
 - `id` must not contain `__` (collides with `server_id__tool_name`
   namespacing in `mcp_client.py`).
 - `id` must not collide with a built-in (`sympy-math`, `schemdraw-circuits`,
   `render-html`). Built-ins always win.
-- All of `name`, `description`, `command`, `args`, `icon`, `tool_hint` are
-  required; `enabled` defaults to `true`.
+- `name`, `description`, `icon`, `tool_hint` are always required.
+- `enabled` defaults to `true`.
+- `transport` defaults to `"stdio"`. Accepted values: `"stdio"`, `"http"`.
+  `"type": "remote"` (Claude Code's shape) is accepted as a synonym for
+  `transport: "http"`, so configs from other harnesses can be pasted in
+  unchanged.
+- For **stdio** entries: `command` (absolute path; no `shell=True`, no
+  PATH lookup) and `args` (list of strings) are required.
+- For **http** entries: `url` (must start with `http://` or `https://`)
+  is required. `headers` is an optional object of string→string and is
+  sent on every request — values are plain strings (no env-var
+  interpolation yet, so don't commit production secrets via this file).
+
+Chat-side availability differs by transport: stdio entries are hidden
+from chat until the command path exists on disk; http entries are
+considered available as soon as they're enabled (the remote is not
+probed at startup). A misconfigured remote therefore surfaces as a
+tool-call error at chat time rather than as a missing entry on the
+Tools page.
 
 Editing the file:
 

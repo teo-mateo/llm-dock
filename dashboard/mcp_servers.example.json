@@ -11,5 +11,15 @@
     ],
     "icon": "fa-magnifying-glass",
     "tool_hint": "You have access to web search via the web_search tool. Use it whenever the user asks for current, recent, external, or source-backed information — news, prices, version numbers, documentation, anything where your training data may be stale or insufficient. Pass a focused query string; n_results defaults to 10. When the query is about the current state of anything (prices, products, events, rankings, \"best X in Y\"), take the year from the `Current date:` line in this system prompt — do not append a year from your training data unless the user explicitly asked about that specific year. Search results are pointers only: cite URLs from the results, quote sparingly, and say so when the snippets don't fully answer the question rather than inventing details."
+  },
+  "ragflow": {
+    "enabled": true,
+    "name": "RagFlow",
+    "description": "Query the local RagFlow knowledge base over HTTP",
+    "transport": "http",
+    "url": "http://localhost:9382/mcp",
+    "headers": {},
+    "icon": "fa-cloud",
+    "tool_hint": "You have access to RagFlow knowledge-base retrieval. Use it before answering questions about content stored in the configured corpora; cite the retrieved passages rather than paraphrasing from memory."
   }
 }

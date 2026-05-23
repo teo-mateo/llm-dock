@@ -51,11 +51,22 @@ def _registry_view(state: dict) -> dict:
             "enabled": bool(cfg.get("enabled", True)),
         }
         if not is_builtin:
-            cmd = cfg["command"]
-            entry["command"] = cmd[0]
-            entry["args"] = cmd[1:]
-            entry["command_exists"] = bool(cmd) and os.path.exists(cmd[0])
+            transport = cfg.get("transport", "stdio")
+            entry["transport"] = transport
+            if transport == "http":
+                entry["url"] = cfg.get("url", "")
+                entry["headers"] = dict(cfg.get("headers") or {})
+                # HTTP entries have no on-disk presence to check; the
+                # field stays True so the existing "no command" badge in
+                # the UI doesn't fire spuriously.
+                entry["command_exists"] = True
+            else:
+                cmd = cfg["command"]
+                entry["command"] = cmd[0]
+                entry["args"] = cmd[1:]
+                entry["command_exists"] = bool(cmd) and os.path.exists(cmd[0])
         else:
+            entry["transport"] = "stdio"
             entry["command_exists"] = True
         servers.append(entry)
     return {

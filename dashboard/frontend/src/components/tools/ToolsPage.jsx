@@ -55,6 +55,24 @@ function ServerDetails({ server, registryErrors }) {
         <div className="text-xs text-fg-subtle bg-app border border-border rounded px-3 py-2">
           Built-in server. Defined in <span className="font-mono">dashboard/chat/mcp_registry.py</span>. Edit via code.
         </div>
+      ) : server.transport === 'http' ? (
+        <div className="bg-app border border-border rounded px-3 py-2 space-y-1 text-xs">
+          <div>
+            <span className="text-fg-subtle">transport:</span>{' '}
+            <span className="font-mono text-fg">http</span>
+          </div>
+          <div>
+            <span className="text-fg-subtle">url:</span>{' '}
+            <span className="font-mono text-fg break-all">{server.url}</span>
+          </div>
+          {server.headers && Object.keys(server.headers).length > 0 && (
+            <div>
+              <span className="text-fg-subtle">headers:</span>{' '}
+              <span className="font-mono text-fg">{Object.keys(server.headers).join(', ')}</span>
+              <span className="text-fg-subtle"> ({Object.keys(server.headers).length})</span>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="bg-app border border-border rounded px-3 py-2 space-y-1 text-xs">
           <div>
