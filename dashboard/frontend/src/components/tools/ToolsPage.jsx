@@ -106,7 +106,11 @@ function ServerDetails({ server, registryErrors }) {
 
       <div className="pt-2 border-t border-border">
         <h3 className="text-xs uppercase tracking-wide text-fg-subtle mb-2">Test</h3>
-        <ServerTestPanel server={server} />
+        {/* key={server.id} forces a remount when switching servers so
+            the panel's discovered-tools / result / textarea state is
+            dropped — otherwise the previous server's tool list and Run
+            output would linger on the new server's pane. */}
+        <ServerTestPanel key={server.id} server={server} />
       </div>
     </div>
   )
