@@ -26,8 +26,13 @@ function App() {
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         <MobileNav />
         <Routes>
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:conversationId" element={<ChatPage />} />
+          {/* Single route with an optional :conversationId so the empty
+              /chat URL and /chat/<id> both render the SAME ChatPage
+              instance. With two separate <Route> entries React Router
+              unmounts/remounts on the transition, which drops the
+              pendingMsgRef holding the empty-state composer's first
+              message. */}
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
           <Route path="/tools" element={<DefaultLayout><ToolsPage /></DefaultLayout>} />
           <Route path="/" element={<DefaultLayout><GpuMonitor /><ServicesTable /></DefaultLayout>} />
           <Route path="/services/:serviceName/*" element={<DefaultLayout><ServiceDetailsPage /></DefaultLayout>} />
