@@ -199,6 +199,15 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Tailwind Typography adds `::before { content: "`" }` and
+     `::after { content: "`" }` to inline <code>, which prints the
+     literal backticks alongside the monospaced span. We already style
+     code via the surrounding prose; strip the decorative quotes. */
+  .prose :where(code):not(:where([class~="not-prose"] *))::before,
+  .prose :where(code):not(:where([class~="not-prose"] *))::after {
+    content: none;
+  }
 }
 
 /* -------------------------------------------------------------------
