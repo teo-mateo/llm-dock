@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import ThemeSwitcher from '../ThemeSwitcher'
 
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
@@ -22,10 +22,19 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       }`}
       style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: 12 }}
     >
+      {/* Drive the toggle from the label's click rather than the nested
+          <input>'s. The label is a 32px hit target wrapping a 14px
+          checkbox; clicks on the surrounding padding reach the input
+          only via the browser's label-activation synthetic click, whose
+          modifier-key state is not guaranteed to mirror the original
+          mouse event. Reading shiftKey from the label click — and
+          preventDefault-ing so the synthetic input toggle never fires —
+          keeps the full hit target consistent with the visible checkbox
+          (PR #48 codex iter 2). */}
       {isSpinoff ? (
         <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => e.stopPropagation()}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
         >
           <i
             className={`fa-solid fa-code-branch text-[10px] opacity-50 text-purple-400 absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${spinoffIconVisibilityClass}`}
@@ -33,7 +42,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(conv.id)}
+            onChange={() => {}}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${spinoffCheckboxVisibilityClass}`}
             title="Select"
           />
@@ -41,12 +50,12 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
       ) : (
         <label
           className="group/iconslot relative w-8 h-8 -m-2 flex items-center justify-center flex-shrink-0 cursor-pointer"
-          onClick={e => e.stopPropagation()}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleSelect(conv.id, e.shiftKey) }}
         >
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(conv.id)}
+            onChange={() => {}}
             className={`w-3.5 h-3.5 accent-accent cursor-pointer transition-opacity ${
               checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
             }`}
@@ -89,6 +98,10 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [confirmBulk, setConfirmBulk] = useState(false)
+  // Anchor for shift-click range selection. Holds the id of the last
+  // checkbox toggled without shift; a subsequent shift-click selects the
+  // span between anchor and clicked id in render order.
+  const anchorIdRef = useRef(null)
 
   // Build tree: top-level conversations + their children
   const tree = useMemo(() => {
@@ -103,18 +116,50 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     return { roots, childrenMap }
   }, [conversations])
 
-  const toggleSelect = (id) => {
+  // Flat list of conversation ids in render order (root, then its
+  // descendants depth-first, then next root, …). Used to resolve the
+  // [anchor, clicked] span for shift-click range selection.
+  const flatOrder = useMemo(() => {
+    const out = []
+    const walk = (id) => {
+      out.push(id)
+      for (const child of tree.childrenMap[id] || []) walk(child.id)
+    }
+    for (const root of tree.roots) walk(root.id)
+    return out
+  }, [tree])
+
+  const toggleSelect = (id, shiftKey) => {
+    const anchor = anchorIdRef.current
+    if (shiftKey && anchor && anchor !== id) {
+      const ai = flatOrder.indexOf(anchor)
+      const ci = flatOrder.indexOf(id)
+      if (ai !== -1 && ci !== -1) {
+        const [lo, hi] = ai < ci ? [ai, ci] : [ci, ai]
+        const range = flatOrder.slice(lo, hi + 1)
+        setSelectedIds(prev => {
+          const next = new Set(prev)
+          for (const rid of range) next.add(rid)
+          return next
+        })
+        // Leave anchor alone so subsequent shift-clicks extend from the
+        // same origin (standard finder/gmail behavior).
+        return
+      }
+    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+    anchorIdRef.current = id
   }
 
   const clearSelection = () => {
     setSelectedIds(new Set())
     setConfirmBulk(false)
+    anchorIdRef.current = null
   }
 
   const handleBulkDelete = async () => {
