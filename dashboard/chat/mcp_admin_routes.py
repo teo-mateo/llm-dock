@@ -55,7 +55,13 @@ def _registry_view(state: dict) -> dict:
             entry["transport"] = transport
             if transport == "http":
                 entry["url"] = cfg.get("url", "")
-                entry["headers"] = dict(cfg.get("headers") or {})
+                # Only the header NAMES are returned — values can hold
+                # secrets (e.g. `Authorization: Bearer …`) and the
+                # /api/chat/mcp-registry endpoint should never echo them
+                # back. The UI just needs the keys to render a "present"
+                # indicator; full values stay in mcp_servers.json on
+                # disk.
+                entry["header_keys"] = sorted(list((cfg.get("headers") or {}).keys()))
                 # HTTP entries have no on-disk presence to check; the
                 # field stays True so the existing "no command" badge in
                 # the UI doesn't fire spuriously.

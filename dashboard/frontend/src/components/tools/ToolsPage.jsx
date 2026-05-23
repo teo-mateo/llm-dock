@@ -65,11 +65,11 @@ function ServerDetails({ server, registryErrors }) {
             <span className="text-fg-subtle">url:</span>{' '}
             <span className="font-mono text-fg break-all">{server.url}</span>
           </div>
-          {server.headers && Object.keys(server.headers).length > 0 && (
+          {server.header_keys && server.header_keys.length > 0 && (
             <div>
               <span className="text-fg-subtle">headers:</span>{' '}
-              <span className="font-mono text-fg">{Object.keys(server.headers).join(', ')}</span>
-              <span className="text-fg-subtle"> ({Object.keys(server.headers).length})</span>
+              <span className="font-mono text-fg">{server.header_keys.join(', ')}</span>
+              <span className="text-fg-subtle"> ({server.header_keys.length}, values not shown)</span>
             </div>
           )}
         </div>
