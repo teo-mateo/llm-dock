@@ -23,7 +23,24 @@ DEFAULT_CONFIG_FILE = os.path.join(
     "mcp_servers.json",
 )
 
-REQUIRED_FIELDS = ("name", "description", "command", "args", "icon", "tool_hint")
+_COMMON_REQUIRED_FIELDS = ("name", "description", "icon", "tool_hint")
+_STDIO_REQUIRED_FIELDS = ("command", "args")
+_HTTP_REQUIRED_FIELDS = ("url",)
+
+# Recognized transports. `"http"` covers MCP's Streamable HTTP transport
+# (the SDK's `streamablehttp_client`), which is the modern remote-server
+# protocol; the URL scheme can be either http or https. `"remote"` is
+# accepted as a synonym so configs originally written for other harnesses
+# (e.g. Claude Code's `"type": "remote"` form) can be pasted in unchanged.
+_TRANSPORT_STDIO = "stdio"
+_TRANSPORT_HTTP = "http"
+_TRANSPORT_ALIASES = {
+    _TRANSPORT_STDIO: _TRANSPORT_STDIO,
+    _TRANSPORT_HTTP: _TRANSPORT_HTTP,
+    "remote": _TRANSPORT_HTTP,
+    "streamable-http": _TRANSPORT_HTTP,
+    "streamable_http": _TRANSPORT_HTTP,
+}
 
 _lock = threading.Lock()
 _state = {
@@ -47,6 +64,25 @@ def bind_manager(manager) -> None:
     _manager = manager
 
 
+def _resolve_transport(entry: dict) -> tuple:
+    """Return (transport, error). transport is the normalized value
+    (`_TRANSPORT_STDIO` or `_TRANSPORT_HTTP`); error is None on success or
+    an error message. Accept both `transport` and `type` as the field
+    name so configs from other harnesses (Claude Code uses `type:
+    "remote"`) can be pasted in unchanged.
+    """
+    raw = entry.get("transport") or entry.get("type") or _TRANSPORT_STDIO
+    if not isinstance(raw, str):
+        return None, "field 'transport' must be a string"
+    resolved = _TRANSPORT_ALIASES.get(raw.lower())
+    if resolved is None:
+        return None, (
+            f"unknown transport '{raw}' — must be one of "
+            f"{sorted(set(_TRANSPORT_ALIASES))}"
+        )
+    return resolved, None
+
+
 def _validate_entry(server_id: str, entry: dict, builtin_ids: set) -> Optional[str]:
     """Return None if valid, otherwise an error message."""
     if not isinstance(server_id, str) or not server_id:
@@ -57,33 +93,66 @@ def _validate_entry(server_id: str, entry: dict, builtin_ids: set) -> Optional[s
         return f"id '{server_id}' collides with a built-in server"
     if not isinstance(entry, dict):
         return "entry must be a JSON object"
-    for field in REQUIRED_FIELDS:
+
+    transport, err = _resolve_transport(entry)
+    if err is not None:
+        return err
+
+    for field in _COMMON_REQUIRED_FIELDS:
         if field not in entry:
             return f"missing required field '{field}'"
-    for field in ("name", "description", "icon", "tool_hint"):
+    for field in _COMMON_REQUIRED_FIELDS:
         if not isinstance(entry[field], str) or not entry[field]:
             return f"field '{field}' must be a non-empty string"
-    if not isinstance(entry["command"], str) or not entry["command"]:
-        return "field 'command' must be a non-empty string"
-    if not os.path.isabs(entry["command"]):
-        return "field 'command' must be an absolute path"
-    if not isinstance(entry["args"], list) or not all(isinstance(a, str) for a in entry["args"]):
-        return "field 'args' must be a list of strings"
+
+    if transport == _TRANSPORT_STDIO:
+        for field in _STDIO_REQUIRED_FIELDS:
+            if field not in entry:
+                return f"missing required field '{field}' (stdio transport)"
+        if not isinstance(entry["command"], str) or not entry["command"]:
+            return "field 'command' must be a non-empty string"
+        if not os.path.isabs(entry["command"]):
+            return "field 'command' must be an absolute path"
+        if not isinstance(entry["args"], list) or not all(isinstance(a, str) for a in entry["args"]):
+            return "field 'args' must be a list of strings"
+    else:  # http
+        for field in _HTTP_REQUIRED_FIELDS:
+            if field not in entry:
+                return f"missing required field '{field}' (http transport)"
+        url = entry["url"]
+        if not isinstance(url, str) or not url:
+            return "field 'url' must be a non-empty string"
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return "field 'url' must start with http:// or https://"
+        headers = entry.get("headers", {})
+        if not isinstance(headers, dict):
+            return "field 'headers' must be a JSON object of string→string"
+        for k, v in headers.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                return "field 'headers' must map strings to strings"
+
     if "enabled" in entry and not isinstance(entry["enabled"], bool):
         return "field 'enabled' must be a boolean"
     return None
 
 
 def _normalize_external(server_id: str, entry: dict) -> dict:
-    return {
+    transport, _ = _resolve_transport(entry)
+    normalized = {
         "name": entry["name"],
         "description": entry["description"],
-        "command": [entry["command"], *entry["args"]],
         "icon": entry["icon"],
         "tool_hint": entry["tool_hint"],
         "external": True,
         "enabled": entry.get("enabled", True),
+        "transport": transport,
     }
+    if transport == _TRANSPORT_STDIO:
+        normalized["command"] = [entry["command"], *entry["args"]]
+    else:
+        normalized["url"] = entry["url"]
+        normalized["headers"] = dict(entry.get("headers", {}))
+    return normalized
 
 
 def _load_external(builtin_ids: set):
@@ -115,7 +184,10 @@ def _load_external(builtin_ids: set):
 
 
 def _merge(builtin: dict, external: dict) -> dict:
-    merged = {sid: {**cfg, "external": False, "enabled": True} for sid, cfg in builtin.items()}
+    merged = {
+        sid: {**cfg, "external": False, "enabled": True, "transport": _TRANSPORT_STDIO}
+        for sid, cfg in builtin.items()
+    }
     for sid, cfg in external.items():
         merged[sid] = cfg
     return merged
@@ -190,17 +262,23 @@ def get_state() -> dict:
 def _chat_available(cfg: dict) -> bool:
     """Is this entry usable from the chat path?
 
-    Built-in entries are always available. External entries must be enabled
-    AND have an existing command on disk — otherwise the model would be
-    told it has a tool that tool discovery can't actually surface, risking
-    fabricated "I used the tool" answers. The Tools page reads the raw
-    state and still shows unavailable external entries so the user can
-    debug them.
+    Built-in entries are always available. External stdio entries must
+    additionally have an existing command on disk — otherwise the model
+    would be told it has a tool that tool discovery can't actually
+    surface, risking fabricated "I used the tool" answers. External HTTP
+    entries only need to be enabled with a non-empty url; reachability is
+    not probed up-front (that would block startup on a slow remote and
+    every reload), so a misconfigured remote shows up as a tool that
+    errors at call time, not as a hidden entry. The Tools page reads the
+    raw state and still shows unavailable external entries so the user
+    can debug them.
     """
     if not cfg.get("enabled", True):
         return False
     if not cfg.get("external"):
         return True
+    if cfg.get("transport") == _TRANSPORT_HTTP:
+        return bool(cfg.get("url"))
     command = cfg.get("command") or []
     return bool(command) and os.path.exists(command[0])
 

@@ -55,6 +55,24 @@ function ServerDetails({ server, registryErrors }) {
         <div className="text-xs text-fg-subtle bg-app border border-border rounded px-3 py-2">
           Built-in server. Defined in <span className="font-mono">dashboard/chat/mcp_registry.py</span>. Edit via code.
         </div>
+      ) : server.transport === 'http' ? (
+        <div className="bg-app border border-border rounded px-3 py-2 space-y-1 text-xs">
+          <div>
+            <span className="text-fg-subtle">transport:</span>{' '}
+            <span className="font-mono text-fg">http</span>
+          </div>
+          <div>
+            <span className="text-fg-subtle">url:</span>{' '}
+            <span className="font-mono text-fg break-all">{server.url}</span>
+          </div>
+          {server.header_keys && server.header_keys.length > 0 && (
+            <div>
+              <span className="text-fg-subtle">headers:</span>{' '}
+              <span className="font-mono text-fg">{server.header_keys.join(', ')}</span>
+              <span className="text-fg-subtle"> ({server.header_keys.length}, values not shown)</span>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="bg-app border border-border rounded px-3 py-2 space-y-1 text-xs">
           <div>
@@ -88,7 +106,11 @@ function ServerDetails({ server, registryErrors }) {
 
       <div className="pt-2 border-t border-border">
         <h3 className="text-xs uppercase tracking-wide text-fg-subtle mb-2">Test</h3>
-        <ServerTestPanel server={server} />
+        {/* key={server.id} forces a remount when switching servers so
+            the panel's discovered-tools / result / textarea state is
+            dropped — otherwise the previous server's tool list and Run
+            output would linger on the new server's pane. */}
+        <ServerTestPanel key={server.id} server={server} />
       </div>
     </div>
   )

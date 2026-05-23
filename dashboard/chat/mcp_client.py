@@ -1,15 +1,42 @@
 """MCP Client Manager — spawns MCP servers and executes tools."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import threading
 from typing import Optional
 
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
 from .mcp_registry import get_server_config
+
+
+@contextlib.asynccontextmanager
+async def _open_streams(config: dict):
+    """Open the read/write streams for an MCP server, regardless of transport.
+
+    Yields the (read, write) pair the SDK's `ClientSession` expects. The
+    `streamablehttp_client` context manager also yields a session-id
+    callable as a third value; we discard it — the dashboard treats every
+    chat-side discover/execute as a one-shot connection, and the session
+    id is only useful for resuming across calls.
+    """
+    transport = config.get("transport", "stdio")
+    if transport == "http":
+        url = config["url"]
+        headers = config.get("headers") or None
+        async with streamablehttp_client(url, headers=headers) as (read, write, _get_session_id):
+            yield read, write
+    else:
+        params = StdioServerParameters(
+            command=config["command"][0],
+            args=config["command"][1:],
+        )
+        async with stdio_client(params) as (read, write):
+            yield read, write
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +146,7 @@ class MCPClientManager:
 
     async def _discover_tools(self, config: dict, server_id: str) -> list:
         """Connect to server, list tools, disconnect."""
-        params = StdioServerParameters(
-            command=config["command"][0],
-            args=config["command"][1:],
-        )
-        async with stdio_client(params) as (read, write):
+        async with _open_streams(config) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.list_tools()
@@ -131,11 +154,7 @@ class MCPClientManager:
 
     async def _execute_tool(self, config: dict, tool_name: str, arguments: dict) -> tuple:
         """Connect to server, call tool, return (result_text, artifacts)."""
-        params = StdioServerParameters(
-            command=config["command"][0],
-            args=config["command"][1:],
-        )
-        async with stdio_client(params) as (read, write):
+        async with _open_streams(config) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
