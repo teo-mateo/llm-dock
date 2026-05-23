@@ -96,6 +96,24 @@ def check_docker():
         return False
 
 
+def _service_kind(config):
+    """Classify a service config as 'chat' or 'embedding' from its params.
+
+    Embedding services are identified by vLLM's pooling runner / embed
+    convert flags or by llama.cpp's --embedding flag. Everything else
+    (instruct/chat models, base completion models) is treated as 'chat'
+    for the purposes of the chat composer's default-model selection.
+    """
+    params = (config or {}).get("params") or {}
+    if params.get("--runner") == "pooling":
+        return "embedding"
+    if params.get("--convert") == "embed":
+        return "embedding"
+    if "--embedding" in params or "--embeddings" in params:
+        return "embedding"
+    return "chat"
+
+
 def get_docker_services():
     """Get status of compose services from Docker"""
     client = docker.from_env()
@@ -108,6 +126,7 @@ def get_docker_services():
     template_type_map = {}
     model_path_map = {}
     model_name_map = {}
+    kind_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
@@ -115,6 +134,7 @@ def get_docker_services():
             template_type_map[service_name] = config.get("template_type", "")
             model_path_map[service_name] = config.get("model_path")
             model_name_map[service_name] = config.get("model_name")
+            kind_map[service_name] = _service_kind(config)
 
     # Get Open WebUI registered URLs (one query for all services)
     openwebui_urls = get_openwebui_registered_urls()
@@ -156,6 +176,7 @@ def get_docker_services():
                 "openwebui_registered": is_registered_in_openwebui(service_name),
                 "model_size": model_size,
                 "model_size_str": model_size_str,
+                "kind": kind_map.get(service_name, "chat"),
             }
 
     # Build complete services list from compose file
@@ -182,6 +203,7 @@ def get_docker_services():
                     "openwebui_registered": is_registered_in_openwebui(service_name),
                     "model_size": model_size,
                     "model_size_str": model_size_str,
+                    "kind": kind_map.get(service_name, "chat"),
                 }
             )
 
