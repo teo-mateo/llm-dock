@@ -14,7 +14,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 - **Service Management** - Create, start, stop, restart services via web UI or API
 - **Open WebUI Integration** - Auto-registers services as OpenAI-compatible endpoints
 - **Port Management** - Automatic port assignment in the 3300-3400 range
-- **Benchmarking** - Run `llama-bench` directly from the dashboard against any llama.cpp service. Benchmarks inherit the service's model and parameters, with live output streaming. Results are stored in a local database for history tracking and comparison across runs
+- **Benchmarking** - Run `llama-bench` directly from the dashboard against any llama.cpp service. Benchmarks inherit the service's model and parameters, with live output streaming. Results are stored in a local database for history tracking and comparison across runs.
 
 ## Prerequisites
 
