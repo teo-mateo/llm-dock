@@ -1,15 +1,22 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 
-// Attach affordance allowlist (issue #29 §5). This is the affordance only —
-// where non-image attachments are stored/used is feature #28.
+// Attach allowlist. Non-image entries are inlined into the outgoing message
+// as fenced code blocks (see buildMessage). PDFs are intentionally excluded
+// — they can't be extracted client-side without a parser; the full artifact
+// store in issue #28 will handle binary uploads.
 const ALLOWED_EXT = new Set([
   // text / docs
-  'txt', 'md', 'markdown', 'pdf', 'json', 'csv', 'tsv', 'log',
+  'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'log',
   // code
   'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'h',
   'cpp', 'cc', 'hpp', 'cs', 'php', 'swift', 'kt', 'sh', 'bash', 'zsh',
   'sql', 'html', 'css', 'scss', 'yml', 'yaml', 'toml', 'ini', 'xml',
 ])
+
+// Cap per-file inlined text — guards against accidentally pasting a 50MB
+// log into the prompt. The cap is generous (most code/config files are
+// well under this) and produces a visible truncation marker when hit.
+const MAX_INLINE_BYTES = 512 * 1024
 
 function fileExt(name) {
   const i = name.lastIndexOf('.')
@@ -24,13 +31,33 @@ function isAllowed(file) {
   if (isImage(file)) return true
   if (
     file.type.startsWith('text/') ||
-    file.type === 'application/pdf' ||
     file.type === 'application/json' ||
     file.type === 'text/csv'
   ) {
     return true
   }
   return ALLOWED_EXT.has(fileExt(file.name))
+}
+
+function langHintFromName(name) {
+  const ext = fileExt(name)
+  if (!ext) return ''
+  if (ext === 'md' || ext === 'markdown') return 'markdown'
+  return ext
+}
+
+// Pick a fence that won't be closed early by backtick runs inside `content`.
+// CommonMark allows fences of any length ≥ 3, and the closing fence must be at
+// least as long as the opening one — so we pick one strictly longer than the
+// longest internal run.
+export function pickFence(content) {
+  let longest = 0
+  const re = /`+/g
+  let m
+  while ((m = re.exec(content)) !== null) {
+    if (m[0].length > longest) longest = m[0].length
+  }
+  return '`'.repeat(Math.max(3, longest + 1))
 }
 
 function formatSize(bytes) {
@@ -43,7 +70,7 @@ function formatSize(bytes) {
 const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
-  const [attachments, setAttachments] = useState([]) // [{name, size, type}] — affordance only (#28)
+  const [attachments, setAttachments] = useState([]) // [{name, size, type, content, truncated}]
   const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -79,6 +106,40 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     }
   }, [value])
 
+  function addTextFile(file) {
+    // Push a placeholder synchronously so submit knows a read is in
+    // flight. Without this, hitting Enter between file-pick and
+    // FileReader.onload would silently drop the attachment AND then
+    // resurrect a stale chip in the freshly-cleared composer.
+    const token = Symbol('attachment')
+    setAttachments(prev => [...prev, {
+      token,
+      name: file.name,
+      size: file.size,
+      type: file.type || fileExt(file.name),
+      content: null,
+      truncated: false,
+      pending: true,
+    }])
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = String(reader.result ?? '')
+      const truncated = text.length > MAX_INLINE_BYTES
+      const content = truncated ? text.slice(0, MAX_INLINE_BYTES) : text
+      setAttachments(prev => prev.map(a =>
+        a.token === token
+          ? { ...a, content, truncated, pending: false }
+          : a
+      ))
+    }
+    reader.onerror = () => {
+      // Drop the placeholder on read failure so it doesn't wedge the
+      // composer in a permanent "pending" state.
+      setAttachments(prev => prev.filter(a => a.token !== token))
+    }
+    reader.readAsText(file)
+  }
+
   function addImageFile(file) {
     const reader = new FileReader()
     reader.onload = () => {
@@ -101,11 +162,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
       if (isImage(file)) {
         addImageFile(file)
       } else {
-        setAttachments(prev => [...prev, {
-          name: file.name,
-          size: file.size,
-          type: file.type || fileExt(file.name),
-        }])
+        addTextFile(file)
       }
     }
   }
@@ -181,6 +238,16 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
       const prefix = `The following issues were identified by a reviewer:\n${issueLines}\n\nPlease address these issues.`
       msg = msg ? `${prefix}\n\n${msg}` : prefix
     }
+    const ready = attachments.filter(a => a.content != null)
+    if (ready.length > 0) {
+      const blocks = ready.map(a => {
+        const lang = langHintFromName(a.name)
+        const note = a.truncated ? ` (truncated to ${MAX_INLINE_BYTES} bytes)` : ''
+        const fence = pickFence(a.content)
+        return `**Attached file: \`${a.name}\`**${note}\n\n${fence}${lang}\n${a.content}\n${fence}`
+      }).join('\n\n')
+      msg = msg ? `${msg}\n\n${blocks}` : blocks
+    }
     return msg
   }
 
@@ -188,12 +255,10 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     e.preventDefault()
     const msg = buildMessage()
     const imgDataUrls = images.map(i => i.dataUrl)
-    if ((!msg && imgDataUrls.length === 0) || disabled) return
+    if ((!msg && imgDataUrls.length === 0) || disabled || anyAttachmentPending) return
     onSend(msg, imgDataUrls.length > 0 ? imgDataUrls : undefined)
     setValue('')
     setImages([])
-    // Non-image attachments are an affordance only; their transport is
-    // owned by feature #28. Clear them so the composer resets cleanly.
     setAttachments([])
   }
 
@@ -204,7 +269,8 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     }
   }
 
-  const canSend = !disabled && (value.trim() || images.length > 0 || pendingInserts.length > 0)
+  const anyAttachmentPending = attachments.some(a => a.pending)
+  const canSend = !disabled && !anyAttachmentPending && (value.trim() || images.length > 0 || attachments.length > 0 || pendingInserts.length > 0)
 
   return (
     <div
@@ -219,7 +285,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
         <div className="px-4 pt-3 max-w-6xl mx-auto">
           <div className="rounded border border-dashed border-accent/50 bg-accent/5 px-3 py-2 text-xs font-mono text-accent flex items-center gap-2">
             <i className="fa-solid fa-paperclip"></i>
-            Drop files to attach (images, text, pdf, json, csv, code)
+            Drop files to attach (images, text, json, csv, code)
           </div>
         </div>
       )}
@@ -283,7 +349,11 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
                 key={i}
                 className="group flex items-center gap-2 text-xs bg-elevated border border-hairline border-l-2 border-l-accent rounded px-2 py-1.5 max-w-[260px]"
               >
-                <i className="fa-solid fa-file-lines text-accent flex-shrink-0"></i>
+                {att.pending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-accent flex-shrink-0" aria-label="Reading file"></i>
+                ) : (
+                  <i className="fa-solid fa-file-lines text-accent flex-shrink-0"></i>
+                )}
                 <span className="font-mono text-fg-muted truncate" title={att.name}>{att.name}</span>
                 <span className="font-mono text-fg-subtle flex-shrink-0">{formatSize(att.size)}</span>
                 <button
@@ -306,7 +376,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,text/*,application/pdf,application/json,.md,.csv,.tsv,.log,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.cc,.hpp,.cs,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.yml,.yaml,.toml,.ini,.xml"
+            accept="image/*,text/*,application/json,.md,.csv,.tsv,.log,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.cc,.hpp,.cs,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.yml,.yaml,.toml,.ini,.xml"
             className="hidden"
             onChange={handleFilePick}
           />
