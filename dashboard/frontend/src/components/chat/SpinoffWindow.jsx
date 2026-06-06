@@ -9,7 +9,17 @@ import { createConversation, getConversation } from '../../services/chat'
 import CopyablePre from './CopyablePre'
 import useProseClass from '../../hooks/useProseClass'
 
-const MD_COMPONENTS = { pre: CopyablePre }
+const MD_COMPONENTS = {
+  pre: CopyablePre,
+  a: (props) => {
+    const isExternal = props.href && /^https?:\/\//.test(props.href)
+    return isExternal ? (
+      <a {...props} target="_blank" rel="noopener noreferrer" />
+    ) : (
+      <a {...props} />
+    )
+  },
+}
 
 export default function SpinoffWindow({ id, conversationId: initialConvId, selectedText, serviceName, parentConversationId, position, onClose, onMinimize, onFocus, onConversationCreated, zIndex }) {
   const proseClass = useProseClass('prose-xs', 'max-w-none', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
