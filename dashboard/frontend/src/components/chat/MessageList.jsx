@@ -13,7 +13,17 @@ import ToolResultBlock from './ToolResultBlock'
 import FormatDriftChip from './FormatDriftChip'
 import useProseClass from '../../hooks/useProseClass'
 
-const MD_COMPONENTS = { pre: CopyablePre }
+const MD_COMPONENTS = {
+  pre: CopyablePre,
+  a: (props) => {
+    const isExternal = props.href && /^https?:\/\//.test(props.href)
+    return isExternal ? (
+      <a {...props} target="_blank" rel="noopener noreferrer" />
+    ) : (
+      <a {...props} />
+    )
+  },
+}
 
 export default function MessageList({
   messages,
