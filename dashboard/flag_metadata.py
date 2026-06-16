@@ -13,6 +13,7 @@ from service_templates import sanitize_service_name
 MANDATORY_FIELDS = {
     "llamacpp": ["port", "model_path", "alias", "api_key"],
     "vllm": ["port", "model_name", "alias", "api_key"],
+    "ds4": ["port", "model_path", "alias", "api_key"],
 }
 
 # ============================================
@@ -1174,6 +1175,128 @@ for _key, _cat in _LLAMACPP_LLAMA_SERVER_CATEGORIES.items():
         LLAMACPP_LLAMA_SERVER_FLAGS[_key]["category"] = _cat
 
 # ============================================
+# FLAG METADATA FOR ds4 (ds4-server)
+# antirez's DeepSeek-V4 engine. render_cli_flag() is permissive, so any
+# ds4-server flag works in params without an entry here; these just enrich
+# the UI param editor with type/category/description. -m, --host, --port are
+# supplied by the template and must NOT be set here.
+# ============================================
+
+DS4_FLAGS = {
+    # ========== CONTEXT & RUNTIME ==========
+    "ctx": {
+        "cli": "--ctx",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Allocated context tokens for the loaded model.",
+        "default": "65536",
+        "impact": "Critical",
+    },
+    "tokens": {
+        "cli": "--tokens",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Default max output tokens when a client omits a limit.",
+        "impact": "Medium",
+    },
+    "threads": {
+        "cli": "--threads",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "CPU helper threads for host-side / reference work.",
+        "impact": "Low",
+    },
+    "power": {
+        "cli": "--power",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "GPU duty-cycle target, 1..100.",
+        "default": "100",
+        "impact": "Low",
+    },
+    "warm_weights": {
+        "cli": "--warm-weights",
+        "type": "bool",
+        "category": "Context & Runtime",
+        "description": "Touch all model pages at startup to make weights resident in GPU memory before serving.",
+        "impact": "High",
+    },
+    # ========== BACKEND ==========
+    "cuda": {
+        "cli": "--cuda",
+        "type": "bool",
+        "category": "Backend",
+        "description": "Force the CUDA backend explicitly (otherwise auto-detected).",
+        "impact": "Low",
+    },
+    "ssd_streaming": {
+        "cli": "--ssd-streaming",
+        "type": "bool",
+        "category": "Backend",
+        "description": "Opt in to SSD-backed model streaming instead of full residency.",
+        "impact": "Medium",
+    },
+    "prefill_chunk": {
+        "cli": "--prefill-chunk",
+        "type": "int",
+        "category": "Backend",
+        "description": "Graph prefill chunk size. Default: auto.",
+        "impact": "Low",
+    },
+    # ========== DISK KV CACHE ==========
+    "kv_disk_dir": {
+        "cli": "--kv-disk-dir",
+        "type": "string",
+        "category": "Disk KV Cache",
+        "description": "Enable disk KV checkpoints in this directory (the image mounts /kv as writable).",
+        "default": "/kv",
+        "impact": "Medium",
+    },
+    "kv_disk_space_mb": {
+        "cli": "--kv-disk-space-mb",
+        "type": "int",
+        "category": "Disk KV Cache",
+        "description": "Disk budget in MB for KV checkpoints.",
+        "default": "4096",
+        "impact": "Low",
+    },
+    "kv_cache_min_tokens": {
+        "cli": "--kv-cache-min-tokens",
+        "type": "int",
+        "category": "Disk KV Cache",
+        "description": "Do not save/load checkpoints shorter than N tokens.",
+        "default": "512",
+        "impact": "Low",
+    },
+    # ========== HTTP API ==========
+    "cors": {
+        "cli": "--cors",
+        "type": "bool",
+        "category": "HTTP API",
+        "description": "Add Access-Control-Allow-* headers for browser JS clients.",
+        "impact": "Low",
+    },
+    "trace": {
+        "cli": "--trace",
+        "type": "string",
+        "category": "HTTP API",
+        "description": "Write prompts, cache decisions, output, and tool calls to this file.",
+        "impact": "Low",
+    },
+}
+
+DS4_VALIDATION = {
+    "ctx": {"type": "int", "min": 512, "max": 1000000},
+    "tokens": {"type": "int", "min": 1, "max": 1000000},
+    "threads": {"type": "int", "min": 1, "max": 256},
+    "power": {"type": "int", "min": 1, "max": 100},
+    "prefill_chunk": {"type": "int", "min": 1, "max": 65536},
+    "kv_disk_space_mb": {"type": "int", "min": 1, "max": 1048576},
+    "kv_cache_min_tokens": {"type": "int", "min": 1, "max": 1000000},
+}
+
+
+# ============================================
 # HELPER FUNCTIONS
 # ============================================
 
@@ -1186,6 +1309,8 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return LLAMACPP_LLAMA_BENCH_FLAGS
     elif template_type == "vllm":
         return VLLM_FLAGS
+    elif template_type == "ds4":
+        return DS4_FLAGS
     else:
         return {}
 
@@ -1196,6 +1321,8 @@ def get_validation_rules(template_type: str) -> Dict[str, Any]:
         return LLAMACPP_LLAMA_SERVER_VALIDATION
     elif template_type == "vllm":
         return VLLM_VALIDATION
+    elif template_type == "ds4":
+        return DS4_VALIDATION
     else:
         return {}
 

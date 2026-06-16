@@ -66,7 +66,8 @@ function renderServices(services) {
 
         // Determine internal port based on service type
         const internalPort = service.name.startsWith('llamacpp-') ? 8080 :
-                            service.name.startsWith('vllm-') ? 8000 : null;
+                            service.name.startsWith('vllm-') ? 8000 :
+                            service.name.startsWith('ds4-') ? 8000 : null;
 
         const portInfo = service.host_port && service.host_port !== 9999
             ? (internalPort ? `<span class="font-bold">${internalPort}</span>:${service.host_port}` : service.host_port)

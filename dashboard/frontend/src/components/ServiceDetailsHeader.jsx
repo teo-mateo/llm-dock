@@ -66,6 +66,7 @@ function EngineBadge({ templateType }) {
   const engineMap = {
     llamacpp: { label: 'llama.cpp', classes: 'bg-badge-llamacpp-bg text-badge-llamacpp-fg' },
     vllm: { label: 'vLLM', classes: 'bg-badge-vllm-bg text-badge-vllm-fg' },
+    ds4: { label: 'DS4', classes: 'bg-badge-ds4-bg text-badge-ds4-fg' },
   }
   const engine = engineMap[templateType] || { label: templateType, classes: 'bg-badge-neutral-bg text-badge-neutral-fg' }
 

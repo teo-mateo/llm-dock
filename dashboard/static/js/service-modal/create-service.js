@@ -81,6 +81,14 @@ function getSmartDefaults(engine, modelSizeGB, vramTotalMB) {
         if (vramGB >= 24) params['--max-model-len'] = '8192';
         else if (vramGB >= 16) params['--max-model-len'] = '4096';
         else params['--max-model-len'] = '2048';
+    } else if (engine === 'ds4') {
+        // Make weights resident in VRAM before serving; pick a context that fits headroom.
+        params['--warm-weights'] = '';
+        const headroomGB = vramGB - (modelSizeGB * 1.05);
+        if (headroomGB >= 24) params['--ctx'] = '65536';
+        else if (headroomGB >= 12) params['--ctx'] = '32768';
+        else if (headroomGB >= 6) params['--ctx'] = '16384';
+        else params['--ctx'] = '8192';
     }
 
     return params;
@@ -240,6 +248,20 @@ function generateCommandPreview() {
         preview += `--trust-remote-code\n`;
         preview += `--served-model-name ${alias}\n`;
         preview += `--api-key ${apiKey}\n`;
+
+        paramsArray.forEach(p => {
+            if (p.value) {
+                preview += `${p.flag} ${p.value}\n`;
+            } else {
+                preview += `${p.flag}\n`;
+            }
+        });
+    } else if (engine === 'ds4') {
+        // ds4-server has no --api-key flag (auth not enforced by the container).
+        preview = 'ds4-server ';
+        preview += `-m ${modelPath || '/path/to/model.gguf'}\n`;
+        preview += `--host 0.0.0.0\n`;
+        preview += `--port 8000\n`;
 
         paramsArray.forEach(p => {
             if (p.value) {
@@ -463,22 +485,12 @@ async function openUpdateServiceModal(serviceName) {
         document.getElementById('service-name').value = serviceName;
         document.getElementById('service-name').disabled = true;
 
-        // Set engine based on template_type and disable it
+        // Set engine based on template_type and disable it (cannot change on edit)
         const engine = config.template_type;
-        const llamacppRadio = document.querySelector('input[name="engine"][value="llamacpp"]');
-        const vllmRadio = document.querySelector('input[name="engine"][value="vllm"]');
-
-        if (engine === 'llamacpp') {
-            llamacppRadio.checked = true;
-            vllmRadio.checked = false;
-        } else {
-            llamacppRadio.checked = false;
-            vllmRadio.checked = true;
-        }
-
-        // Disable engine radios
-        llamacppRadio.disabled = true;
-        vllmRadio.disabled = true;
+        document.querySelectorAll('input[name="engine"]').forEach(radio => {
+            radio.checked = radio.value === engine;
+            radio.disabled = true;
+        });
 
         // Trigger engine change to show/hide appropriate fields
         handleEngineChange();
@@ -492,7 +504,7 @@ async function openUpdateServiceModal(serviceName) {
         document.getElementById('api-key').value = config.api_key || '';
 
         // Engine-specific fields
-        if (engine === 'llamacpp') {
+        if (engine === 'llamacpp' || engine === 'ds4') {
             document.getElementById('model-path').value = config.model_path || '';
             // Hide file selector in update mode (no model data available)
             document.getElementById('gguf-file-selector').classList.add('hidden');
@@ -553,7 +565,8 @@ function handleEngineChange() {
     const modelPathInput = document.getElementById('model-path');
     const paramsSection = document.getElementById('params-section');
 
-    if (engine === 'llamacpp') {
+    if (engine === 'llamacpp' || engine === 'ds4') {
+        // Both use a GGUF file path (model_path).
         modelPathGroup.classList.remove('hidden');
         modelNameGroup.classList.add('hidden');
         modelPathInput.required = true;
@@ -610,7 +623,7 @@ async function handleCreateServiceSubmit(event) {
             if (port) requestBody.port = parseInt(port);
             if (apiKey) requestBody.api_key = apiKey;
 
-            if (engine === 'llamacpp') {
+            if (engine === 'llamacpp' || engine === 'ds4') {
                 requestBody.model_path = document.getElementById('model-path').value;
             } else {
                 requestBody.model_name = document.getElementById('model-hf-name').value;
@@ -641,7 +654,7 @@ async function handleCreateServiceSubmit(event) {
             if (port) requestBody.port = parseInt(port);
             if (apiKey) requestBody.api_key = apiKey;
 
-            if (engine === 'llamacpp') {
+            if (engine === 'llamacpp' || engine === 'ds4') {
                 requestBody.model_path = document.getElementById('model-path').value;
             } else {
                 requestBody.model_name = document.getElementById('model-hf-name').value;
