@@ -11,6 +11,14 @@ FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS builder
 # time of writing, no local diffs).
 ARG DS4_COMMIT=e34a8086693ba7ca5cfabd2b9028ee52f0bfac2e
 
+# Target GPU arch. Defaults to sm_120 (RTX PRO 6000 Blackwell); override via
+# build-ds4.sh for other GPUs. NOT cuda-generic/-arch=native, which needs the
+# GPU visible to nvcc — it isn't during `docker build`.
+# Note: ds4's Makefile compiles with -march=native, so binaries are also tuned
+# to the build host's CPU. Intentional here (image is built and run on the same
+# machine); rebuild on the target host if that ever changes.
+ARG CUDA_ARCH=sm_120
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
@@ -18,10 +26,7 @@ RUN apt-get update && \
 RUN git clone https://github.com/antirez/ds4.git /src && \
     git -C /src checkout "${DS4_COMMIT}"
 
-# Build with an explicit GPU arch instead of `make cuda-generic`: the generic
-# target uses -arch=native, which requires the GPU to be visible to nvcc — it
-# is NOT during `docker build`. sm_120 = RTX PRO 6000 Blackwell.
-RUN make -C /src cuda CUDA_ARCH=sm_120
+RUN make -C /src cuda CUDA_ARCH="${CUDA_ARCH}"
 
 # ---- Runtime stage ---------------------------------------------------------
 # The runtime image already ships libcudart + libcublas, the only runtime libs

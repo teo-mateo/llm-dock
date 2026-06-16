@@ -10,11 +10,14 @@ set -e
 GREEN='\033[0;32m'
 NC='\033[0m'
 
+# Target GPU arch — override for non-Blackwell GPUs, e.g. CUDA_ARCH=sm_90 ./build-ds4.sh
+CUDA_ARCH="${CUDA_ARCH:-sm_120}"
+
 echo "=========================================="
 echo "  ds4 (DwarfStar 4) Docker Image Builder"
 echo "=========================================="
 echo ""
-echo "Building ds4 from source with CUDA (sm_120)..."
+echo "Building ds4 from source with CUDA (${CUDA_ARCH})..."
 echo ""
 
 # Capture build metadata
@@ -30,6 +33,7 @@ cd "$(dirname "$0")"
 docker build \
     --build-arg BUILD_DATE="$BUILD_DATE" \
     --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
+    --build-arg CUDA_ARCH="$CUDA_ARCH" \
     -t llm-dock-ds4 ./ds4/
 
 echo ""
