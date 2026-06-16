@@ -242,8 +242,8 @@ def create_service():
         template_type = data.get("template_type")
         if not template_type:
             return jsonify({"error": "template_type is required"}), 400
-        if template_type not in ["llamacpp", "vllm"]:
-            return jsonify({"error": 'template_type must be "llamacpp" or "vllm"'}), 400
+        if template_type not in ["llamacpp", "vllm", "ds4"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "vllm", or "ds4"'}), 400
 
         # Auto-generate API key if not provided
         if not data.get("api_key"):
@@ -519,8 +519,8 @@ def rename_service(service_name):
 def get_flags_metadata(template_type):
     """Get flag metadata for a template type"""
     try:
-        if template_type not in ["llamacpp", "llamacpp_bench", "vllm"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "llamacpp_bench", or "vllm"'}), 400
+        if template_type not in ["llamacpp", "llamacpp_bench", "vllm", "ds4"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "llamacpp_bench", "vllm", or "ds4"'}), 400
 
         metadata = get_flag_metadata(template_type)
         mandatory = MANDATORY_FIELDS.get(template_type, [])

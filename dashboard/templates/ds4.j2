@@ -1,0 +1,41 @@
+  {{ service_name }}:
+    image: llm-dock-ds4
+    container_name: {{ service_name }}
+    restart: no
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8000"
+
+    ipc: host
+
+    environment:
+      - HF_HUB_OFFLINE=1
+{% for k, v in (extra_env or {}).items() %}
+      - {{ k }}={{ v }}
+{% endfor %}
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
+      - ${HOME}/.cache/models:/local-models:ro
+      - ${HOME}/.cache/ds4-kv:/kv
+
+    networks:
+      - llm-network
+
+    # Entrypoint is `ds4-server` (set in the image). ds4-server has no
+    # --api-key flag, so {{ api_key }} is stored in services.json but not
+    # enforced by the container; auth relies on the internal llm-network.
+    # Disk KV cache is opt-in via params, e.g. --kv-disk-dir /kv.
+    command: >
+      -m {{ model_path }}
+      --host 0.0.0.0
+      --port 8000
+      {% for flag in rendered_flags %}{{ flag }}
+      {% endfor %}

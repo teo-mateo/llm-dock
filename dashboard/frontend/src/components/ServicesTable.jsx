@@ -9,6 +9,7 @@ function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
   if (name.startsWith('llamacpp-')) return 'llama.cpp'
   if (name.startsWith('vllm-')) return 'vLLM'
+  if (name.startsWith('ds4-')) return 'DS4'
   return 'Unknown'
 }
 
@@ -39,6 +40,7 @@ function EngineBadge({ engine }) {
   const colors = {
     'llama.cpp': 'bg-badge-llamacpp-bg text-badge-llamacpp-fg',
     'vLLM': 'bg-badge-vllm-bg text-badge-vllm-fg',
+    'DS4': 'bg-badge-ds4-bg text-badge-ds4-fg',
     'WebUI': 'bg-badge-webui-bg text-badge-webui-fg',
     'Unknown': 'bg-badge-neutral-bg text-badge-neutral-fg'
   }

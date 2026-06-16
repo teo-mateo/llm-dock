@@ -91,6 +91,8 @@ function resetServiceParams() {
     const engine = document.querySelector('input[name="engine"]:checked')?.value;
     if (engine === 'llamacpp') {
         loadServiceParams({ '-ngl': '999', '-c': '8192' });
+    } else if (engine === 'ds4') {
+        loadServiceParams({ '--ctx': '65536', '--warm-weights': '' });
     } else {
         loadServiceParams({});
     }

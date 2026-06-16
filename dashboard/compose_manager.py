@@ -554,6 +554,10 @@ class ComposeManager:
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+        elif template_type == "ds4":
+            context["model_path"] = config["model_path"]
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
 
         rendered_flags = []
         extra_env = {}

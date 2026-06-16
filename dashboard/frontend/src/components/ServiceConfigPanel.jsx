@@ -340,6 +340,12 @@ function renderCommandPreview(config, apiKey, params) {
     if (config.model_path) parts.push(`-m ${config.model_path}`)
     parts.push(`--port 8080`)
     parts.push(`--api-key ${apiKey || '***'}`)
+  } else if (config.template_type === 'ds4') {
+    // ds4-server has no --api-key flag (auth not enforced by the container).
+    parts.push('ds4-server')
+    if (config.model_path) parts.push(`-m ${config.model_path}`)
+    parts.push(`--host 0.0.0.0`)
+    parts.push(`--port 8000`)
   } else {
     parts.push('vllm serve')
     if (config.model_name) parts.push(config.model_name)
