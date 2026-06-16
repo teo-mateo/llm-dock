@@ -1,17 +1,20 @@
 // Parameter reference — fetches from backend API (single source of truth)
-let serveParamCache = null;
+// Cached per engine, since the reference panel supports more than one engine.
+const serveParamCache = {};
 
-async function fetchServeParamReference() {
-    if (serveParamCache) return serveParamCache;
+async function fetchServeParamReference(engine = 'llamacpp') {
+    if (serveParamCache[engine]) return serveParamCache[engine];
     try {
-        const data = await fetchAPI('/flag-metadata/llamacpp');
+        const data = await fetchAPI(`/flag-metadata/${engine}`);
         const flags = data.optional_flags || {};
 
         // Transform API format into flat array for rendering
         const CATEGORY_ORDER = [
             'Context', 'GPU', 'Multi-GPU', 'KV Cache', 'Batching',
             'Sampling', 'CPU', 'Memory', 'RoPE', 'LoRA',
-            'Speculative', 'Features'
+            'Speculative', 'Features',
+            // ds4 categories
+            'Context & Runtime', 'Backend', 'Disk KV Cache', 'HTTP API'
         ];
 
         const items = Object.entries(flags).map(([key, meta]) => ({
@@ -32,7 +35,7 @@ async function fetchServeParamReference() {
             return a.flag.localeCompare(b.flag);
         });
 
-        serveParamCache = items;
+        serveParamCache[engine] = items;
         return items;
     } catch (e) {
         console.error('Failed to load param reference:', e);
@@ -46,14 +49,14 @@ async function renderServeParamRef(filter = '') {
     const empty = document.getElementById('serve-param-ref-empty');
     if (!list) return;
 
-    // For vllm, we don't show the reference panel (different flags)
-    if (engine !== 'llamacpp') {
-        list.innerHTML = '<div class="text-gray-500 text-xs py-2">Reference available for llama.cpp only.</div>';
+    // vllm flags are documented elsewhere; the panel covers llama.cpp and ds4.
+    if (engine !== 'llamacpp' && engine !== 'ds4') {
+        list.innerHTML = '<div class="text-gray-500 text-xs py-2">Reference available for llama.cpp and ds4 only.</div>';
         empty.classList.add('hidden');
         return;
     }
 
-    const params = await fetchServeParamReference();
+    const params = await fetchServeParamReference(engine);
     const q = filter.toLowerCase();
     let html = '';
     let currentCat = '';

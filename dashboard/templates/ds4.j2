@@ -22,7 +22,9 @@
       - {{ k }}={{ v }}
 {% endfor %}
     volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
+      # HF cache at /hf-cache to match llamacpp + the UI's host->container
+      # path transform (transformToContainerPath); model_path uses /hf-cache.
+      - ${HOME}/.cache/huggingface:/hf-cache:ro
       - ${HOME}/.cache/models:/local-models:ro
       - ${HOME}/.cache/ds4-kv:/kv
 
