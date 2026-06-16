@@ -2,6 +2,7 @@
 let currentModelData = null;
 let modalMode = 'create'; // 'create' or 'update'
 let currentServiceName = null; // For update mode
+let currentServiceConfig = null; // For update mode — original config
 let availableFlags = {}; // Cache for flag metadata by engine
 let gpuInfo = null; // Cached GPU info
 
@@ -443,6 +444,7 @@ function initModalDrag() {
 function closeCreateServiceModal() {
     document.getElementById('create-service-modal').classList.add('hidden');
     currentModelData = null;
+    currentServiceConfig = null;
     modalManager.unlockScroll();
 
     // Reset modal position
@@ -475,6 +477,7 @@ async function openUpdateServiceModal(serviceName) {
         // Fetch service configuration
         const response = await fetchAPI(`/services/${serviceName}`);
         const config = response.config;
+        currentServiceConfig = config;
 
         // Set modal title and button
         document.getElementById('modal-title').textContent = `Update Service: ${serviceName}`;
@@ -596,6 +599,7 @@ async function handleCreateServiceSubmit(event) {
         if (hasInvalidCustomFlags()) {
             errorEl.textContent = 'Please fix invalid custom flag names before saving.';
             errorEl.classList.remove('hidden');
+            showToast('Please fix invalid custom flag names before saving.');
             return;
         }
 
@@ -647,21 +651,23 @@ async function handleCreateServiceSubmit(event) {
             const port = document.getElementById('service-port').value;
             const apiKey = document.getElementById('api-key').value.trim();
 
+            // Build request body from original config so fields the user didn't
+            // touch (template_type, alias, api_key, model_path/name) are still
+            // sent. The backend's update_service_in_db does a full replacement.
             const requestBody = {
-                alias: currentServiceName
+                template_type: currentServiceConfig.template_type,
+                alias: currentServiceConfig.alias,
+                port: port ? parseInt(port) : currentServiceConfig.port,
+                api_key: apiKey || currentServiceConfig.api_key,
+                params: getServiceParams(),
             };
 
-            if (port) requestBody.port = parseInt(port);
-            if (apiKey) requestBody.api_key = apiKey;
-
             if (engine === 'llamacpp' || engine === 'ds4') {
-                requestBody.model_path = document.getElementById('model-path').value;
-            } else {
-                requestBody.model_name = document.getElementById('model-hf-name').value;
+                requestBody.model_path = document.getElementById('model-path').value || currentServiceConfig.model_path;
             }
-
-            // Send unified params (CLI-keyed)
-            requestBody.params = getServiceParams();
+            if (engine === 'vllm') {
+                requestBody.model_name = document.getElementById('model-hf-name').value || currentServiceConfig.model_name;
+            }
 
             const response = await fetchAPI(`/services/${currentServiceName}`, {
                 method: 'PUT',

@@ -106,7 +106,7 @@ function hasInvalidCustomFlags() {
     for (const row of rows) {
         const flagInput = row.querySelector('input');
         const flagName = flagInput?.value?.trim() || '';
-        if (flagName && !flagName.startsWith('-')) return true;
+        if (flagName && !flagName.startsWith('-') && !flagName.startsWith('env:')) return true;
     }
     return false;
 }
