@@ -165,6 +165,32 @@ def test_null_policy_failure_does_not_persist(tmp_path, monkeypatch):
     assert [m.role for m in policy.messages] == ["user"]
 
 
+def test_null_policy_pre_start_cancel_does_not_open_stream(monkeypatch):
+    # A run cancelled while still queued (cancel_check already true) must NOT
+    # open the model stream. The DB path gets this from its terminal-guarded
+    # claim; the null policy needs the explicit pre-start check.
+    opened = {"iterated": False}
+
+    def _factory():
+        opened["iterated"] = True  # runs only if the stream is iterated
+        yield _delta("should not happen")
+        yield ("done", {"content": "nope", "reasoning_content": None})
+
+    _patch_stream(monkeypatch, _factory)
+    conv = _conv()
+    policy = NullPersistencePolicy(messages=[_user_msg(conv)])
+    bus = _RecordingBus()
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id, status=ChatRunStatus.QUEUED)
+
+    saved = ChatRunner(persistence=policy, event_bus=bus).run(
+        run, ChatTurnRequest(conversation=conv), cancel_check=lambda: True)
+
+    assert saved is None
+    assert opened["iterated"] is False        # the costly stream never opened
+    assert bus.types() == ["run_cancelled"]   # no run_started for a pre-start cancel
+    assert [m.role for m in policy.messages] == ["user"]  # no assistant appended
+
+
 # -- seam shape ----------------------------------------------------------
 
 

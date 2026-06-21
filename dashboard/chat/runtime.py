@@ -157,6 +157,18 @@ class ChatRunner:
             status = started.status if started else "cancelled"
             self._emit(run_id, f"run_{status}", {"run_id": run_id})
             return None
+        # Pre-start cancellation: honor a cancel that arrived while the run was
+        # still queued BEFORE opening the (costly) model/tool stream. The DB
+        # path usually catches this via the terminal-guarded claim above (a
+        # cancelled queued row fails the RUNNING transition), but a policy with
+        # no terminal row — NullPersistencePolicy — would otherwise build the
+        # stream and only notice the cancel after the first chunk. Checking here
+        # keeps both policies on the same branch and stops Ghost Chat's Stop
+        # from kicking off an LLM request it immediately abandons.
+        if cancel_check is not None and cancel_check():
+            persistence.cancel(run_id)
+            self._emit(run_id, "run_cancelled", {"run_id": run_id})
+            return None
         self._emit(run_id, "run_started", {"run_id": run_id, "conversation_id": conv.id})
 
         assistant_msg_id = str(uuid.uuid4())
