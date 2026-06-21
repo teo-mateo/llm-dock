@@ -381,6 +381,26 @@ def cancel_run(run_id):
     return jsonify(run.to_dict())
 
 
+@chat_bp.route("/api/chat/conversations/<conv_id>/cancel-active-run", methods=["POST"])
+@require_auth
+def cancel_active_run(conv_id):
+    """Cancel whatever run is active for a conversation, by conversation id.
+
+    The Stop button uses this so cancellation never depends on the client
+    having captured the run id from the run_started frame: the server creates
+    the run when the turn starts, so it is always findable from the
+    conversation. Returns {"run": <run>} when a run was cancelled, or
+    {"run": null} (still 200) when the conversation has no active run — a
+    harmless no-op (e.g. it already finished). 404 only if the conversation
+    does not exist.
+    """
+    db = _get_db()
+    if db.get_conversation(conv_id) is None:
+        return jsonify({"error": "Conversation not found"}), 404
+    run = _get_run_manager().request_cancel_for_conversation(conv_id)
+    return jsonify({"run": run.to_dict() if run is not None else None})
+
+
 # -- Critique --
 
 @chat_bp.route("/api/chat/messages/<msg_id>/critique", methods=["POST"])

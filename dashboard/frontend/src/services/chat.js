@@ -57,3 +57,12 @@ export async function cancelRun(runId) {
     method: 'POST',
   })
 }
+
+// Cancel a conversation's active run by conversation id. The Stop button uses
+// this so cancellation never depends on having captured the run id from the
+// run_started frame — the server can always find the run from the conversation.
+export async function cancelActiveRun(conversationId) {
+  return fetchAPI(`/chat/conversations/${conversationId}/cancel-active-run`, {
+    method: 'POST',
+  })
+}
