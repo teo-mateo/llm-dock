@@ -36,12 +36,16 @@ export default function useChat({ onConversationUpdated } = {}) {
   // running on purpose (post-message_saved drain phase). Entries are
   // removed in the streamChat `finally` block when the stream resolves.
   const liveControllersRef = useRef(new Set())
-  // Mirror of the latest committed `conversation` for use in async callbacks
-  // (the cancel finally) whose closures would otherwise capture a stale value.
-  // Used to gate the post-cancel reconciliation so it can't clobber a
-  // conversation the user has since navigated to.
-  const conversationRef = useRef(null)
-  useEffect(() => { conversationRef.current = conversation }, [conversation])
+  // The conversation the hook currently INTENDS to show. Set synchronously at
+  // the start of loadConversation (before the fetch resolves) and mirrored from
+  // committed `conversation` for the setConversation paths. Used to request-
+  // sequence conversation fetches: any refetch (navigation, post-message_saved,
+  // post-cancel reconcile) only applies if this still names the conversation it
+  // fetched, so a late-resolving fetch can't clobber a conversation the user
+  // navigated to. Must be the intended id, NOT the committed one — during
+  // loadConversation(B) the committed conversation is still A until B resolves.
+  const observedConvIdRef = useRef(null)
+  useEffect(() => { observedConvIdRef.current = conversation?.id ?? null }, [conversation])
   // Backend run id for the in-flight stream, captured from the run_started SSE
   // frame. Stop cancels by conversation id (so it works even before this lands)
   // but passes this as an expected-run guard when known, so a late cancel can't
@@ -56,11 +60,16 @@ export default function useChat({ onConversationUpdated } = {}) {
   const refetchMessages = useCallback(async (convId) => {
     try {
       const data = await getConversation(convId)
+      // Drop the result if the user navigated to a different conversation while
+      // this fetch was in flight — otherwise a late resolve writes stale
+      // conversation/messages over the one now intended (request-sequencing).
+      if (observedConvIdRef.current !== convId) return
       setConversation(data)
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
       setArtifacts(data.artifacts || {})
     } catch (err) {
+      if (observedConvIdRef.current !== convId) return
       setError(err.message)
     }
   }, [])
@@ -89,9 +98,10 @@ export default function useChat({ onConversationUpdated } = {}) {
     cancelActiveRun(convId, expectedRunId)
       .catch(() => { /* no active run / already terminal — harmless */ })
       .then(() => {
-        // Reconcile only if still observing this conversation (the user may
-        // have navigated away while the cancel was in flight).
-        if (conversationRef.current?.id === convId) return refetchMessages(convId)
+        // Reconcile only if still intending this conversation (the user may
+        // have navigated away — even into a still-pending load — while the
+        // cancel was in flight). refetchMessages re-checks at resolution too.
+        if (observedConvIdRef.current === convId) return refetchMessages(convId)
       })
       .finally(() => {
         cancellingRef.current = false
@@ -100,6 +110,12 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [refetchMessages])
 
   const loadConversation = useCallback(async (convId) => {
+    // Claim the intended conversation synchronously, before awaiting the fetch.
+    // This is what makes a concurrent post-cancel reconcile for the PREVIOUS
+    // conversation skip: it gates on observedConvIdRef, which now already names
+    // the conversation we're navigating to even though `conversation` state
+    // still holds the old one until this fetch resolves.
+    observedConvIdRef.current = convId
     // Abort any in-flight stream before switching, UNLESS it's draining the
     // post-message_saved title tail (see drainingRef). Aborting that tail
     // would cancel auto-title generation server-side and drop the trailing

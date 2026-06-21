@@ -231,6 +231,53 @@ describe('useChat stop/cancel wiring', () => {
     expect(mockStreamChat.mock.calls.length).toBe(callsAfterA + 1)
   })
 
+  it('a Stop reconcile is dropped when its cancel settles during an in-flight navigation', async () => {
+    // Regression for codex iter 6 P2: the reconcile gate must use the INTENDED
+    // conversation (set synchronously at loadConversation), not the committed
+    // one. Repro: Stop A, navigate to B while B's fetch is still pending, then
+    // A's cancel settles — the reconcile for A must be gated out (we already
+    // intend B), so A is never refetched and can't clobber B.
+    installInFlightStream()
+    let resolveCancel
+    mockCancelActiveRun.mockImplementation(() => new Promise((res) => { resolveCancel = res }))
+    let resolveB
+    mockGetConversation.mockImplementation((id) => {
+      if (id === 'conv-2') return new Promise((res) => { resolveB = res })
+      return Promise.resolve({ ...CONV, messages: [{ id: 'a1', role: 'user', content: 'A', seq: 1 }], critiques: {}, artifacts: {} })
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('A')
+      await Promise.resolve()
+    })
+
+    // Stop A (cancel POST held open).
+    act(() => { result.current.stopStreaming() })
+
+    // Begin navigation to B; B's fetch stays pending.
+    let loadPromise
+    act(() => { loadPromise = result.current.loadConversation('conv-2') })
+
+    // A's cancel settles WHILE B is still loading.
+    await act(async () => {
+      resolveCancel({ run: null })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // The reconcile for A must have been gated out — A is never refetched.
+    expect(mockGetConversation).not.toHaveBeenCalledWith('conv-1')
+
+    // B finally resolves and wins.
+    await act(async () => {
+      resolveB({ id: 'conv-2', main_service: 'svc', messages: [{ id: 'b1', role: 'user', content: 'B', seq: 1 }], critiques: {}, artifacts: {} })
+      await loadPromise
+    })
+    expect(result.current.conversation.id).toBe('conv-2')
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.
