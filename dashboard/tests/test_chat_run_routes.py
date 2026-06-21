@@ -212,6 +212,8 @@ def test_observe_backstop_closes_when_run_goes_terminal(ctx, monkeypatch):
     q = manager.subscribe(run.id)
     gen = manager.observe(run.id, q)
 
+    started = next(gen)  # synthetic run_started always comes first
+    assert "run_started" in started and run.id in started
     first = next(gen)  # active, no events -> heartbeat
     assert "heartbeat" in first
 
@@ -220,3 +222,37 @@ def test_observe_backstop_closes_when_run_goes_terminal(ctx, monkeypatch):
     assert "run_status" in nxt and "completed" in nxt
     with pytest.raises(StopIteration):
         next(gen)
+
+
+def test_run_started_emitted_first_even_when_workers_saturated(tmp_path, monkeypatch):
+    """run_started reaches the client immediately even if the run's worker is
+    still queued behind a saturated pool (the observer synthesizes it)."""
+    db = ChatDB(str(tmp_path / "chat.db"))
+    manager = ChatRunManager(db, EventBus(), max_workers=1)
+    try:
+        block = threading.Event()
+
+        def stub():
+            block.wait(2)
+            yield ("done", {"content": "x", "reasoning_content": None})
+
+        monkeypatch.setattr(runtime, "stream_chat_completion", lambda *a, **k: stub())
+        monkeypatch.setattr(runtime, "stream_with_tools", lambda *a, **k: stub())
+
+        # Occupy the single worker with run A (different conversation).
+        conv_a = _conv(db, "a")
+        run_a = _seed_queued(db, conv_a)
+        manager.start(conv_a, run_a, is_first=False, first_user_content="a")
+
+        # Run B is queued behind A; its worker hasn't started.
+        conv_b = _conv(db, "b")
+        run_b = _seed_queued(db, conv_b)
+        q = manager.subscribe(run_b.id)
+        manager.start(conv_b, run_b, is_first=False, first_user_content="b")
+
+        gen = manager.observe(run_b.id, q)
+        first = next(gen)  # must be run_started, NOT a heartbeat
+        assert "run_started" in first and run_b.id in first
+    finally:
+        block.set()
+        manager.shutdown()

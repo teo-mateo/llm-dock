@@ -38,9 +38,10 @@ def _sse_frames_for(event: ChatRuntimeEvent):
     stream_end) produce no frame."""
     t, d = event.type, event.data
     if t == "run_started":
-        # Expose the run id to the client so it can POST /runs/<id>/cancel.
-        # (Current frontend ignores unknown SSE types; wired up in Phase 6.)
-        return [encode_sse_event("run_started", {"run_id": d["run_id"]})]
+        # Suppressed here: observe() synthesizes run_started up front from the
+        # run id it already has, so the client gets the id as the first frame
+        # even when a saturated worker pool delays the worker's own publish.
+        return []
     if t == "delta":
         return [encode_sse_delta(d["raw"])]
     if t == "tool_call_pending":
@@ -160,6 +161,12 @@ class ChatRunManager:
         """
         start = time.monotonic()
         try:
+            # Expose the run id to the client as the very first frame, before
+            # any heartbeat — independent of when the (possibly queued) worker
+            # actually starts and publishes its own run_started (suppressed in
+            # _sse_frames_for to avoid a duplicate). Lets the client POST
+            # /runs/<id>/cancel even for a still-queued run.
+            yield encode_sse_event("run_started", {"run_id": run_id})
             while True:
                 try:
                     event = q.get(timeout=HEARTBEAT_INTERVAL_S)
