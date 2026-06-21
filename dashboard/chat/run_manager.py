@@ -15,10 +15,12 @@ The observer translates runtime events back into the existing SSE wire format
 """
 import logging
 import queue
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
+from .runs import TERMINAL_STATUSES
 from .runtime import ChatRunner, ChatRuntimeEvent, ChatTurnRequest, auto_generate_title
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,10 @@ class ChatRunManager:
         self.event_bus = event_bus
         self.runner = ChatRunner(db, event_bus=event_bus)
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="chat-run")
+        # run_id -> threading.Event, present only while a worker is executing
+        # that run. Set to request cooperative mid-stream cancellation.
+        self._cancel_flags = {}
+        self._flags_lock = threading.Lock()
 
     # -- lifecycle --------------------------------------------------------
 
@@ -93,9 +99,30 @@ class ChatRunManager:
             self._execute, conv, run, mcp_manager, is_first, first_user_content,
         )
 
+    def request_cancel(self, run_id):
+        """Cancel a run independently of any observer (the Stop button path).
+
+        Sets the cooperative cancel flag (so an executing worker stops at its
+        next stream event) AND marks the run cancelled in the DB. The DB update
+        is terminal-guarded, so cancelling an already-finished run is a harmless
+        no-op that returns the run with its existing status. Returns the run, or
+        None if it does not exist.
+        """
+        with self._flags_lock:
+            ev = self._cancel_flags.get(run_id)
+        if ev is not None:
+            ev.set()
+        return self.db.cancel_chat_run(run_id)
+
     def _execute(self, conv, run, mcp_manager, is_first, first_user_content):
+        cancel_event = threading.Event()
+        with self._flags_lock:
+            self._cancel_flags[run.id] = cancel_event
         try:
-            msg = self.runner.run(run, ChatTurnRequest(conversation=conv, mcp_manager=mcp_manager))
+            msg = self.runner.run(
+                run, ChatTurnRequest(conversation=conv, mcp_manager=mcp_manager),
+                cancel_check=cancel_event.is_set,
+            )
             # Auto-title runs here (not in the SSE response) so a first-message
             # title is generated and persisted even if the client disconnected.
             if msg is not None and is_first:
@@ -110,6 +137,8 @@ class ChatRunManager:
             # against anything unexpected so the observer is always released.
             logger.exception("chat run %s crashed in executor", run.id)
         finally:
+            with self._flags_lock:
+                self._cancel_flags.pop(run.id, None)
             self.event_bus.publish(run.id, ChatRuntimeEvent(STREAM_END, {}))
 
     # -- observing a run --------------------------------------------------
@@ -131,6 +160,13 @@ class ChatRunManager:
                 try:
                     event = q.get(timeout=HEARTBEAT_INTERVAL_S)
                 except queue.Empty:
+                    # Backstop for a reattaching observer that subscribed after
+                    # the run already published STREAM_END: close on the durable
+                    # DB state instead of heartbeating forever.
+                    run = self.db.get_chat_run(run_id)
+                    if run is None or run.status in TERMINAL_STATUSES:
+                        yield encode_sse_event("run_status", {"status": run.status if run else "unknown"})
+                        return
                     yield encode_sse_event("heartbeat", {"elapsed_s": round(time.monotonic() - start, 1)})
                     continue
                 for frame in _sse_frames_for(event):

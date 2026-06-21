@@ -12,10 +12,10 @@ from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMP
 from .llm_proxy import stream_chat_completion
 from .critique import build_critique_context, request_critique, validate_annotations
 from .mcp_registry import list_available_servers
-from .event_codec import DONE, encode_sse, encode_sse_delta
+from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
-from .runs import ChatRunStatus
+from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import settings_store
 
 logger = logging.getLogger(__name__)
@@ -324,6 +324,61 @@ def edit_message(conv_id, msg_id):
     # replaces an existing turn, so it never triggers auto-title.
     return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False,
                                first_user_content=content, delete_from_seq=msg.seq)
+
+
+# -- Runs (observation + cancellation, issue #58) --
+
+
+@chat_bp.route("/api/chat/runs/<run_id>", methods=["GET"])
+@require_auth
+def get_run(run_id):
+    run = _get_db().get_chat_run(run_id)
+    if run is None:
+        return jsonify({"error": "Run not found"}), 404
+    return jsonify(run.to_dict())
+
+
+@chat_bp.route("/api/chat/runs/<run_id>/stream", methods=["GET"])
+@require_auth
+def stream_run(run_id):
+    """Reattach to a run's live event stream.
+
+    If the run is already terminal, emit a single run_status frame and close
+    (there is nothing live to replay — the conversation refetch carries the
+    saved content). Otherwise subscribe to the bus and observe like the send
+    path; the observer's DB backstop closes the stream even if the run finishes
+    between this check and the subscribe.
+    """
+    db = _get_db()
+    manager = _get_run_manager()
+    run = db.get_chat_run(run_id)
+    if run is None:
+        return jsonify({"error": "Run not found"}), 404
+
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+    if run.status in TERMINAL_STATUSES:
+        def terminal():
+            yield encode_sse_event("run_status", {"status": run.status, "error": run.error})
+        return Response(terminal(), mimetype="text/event-stream", headers=headers)
+
+    q = manager.subscribe(run_id)
+    return Response(stream_with_context(manager.observe(run_id, q)),
+                    mimetype="text/event-stream", headers=headers)
+
+
+@chat_bp.route("/api/chat/runs/<run_id>/cancel", methods=["POST"])
+@require_auth
+def cancel_run(run_id):
+    """Cancel a run's server-side work, independent of any SSE observer.
+
+    Cancelling an already-terminal run is a harmless no-op that returns 200
+    with the run's existing status (terminal-guarded in the DB).
+    """
+    run = _get_run_manager().request_cancel(run_id)
+    if run is None:
+        return jsonify({"error": "Run not found"}), 404
+    return jsonify(run.to_dict())
 
 
 # -- Critique --
