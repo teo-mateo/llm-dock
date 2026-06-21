@@ -116,3 +116,52 @@ describe('ChatSidebar shift-click range selection', () => {
     expect(selectedTitles()).toEqual(['D'])
   })
 })
+
+describe('ChatSidebar active-run indicator', () => {
+  function renderWith(convs) {
+    return render(
+      <ChatSidebar
+        conversations={convs}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+      />
+    )
+  }
+
+  function indicatorFor(title) {
+    const row = screen.getByText(title).closest('.group')
+    return within(row).queryByTestId('active-run-indicator')
+  }
+
+  it('shows a running indicator when a conversation has a running active_run', () => {
+    renderWith([
+      { id: 'A', title: 'A', parent_conversation_id: null, updated_at: '2026-01-01', active_run: { status: 'running' } },
+    ])
+    const badge = indicatorFor('A')
+    expect(badge).not.toBeNull()
+    expect(badge.getAttribute('aria-label')).toBe('Run in progress')
+  })
+
+  it('shows a queued indicator when a conversation has a queued active_run', () => {
+    renderWith([
+      { id: 'A', title: 'A', parent_conversation_id: null, updated_at: '2026-01-01', active_run: { status: 'queued' } },
+    ])
+    const badge = indicatorFor('A')
+    expect(badge).not.toBeNull()
+    expect(badge.getAttribute('aria-label')).toBe('Run queued')
+  })
+
+  it('shows no indicator when active_run is null or terminal', () => {
+    renderWith([
+      { id: 'A', title: 'A', parent_conversation_id: null, updated_at: '2026-01-01', active_run: null },
+      { id: 'B', title: 'B', parent_conversation_id: null, updated_at: '2026-01-01' },
+      { id: 'C', title: 'C', parent_conversation_id: null, updated_at: '2026-01-01', active_run: { status: 'completed' } },
+    ])
+    expect(indicatorFor('A')).toBeNull()
+    expect(indicatorFor('B')).toBeNull()
+    expect(indicatorFor('C')).toBeNull()
+  })
+})

@@ -64,7 +64,19 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
         </label>
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm truncate">{conv.title}</div>
+        <div className="text-sm flex items-center gap-1.5 min-w-0">
+          {conv.active_run && (conv.active_run.status === 'running' || conv.active_run.status === 'queued') && (
+            <i
+              className={`fa-solid fa-circle-notch fa-spin text-[10px] flex-shrink-0 ${
+                conv.active_run.status === 'running' ? 'text-accent' : 'text-fg-faint'
+              }`}
+              title={conv.active_run.status === 'running' ? 'Generating…' : 'Queued…'}
+              aria-label={conv.active_run.status === 'running' ? 'Run in progress' : 'Run queued'}
+              data-testid="active-run-indicator"
+            ></i>
+          )}
+          <span className="truncate">{conv.title}</span>
+        </div>
         <div className="text-[10px] text-fg-faint">
           {new Date(conv.updated_at).toLocaleDateString()}
         </div>

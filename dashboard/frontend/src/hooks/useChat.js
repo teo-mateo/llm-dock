@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { getConversation } from '../services/chat'
+import { getConversation, cancelRun } from '../services/chat'
 import { streamChat } from '../services/sse'
 
 export default function useChat({ onConversationUpdated } = {}) {
@@ -29,6 +29,10 @@ export default function useChat({ onConversationUpdated } = {}) {
   // running on purpose (post-message_saved drain phase). Entries are
   // removed in the streamChat `finally` block when the stream resolves.
   const liveControllersRef = useRef(new Set())
+  // Backend run id for the in-flight stream, captured from the run_started
+  // SSE frame. Lets Stop cancel the SERVER run (not just abort the SSE fetch,
+  // which — since Phase 4 — leaves the run going). Reset on each send/edit.
+  const runIdRef = useRef(null)
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -95,6 +99,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -173,6 +178,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated,
+        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -245,6 +251,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -311,6 +318,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated,
+        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -340,6 +348,16 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
+    // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
+    // since Phase 4 the run continues in the background after the fetch closes.
+    // Fire-and-forget; the run is terminal-guarded server-side. Navigation
+    // (loadConversation / unmount) deliberately does NOT call this — it only
+    // detaches the observer, leaving the run to finish and persist.
+    const runId = runIdRef.current
+    if (runId) {
+      runIdRef.current = null
+      cancelRun(runId).catch(() => { /* already terminal / gone — harmless */ })
+    }
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null

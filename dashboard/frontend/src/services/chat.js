@@ -45,3 +45,15 @@ export async function requestCritique(messageId, { contextWindow = 10, extraInst
 export async function getCritique(messageId) {
   return fetchAPI(`/chat/messages/${messageId}/critique`)
 }
+
+// -- Runs (background-run observation + cancellation, issue #58) --
+
+export async function getRun(runId) {
+  return fetchAPI(`/chat/runs/${runId}`)
+}
+
+export async function cancelRun(runId) {
+  return fetchAPI(`/chat/runs/${runId}/cancel`, {
+    method: 'POST',
+  })
+}
