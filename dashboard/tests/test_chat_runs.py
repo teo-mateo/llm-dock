@@ -232,6 +232,46 @@ def test_completed_run_clears_active_run_in_list():
     assert convs[0].active_run is None
 
 
+# -- last_run on single-conversation load (Phase 7) ---------------------
+
+
+def test_get_conversation_includes_last_run_none_when_no_runs():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    fetched = db.get_conversation(conv.id)
+    assert fetched.last_run is None
+    assert fetched.to_dict()["last_run"] is None
+
+
+def test_get_conversation_last_run_surfaces_failed_error():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    run = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
+    db.fail_chat_run(run.id, "model exploded")
+
+    fetched = db.get_conversation(conv.id)
+    # active_run is cleared (failed is terminal), but last_run carries the error.
+    assert fetched.active_run is None
+    assert fetched.last_run["status"] == "failed"
+    assert fetched.last_run["error"] == "model exploded"
+    assert fetched.to_dict()["last_run"]["error"] == "model exploded"
+
+
+def test_get_conversation_last_run_is_most_recent_by_insertion():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    older = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
+    db.fail_chat_run(older.id, "old failure")
+    newer = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
+    db.complete_chat_run(newer.id)
+
+    fetched = db.get_conversation(conv.id)
+    # Most recent run wins, so a later success hides the earlier failure.
+    assert fetched.last_run["id"] == newer.id
+    assert fetched.last_run["status"] == "completed"
+    assert fetched.last_run["error"] is None
+
+
 # -- deletion cleanup ---------------------------------------------------
 
 

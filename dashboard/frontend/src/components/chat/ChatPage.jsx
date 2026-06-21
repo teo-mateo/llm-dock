@@ -78,6 +78,14 @@ export default function ChatPage() {
     }
   }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh the list when a run starts (runReady) so the sidebar's active-run
+  // indicator appears for the active conversation, not only after it finishes.
+  useEffect(() => {
+    if (runReady) {
+      refresh()
+    }
+  }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleCreate = useCallback(async () => {
     // Default the main model to the first running service. When exactly
     // one model is up this preselects it; the backend requires a non-empty

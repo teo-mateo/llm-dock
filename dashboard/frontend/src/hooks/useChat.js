@@ -80,6 +80,12 @@ export default function useChat({ onConversationUpdated } = {}) {
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
       setArtifacts(data.artifacts || {})
+      // Surface a run that failed while we weren't observing (e.g. a background
+      // run that errored after the browser disconnected). active_run is only
+      // queued/running, so a failure shows up via last_run instead.
+      if (data.last_run?.status === 'failed' && data.last_run.error) {
+        setError(data.last_run.error)
+      }
     } catch (err) {
       if (observedConvIdRef.current !== convId) return
       setError(err.message)
