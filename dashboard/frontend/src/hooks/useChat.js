@@ -33,6 +33,17 @@ export default function useChat({ onConversationUpdated } = {}) {
   // SSE frame. Lets Stop cancel the SERVER run (not just abort the SSE fetch,
   // which — since Phase 4 — leaves the run going). Reset on each send/edit.
   const runIdRef = useRef(null)
+  // Set when Stop is pressed BEFORE run_started arrived — the server already
+  // created the run but we don't yet know its id, so we can't target the
+  // cancel and must not abort the fetch (that would drop the run_started frame
+  // and orphan the background run). onRunStarted consumes this and cancels.
+  const pendingStopRef = useRef(false)
+  // Mirror of the latest committed `conversation` for use in async callbacks
+  // (cancel finallys) whose closures would otherwise capture a stale value.
+  // Used to gate the post-cancel reconciliation so it can't clobber a
+  // conversation the user has since navigated to.
+  const conversationRef = useRef(null)
+  useEffect(() => { conversationRef.current = conversation }, [conversation])
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -49,6 +60,22 @@ export default function useChat({ onConversationUpdated } = {}) {
       setError(err.message)
     }
   }, [])
+
+  // Cancel a backend run, then reconcile local state with SQLite. The user
+  // message was persisted at run creation, but our optimistic { id: 'temp-user' }
+  // row is still in `messages`; without this refetch the next send's save
+  // handler — which strips every temp-user row before appending — drops the
+  // stopped prompt from the transcript. The refetch is gated on still observing
+  // the same conversation: the user may navigate away while the cancel POST is
+  // in flight, and refetchMessages writes conversation/messages directly, so an
+  // ungated late refetch could clobber the conversation they moved to.
+  const cancelAndReconcile = useCallback((runId, convId) => {
+    cancelRun(runId)
+      .catch(() => { /* already terminal / gone — harmless */ })
+      .finally(() => {
+        if (conversationRef.current?.id === convId) refetchMessages(convId)
+      })
+  }, [refetchMessages])
 
   const loadConversation = useCallback(async (convId) => {
     // Abort any in-flight stream before switching, UNLESS it's draining the
@@ -100,6 +127,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     abortRef.current = controller
     drainingRef.current = false
     runIdRef.current = null
+    pendingStopRef.current = false
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -178,7 +206,22 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated,
-        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
+        onRunStarted: (evt) => {
+          runIdRef.current = evt.run_id
+          // A Stop pressed before the id arrived deferred cancellation to here:
+          // we couldn't target the server run, and aborting the fetch then would
+          // have killed the very frame carrying this id. Cancel + tear down now.
+          if (pendingStopRef.current) {
+            pendingStopRef.current = false
+            runIdRef.current = null
+            cancelAndReconcile(evt.run_id, conversation.id)
+            if (abortRef.current) {
+              abortRef.current.abort()
+              abortRef.current = null
+            }
+            drainingRef.current = false
+          }
+        },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -225,7 +268,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, refetchMessages, cancelAndReconcile, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     if (!conversation || streaming) return
@@ -252,6 +295,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     abortRef.current = controller
     drainingRef.current = false
     runIdRef.current = null
+    pendingStopRef.current = false
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -318,7 +362,19 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated,
-        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
+          onRunStarted: (evt) => {
+            runIdRef.current = evt.run_id
+            if (pendingStopRef.current) {
+              pendingStopRef.current = false
+              runIdRef.current = null
+              cancelAndReconcile(evt.run_id, conversation.id)
+              if (abortRef.current) {
+                abortRef.current.abort()
+                abortRef.current = null
+              }
+              drainingRef.current = false
+            }
+          },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -345,40 +401,36 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, cancelAndReconcile, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
     // since Phase 4 the run continues in the background after the fetch closes.
-    // Fire-and-forget; the run is terminal-guarded server-side. Navigation
-    // (loadConversation / unmount) deliberately does NOT call this — it only
-    // detaches the observer, leaving the run to finish and persist.
+    // Navigation (loadConversation / unmount) deliberately does NOT call this —
+    // it only detaches the observer, leaving the run to finish and persist.
     const runId = runIdRef.current
     const convId = conversation?.id
     if (runId) {
+      // Id known: cancel the server run now (and reconcile after it settles),
+      // then abort our observer.
       runIdRef.current = null
-      cancelRun(runId)
-        .catch(() => { /* already terminal / gone — harmless */ })
-        // Reconcile local state with SQLite. The user message was persisted
-        // when the run was created, but our optimistic { id: 'temp-user' } row
-        // is still in `messages`. Without this refetch the next send's save
-        // handler — which strips every temp-user row before appending — drops
-        // the stopped prompt from the transcript (and it stays dropped if that
-        // trailing refetch ever fails). Refetch swaps the optimistic row for
-        // the persisted one with a real id, which the strip no longer touches.
-        // Runs after cancel settles so it also reflects the rare case where the
-        // run completed in the same instant Stop was pressed.
-        .finally(() => { if (convId) refetchMessages(convId) })
-    }
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
+      cancelAndReconcile(runId, convId)
+      if (abortRef.current) {
+        abortRef.current.abort()
+        abortRef.current = null
+      }
+    } else if (abortRef.current) {
+      // Stop pressed before run_started: the server already created the run but
+      // we don't know its id yet. Aborting now would drop the run_started frame
+      // and leave the background run executing. Defer the abort + cancel to
+      // onRunStarted, which consumes this flag the moment the id arrives.
+      pendingStopRef.current = true
     }
     drainingRef.current = false
     setStreaming(false)
     setHeartbeat(null)
     setPendingToolCalls([])
-  }, [conversation, refetchMessages])
+  }, [conversation, cancelAndReconcile])
 
   // Abort streaming on unmount (e.g. navigating away). Aborts BOTH the
   // active stream (abortRef) and any detached draining streams whose

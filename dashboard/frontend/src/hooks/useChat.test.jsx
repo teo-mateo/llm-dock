@@ -129,8 +129,86 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.messages.some(m => m.id === 'msg-1' && m.content === 'first')).toBe(true)
   })
 
-  it('stopStreaming is a no-op for cancel when no run id was captured', async () => {
+  it('Stop pressed before run_started defers cancellation until the run id arrives', async () => {
+    // Regression for codex iter 2 P2: the server creates the run before
+    // emitting run_started. A Stop in that window has no id to target; aborting
+    // the fetch then would drop the run_started frame and orphan the background
+    // run. Stop must defer and cancel once the id lands.
+    let handlers
+    mockStreamChat.mockImplementation((_url, _body, h) => {
+      handlers = h
+      // No run_started yet; stream stays open.
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('hello')
+      await Promise.resolve()
+    })
+
+    // Stop before the id is known: UI reflects stopped immediately, but we
+    // can't cancel the server run yet.
+    act(() => { result.current.stopStreaming() })
+    expect(mockCancelRun).not.toHaveBeenCalled()
+    expect(result.current.streaming).toBe(false)
+
+    // The id finally arrives — deferred cancel fires now.
+    await act(async () => {
+      handlers.onRunStarted({ type: 'run_started', run_id: 'run-late' })
+      await Promise.resolve()
+    })
+    expect(mockCancelRun).toHaveBeenCalledWith('run-late')
+  })
+
+  it('a late Stop refetch does not clobber a conversation the user navigated to', async () => {
+    // Regression for codex iter 2 P2: stopStreaming refetches after cancel
+    // settles. If the user navigates A -> B while the cancel POST is in flight,
+    // the A refetch must NOT overwrite B (refetchMessages writes conversation
+    // /messages directly).
+    installInFlightStream('run-A')
+    // Hold the cancel POST open so its reconcile finally runs LAST.
+    let resolveCancel
+    mockCancelRun.mockImplementation(() => new Promise((res) => { resolveCancel = res }))
+    mockGetConversation.mockImplementation((id) =>
+      Promise.resolve(
+        id === 'conv-2'
+          ? { id: 'conv-2', main_service: 'svc', messages: [{ id: 'b1', role: 'user', content: 'B', seq: 1 }], critiques: {}, artifacts: {} }
+          : { ...CONV, messages: [{ id: 'a1', role: 'user', content: 'A', seq: 1 }], critiques: {}, artifacts: {} }
+      )
+    )
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('A')
+      await Promise.resolve()
+    })
+
+    // Stop A (cancel POST is now pending, reconcile finally not yet run).
+    act(() => { result.current.stopStreaming() })
+
+    // Navigate to B; B loads fully.
+    await act(async () => {
+      await result.current.loadConversation('conv-2')
+    })
+    expect(result.current.conversation.id).toBe('conv-2')
+
+    // A's cancel resolves LAST — its reconcile must be gated out.
+    await act(async () => {
+      resolveCancel()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.conversation.id).toBe('conv-2')
+  })
+
+  it('stopStreaming does not cancel when run_started never arrives', async () => {
     // Stream that never emits run_started (e.g. an early HTTP error path).
+    // Stop defers, but with no id ever delivered there is nothing to cancel.
     let resolveStream
     mockStreamChat.mockImplementation(() => new Promise((res) => { resolveStream = res }))
     const { result } = renderHook(() => useChat({}))
