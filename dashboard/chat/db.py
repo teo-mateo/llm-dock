@@ -3,7 +3,8 @@ import sqlite3
 import logging
 from typing import Optional, List, Tuple
 
-from .models import Conversation, Message, Critique, Artifact
+from .models import Conversation, Message, Critique, Artifact, ChatRun
+from .runs import ChatRunStatus, ACTIVE_STATUSES, TERMINAL_STATUSES, ALL_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,22 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_artifact_msg ON artifacts(message_id);
+
+CREATE TABLE IF NOT EXISTS chat_runs (
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    user_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    status          TEXT NOT NULL,
+    active_step     TEXT,
+    error           TEXT,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    started_at      TEXT,
+    completed_at    TEXT,
+    cancelled_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_runs_conversation ON chat_runs(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_chat_runs_status ON chat_runs(status);
 """
 
 
@@ -154,6 +171,8 @@ class ChatDB:
                 return None
             conv = self._row_to_conversation(row)
             conv.messages = self.get_messages(conv_id, conn=conn)
+            run = self._active_run_for(conn, conv_id)
+            conv.active_run = run.active_run_dict() if run else None
             return conv
         finally:
             self._close_conn(conn)
@@ -167,6 +186,7 @@ class ChatDB:
                 (limit, offset),
             ).fetchall()
             convs = [self._row_to_conversation(row) for row in rows]
+            self._attach_active_runs(conn, convs)
             return convs, total
         finally:
             self._close_conn(conn)
@@ -219,6 +239,10 @@ class ChatDB:
         count = conn.execute(cte + "SELECT COUNT(DISTINCT id) FROM d", params).fetchone()[0]
         if count == 0:
             return 0
+        # Explicitly clear chat_runs for the deleted conversations. The FK is
+        # ON DELETE CASCADE, but the in-memory test DB (the persistent
+        # connection) doesn't enable PRAGMA foreign_keys, so don't rely on it.
+        conn.execute(cte + "DELETE FROM chat_runs WHERE conversation_id IN (SELECT id FROM d)", params)
         conn.execute(cte + "DELETE FROM conversations WHERE id IN (SELECT id FROM d)", params)
         return count
 
@@ -443,3 +467,162 @@ class ChatDB:
             return result
         finally:
             self._close_conn(conn)
+
+    # -- Chat runs (issue #58) --
+
+    def _row_to_chat_run(self, row: sqlite3.Row) -> ChatRun:
+        return ChatRun(
+            id=row["id"],
+            conversation_id=row["conversation_id"],
+            status=row["status"],
+            user_message_id=row["user_message_id"],
+            active_step=row["active_step"],
+            error=row["error"],
+            created_at=row["created_at"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            cancelled_at=row["cancelled_at"],
+        )
+
+    def _active_run_for(self, conn: sqlite3.Connection, conv_id: str) -> Optional[ChatRun]:
+        """Most recent queued/running run for a conversation, or None.
+
+        Shares the caller's connection so it can run inside get_conversation /
+        list enrichment without reopening.
+        """
+        placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
+        # rowid (not id) is the chronological tiebreaker: created_at is only
+        # second-precision and ids are random UUIDs, so within one second only
+        # insertion order (rowid) reflects which run is actually newer.
+        row = conn.execute(
+            f"""SELECT * FROM chat_runs
+                WHERE conversation_id = ? AND status IN ({placeholders})
+                ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+            (conv_id, *sorted(ACTIVE_STATUSES)),
+        ).fetchone()
+        return self._row_to_chat_run(row) if row else None
+
+    def _attach_active_runs(self, conn: sqlite3.Connection, convs: List[Conversation]):
+        """Populate conv.active_run for a batch of conversations in one query."""
+        if not convs:
+            return
+        conv_ids = [c.id for c in convs]
+        status_ph = ",".join("?" for _ in ACTIVE_STATUSES)
+        conv_ph = ",".join("?" for _ in conv_ids)
+        rows = conn.execute(
+            f"""SELECT * FROM chat_runs
+                WHERE status IN ({status_ph}) AND conversation_id IN ({conv_ph})
+                ORDER BY created_at ASC, rowid ASC""",
+            (*sorted(ACTIVE_STATUSES), *conv_ids),
+        ).fetchall()
+        # ASC by insertion order (rowid) means the last write per conversation
+        # is the most recent run — chronological even within a one-second tie.
+        latest = {}
+        for row in rows:
+            run = self._row_to_chat_run(row)
+            latest[run.conversation_id] = run
+        for c in convs:
+            run = latest.get(c.id)
+            c.active_run = run.active_run_dict() if run else None
+
+    def create_chat_run(self, run: ChatRun) -> ChatRun:
+        if run.status not in ALL_STATUSES:
+            raise ValueError(f"invalid run status: {run.status!r}")
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                """INSERT INTO chat_runs
+                   (id, conversation_id, user_message_id, status, active_step, error)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (run.id, run.conversation_id, run.user_message_id,
+                 run.status, run.active_step, run.error),
+            )
+            conn.commit()
+            return self.get_chat_run(run.id)
+        finally:
+            self._close_conn(conn)
+
+    def get_chat_run(self, run_id: str) -> Optional[ChatRun]:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM chat_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            return self._row_to_chat_run(row) if row else None
+        finally:
+            self._close_conn(conn)
+
+    def get_active_run_for_conversation(self, conversation_id: str) -> Optional[ChatRun]:
+        conn = self._get_conn()
+        try:
+            return self._active_run_for(conn, conversation_id)
+        finally:
+            self._close_conn(conn)
+
+    def list_active_runs(self) -> List[ChatRun]:
+        conn = self._get_conn()
+        try:
+            placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
+            rows = conn.execute(
+                f"""SELECT * FROM chat_runs WHERE status IN ({placeholders})
+                    ORDER BY created_at ASC, rowid ASC""",
+                tuple(sorted(ACTIVE_STATUSES)),
+            ).fetchall()
+            return [self._row_to_chat_run(row) for row in rows]
+        finally:
+            self._close_conn(conn)
+
+    def update_chat_run_status(self, run_id: str, status: str,
+                               active_step: str = None, error: str = None) -> Optional[ChatRun]:
+        """Set a run's status, stamping the matching lifecycle timestamp.
+
+        active_step / error are only written when provided (non-None), so a
+        plain status bump doesn't clobber an earlier active_step. Timestamps:
+        running -> started_at (first time only), completed/failed ->
+        completed_at, cancelled -> cancelled_at.
+
+        Terminal runs are frozen: the WHERE clause excludes already-terminal
+        rows, so a completed/failed/cancelled run can never move back to an
+        active state (the lifecycle contract). Such a call is a harmless no-op
+        and returns the run unchanged.
+        """
+        if status not in ALL_STATUSES:
+            raise ValueError(f"invalid run status: {status!r}")
+        now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        sets = ["status = ?"]
+        params = [status]
+        if active_step is not None:
+            sets.append("active_step = ?")
+            params.append(active_step)
+        if error is not None:
+            sets.append("error = ?")
+            params.append(error)
+        if status == ChatRunStatus.RUNNING:
+            sets.append(f"started_at = COALESCE(started_at, {now})")
+        elif status in (ChatRunStatus.COMPLETED, ChatRunStatus.FAILED):
+            sets.append(f"completed_at = {now}")
+        elif status == ChatRunStatus.CANCELLED:
+            sets.append(f"cancelled_at = {now}")
+        terminal_ph = ",".join("?" for _ in TERMINAL_STATUSES)
+        params.append(run_id)
+        params.extend(sorted(TERMINAL_STATUSES))
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                f"""UPDATE chat_runs SET {', '.join(sets)}
+                    WHERE id = ? AND status NOT IN ({terminal_ph})""",
+                params,
+            )
+            conn.commit()
+            return self.get_chat_run(run_id)
+        finally:
+            self._close_conn(conn)
+
+    def complete_chat_run(self, run_id: str) -> Optional[ChatRun]:
+        return self.update_chat_run_status(run_id, ChatRunStatus.COMPLETED)
+
+    def fail_chat_run(self, run_id: str, error: str) -> Optional[ChatRun]:
+        return self.update_chat_run_status(run_id, ChatRunStatus.FAILED, error=error)
+
+    def cancel_chat_run(self, run_id: str) -> Optional[ChatRun]:
+        return self.update_chat_run_status(run_id, ChatRunStatus.CANCELLED)

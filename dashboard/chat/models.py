@@ -86,6 +86,45 @@ class Artifact:
 
 
 @dataclass
+class ChatRun:
+    """A single model/tool turn, tracked independently of the HTTP response
+    that started it (issue #58). Persisted in the chat_runs table."""
+    id: str
+    conversation_id: str
+    status: str
+    user_message_id: Optional[str] = None
+    active_step: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    cancelled_at: Optional[str] = None
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "status": self.status,
+            "user_message_id": self.user_message_id,
+            "active_step": self.active_step,
+            "error": self.error,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "cancelled_at": self.cancelled_at,
+        }
+
+    def active_run_dict(self):
+        """The trimmed shape embedded in conversation-list payloads."""
+        return {
+            "id": self.id,
+            "status": self.status,
+            "active_step": self.active_step,
+            "started_at": self.started_at,
+        }
+
+
+@dataclass
 class Conversation:
     id: str
     title: str
@@ -99,6 +138,9 @@ class Conversation:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     messages: List[Message] = field(default_factory=list)
+    # Populated by the DB layer from chat_runs (not a stored column). The
+    # active_run_dict() shape of the conversation's queued/running run, or None.
+    active_run: Optional[dict] = None
 
     def to_dict(self, include_messages=False):
         d = {
@@ -111,6 +153,7 @@ class Conversation:
             "parent_conversation_id": self.parent_conversation_id,
             "selected_text": self.selected_text,
             "mcp_servers": json.loads(self.mcp_servers_json) if self.mcp_servers_json else [],
+            "active_run": self.active_run,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
