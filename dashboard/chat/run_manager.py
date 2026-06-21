@@ -37,6 +37,10 @@ def _sse_frames_for(event: ChatRuntimeEvent):
     legacy wire format. Internal events (run_started, run_cancelled,
     stream_end) produce no frame."""
     t, d = event.type, event.data
+    if t == "run_started":
+        # Expose the run id to the client so it can POST /runs/<id>/cancel.
+        # (Current frontend ignores unknown SSE types; wired up in Phase 6.)
+        return [encode_sse_event("run_started", {"run_id": d["run_id"]})]
     if t == "delta":
         return [encode_sse_delta(d["raw"])]
     if t == "tool_call_pending":

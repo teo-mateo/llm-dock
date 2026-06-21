@@ -134,6 +134,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     pending_emitted = set()    # tool-call indices we've already announced via tool_call_pending
     finish_reason = None
 
+    resp = None
     try:
         resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
         resp.encoding = "utf-8"
@@ -228,3 +229,10 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     except Exception as e:
         logger.exception("Unexpected error during streaming")
         yield ("error", {"message": f"Unexpected error: {str(e)}"})
+    finally:
+        # Always release the upstream socket — including when the generator is
+        # closed early (cooperative cancellation calls stream.close(), which
+        # raises GeneratorExit here). Without this, a cancelled run leaves the
+        # model-server connection alive until garbage collection.
+        if resp is not None:
+            resp.close()
