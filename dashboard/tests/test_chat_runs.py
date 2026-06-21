@@ -132,17 +132,41 @@ def test_terminal_runs_are_not_active(terminal):
     assert run.id not in [r.id for r in db.list_active_runs()]
 
 
-def test_active_run_picks_most_recent():
+@pytest.mark.parametrize("terminal", [
+    ChatRunStatus.COMPLETED, ChatRunStatus.FAILED, ChatRunStatus.CANCELLED,
+])
+def test_terminal_run_cannot_be_reactivated(terminal):
+    """Terminal is final: a completed/failed/cancelled run can't go back to
+    running (the lifecycle contract). The call is a harmless no-op."""
     db = ChatDB(":memory:")
     conv = _conv(db)
-    old = db.create_chat_run(ChatRun(id="aaa-old", conversation_id=conv.id,
-                                     status=ChatRunStatus.QUEUED))
-    new = db.create_chat_run(ChatRun(id="zzz-new", conversation_id=conv.id,
-                                     status=ChatRunStatus.RUNNING))
-    # Same created_at second in a fast test; the id tiebreaker keeps it
-    # deterministic. Both are active here; lookup returns one, deterministically.
-    active = db.get_active_run_for_conversation(conv.id)
-    assert active.id in {old.id, new.id}
+    run = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
+    terminated = db.update_chat_run_status(run.id, terminal)
+    terminal_ts = (terminated.completed_at or terminated.cancelled_at)
+
+    after = db.update_chat_run_status(run.id, ChatRunStatus.RUNNING, active_step="generating")
+    assert after.status == terminal              # unchanged
+    assert after.active_step is None             # the no-op didn't write active_step
+    # Terminal timestamp preserved; not resurrected as active.
+    assert (after.completed_at or after.cancelled_at) == terminal_ts
+    assert db.get_active_run_for_conversation(conv.id) is None
+
+
+def test_active_run_picks_most_recent_by_insertion_not_id():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    # Insert the chronologically-newer run with an id that sorts EARLIER than
+    # the older one, so a text-id tiebreaker would pick the wrong (stale) run.
+    # Both share the same one-second created_at in a fast test, so only the
+    # rowid (insertion order) tiebreaker gets this right.
+    db.create_chat_run(ChatRun(id="zzz-old", conversation_id=conv.id,
+                               status=ChatRunStatus.QUEUED))
+    newer = db.create_chat_run(ChatRun(id="aaa-new", conversation_id=conv.id,
+                                       status=ChatRunStatus.RUNNING))
+
+    assert db.get_active_run_for_conversation(conv.id).id == newer.id
+    convs, _ = db.list_conversations()
+    assert convs[0].active_run["id"] == newer.id
 
 
 def test_list_active_runs_spans_conversations():

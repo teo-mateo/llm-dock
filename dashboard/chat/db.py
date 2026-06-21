@@ -4,7 +4,7 @@ import logging
 from typing import Optional, List, Tuple
 
 from .models import Conversation, Message, Critique, Artifact, ChatRun
-from .runs import ChatRunStatus, ACTIVE_STATUSES, ALL_STATUSES
+from .runs import ChatRunStatus, ACTIVE_STATUSES, TERMINAL_STATUSES, ALL_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -491,10 +491,13 @@ class ChatDB:
         list enrichment without reopening.
         """
         placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
+        # rowid (not id) is the chronological tiebreaker: created_at is only
+        # second-precision and ids are random UUIDs, so within one second only
+        # insertion order (rowid) reflects which run is actually newer.
         row = conn.execute(
             f"""SELECT * FROM chat_runs
                 WHERE conversation_id = ? AND status IN ({placeholders})
-                ORDER BY created_at DESC, id DESC LIMIT 1""",
+                ORDER BY created_at DESC, rowid DESC LIMIT 1""",
             (conv_id, *sorted(ACTIVE_STATUSES)),
         ).fetchone()
         return self._row_to_chat_run(row) if row else None
@@ -509,10 +512,11 @@ class ChatDB:
         rows = conn.execute(
             f"""SELECT * FROM chat_runs
                 WHERE status IN ({status_ph}) AND conversation_id IN ({conv_ph})
-                ORDER BY created_at ASC, id ASC""",
+                ORDER BY created_at ASC, rowid ASC""",
             (*sorted(ACTIVE_STATUSES), *conv_ids),
         ).fetchall()
-        # ASC order means the last write per conversation is the most recent run.
+        # ASC by insertion order (rowid) means the last write per conversation
+        # is the most recent run — chronological even within a one-second tie.
         latest = {}
         for row in rows:
             run = self._row_to_chat_run(row)
@@ -561,7 +565,7 @@ class ChatDB:
             placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
             rows = conn.execute(
                 f"""SELECT * FROM chat_runs WHERE status IN ({placeholders})
-                    ORDER BY created_at ASC, id ASC""",
+                    ORDER BY created_at ASC, rowid ASC""",
                 tuple(sorted(ACTIVE_STATUSES)),
             ).fetchall()
             return [self._row_to_chat_run(row) for row in rows]
@@ -576,6 +580,11 @@ class ChatDB:
         plain status bump doesn't clobber an earlier active_step. Timestamps:
         running -> started_at (first time only), completed/failed ->
         completed_at, cancelled -> cancelled_at.
+
+        Terminal runs are frozen: the WHERE clause excludes already-terminal
+        rows, so a completed/failed/cancelled run can never move back to an
+        active state (the lifecycle contract). Such a call is a harmless no-op
+        and returns the run unchanged.
         """
         if status not in ALL_STATUSES:
             raise ValueError(f"invalid run status: {status!r}")
@@ -594,11 +603,15 @@ class ChatDB:
             sets.append(f"completed_at = {now}")
         elif status == ChatRunStatus.CANCELLED:
             sets.append(f"cancelled_at = {now}")
+        terminal_ph = ",".join("?" for _ in TERMINAL_STATUSES)
         params.append(run_id)
+        params.extend(sorted(TERMINAL_STATUSES))
         conn = self._get_conn()
         try:
             conn.execute(
-                f"UPDATE chat_runs SET {', '.join(sets)} WHERE id = ?", params
+                f"""UPDATE chat_runs SET {', '.join(sets)}
+                    WHERE id = ? AND status NOT IN ({terminal_ph})""",
+                params,
             )
             conn.commit()
             return self.get_chat_run(run_id)
