@@ -334,8 +334,13 @@ class ChatDB:
             if should_close:
                 self._close_conn(conn)
 
-    def add_message(self, msg: Message) -> Message:
-        conn = self._get_conn()
+    def add_message(self, msg: Message, conn: sqlite3.Connection = None) -> Message:
+        """Insert a message. When `conn` is passed, the caller owns the
+        transaction (no commit/close here) so the insert can be part of a
+        larger atomic unit; otherwise this commits on its own."""
+        should_close = conn is None
+        if conn is None:
+            conn = self._get_conn()
         try:
             conn.execute(
                 """INSERT INTO messages
@@ -345,10 +350,15 @@ class ChatDB:
                  msg.reasoning_content, msg.model_service, msg.images_json, msg.tool_calls_json,
                  msg.parse_warning_json, msg.seq),
             )
-            conn.commit()
-            return self.get_message(msg.id)
+            if should_close:
+                conn.commit()
+                return self.get_message(msg.id)
+            # Shared transaction not yet committed — a re-fetch on a fresh
+            # connection wouldn't see the row, so return the object as-is.
+            return msg
         finally:
-            self._close_conn(conn)
+            if should_close:
+                self._close_conn(conn)
 
     def delete_messages_from_seq(self, conv_id: str, from_seq: int) -> int:
         conn = self._get_conn()
@@ -433,8 +443,12 @@ class ChatDB:
             created_at=row["created_at"],
         )
 
-    def save_artifact(self, artifact: Artifact) -> Artifact:
-        conn = self._get_conn()
+    def save_artifact(self, artifact: Artifact, conn: sqlite3.Connection = None) -> Artifact:
+        """Insert an artifact. When `conn` is passed, the caller owns the
+        transaction (no commit/close) so it can be batched atomically."""
+        should_close = conn is None
+        if conn is None:
+            conn = self._get_conn()
         try:
             conn.execute(
                 """INSERT INTO artifacts
@@ -443,10 +457,12 @@ class ChatDB:
                 (artifact.id, artifact.message_id, artifact.artifact_type,
                  artifact.content, artifact.title, artifact.language),
             )
-            conn.commit()
+            if should_close:
+                conn.commit()
             return artifact
         finally:
-            self._close_conn(conn)
+            if should_close:
+                self._close_conn(conn)
 
     def get_artifacts_for_conversation(self, conv_id: str) -> dict:
         """Returns a dict of message_id -> [Artifact] for all messages in a conversation."""
@@ -615,6 +631,52 @@ class ChatDB:
             )
             conn.commit()
             return self.get_chat_run(run_id)
+        finally:
+            self._close_conn(conn)
+
+    def complete_run_with_message(self, run_id: str, assistant_msg: Message,
+                                  artifacts: List[Artifact] = None) -> Optional[Message]:
+        """Atomically finish a run: assign the message's seq, insert it and its
+        artifacts, mark the run completed, and touch the conversation — all in
+        one transaction.
+
+        Terminal-guarded and all-or-nothing:
+        - If the run is already terminal (e.g. cancelled mid-stream), the
+          guarded UPDATE changes 0 rows; the whole transaction is rolled back
+          and None is returned — no assistant message is written.
+        - If any insert raises, the transaction is rolled back (re-raising) so
+          a failed run never leaves an orphan completed assistant message.
+
+        On success returns the persisted assistant_msg (with seq assigned).
+        """
+        artifacts = artifacts or []
+        terminal_ph = ",".join("?" for _ in TERMINAL_STATUSES)
+        now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        conn = self._get_conn()
+        try:
+            assistant_msg.seq = self.next_seq(assistant_msg.conversation_id, conn=conn)
+            self.add_message(assistant_msg, conn=conn)
+            for art in artifacts:
+                self.save_artifact(art, conn=conn)
+            cur = conn.execute(
+                f"""UPDATE chat_runs SET status = ?, completed_at = {now}
+                    WHERE id = ? AND status NOT IN ({terminal_ph})""",
+                (ChatRunStatus.COMPLETED, run_id, *sorted(TERMINAL_STATUSES)),
+            )
+            if cur.rowcount == 0:
+                # Run went terminal (cancelled) before we could complete it —
+                # discard the assistant message and artifacts entirely.
+                conn.rollback()
+                return None
+            conn.execute(
+                f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
+                (assistant_msg.conversation_id,),
+            )
+            conn.commit()
+            return assistant_msg
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             self._close_conn(conn)
 
