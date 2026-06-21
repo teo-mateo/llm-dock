@@ -389,15 +389,25 @@ def cancel_active_run(conv_id):
     The Stop button uses this so cancellation never depends on the client
     having captured the run id from the run_started frame: the server creates
     the run when the turn starts, so it is always findable from the
-    conversation. Returns {"run": <run>} when a run was cancelled, or
-    {"run": null} (still 200) when the conversation has no active run — a
-    harmless no-op (e.g. it already finished). 404 only if the conversation
+    conversation.
+
+    An optional {"expected_run_id": "<id>"} body guards against a stale Stop:
+    if the run the client meant to stop has already finished and a newer run is
+    active in this conversation, the cancel is a no-op rather than killing the
+    newer run.
+
+    Returns {"run": <run>} when a run was cancelled, or {"run": null} (still
+    200) when the conversation has no active run, or its active run does not
+    match expected_run_id — both harmless no-ops. 404 only if the conversation
     does not exist.
     """
     db = _get_db()
     if db.get_conversation(conv_id) is None:
         return jsonify({"error": "Conversation not found"}), 404
-    run = _get_run_manager().request_cancel_for_conversation(conv_id)
+    body = request.get_json(silent=True) or {}
+    expected_run_id = body.get("expected_run_id")
+    run = _get_run_manager().request_cancel_for_conversation(
+        conv_id, expected_run_id=expected_run_id)
     return jsonify({"run": run.to_dict() if run is not None else None})
 
 

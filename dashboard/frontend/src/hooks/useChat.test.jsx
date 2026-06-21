@@ -21,13 +21,16 @@ vi.mock('../services/chat', () => ({
 
 const CONV = { id: 'conv-1', main_service: 'vllm-test' }
 
-// streamChat fake: stay open until the test resolves it. Stop/navigation no
-// longer depend on a run_started frame (cancellation is by conversation id),
-// so the fake doesn't need to emit one.
-function installInFlightStream() {
+// streamChat fake: stay open until the test resolves it. Emits a run_started
+// frame (so the hook captures the run id used as the cancel guard) unless runId
+// is null, which models the early-Stop window before run_started arrives.
+function installInFlightStream(runId = 'run-123') {
   let resolveStream
   const streamDone = new Promise((res) => { resolveStream = res })
-  mockStreamChat.mockImplementation(() => streamDone)
+  mockStreamChat.mockImplementation((_url, _body, handlers) => {
+    if (runId) handlers.onRunStarted?.({ type: 'run_started', run_id: runId })
+    return streamDone
+  })
   return { end: () => resolveStream() }
 }
 
@@ -60,7 +63,9 @@ describe('useChat stop/cancel wiring', () => {
     act(() => { result.current.stopStreaming() })
 
     expect(mockCancelActiveRun).toHaveBeenCalledTimes(1)
-    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1')
+    // Cancel targets the conversation, guarded by the captured run id so a late
+    // cancel can't kill a newer run.
+    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1', 'run-123')
     expect(result.current.streaming).toBe(false)
   })
 
@@ -68,8 +73,9 @@ describe('useChat stop/cancel wiring', () => {
     // The whole point of cancel-by-conversation: the server creates the run
     // when the turn starts, so Stop works without the client first capturing a
     // run id. Earlier (run-id-keyed) designs could orphan the run in this
-    // window; this asserts the cancel POST always fires.
-    installInFlightStream()
+    // window; this asserts the cancel POST always fires (with no guard, since
+    // the active run is provably still the one the user meant).
+    installInFlightStream(null)
     const { result } = renderHook(() => useChat({}))
 
     act(() => { result.current.setConversation(CONV) })
@@ -81,7 +87,7 @@ describe('useChat stop/cancel wiring', () => {
 
     act(() => { result.current.stopStreaming() })
 
-    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1')
+    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1', null)
   })
 
   it('switching conversation during a run does NOT cancel the backend run', async () => {
@@ -134,7 +140,7 @@ describe('useChat stop/cancel wiring', () => {
       await Promise.resolve()
     })
 
-    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1')
+    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1', 'run-123')
     // The stopped prompt now carries the persisted id, not 'temp-user', so the
     // next send's `filter(m => m.id !== 'temp-user')` can no longer drop it.
     expect(result.current.messages.some(m => m.id === 'temp-user')).toBe(false)

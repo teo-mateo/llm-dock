@@ -35,6 +35,12 @@ export default function useChat({ onConversationUpdated } = {}) {
   // conversation the user has since navigated to.
   const conversationRef = useRef(null)
   useEffect(() => { conversationRef.current = conversation }, [conversation])
+  // Backend run id for the in-flight stream, captured from the run_started SSE
+  // frame. Stop cancels by conversation id (so it works even before this lands)
+  // but passes this as an expected-run guard when known, so a late cancel can't
+  // kill a newer run that started after the one the user stopped. Reset at the
+  // start of each send/edit/load so it never carries a stale run's id.
+  const runIdRef = useRef(null)
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -64,9 +70,9 @@ export default function useChat({ onConversationUpdated } = {}) {
   // while the cancel POST is in flight, and refetchMessages writes
   // conversation/messages directly, so an ungated late refetch could clobber
   // the conversation they moved to.
-  const cancelAndReconcile = useCallback((convId) => {
+  const cancelAndReconcile = useCallback((convId, expectedRunId) => {
     if (!convId) return
-    cancelActiveRun(convId)
+    cancelActiveRun(convId, expectedRunId)
       .catch(() => { /* no active run / already terminal — harmless */ })
       .finally(() => {
         if (conversationRef.current?.id === convId) refetchMessages(convId)
@@ -85,6 +91,7 @@ export default function useChat({ onConversationUpdated } = {}) {
       abortRef.current = null
     }
     drainingRef.current = false
+    runIdRef.current = null
     setStreaming(false)
     setStreamingContent('')
     setStreamingReasoning('')
@@ -122,6 +129,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -200,6 +208,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated,
+        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -272,6 +281,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -338,6 +348,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated,
+          onRunStarted: (evt) => { runIdRef.current = evt.run_id },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -371,10 +382,13 @@ export default function useChat({ onConversationUpdated } = {}) {
     // since Phase 4 the run continues in the background after the fetch closes.
     // Cancel by conversation id so this works even if run_started has not yet
     // delivered the run id — the server created the run when the turn started,
-    // so it is always findable from the conversation. Navigation
-    // (loadConversation / unmount) deliberately does NOT call this — it only
-    // detaches the observer, leaving the run to finish and persist.
-    cancelAndReconcile(conversation?.id)
+    // so it is always findable from the conversation. Pass the captured run id
+    // (when known) as an expected-run guard so a late cancel can't kill a newer
+    // run started after this one. Navigation (loadConversation / unmount)
+    // deliberately does NOT call this — it only detaches the observer, leaving
+    // the run to finish and persist.
+    cancelAndReconcile(conversation?.id, runIdRef.current)
+    runIdRef.current = null
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
