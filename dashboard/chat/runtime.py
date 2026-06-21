@@ -124,12 +124,19 @@ class ChatRunner:
             return stream_with_tools(conv.main_service, messages_array, tools, mcp_manager)
         return stream_chat_completion(conv.main_service, messages_array)
 
-    def run(self, run, request: ChatTurnRequest) -> Optional[Message]:
+    def run(self, run, request: ChatTurnRequest, cancel_check=None) -> Optional[Message]:
         """Execute the turn for an existing (queued) run.
 
         Returns the persisted assistant Message on success, or None on failure
-        (the run is marked failed). Never raises for model/tool errors — they
-        are recorded on the run.
+        / cancellation (the run is marked failed or cancelled). Never raises for
+        model/tool errors — they are recorded on the run.
+
+        cancel_check, if given, is a zero-arg callable polled between stream
+        events; when it returns True the runner closes the upstream stream
+        (stopping the model / tool loop at its next yield) and cancels the run
+        without persisting an assistant message. Cancellation is cooperative:
+        a fully-silent generation is only interrupted once the next event or
+        chunk arrives.
         """
         db = self.db
         conv = request.conversation
@@ -156,6 +163,17 @@ class ChatRunner:
         try:
             stream = self._build_stream(conv, mcp_manager)
             for event_type, data in stream:
+                if cancel_check is not None and cancel_check():
+                    # Stop the model/tool loop promptly: closing the generator
+                    # raises GeneratorExit into stream_chat_completion /
+                    # stream_with_tools at their next yield.
+                    try:
+                        stream.close()
+                    except Exception:
+                        logger.exception("error closing stream on cancel for run %s", run_id)
+                    db.cancel_chat_run(run_id)  # idempotent if already cancelled
+                    self._emit(run_id, "run_cancelled", {"run_id": run_id})
+                    return None
                 if event_type == "delta":
                     accumulated_content += data.get("content", "") or ""
                     accumulated_reasoning += data.get("reasoning_content", "") or ""

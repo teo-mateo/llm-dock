@@ -114,7 +114,8 @@ def _kinds(payloads):
     for kind, v in payloads:
         if kind == "done":
             kinds.append("[DONE]")
-        elif kind == "json" and v.get("type") == "heartbeat":
+        elif kind == "json" and v.get("type") in ("heartbeat", "run_started"):
+            # Structural frames (keepalive / run-id exposure), not content.
             continue
         elif kind == "json" and "type" in v:
             kinds.append(v["type"])
@@ -132,6 +133,28 @@ def _by_type(payloads, t):
 
 
 # -- Plain stream -------------------------------------------------------
+
+
+def test_send_emits_run_started_with_run_id_first(ctx, monkeypatch):
+    """The stream leads with a run_started frame carrying the run id so the
+    client can POST /runs/<id>/cancel (frontend wiring is Phase 6)."""
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db)
+
+    def stub():
+        yield _delta("hi")
+        yield ("done", {"content": "hi", "reasoning_content": None})
+
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
+
+    rs = _by_type(payloads, "run_started")
+    assert rs["run_id"]
+    # It is the first frame.
+    first_typed = next(v for kind, v in payloads if kind == "json" and "type" in v)
+    assert first_typed["type"] == "run_started"
+    # And the run id matches a real run row.
+    assert db.get_chat_run(rs["run_id"]) is not None
 
 
 def test_plain_send_emits_raw_deltas_then_handshake(ctx, monkeypatch):
