@@ -143,6 +143,15 @@ export default function ChatArea({
 
   const targetMessage = critiqueTarget ? messages.find(m => m.id === critiqueTarget) : null
 
+  // A background run can still be active for this conversation even when we
+  // have no local SSE stream (the user navigated away and back, so `streaming`
+  // is false but the run kept going server-side). Treat it as an in-pane busy
+  // state: block the composer/model/MCP controls and surface Stop, which
+  // cancels by conversation id regardless of whether we hold the run stream.
+  const activeRun = conversation.active_run
+  const hasActiveRun = !!activeRun && (activeRun.status === 'running' || activeRun.status === 'queued')
+  const busy = streaming || cancelling || hasActiveRun
+
   function handleOpenCritique(msgId) {
     setCritiqueTarget(msgId)
   }
@@ -198,16 +207,16 @@ export default function ChatArea({
               sidekickService={conversation.sidekick_service}
               onChangeMain={v => handleModelChange('main_service', v)}
               onChangeSidekick={v => handleModelChange('sidekick_service', v)}
-              disabled={streaming || cancelling}
+              disabled={busy}
             />
             <McpToggle
               conversationId={conversation.id}
               enabledServers={conversation.mcp_servers}
               onUpdate={() => onReloadConversation?.(conversation.id)}
-              disabled={streaming || cancelling}
+              disabled={busy}
             />
           </div>
-          {streaming && (
+          {(streaming || hasActiveRun) && !cancelling && (
             <button
               onClick={onStopStreaming}
               className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
@@ -258,7 +267,7 @@ export default function ChatArea({
           ref={composerRef}
           focusKey={conversation.id}
           onSend={handleSend}
-          disabled={streaming || cancelling || !conversation.main_service}
+          disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
         />
