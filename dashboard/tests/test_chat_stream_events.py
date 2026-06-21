@@ -67,13 +67,37 @@ def _patch_stream(monkeypatch, stream_factory):
 
     Both are patched because _stream_response picks one based on whether MCP
     tools are present; the test drives event content directly via the stub
-    regardless of which branch is taken.
+    regardless of which branch is taken. The returned dict counts which path
+    was actually invoked so a test can pin the routing decision itself.
     """
-    def _wrapper(*args, **kwargs):
+    called = {"plain": 0, "with_tools": 0}
+
+    def _plain(*args, **kwargs):
+        called["plain"] += 1
         return stream_factory()
 
-    monkeypatch.setattr(routes, "stream_chat_completion", _wrapper)
-    monkeypatch.setattr(routes, "stream_with_tools", _wrapper)
+    def _with_tools(*args, **kwargs):
+        called["with_tools"] += 1
+        return stream_factory()
+
+    monkeypatch.setattr(routes, "stream_chat_completion", _plain)
+    monkeypatch.setattr(routes, "stream_with_tools", _with_tools)
+    return called
+
+
+class _FakeMCPManager:
+    """Minimal stand-in so _stream_response takes the stream_with_tools branch.
+
+    `get_all_tools` must return a non-empty list for `tools` to be truthy at
+    routes.py:351-354.
+    """
+
+    def __init__(self):
+        self.tools_requested = None
+
+    def get_all_tools(self, servers):
+        self.tools_requested = list(servers)
+        return [{"type": "function", "function": {"name": "solve"}}]
 
 
 def _drain(db, conv, user_msg):
@@ -107,6 +131,28 @@ def _types(payloads):
     return [v.get("type") for kind, v in payloads if kind == "json" and "type" in v]
 
 
+def _frame_kinds(payloads):
+    """Reduce every frame to an ordered label, so order can be asserted.
+
+    Typed frames -> their `type`; raw upstream delta chunks (json with
+    `choices`, no `type`) -> "delta"; the sentinel -> "[DONE]"; an error
+    frame -> "error".
+    """
+    kinds = []
+    for kind, v in payloads:
+        if kind == "done":
+            kinds.append("[DONE]")
+        elif kind == "json" and "type" in v:
+            kinds.append(v["type"])
+        elif kind == "json" and "choices" in v:
+            kinds.append("delta")
+        elif kind == "json" and "error" in v:
+            kinds.append("error")
+        else:
+            kinds.append("raw")
+    return kinds
+
+
 # -- Plain model stream -------------------------------------------------
 
 
@@ -135,10 +181,11 @@ def test_plain_stream_emits_deltas_and_done(monkeypatch):
     assert any(c["choices"][0]["delta"].get("content") == "Hello " for c in delta_chunks), delta_chunks
     assert any(c["choices"][0]["delta"].get("content") == "world" for c in delta_chunks), delta_chunks
 
-    # Terminal sentinel + the persisted-message handshake.
-    assert ("done", "[DONE]") in payloads
+    # Exact frame order: every delta precedes the terminal handshake, and
+    # [DONE] precedes message_saved (the frontend's draining logic depends on
+    # message_saved arriving after [DONE]).
+    assert _frame_kinds(payloads) == ["delta", "delta", "[DONE]", "message_saved"]
     saved = [v for kind, v in payloads if kind == "json" and v.get("type") == "message_saved"]
-    assert len(saved) == 1
     assert saved[0]["seq"] == 2
 
     # The assistant row is persisted with the full content.
@@ -164,13 +211,29 @@ def test_tool_stream_emits_all_event_types_and_persists(monkeypatch):
         yield _delta("The answer is 1.")
         yield ("done", {"content": "The answer is 1.", "reasoning_content": None})
 
-    _patch_stream(monkeypatch, stub)
-    payloads = _frame_payloads(_drain(db, conv, user_msg))
-    seen = _types(payloads)
+    called = _patch_stream(monkeypatch, stub)
+    mgr = _FakeMCPManager()
+    # Pass the manager so _stream_response actually routes through the tool
+    # path; without it `tools` is None and the plain branch runs.
+    frames = list(routes._stream_response(db, conv, user_msg, mcp_manager=mgr))
+    payloads = _frame_payloads(frames)
 
-    for expected in ("tool_call_pending", "tool_call", "tool_result", "artifact"):
-        assert expected in seen, f"missing {expected!r} frame; saw {seen}"
-    assert ("done", "[DONE]") in payloads
+    # Routing: an MCP-enabled conversation must go through stream_with_tools,
+    # not the plain completion. This is the part a refactor could silently
+    # break while membership checks still pass.
+    assert called["with_tools"] == 1 and called["plain"] == 0, called
+    assert mgr.tools_requested == ["sympy-math"]
+
+    # Exact frame order through the tool turn and into the terminal handshake.
+    assert _frame_kinds(payloads) == [
+        "tool_call_pending",
+        "tool_call",
+        "tool_result",
+        "artifact",
+        "delta",
+        "[DONE]",
+        "message_saved",
+    ]
 
     # The tool_call frame carries name/arguments/server_id.
     tc = next(v for kind, v in payloads if kind == "json" and v.get("type") == "tool_call")
@@ -213,8 +276,9 @@ def test_parse_warning_forwarded_and_persisted(monkeypatch):
     _patch_stream(monkeypatch, stub)
     payloads = _frame_payloads(_drain(db, conv, user_msg))
 
+    # The warning is forwarded live, between the deltas, before the handshake.
+    assert _frame_kinds(payloads) == ["delta", "parse_warning", "delta", "[DONE]", "message_saved"]
     pw = [v for kind, v in payloads if kind == "json" and v.get("type") == "parse_warning"]
-    assert len(pw) == 1
     assert pw[0]["kind"] == "json_codeblock_call"
     assert pw[0]["description"] == "drift"
 
