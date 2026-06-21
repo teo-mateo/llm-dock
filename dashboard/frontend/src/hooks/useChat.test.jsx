@@ -91,6 +91,44 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.streaming).toBe(false)
   })
 
+  it('Stop reconciles the optimistic row so a later send keeps the stopped prompt', async () => {
+    // Regression for codex iter 1 P1: the user message is persisted at run
+    // creation, but the optimistic temp-user row would be stripped by the next
+    // send's save handler. Stop must refetch so the stopped prompt survives
+    // with a real (non-temp) id.
+    installInFlightStream('run-1')
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      messages: [{ id: 'msg-1', role: 'user', content: 'first', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('first')
+      await Promise.resolve()
+    })
+    // Optimistic row is present and temporary at this point.
+    expect(result.current.messages.some(m => m.id === 'temp-user')).toBe(true)
+
+    await act(async () => {
+      result.current.stopStreaming()
+      // Let cancelRun resolve and the trailing refetch settle.
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockCancelRun).toHaveBeenCalledWith('run-1')
+    // The stopped prompt now carries the persisted id, not 'temp-user', so the
+    // next send's `filter(m => m.id !== 'temp-user')` can no longer drop it.
+    expect(result.current.messages.some(m => m.id === 'temp-user')).toBe(false)
+    expect(result.current.messages.some(m => m.id === 'msg-1' && m.content === 'first')).toBe(true)
+  })
+
   it('stopStreaming is a no-op for cancel when no run id was captured', async () => {
     // Stream that never emits run_started (e.g. an early HTTP error path).
     let resolveStream

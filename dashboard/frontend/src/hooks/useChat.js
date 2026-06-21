@@ -354,9 +354,21 @@ export default function useChat({ onConversationUpdated } = {}) {
     // (loadConversation / unmount) deliberately does NOT call this — it only
     // detaches the observer, leaving the run to finish and persist.
     const runId = runIdRef.current
+    const convId = conversation?.id
     if (runId) {
       runIdRef.current = null
-      cancelRun(runId).catch(() => { /* already terminal / gone — harmless */ })
+      cancelRun(runId)
+        .catch(() => { /* already terminal / gone — harmless */ })
+        // Reconcile local state with SQLite. The user message was persisted
+        // when the run was created, but our optimistic { id: 'temp-user' } row
+        // is still in `messages`. Without this refetch the next send's save
+        // handler — which strips every temp-user row before appending — drops
+        // the stopped prompt from the transcript (and it stays dropped if that
+        // trailing refetch ever fails). Refetch swaps the optimistic row for
+        // the persisted one with a real id, which the strip no longer touches.
+        // Runs after cancel settles so it also reflects the rare case where the
+        // run completed in the same instant Stop was pressed.
+        .finally(() => { if (convId) refetchMessages(convId) })
     }
     if (abortRef.current) {
       abortRef.current.abort()
@@ -366,7 +378,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreaming(false)
     setHeartbeat(null)
     setPendingToolCalls([])
-  }, [])
+  }, [conversation, refetchMessages])
 
   // Abort streaming on unmount (e.g. navigating away). Aborts BOTH the
   // active stream (abortRef) and any detached draining streams whose
