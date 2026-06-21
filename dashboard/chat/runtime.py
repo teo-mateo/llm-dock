@@ -33,6 +33,7 @@ from .runs import ChatRunStatus
 from .llm_proxy import stream_chat_completion
 from .tool_loop import stream_with_tools
 from .prompt_builder import build_chat_messages
+from .persistence import DbPersistencePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -107,16 +108,21 @@ class ChatTurnRequest:
 
 
 class ChatRunner:
-    def __init__(self, db, event_bus=None):
+    def __init__(self, db=None, event_bus=None, persistence=None):
+        # Persistence is delegated to a policy so the same stream can run
+        # DB-backed or ephemeral (Ghost Chat, #57). Default to the durable
+        # policy built from `db` so existing callers are unchanged; pass an
+        # explicit `persistence` to override (e.g. NullPersistencePolicy).
         self.db = db
         self.event_bus = event_bus
+        self.persistence = persistence or DbPersistencePolicy(db)
 
     def _emit(self, run_id: str, type: str, data: dict = None):
         if self.event_bus is not None:
             self.event_bus.publish(run_id, ChatRuntimeEvent(type, data or {}))
 
     def _build_stream(self, conv: Conversation, mcp_manager):
-        messages = self.db.get_messages(conv.id)
+        messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
         messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
         tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
@@ -138,18 +144,30 @@ class ChatRunner:
         a fully-silent generation is only interrupted once the next event or
         chunk arrives.
         """
-        db = self.db
+        persistence = self.persistence
         conv = request.conversation
         mcp_manager = request.mcp_manager
         run_id = run.id
 
-        # Claim the run. update_chat_run_status no-ops on a terminal row, so if
-        # the run was cancelled before the worker picked it up, the transition
+        # Claim the run. The durable policy no-ops on a terminal row, so if the
+        # run was cancelled before the worker picked it up, the transition
         # doesn't win — do no work and surface the terminal state.
-        started = db.update_chat_run_status(run_id, ChatRunStatus.RUNNING, active_step="generating")
+        started = persistence.claim_running(run_id)
         if started is None or started.status != ChatRunStatus.RUNNING:
             status = started.status if started else "cancelled"
             self._emit(run_id, f"run_{status}", {"run_id": run_id})
+            return None
+        # Pre-start cancellation: honor a cancel that arrived while the run was
+        # still queued BEFORE opening the (costly) model/tool stream. The DB
+        # path usually catches this via the terminal-guarded claim above (a
+        # cancelled queued row fails the RUNNING transition), but a policy with
+        # no terminal row — NullPersistencePolicy — would otherwise build the
+        # stream and only notice the cancel after the first chunk. Checking here
+        # keeps both policies on the same branch and stops Ghost Chat's Stop
+        # from kicking off an LLM request it immediately abandons.
+        if cancel_check is not None and cancel_check():
+            persistence.cancel(run_id)
+            self._emit(run_id, "run_cancelled", {"run_id": run_id})
             return None
         self._emit(run_id, "run_started", {"run_id": run_id, "conversation_id": conv.id})
 
@@ -171,7 +189,7 @@ class ChatRunner:
                         stream.close()
                     except Exception:
                         logger.exception("error closing stream on cancel for run %s", run_id)
-                    db.cancel_chat_run(run_id)  # idempotent if already cancelled
+                    persistence.cancel(run_id)  # idempotent if already cancelled
                     self._emit(run_id, "run_cancelled", {"run_id": run_id})
                     return None
                 if event_type == "delta":
@@ -225,10 +243,10 @@ class ChatRunner:
                         )
                         for art in collected_artifacts
                     ]
-                    # Atomic + terminal-guarded: writes the message, artifacts,
-                    # and the completed status together, or nothing if the run
-                    # was cancelled mid-stream.
-                    saved = db.complete_run_with_message(run_id, assistant_msg, artifacts)
+                    # Atomic + terminal-guarded (durable policy): writes the
+                    # message, artifacts, and the completed status together, or
+                    # nothing if the run was cancelled mid-stream.
+                    saved = persistence.complete(run_id, assistant_msg, artifacts)
                     if saved is None:
                         self._emit(run_id, "run_cancelled", {"run_id": run_id})
                         return None
@@ -244,6 +262,6 @@ class ChatRunner:
             return self._fail(run_id, str(exc) or "internal error")
 
     def _fail(self, run_id: str, error: str) -> None:
-        self.db.fail_chat_run(run_id, error)
+        self.persistence.fail(run_id, error)
         self._emit(run_id, "run_failed", {"error": error})
         return None
