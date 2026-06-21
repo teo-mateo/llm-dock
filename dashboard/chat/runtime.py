@@ -37,6 +37,55 @@ from .prompt_builder import build_chat_messages
 logger = logging.getLogger(__name__)
 
 
+def auto_generate_title(db, conv_id: str, first_user_content: str, service_name: str) -> Optional[str]:
+    """Generate a 3–6 word title for a fresh conversation and persist it.
+
+    Runs as a post-completion step of the background job (see run_manager) so
+    the title is generated and persisted even if the client navigated away.
+    Returns the new title on success (the caller publishes a
+    conversation_updated event), or None if nothing should change (manual
+    rename already won, model produced empty output, etc).
+    """
+    conv = db.get_conversation(conv_id)
+    if conv is None or conv.title != "New Conversation":
+        return None
+
+    title_messages = [
+        {"role": "system", "content": "Generate a concise 3-6 word title for a conversation that starts with the following message. Return ONLY the title, nothing else. Do not explain or add anything."},
+        {"role": "user", "content": first_user_content},
+    ]
+
+    full_content = ""
+    full_reasoning = ""
+    for event_type, data in stream_chat_completion(service_name, title_messages):
+        if event_type == "delta":
+            full_content += data.get("content", "")
+        elif event_type == "done":
+            full_content = data["content"]
+            full_reasoning = data.get("reasoning_content") or ""
+            break
+
+    # Some models put short responses in reasoning_content instead of content.
+    title = full_content.strip() or full_reasoning.strip()
+    if "\n" in title:
+        lines = [l.strip().strip("\"'").strip() for l in title.split("\n") if l.strip()]
+        title = lines[-1] if lines else title
+    title = title.strip("\"'*#").strip()
+    if not title:
+        return None
+
+    # Re-check before write: a rename arriving DURING the model call would
+    # otherwise be clobbered.
+    conv2 = db.get_conversation(conv_id)
+    if conv2 is None or conv2.title != "New Conversation":
+        return None
+
+    final = title[:100]
+    db.update_conversation(conv_id, title=final)
+    logger.info("Auto-generated title for %s: %s", conv_id, final)
+    return final
+
+
 @dataclass
 class ChatRuntimeEvent:
     """A normalized event published to the bus during a run.
