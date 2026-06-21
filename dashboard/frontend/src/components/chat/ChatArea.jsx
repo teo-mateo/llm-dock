@@ -31,6 +31,8 @@ export default function ChatArea({
   streamingArtifacts,
   streamingParseWarning,
   error,
+  cancelling,
+  runReady,
   onSend,
   onEdit,
   onStopStreaming,
@@ -142,6 +144,15 @@ export default function ChatArea({
 
   const targetMessage = critiqueTarget ? messages.find(m => m.id === critiqueTarget) : null
 
+  // A background run can still be active for this conversation even when we
+  // have no local SSE stream (the user navigated away and back, so `streaming`
+  // is false but the run kept going server-side). Treat it as an in-pane busy
+  // state: block the composer/model/MCP controls and surface Stop, which
+  // cancels by conversation id regardless of whether we hold the run stream.
+  const activeRun = conversation.active_run
+  const hasActiveRun = !!activeRun && (activeRun.status === 'running' || activeRun.status === 'queued')
+  const busy = streaming || cancelling || hasActiveRun
+
   function handleOpenCritique(msgId) {
     setCritiqueTarget(msgId)
   }
@@ -197,16 +208,21 @@ export default function ChatArea({
               sidekickService={conversation.sidekick_service}
               onChangeMain={v => handleModelChange('main_service', v)}
               onChangeSidekick={v => handleModelChange('sidekick_service', v)}
-              disabled={streaming}
+              disabled={busy}
             />
             <McpToggle
               conversationId={conversation.id}
               enabledServers={conversation.mcp_servers}
               onUpdate={() => onReloadConversation?.(conversation.id)}
-              disabled={streaming}
+              disabled={busy}
             />
           </div>
-          {streaming && (
+          {/* Gate the live-stream Stop on runReady: it must not appear until
+              run_started has delivered the run id, so Stop always cancels with
+              an expected-run guard rather than an unguarded "cancel whatever is
+              active" that a concurrently-started run could be hit by. The
+              returned-to active_run path already has an id (active_run.id). */}
+          {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
             <button
               onClick={onStopStreaming}
               className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
@@ -240,6 +256,7 @@ export default function ChatArea({
           hasSidekick={!!conversation.sidekick_service}
           onCritique={handleOpenCritique}
           onEdit={onEdit}
+          disableEdit={busy}
           streaming={streaming}
           streamingContent={streamingContent}
           streamingReasoning={streamingReasoning}
@@ -257,7 +274,7 @@ export default function ChatArea({
           ref={composerRef}
           focusKey={conversation.id}
           onSend={handleSend}
-          disabled={streaming || !conversation.main_service}
+          disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
         />

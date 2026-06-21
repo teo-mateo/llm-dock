@@ -152,6 +152,122 @@ def test_cancel_not_found(ctx):
     assert r.status_code == 404
 
 
+# -- Cancel active run by conversation (Stop button, Phase 6) ------------
+
+
+def test_cancel_active_run_by_conversation(ctx):
+    app, db, _ = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run", headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["run"]["id"] == run.id
+    assert body["run"]["status"] == "cancelled"
+    assert db.get_chat_run(run.id).status == "cancelled"
+    assert db.get_active_run_for_conversation(conv.id) is None
+
+
+def test_cancel_active_run_by_conversation_cancels_queued(ctx):
+    # Stop must work before the run starts executing (queued), not only while
+    # running — the early-Stop window the cancel-by-conversation path closes.
+    app, db, _ = ctx
+    conv = _conv(db)
+    run = _seed_queued(db, conv)
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["run"]["id"] == run.id
+    assert db.get_chat_run(run.id).status == "cancelled"
+
+
+def test_cancel_active_run_by_conversation_no_active_run_is_noop(ctx):
+    # No active run (e.g. it already finished) → 200 with run: null, no error.
+    app, db, _ = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    db.complete_chat_run(run.id)
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["run"] is None
+    assert db.get_chat_run(run.id).status == "completed"  # untouched
+
+
+def test_cancel_active_run_by_conversation_expected_run_id_matches(ctx):
+    # When the expected run id matches the active run, it cancels normally.
+    app, db, _ = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run",
+        json={"expected_run_id": run.id}, headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["run"]["id"] == run.id
+    assert db.get_chat_run(run.id).status == "cancelled"
+
+
+def test_cancel_active_run_by_conversation_stale_expected_run_id_is_noop(ctx):
+    # The iter-4 race: a Stop meant for run A arrives after A finished and a
+    # newer run B is active. With expected_run_id=A, B must NOT be cancelled.
+    app, db, _ = ctx
+    conv = _conv(db)
+    run_a = _run_row(db, conv, ChatRunStatus.RUNNING)
+    db.complete_chat_run(run_a.id)
+    run_b = _run_row(db, conv, ChatRunStatus.RUNNING)  # newer active run
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run",
+        json={"expected_run_id": run_a.id}, headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["run"] is None
+    # B is untouched; A stays completed.
+    assert db.get_chat_run(run_b.id).status == "running"
+    assert db.get_chat_run(run_a.id).status == "completed"
+
+
+def test_cancel_active_run_by_conversation_unknown_conversation_404(ctx):
+    r = ctx[0].test_client().post(
+        "/api/chat/conversations/nope/cancel-active-run", headers=_auth())
+    assert r.status_code == 404
+
+
+def test_cancel_active_run_by_conversation_requires_auth(ctx):
+    r = ctx[0].test_client().post("/api/chat/conversations/x/cancel-active-run")
+    assert r.status_code == 401
+
+
+def test_cancel_active_run_by_conversation_stops_run_midstream(ctx, monkeypatch):
+    """Cancel-by-conversation during streaming stops the model and writes no
+    assistant message — same cooperative cancellation as the run-id path, but
+    targeted without the client ever knowing the run id."""
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _seed_queued(db, conv)
+
+    midstream = threading.Event()
+
+    def stub():
+        for i in range(100000):
+            yield _delta(f"t{i}")
+            if i == 2:
+                midstream.set()
+            time.sleep(0.002)
+        yield ("done", {"content": "should not finish", "reasoning_content": None})
+
+    _patch(monkeypatch, stub)
+    manager.start(conv, run, is_first=False, first_user_content="hi")
+    assert midstream.wait(2), "stream never reached mid-flight"
+
+    r = app.test_client().post(
+        f"/api/chat/conversations/{conv.id}/cancel-active-run", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["run"]["id"] == run.id
+
+    assert wait_for(lambda: db.get_chat_run(run.id).status == "cancelled")
+    assert [m.role for m in db.get_messages(conv.id)] == ["user"]  # no assistant
+
+
 def test_cancel_stops_run_midstream(ctx, monkeypatch):
     """A cancel during streaming stops the model and writes no assistant
     message (cooperative cancellation)."""

@@ -45,3 +45,27 @@ export async function requestCritique(messageId, { contextWindow = 10, extraInst
 export async function getCritique(messageId) {
   return fetchAPI(`/chat/messages/${messageId}/critique`)
 }
+
+// -- Runs (background-run observation + cancellation, issue #58) --
+
+export async function getRun(runId) {
+  return fetchAPI(`/chat/runs/${runId}`)
+}
+
+export async function cancelRun(runId) {
+  return fetchAPI(`/chat/runs/${runId}/cancel`, {
+    method: 'POST',
+  })
+}
+
+// Cancel a conversation's active run by conversation id. The Stop button uses
+// this so cancellation never depends on having captured the run id from the
+// run_started frame — the server can always find the run from the conversation.
+// expectedRunId, when known, is sent as a guard so a late-arriving cancel can't
+// kill a newer run that started after the one the user actually stopped.
+export async function cancelActiveRun(conversationId, expectedRunId = null) {
+  return fetchAPI(`/chat/conversations/${conversationId}/cancel-active-run`, {
+    method: 'POST',
+    body: JSON.stringify(expectedRunId ? { expected_run_id: expectedRunId } : {}),
+  })
+}

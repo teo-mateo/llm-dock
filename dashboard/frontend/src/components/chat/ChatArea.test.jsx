@@ -236,3 +236,88 @@ describe('ChatArea — send gating on a pending system-prompt save', () => {
     expect(onSend).toHaveBeenCalledWith('first', undefined)
   })
 })
+
+describe('ChatArea — active background run on return', () => {
+  // Regression for codex iteration 7 P2: returning to a conversation whose run
+  // is still going (streaming false, but conversation.active_run set) must keep
+  // the composer blocked and offer Stop — otherwise the run is uncontrollable
+  // and a send just hits the backend 409 active-run guard.
+  function renderWith(activeRun, onStopStreaming = () => {}) {
+    return render(
+      <ChatArea
+        conversation={{
+          id: 'conv-1',
+          main_service: 'vllm-test',
+          main_system_prompt: '',
+          mcp_servers: [],
+          active_run: activeRun,
+        }}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        streaming={false}
+        onStopStreaming={onStopStreaming}
+      />
+    )
+  }
+
+  it('disables the composer and shows Stop for a running active_run with no local stream', () => {
+    const onStop = vi.fn()
+    const { container } = renderWith({ status: 'running' }, onStop)
+    expect(container.querySelector('textarea').disabled).toBe(true)
+    const stop = screen.getByRole('button', { name: /Stop/ })
+    fireEvent.click(stop)
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('also blocks for a queued active_run', () => {
+    const { container } = renderWith({ status: 'queued' })
+    expect(container.querySelector('textarea').disabled).toBe(true)
+    expect(screen.getByRole('button', { name: /Stop/ })).toBeTruthy()
+  })
+
+  it('enables the composer and hides Stop when there is no active run', () => {
+    const { container } = renderWith(null)
+    expect(container.querySelector('textarea').disabled).toBe(false)
+    expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
+  })
+
+  it('does not block for a terminal active_run', () => {
+    const { container } = renderWith({ status: 'completed' })
+    expect(container.querySelector('textarea').disabled).toBe(false)
+    expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
+  })
+})
+
+describe('ChatArea — Stop gating on runReady', () => {
+  // Regression for codex iter 9 P2: while streaming but before run_started has
+  // delivered the run id (runReady false), Stop must be hidden so the UI can't
+  // issue an unguarded cancel. Once runReady is true, Stop appears.
+  function renderStreaming(runReady) {
+    return render(
+      <ChatArea
+        conversation={{ id: 'conv-1', main_service: 'vllm-test', main_system_prompt: '', mcp_servers: [], active_run: null }}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        streaming={true}
+        runReady={runReady}
+        onStopStreaming={() => {}}
+      />
+    )
+  }
+
+  it('hides Stop while streaming until the run id is known', () => {
+    renderStreaming(false)
+    expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
+  })
+
+  it('shows Stop once runReady is true', () => {
+    renderStreaming(true)
+    expect(screen.getByRole('button', { name: /Stop/ })).toBeTruthy()
+  })
+})

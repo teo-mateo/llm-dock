@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { fetchAPI } from '../../api'
 import { updateConversation } from '../../services/chat'
 
-export default function McpToggle({ conversationId, enabledServers, onUpdate, disabled }) {
+export default function McpToggle({ conversationId, enabledServers, onUpdate, onChange, disabled }) {
   const [available, setAvailable] = useState([])
 
   useEffect(() => {
@@ -18,6 +18,13 @@ export default function McpToggle({ conversationId, enabledServers, onUpdate, di
     const next = current.includes(serverId)
       ? current.filter(s => s !== serverId)
       : [...current, serverId]
+    // Controlled / in-memory mode (e.g. Ghost Chat): hand the new list to the
+    // caller, persist nothing. Without onChange we fall back to the persisted
+    // behavior — write mcp_servers_json on the conversation, then refetch.
+    if (onChange) {
+      onChange(next)
+      return
+    }
     await updateConversation(conversationId, { mcp_servers_json: JSON.stringify(next) })
     onUpdate?.()
   }

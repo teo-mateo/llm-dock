@@ -1,12 +1,31 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { getConversation } from '../services/chat'
+import { getConversation, cancelActiveRun } from '../services/chat'
 import { streamChat } from '../services/sse'
+
+// A conversation has a live background run when its active_run is queued or
+// running. Used to block send/edit (and to find the run id for Stop) when we
+// returned to a conversation whose run is still going but we hold no SSE stream.
+function isRunActive(run) {
+  return !!run && (run.status === 'running' || run.status === 'queued')
+}
 
 export default function useChat({ onConversationUpdated } = {}) {
   const [conversation, setConversation] = useState(null)
   const [messages, setMessages] = useState([])
   const [critiques, setCritiques] = useState({})
   const [streaming, setStreaming] = useState(false)
+  // True once the run id for the in-flight stream is known (run_started parsed).
+  // The Stop control is gated on this so it is never offered without a run id —
+  // every Stop therefore sends an expected-run guard, never an unguarded cancel
+  // that a concurrently-started run (another tab/client) could be hit by.
+  const [runReady, setRunReady] = useState(false)
+  // True from Stop until the cancel POST (and its reconcile) settle. Blocks a
+  // new send/edit during that window so an unguarded cancel can't be processed
+  // against a run the user started after Stop — closing the early-Stop
+  // (no run id) stale-cancel race. Mirrored into cancellingRef for the
+  // synchronous guard in send/edit.
+  const [cancelling, setCancelling] = useState(false)
+  const cancellingRef = useRef(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [toolEvents, setToolEvents] = useState([])
@@ -29,6 +48,22 @@ export default function useChat({ onConversationUpdated } = {}) {
   // running on purpose (post-message_saved drain phase). Entries are
   // removed in the streamChat `finally` block when the stream resolves.
   const liveControllersRef = useRef(new Set())
+  // The conversation the hook currently INTENDS to show. Set synchronously at
+  // the start of loadConversation (before the fetch resolves) and mirrored from
+  // committed `conversation` for the setConversation paths. Used to request-
+  // sequence conversation fetches: any refetch (navigation, post-message_saved,
+  // post-cancel reconcile) only applies if this still names the conversation it
+  // fetched, so a late-resolving fetch can't clobber a conversation the user
+  // navigated to. Must be the intended id, NOT the committed one — during
+  // loadConversation(B) the committed conversation is still A until B resolves.
+  const observedConvIdRef = useRef(null)
+  useEffect(() => { observedConvIdRef.current = conversation?.id ?? null }, [conversation])
+  // Backend run id for the in-flight stream, captured from the run_started SSE
+  // frame. Stop cancels by conversation id (so it works even before this lands)
+  // but passes this as an expected-run guard when known, so a late cancel can't
+  // kill a newer run that started after the one the user stopped. Reset at the
+  // start of each send/edit/load so it never carries a stale run's id.
+  const runIdRef = useRef(null)
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -37,16 +72,62 @@ export default function useChat({ onConversationUpdated } = {}) {
   const refetchMessages = useCallback(async (convId) => {
     try {
       const data = await getConversation(convId)
+      // Drop the result if the user navigated to a different conversation while
+      // this fetch was in flight — otherwise a late resolve writes stale
+      // conversation/messages over the one now intended (request-sequencing).
+      if (observedConvIdRef.current !== convId) return
       setConversation(data)
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
       setArtifacts(data.artifacts || {})
     } catch (err) {
+      if (observedConvIdRef.current !== convId) return
       setError(err.message)
     }
   }, [])
 
+  // Cancel a conversation's active run, then reconcile local state with SQLite.
+  // Cancellation is by conversation id (not run id) so Stop works even before
+  // the run_started frame has delivered the id — the server creates the run
+  // when the turn starts, so it is always findable from the conversation. The
+  // user message was persisted at run creation, but our optimistic
+  // { id: 'temp-user' } row is still in `messages`; without this refetch the
+  // next send's save handler — which strips every temp-user row before
+  // appending — drops the stopped prompt from the transcript. The refetch is
+  // gated on still observing the same conversation: the user may navigate away
+  // while the cancel POST is in flight, and refetchMessages writes
+  // conversation/messages directly, so an ungated late refetch could clobber
+  // the conversation they moved to.
+  const cancelAndReconcile = useCallback((convId, expectedRunId) => {
+    if (!convId) return
+    // Hold the cancelling flag across BOTH the cancel POST and its reconcile so
+    // send/edit stay blocked until the server has processed the cancel. This is
+    // what makes the no-id (early Stop) path safe: a new run can't be created
+    // while an unguarded cancel is in flight, so the cancel can only ever apply
+    // to the run the user actually stopped.
+    cancellingRef.current = true
+    setCancelling(true)
+    cancelActiveRun(convId, expectedRunId)
+      .catch(() => { /* no active run / already terminal — harmless */ })
+      .then(() => {
+        // Reconcile only if still intending this conversation (the user may
+        // have navigated away — even into a still-pending load — while the
+        // cancel was in flight). refetchMessages re-checks at resolution too.
+        if (observedConvIdRef.current === convId) return refetchMessages(convId)
+      })
+      .finally(() => {
+        cancellingRef.current = false
+        setCancelling(false)
+      })
+  }, [refetchMessages])
+
   const loadConversation = useCallback(async (convId) => {
+    // Claim the intended conversation synchronously, before awaiting the fetch.
+    // This is what makes a concurrent post-cancel reconcile for the PREVIOUS
+    // conversation skip: it gates on observedConvIdRef, which now already names
+    // the conversation we're navigating to even though `conversation` state
+    // still holds the old one until this fetch resolves.
+    observedConvIdRef.current = convId
     // Abort any in-flight stream before switching, UNLESS it's draining the
     // post-message_saved title tail (see drainingRef). Aborting that tail
     // would cancel auto-title generation server-side and drop the trailing
@@ -58,6 +139,8 @@ export default function useChat({ onConversationUpdated } = {}) {
       abortRef.current = null
     }
     drainingRef.current = false
+    runIdRef.current = null
+    setRunReady(false)
     setStreaming(false)
     setStreamingContent('')
     setStreamingReasoning('')
@@ -71,7 +154,10 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [refetchMessages])
 
   const sendMessage = useCallback(async (content, images) => {
-    if (!conversation || streaming) return
+    // Block a send while a run is active for this conversation (including a
+    // returned-to background run, active_run set but streaming false) — mirrors
+    // the composer's disabled state and the backend active-run 409 guard.
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
     setError(null)
     setStreaming(true)
     setStreamingContent('')
@@ -95,6 +181,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
+    setRunReady(false)
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -173,6 +261,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated,
+        onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -222,7 +311,11 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
-    if (!conversation || streaming) return
+    // Block edits while a run is active for this conversation — including a
+    // background run we returned to (active_run set, streaming false). Without
+    // this the edit optimistically truncates the transcript, then the backend
+    // rejects the PUT with the active-run 409.
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
     const msg = messages.find(m => m.id === msgId)
     if (!msg || msg.role !== 'user') return
 
@@ -245,6 +338,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     const controller = new AbortController()
     abortRef.current = controller
     drainingRef.current = false
+    runIdRef.current = null
+    setRunReady(false)
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -311,6 +406,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated,
+          onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -340,6 +436,23 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
 
   const stopStreaming = useCallback(() => {
+    // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
+    // since Phase 4 the run continues in the background after the fetch closes.
+    // Cancel by conversation id so this works even if run_started has not yet
+    // delivered the run id — the server created the run when the turn started,
+    // so it is always findable from the conversation. Pass the captured run id
+    // (when known) as an expected-run guard so a late cancel can't kill a newer
+    // run started after this one. Navigation (loadConversation / unmount)
+    // deliberately does NOT call this — it only detaches the observer, leaving
+    // the run to finish and persist.
+    // Prefer the locally-captured run id; fall back to the conversation's
+    // active_run id for a run we returned to (no local stream, so runIdRef is
+    // null) — still passing an expected-run guard so a late cancel can't kill a
+    // newer run.
+    const expectedRunId = runIdRef.current || conversation?.active_run?.id || null
+    cancelAndReconcile(conversation?.id, expectedRunId)
+    runIdRef.current = null
+    setRunReady(false)
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
@@ -348,7 +461,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreaming(false)
     setHeartbeat(null)
     setPendingToolCalls([])
-  }, [])
+  }, [conversation, cancelAndReconcile])
 
   // Abort streaming on unmount (e.g. navigating away). Aborts BOTH the
   // active stream (abortRef) and any detached draining streams whose
@@ -370,6 +483,8 @@ export default function useChat({ onConversationUpdated } = {}) {
     critiques,
     setCritiques,
     streaming,
+    runReady,
+    cancelling,
     streamingContent,
     streamingReasoning,
     toolEvents,

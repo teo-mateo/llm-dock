@@ -119,6 +119,32 @@ class ChatRunManager:
             ev.set()
         return self.db.cancel_chat_run(run_id)
 
+    def request_cancel_for_conversation(self, conversation_id, expected_run_id=None):
+        """Cancel a conversation's active (queued/running) run by conversation id.
+
+        The Stop button uses this so it never depends on the client having
+        captured the run id: the server already created the run when the turn
+        started, so it can always be found from the conversation. Returns the
+        cancelled run, or None if the conversation has no active run (a harmless
+        no-op — e.g. the run already finished). Delegates to request_cancel so
+        the cooperative flag is set and the DB update stays terminal-guarded.
+
+        expected_run_id guards against a stale Stop cancelling the wrong run: if
+        the caller knows which run it meant to stop (captured from the
+        run_started frame), a late-arriving cancel whose target has since
+        finished — with a *newer* run now active in the same conversation — must
+        not cancel that newer run. When expected_run_id is given and the active
+        run is a different one, this is a no-op. When it's omitted (a genuine
+        early Stop before run_started), the active run is provably still the one
+        the user meant, so "cancel whatever is active" is safe.
+        """
+        run = self.db.get_active_run_for_conversation(conversation_id)
+        if run is None:
+            return None
+        if expected_run_id is not None and run.id != expected_run_id:
+            return None
+        return self.request_cancel(run.id)
+
     def _execute(self, conv, run, mcp_manager, is_first, first_user_content):
         cancel_event = threading.Event()
         with self._flags_lock:
