@@ -153,6 +153,16 @@ def _frame_kinds(payloads):
     return kinds
 
 
+def _split_sse(text):
+    """Split a raw SSE response body into individual `data: ...\\n\\n` frames.
+
+    Every frame here is a single `data:` line (compact JSON, no internal
+    newlines) terminated by a blank line, so splitting on the blank line is
+    safe.
+    """
+    return [chunk + "\n\n" for chunk in text.split("\n\n") if chunk.strip()]
+
+
 # -- Plain model stream -------------------------------------------------
 
 
@@ -354,3 +364,52 @@ def test_artifacts_returned_by_get_conversation(monkeypatch, app_db):
     art = body["artifacts"][assistant_id][0]
     assert art["content"] == "<h1>hi</h1>"
     assert art["title"] == "page"
+
+
+# -- Route-level: first-message conversation_updated tail ----------------
+
+
+def test_send_message_route_emits_conversation_updated_tail(monkeypatch, app_db):
+    """First message: the route drains the stream, then emits the title tail.
+
+    Pins the persisted-chat compatibility ordering
+    delta -> [DONE] -> message_saved -> conversation_updated. The frontend
+    holds the SSE stream open past message_saved specifically to receive
+    conversation_updated (useChat.js draining), so a background-run /
+    event-codec refactor must preserve this tail and its order.
+
+    Both the assistant turn and the auto-title generation call
+    stream_chat_completion; the stub factory yields a fresh generator per
+    call, so both produce "Hi" — the title becomes "Hi".
+    """
+    app, db = app_db
+    conv = Conversation(
+        id=str(uuid.uuid4()),
+        title="New Conversation",  # required for _auto_generate_title to fire
+        main_service="test-service",
+    )
+    db.create_conversation(conv)
+
+    def stub():
+        yield _delta("Hi")
+        yield ("done", {"content": "Hi", "reasoning_content": None})
+
+    _patch_stream(monkeypatch, stub)
+
+    client = app.test_client()
+    r = client.post(
+        f"/api/chat/conversations/{conv.id}/messages",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        json={"content": "hello"},
+    )
+    assert r.status_code == 200
+
+    payloads = _frame_payloads(_split_sse(r.get_data(as_text=True)))
+    assert _frame_kinds(payloads) == ["delta", "[DONE]", "message_saved", "conversation_updated"]
+
+    cu = next(v for kind, v in payloads if kind == "json" and v.get("type") == "conversation_updated")
+    assert cu["id"] == conv.id
+    assert cu["title"] == "Hi"
+
+    # The tail is not just an SSE frame — the new title is persisted.
+    assert db.get_conversation(conv.id).title == "Hi"
