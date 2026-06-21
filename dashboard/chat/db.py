@@ -652,39 +652,52 @@ class ChatDB:
         active_ph = ",".join("?" for _ in ACTIVE_STATUSES)
         now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
         conn = self._get_conn()
+        # Take the write lock UP FRONT with BEGIN IMMEDIATE so next_seq() is
+        # allocated under the same lock as the active-run guard and the inserts.
+        # A deferred transaction would read next_seq under only a read lock,
+        # letting a competing request advance the tail in between and this one
+        # commit a stale/duplicate seq. busy_timeout makes the second writer
+        # wait for the first rather than erroring. We drive the transaction
+        # manually (autocommit), restoring isolation_level afterwards because
+        # the in-memory test DB reuses one persistent connection.
+        prev_iso = conn.isolation_level
+        conn.isolation_level = None
         try:
-            if delete_from_seq is not None:
-                conn.execute(
-                    "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
-                    (user_msg.conversation_id, delete_from_seq),
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if delete_from_seq is not None:
+                    conn.execute(
+                        "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
+                        (user_msg.conversation_id, delete_from_seq),
+                    )
+                user_msg.seq = self.next_seq(user_msg.conversation_id, conn=conn)
+                self.add_message(user_msg, conn=conn)
+                cur = conn.execute(
+                    f"""INSERT INTO chat_runs
+                           (id, conversation_id, user_message_id, status, active_step, error)
+                        SELECT ?, ?, ?, ?, ?, ?
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM chat_runs
+                            WHERE conversation_id = ? AND status IN ({active_ph})
+                        )""",
+                    (run.id, run.conversation_id, run.user_message_id, run.status,
+                     run.active_step, run.error,
+                     run.conversation_id, *sorted(ACTIVE_STATUSES)),
                 )
-            user_msg.seq = self.next_seq(user_msg.conversation_id, conn=conn)
-            self.add_message(user_msg, conn=conn)
-            cur = conn.execute(
-                f"""INSERT INTO chat_runs
-                       (id, conversation_id, user_message_id, status, active_step, error)
-                    SELECT ?, ?, ?, ?, ?, ?
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM chat_runs
-                        WHERE conversation_id = ? AND status IN ({active_ph})
-                    )""",
-                (run.id, run.conversation_id, run.user_message_id, run.status,
-                 run.active_step, run.error,
-                 run.conversation_id, *sorted(ACTIVE_STATUSES)),
-            )
-            if cur.rowcount == 0:
-                conn.rollback()  # active run already exists — undo everything
-                return None
-            conn.execute(
-                f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
-                (run.conversation_id,),
-            )
-            conn.commit()
+                if cur.rowcount == 0:
+                    conn.execute("ROLLBACK")  # active run already exists — undo everything
+                    return None
+                conn.execute(
+                    f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
+                    (run.conversation_id,),
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
             return self.get_chat_run(run.id)
-        except Exception:
-            conn.rollback()
-            raise
         finally:
+            conn.isolation_level = prev_iso
             self._close_conn(conn)
 
     def complete_run_with_message(self, run_id: str, assistant_msg: Message,

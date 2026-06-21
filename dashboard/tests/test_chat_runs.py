@@ -5,6 +5,7 @@ active_run enrichment on conversation payloads. Stub-free; pure SQLite.
 """
 import os
 import sys
+import time
 import uuid
 
 import pytest
@@ -285,6 +286,46 @@ def test_create_run_with_edit_truncation_rolls_back_on_conflict():
     assert created is None
     # The truncation (delete from seq 2) was rolled back — all 3 survive.
     assert [m.id for m in db.get_messages(conv.id)] == ["m0", "m1", "m2"]
+
+
+def test_concurrent_create_complete_cycles_keep_seqs_unique(tmp_path):
+    """Many threads racing full create->complete turns must never produce a
+    duplicate or stale seq.
+
+    This is the regression for the stale-next_seq race: next_seq is allocated
+    under BEGIN IMMEDIATE, so even though the active-run guard serializes turns,
+    no thread can commit a user/assistant message at a seq another already used.
+    Final seqs must be exactly 1..2N, unique and contiguous.
+    """
+    import threading
+    db = ChatDB(str(tmp_path / "race.db"))
+    conv = _conv(db)
+    N = 16
+
+    def worker(i):
+        # Retry past 409s (another turn is active) until this one lands.
+        while True:
+            user = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                           content=f"u{i}", seq=0)
+            run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                          status=ChatRunStatus.QUEUED, user_message_id=user.id)
+            if db.create_run_with_user_message(user, run) is None:
+                time.sleep(0.002)
+                continue
+            assistant = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="assistant",
+                                content=f"a{i}", seq=0)
+            db.complete_run_with_message(run.id, assistant, [])
+            return
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    seqs = sorted(m.seq for m in db.get_messages(conv.id))
+    assert seqs == list(range(1, 2 * N + 1)), "duplicate or stale seq detected"
+    assert db.list_active_runs() == []
 
 
 def test_concurrent_create_run_only_one_wins(tmp_path):
