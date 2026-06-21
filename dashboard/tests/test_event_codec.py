@@ -99,3 +99,38 @@ def test_event_bus_bounded_evicts_oldest_keeps_newest():
     # is retained.
     assert drained[-1] == overflow - 1
     assert drained[0] == overflow - SUBSCRIBER_QUEUE_MAX
+
+
+def test_event_bus_overflow_racing_drainer_still_delivers(monkeypatch):
+    """If a drainer empties the queue between the failed put and the eviction
+    get (get_nowait -> Empty), the event must still be delivered, not dropped.
+    Otherwise a terminal stream_end could be lost and the observer would hang.
+    """
+    import queue as _queue
+    bus = EventBus()
+    q = bus.subscribe("r1")
+    for i in range(SUBSCRIBER_QUEUE_MAX):
+        q.put_nowait(i)  # fill to capacity so publish hits Full
+
+    real_get = q.get_nowait
+    state = {"first": True}
+
+    def flaky_get():
+        if state["first"]:
+            state["first"] = False
+            # Simulate the drainer emptying the queue, then report Empty.
+            while True:
+                try:
+                    real_get()
+                except _queue.Empty:
+                    break
+            raise _queue.Empty
+        return real_get()
+
+    monkeypatch.setattr(q, "get_nowait", flaky_get)
+    bus.publish("r1", "TERMINAL")
+
+    items = []
+    while not q.empty():
+        items.append(q.get_nowait())
+    assert "TERMINAL" in items

@@ -65,10 +65,17 @@ class EventBus:
                     q.put_nowait(event)
                     break
                 except queue.Full:
+                    # Make room and retry. If a concurrent drainer already
+                    # freed space (get_nowait -> Empty), there is now room, so
+                    # we must still retry the put — NOT break — otherwise this
+                    # event (possibly the terminal stream_end) would be lost
+                    # and the observer would never close.
                     try:
-                        q.get_nowait()  # evict oldest, then retry
+                        q.get_nowait()  # evict oldest
                     except queue.Empty:
-                        break
+                        pass
+                    # loop retries put_nowait; the single publisher per run
+                    # means a retry always succeeds without spinning.
 
     def subscriber_count(self, run_id: str) -> int:
         with self._lock:
