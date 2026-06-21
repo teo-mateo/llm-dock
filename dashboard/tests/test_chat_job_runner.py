@@ -224,6 +224,79 @@ def test_exception_in_stream_marks_failed(db, monkeypatch):
     assert "kaboom" in failed.error
 
 
+def test_persistence_exception_rolls_back_no_assistant(db, monkeypatch):
+    """If artifact persistence throws after the message insert, the whole
+    completion rolls back: no orphan assistant message on the failed run."""
+    conv, user_msg, run = _seed(db)
+
+    def stub():
+        yield ("artifact", {"type": "code", "title": "t", "content": "x", "language": "py"})
+        yield _delta("answer")
+        yield ("done", {"content": "answer", "reasoning_content": None})
+
+    _patch_stream(monkeypatch, stub)
+
+    real_save = db.save_artifact
+
+    def boom(artifact, conn=None):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(db, "save_artifact", boom)
+
+    result = ChatRunner(db).run(run, ChatTurnRequest(conversation=conv))
+
+    assert result is None
+    # The assistant insert was rolled back with the failed artifact.
+    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    failed = db.get_chat_run(run.id)
+    assert failed.status == "failed"
+    assert "disk full" in failed.error
+
+
+def test_cancelled_before_start_does_no_work(db, monkeypatch):
+    """A run cancelled before the worker picks it up must not run the model
+    or write an assistant message."""
+    conv, user_msg, run = _seed(db)
+    db.cancel_chat_run(run.id)
+
+    started = {"n": 0}
+
+    def stub():
+        started["n"] += 1
+        yield ("done", {"content": "should not run", "reasoning_content": None})
+
+    _patch_stream(monkeypatch, stub)
+    result = ChatRunner(db).run(run, ChatTurnRequest(conversation=conv))
+
+    assert result is None
+    assert started["n"] == 0  # the stream was never built/consumed
+    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    assert db.get_chat_run(run.id).status == "cancelled"
+
+
+def test_cancelled_mid_stream_writes_no_completed_message(db, monkeypatch):
+    """If the run is cancelled while streaming, the done handler's atomic
+    completion loses the terminal guard and writes nothing."""
+    conv, user_msg, run = _seed(db)
+
+    def stub():
+        yield _delta("partial ")
+        # Simulate another thread cancelling the run mid-stream.
+        db.cancel_chat_run(run.id)
+        yield _delta("more")
+        yield ("done", {"content": "partial more", "reasoning_content": None})
+
+    _patch_stream(monkeypatch, stub)
+    bus = EventBus()
+    read_events = _drain(bus, run.id)
+    result = ChatRunner(db, event_bus=bus).run(run, ChatTurnRequest(conversation=conv))
+
+    assert result is None
+    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    assert db.get_chat_run(run.id).status == "cancelled"
+    assert [e.type for e in read_events()][-1] == "run_cancelled"
+
+
 def test_runner_works_without_event_bus(db, monkeypatch):
     """The bus is optional; a None bus must not break persistence."""
     conv, user_msg, run = _seed(db)

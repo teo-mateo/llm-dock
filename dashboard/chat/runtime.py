@@ -87,7 +87,14 @@ class ChatRunner:
         mcp_manager = request.mcp_manager
         run_id = run.id
 
-        db.update_chat_run_status(run_id, ChatRunStatus.RUNNING, active_step="generating")
+        # Claim the run. update_chat_run_status no-ops on a terminal row, so if
+        # the run was cancelled before the worker picked it up, the transition
+        # doesn't win — do no work and surface the terminal state.
+        started = db.update_chat_run_status(run_id, ChatRunStatus.RUNNING, active_step="generating")
+        if started is None or started.status != ChatRunStatus.RUNNING:
+            status = started.status if started else "cancelled"
+            self._emit(run_id, f"run_{status}", {"run_id": run_id})
+            return None
         self._emit(run_id, "run_started", {"run_id": run_id, "conversation_id": conv.id})
 
         assistant_msg_id = str(uuid.uuid4())
@@ -126,14 +133,40 @@ class ChatRunner:
                     collected_artifacts.append(data)
                     self._emit(run_id, "artifact", {"artifact_type": data["type"], "title": data.get("title"), "content": data["content"]})
                 elif event_type == "done":
-                    msg = self._persist_completion(
-                        conv, assistant_msg_id, data,
-                        accumulated_reasoning, collected_tool_calls,
-                        collected_artifacts, last_parse_warning,
+                    assistant_msg = Message(
+                        id=assistant_msg_id,
+                        conversation_id=conv.id,
+                        role="assistant",
+                        content=data["content"],
+                        # Full cross-round reasoning the user saw wins over the
+                        # final round's reasoning (matches _stream_response);
+                        # falls back to the done payload for the single round.
+                        reasoning_content=(accumulated_reasoning or data["reasoning_content"]) or None,
+                        model_service=conv.main_service,
+                        tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
+                        parse_warning_json=json.dumps(last_parse_warning) if last_parse_warning else None,
+                        seq=0,  # assigned inside the atomic completion
                     )
-                    db.complete_chat_run(run_id)
-                    self._emit(run_id, "run_completed", {"message_id": msg.id, "seq": msg.seq})
-                    return msg
+                    artifacts = [
+                        Artifact(
+                            id=str(uuid.uuid4()),
+                            message_id=assistant_msg_id,
+                            artifact_type=art["type"],
+                            content=art["content"],
+                            title=art.get("title"),
+                            language=art.get("language"),
+                        )
+                        for art in collected_artifacts
+                    ]
+                    # Atomic + terminal-guarded: writes the message, artifacts,
+                    # and the completed status together, or nothing if the run
+                    # was cancelled mid-stream.
+                    saved = db.complete_run_with_message(run_id, assistant_msg, artifacts)
+                    if saved is None:
+                        self._emit(run_id, "run_cancelled", {"run_id": run_id})
+                        return None
+                    self._emit(run_id, "run_completed", {"message_id": saved.id, "seq": saved.seq})
+                    return saved
                 elif event_type == "error":
                     return self._fail(run_id, data["message"])
 
@@ -142,38 +175,6 @@ class ChatRunner:
         except Exception as exc:
             logger.exception("Chat run %s crashed", run_id)
             return self._fail(run_id, str(exc) or "internal error")
-
-    def _persist_completion(self, conv, assistant_msg_id, done_data,
-                            accumulated_reasoning, collected_tool_calls,
-                            collected_artifacts, last_parse_warning) -> Message:
-        db = self.db
-        next_seq = db.next_seq(conv.id)
-        assistant_msg = Message(
-            id=assistant_msg_id,
-            conversation_id=conv.id,
-            role="assistant",
-            content=done_data["content"],
-            # Full cross-round reasoning the user saw wins over the final
-            # round's reasoning (matches _stream_response); falls back to the
-            # done payload for the single-round case.
-            reasoning_content=(accumulated_reasoning or done_data["reasoning_content"]) or None,
-            model_service=conv.main_service,
-            tool_calls_json=json.dumps(collected_tool_calls) if collected_tool_calls else None,
-            parse_warning_json=json.dumps(last_parse_warning) if last_parse_warning else None,
-            seq=next_seq,
-        )
-        db.add_message(assistant_msg)
-        for art_data in collected_artifacts:
-            db.save_artifact(Artifact(
-                id=str(uuid.uuid4()),
-                message_id=assistant_msg_id,
-                artifact_type=art_data["type"],
-                content=art_data["content"],
-                title=art_data.get("title"),
-                language=art_data.get("language"),
-            ))
-        db.touch_conversation(conv.id)
-        return assistant_msg
 
     def _fail(self, run_id: str, error: str) -> None:
         self.db.fail_chat_run(run_id, error)
