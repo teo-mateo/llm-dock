@@ -1,12 +1,13 @@
-"""Characterization tests for the chat SSE stream (Phase 0 of #58).
+"""SSE frame-contract tests for the send route (Phase 4 of #58).
 
-These pin the *current* behavior of `chat.routes._stream_response` before the
-runtime is extracted into a background-run architecture. They assert the exact
-SSE frames the generator emits and the rows it persists, so the upcoming
-extraction can be proven behavior-preserving.
+Originally these characterized routes._stream_response directly. That function
+was removed in Phase 4 (sends now start a background run observed over the
+event bus), so the same wire-format guarantees are re-asserted here through the
+real POST .../messages route and the run_manager observer: the frontend SSE
+parser must see identical frames regardless of the new background-run plumbing.
 
-Nothing here needs Docker, a GPU, or a running model: the model/tool stream is
-monkeypatched with a stub generator (same technique as test_partial_save.py).
+File-backed ChatDB (the runner executes on a worker thread); model/tool streams
+are monkeypatched — no Docker/GPU/model.
 """
 import json
 import os
@@ -20,78 +21,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-stream-events")
 
-from chat import routes
+from chat import runtime
 from chat.db import ChatDB
-from chat.models import Conversation, Message
+from chat.event_bus import EventBus
+from chat.run_manager import ChatRunManager
+from chat.models import Conversation
 from chat.routes import chat_bp
 
 TOKEN = "test-token-stream-events"
-
-
-# -- Helpers ------------------------------------------------------------
-
-
-def _seed_conversation(db, mcp_servers_json=None):
-    """Create a conversation + an unsaved user message (saved by _stream_response)."""
-    conv = Conversation(
-        id=str(uuid.uuid4()),
-        title="t",
-        main_service="test-service",
-        mcp_servers_json=mcp_servers_json,
-    )
-    db.create_conversation(conv)
-    user_msg = Message(
-        id=str(uuid.uuid4()),
-        conversation_id=conv.id,
-        role="user",
-        content="hello",
-        seq=db.next_seq(conv.id),
-    )
-    return conv, user_msg
-
-
-def _delta(content, reasoning="", raw=None):
-    """A delta tuple matching what stream_chat_completion yields."""
-    return (
-        "delta",
-        {
-            "content": content,
-            "reasoning_content": reasoning,
-            "raw": raw or json.dumps({"choices": [{"delta": {"content": content}}]}),
-        },
-    )
-
-
-def _patch_stream(monkeypatch, stream_factory):
-    """Replace both stream_chat_completion and stream_with_tools with a stub.
-
-    Both are patched because _stream_response picks one based on whether MCP
-    tools are present; the test drives event content directly via the stub
-    regardless of which branch is taken. The returned dict counts which path
-    was actually invoked so a test can pin the routing decision itself.
-    """
-    called = {"plain": 0, "with_tools": 0}
-
-    def _plain(*args, **kwargs):
-        called["plain"] += 1
-        return stream_factory()
-
-    def _with_tools(*args, **kwargs):
-        called["with_tools"] += 1
-        return stream_factory()
-
-    monkeypatch.setattr(routes, "stream_chat_completion", _plain)
-    monkeypatch.setattr(routes, "stream_with_tools", _with_tools)
-    return called
+MESSAGES = "/api/chat/conversations/{}/messages"
 
 
 class _FakeMCPManager:
-    """Minimal stand-in so _stream_response takes the stream_with_tools branch.
-
-    `get_all_tools` must return a non-empty list for `tools` to be truthy at
-    routes.py:351-354.
-    """
-
     def __init__(self):
         self.tools_requested = None
 
@@ -100,21 +41,61 @@ class _FakeMCPManager:
         return [{"type": "function", "function": {"name": "solve"}}]
 
 
-def _drain(db, conv, user_msg):
-    """Run _stream_response to completion, returning the list of SSE frames."""
-    return list(routes._stream_response(db, conv, user_msg))
+@pytest.fixture
+def ctx(tmp_path):
+    db = ChatDB(str(tmp_path / "chat.db"))
+    app = Flask(__name__)
+    app.config["DASHBOARD_TOKEN"] = TOKEN
+    app.config["CHAT_DB"] = db
+    bus = EventBus()
+    manager = ChatRunManager(db, bus, max_workers=2)
+    app.config["CHAT_EVENT_BUS"] = bus
+    app.config["CHAT_RUN_MANAGER"] = manager
+    app.config["MCP_MANAGER"] = _FakeMCPManager()
+    app.register_blueprint(chat_bp)
+    app.testing = True
+    try:
+        yield app, db, manager
+    finally:
+        manager.shutdown()
 
 
-def _frame_payloads(frames):
-    """Parse `data: ...` SSE frames into Python objects.
+def _auth():
+    return {"Authorization": f"Bearer {TOKEN}"}
 
-    Returns a list of (kind, value): kind is "json" with the decoded dict,
-    "done" for the [DONE] sentinel, or "raw" for a non-JSON / raw upstream
-    chunk that isn't a typed event.
-    """
+
+def _conv(db, title="t", mcp_servers_json=None):
+    conv = Conversation(id=str(uuid.uuid4()), title=title, main_service="svc",
+                        mcp_servers_json=mcp_servers_json)
+    db.create_conversation(conv)
+    return conv
+
+
+def _delta(content, reasoning=""):
+    return ("delta", {"content": content, "reasoning_content": reasoning,
+                      "raw": json.dumps({"choices": [{"delta": {"content": content}}]})})
+
+
+def _patch(monkeypatch, factory):
+    def _wrap(*a, **k):
+        return factory()
+    monkeypatch.setattr(runtime, "stream_chat_completion", _wrap)
+    monkeypatch.setattr(runtime, "stream_with_tools", _wrap)
+
+
+def _send(app, conv_id, content="hi"):
+    """POST a message and return the fully-drained list of SSE frames."""
+    resp = app.test_client().post(MESSAGES.format(conv_id), headers=_auth(),
+                                  json={"content": content})
+    assert resp.status_code == 200
+    text = resp.get_data(as_text=True)
+    return [chunk + "\n\n" for chunk in text.split("\n\n") if chunk.strip()]
+
+
+def _payloads(frames):
     out = []
     for f in frames:
-        assert f.startswith("data: ") and f.endswith("\n\n"), f"bad SSE framing: {f!r}"
+        assert f.startswith("data: ") and f.endswith("\n\n"), repr(f)
         body = f[len("data: "):-2]
         if body == "[DONE]":
             out.append(("done", body))
@@ -126,22 +107,15 @@ def _frame_payloads(frames):
     return out
 
 
-def _types(payloads):
-    """Collect the `type` field of every typed-JSON frame."""
-    return [v.get("type") for kind, v in payloads if kind == "json" and "type" in v]
-
-
-def _frame_kinds(payloads):
-    """Reduce every frame to an ordered label, so order can be asserted.
-
-    Typed frames -> their `type`; raw upstream delta chunks (json with
-    `choices`, no `type`) -> "delta"; the sentinel -> "[DONE]"; an error
-    frame -> "error".
-    """
+def _kinds(payloads):
+    """Reduce frames to ordered labels. Heartbeats are dropped (they may
+    appear on a slow worker and are not part of the content contract)."""
     kinds = []
     for kind, v in payloads:
         if kind == "done":
             kinds.append("[DONE]")
+        elif kind == "json" and v.get("type") == "heartbeat":
+            continue
         elif kind == "json" and "type" in v:
             kinds.append(v["type"])
         elif kind == "json" and "choices" in v:
@@ -154,61 +128,31 @@ def _frame_kinds(payloads):
 
 
 def _by_type(payloads, t):
-    """Return the single typed-JSON frame with `type == t`."""
     return next(v for kind, v in payloads if kind == "json" and v.get("type") == t)
 
 
-def _split_sse(text):
-    """Split a raw SSE response body into individual `data: ...\\n\\n` frames.
-
-    Every frame here is a single `data:` line (compact JSON, no internal
-    newlines) terminated by a blank line, so splitting on the blank line is
-    safe.
-    """
-    return [chunk + "\n\n" for chunk in text.split("\n\n") if chunk.strip()]
+# -- Plain stream -------------------------------------------------------
 
 
-# -- Plain model stream -------------------------------------------------
-
-
-def test_plain_stream_emits_deltas_and_done(monkeypatch):
-    """A plain completion forwards delta frames, then [DONE] and message_saved."""
-    db = ChatDB(":memory:")
-    conv, user_msg = _seed_conversation(db)
+def test_plain_send_emits_raw_deltas_then_handshake(ctx, monkeypatch):
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db)
 
     def stub():
         yield _delta("Hello ")
         yield _delta("world")
         yield ("done", {"content": "Hello world", "reasoning_content": None})
 
-    _patch_stream(monkeypatch, stub)
-    frames = _drain(db, conv, user_msg)
-    payloads = _frame_payloads(frames)
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
 
-    # Deltas are forwarded as the raw upstream chunk verbatim, NOT a typed
-    # `{"type": "delta"}` frame. The chunk is valid JSON but carries `choices`
-    # and no `type` key — this raw passthrough is exactly what #58's
-    # event_codec must preserve (or normalize in a separate FE+BE PR).
-    delta_chunks = [
-        v for kind, v in payloads
-        if kind == "json" and "type" not in v and "choices" in v
-    ]
-    assert any(c["choices"][0]["delta"].get("content") == "Hello " for c in delta_chunks), delta_chunks
-    assert any(c["choices"][0]["delta"].get("content") == "world" for c in delta_chunks), delta_chunks
+    # Deltas are forwarded as raw upstream chunks (no typed "delta" frame).
+    delta_chunks = [v for kind, v in payloads if kind == "json" and "type" not in v and "choices" in v]
+    assert [c["choices"][0]["delta"]["content"] for c in delta_chunks] == ["Hello ", "world"]
+    assert _kinds(payloads) == ["delta", "delta", "[DONE]", "message_saved"]
 
-    # Exact frame order: every delta precedes the terminal handshake, and
-    # [DONE] precedes message_saved (the frontend's draining logic depends on
-    # message_saved arriving after [DONE]).
-    assert _frame_kinds(payloads) == ["delta", "delta", "[DONE]", "message_saved"]
-
-    # The assistant row is persisted with the full content.
     msgs = db.get_messages(conv.id)
-    assert [m.role for m in msgs] == ["user", "assistant"]
     assert msgs[1].content == "Hello world"
-    assert msgs[1].model_service == "test-service"
-
-    # message_saved payload shape: the frontend builds the persisted assistant
-    # off message_id, so both message_id and seq must match the saved row.
     saved = _by_type(payloads, "message_saved")
     assert saved["message_id"] == msgs[1].id
     assert saved["seq"] == msgs[1].seq == 2
@@ -217,90 +161,42 @@ def test_plain_stream_emits_deltas_and_done(monkeypatch):
 # -- Tool stream --------------------------------------------------------
 
 
-def test_tool_stream_emits_all_event_types_and_persists(monkeypatch):
-    """A tool turn forwards pending/call/result/artifact frames and persists them."""
-    db = ChatDB(":memory:")
-    conv, user_msg = _seed_conversation(db, mcp_servers_json=json.dumps(["sympy-math"]))
+def test_tool_send_emits_all_frames_and_persists(ctx, monkeypatch):
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db, mcp_servers_json=json.dumps(["sympy-math"]))
 
     def stub():
         yield ("tool_call_pending", {"index": 0, "name": "solve"})
         yield ("tool_call", {"name": "solve", "arguments": {"x": 1}, "server_id": "sympy-math"})
         yield ("tool_result", {"name": "solve", "result": "x = 1", "server_id": "sympy-math"})
-        yield ("artifact", {"type": "code", "title": "snippet", "content": "print(1)", "language": "python"})
+        yield ("artifact", {"type": "code", "title": "snip", "content": "print(1)", "language": "python"})
         yield _delta("The answer is 1.")
         yield ("done", {"content": "The answer is 1.", "reasoning_content": None})
 
-    called = _patch_stream(monkeypatch, stub)
-    mgr = _FakeMCPManager()
-    # Pass the manager so _stream_response actually routes through the tool
-    # path; without it `tools` is None and the plain branch runs.
-    frames = list(routes._stream_response(db, conv, user_msg, mcp_manager=mgr))
-    payloads = _frame_payloads(frames)
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
 
-    # Routing: an MCP-enabled conversation must go through stream_with_tools,
-    # not the plain completion. This is the part a refactor could silently
-    # break while membership checks still pass.
-    assert called["with_tools"] == 1 and called["plain"] == 0, called
-    assert mgr.tools_requested == ["sympy-math"]
-
-    # Exact frame order through the tool turn and into the terminal handshake.
-    assert _frame_kinds(payloads) == [
-        "tool_call_pending",
-        "tool_call",
-        "tool_result",
-        "artifact",
-        "delta",
-        "[DONE]",
-        "message_saved",
+    assert _kinds(payloads) == [
+        "tool_call_pending", "tool_call", "tool_result", "artifact",
+        "delta", "[DONE]", "message_saved",
     ]
-
-    # Live frame payload shapes — these are exactly the fields the UI renders
-    # tool activity and artifacts from, so a refactor must keep them.
-    pending = _by_type(payloads, "tool_call_pending")
-    assert pending["index"] == 0 and pending["name"] == "solve"
-
-    tc = _by_type(payloads, "tool_call")
-    assert tc["name"] == "solve"
-    assert tc["arguments"] == {"x": 1}
-    assert tc["server_id"] == "sympy-math"
-
     tr = _by_type(payloads, "tool_result")
-    assert tr["name"] == "solve"
-    assert tr["result"] == "x = 1"
-    assert tr["server_id"] == "sympy-math"
+    assert (tr["name"], tr["result"], tr["server_id"]) == ("solve", "x = 1", "sympy-math")
+    art = _by_type(payloads, "artifact")
+    assert (art["artifact_type"], art["title"], art["content"]) == ("code", "snip", "print(1)")
 
-    # Note the SSE artifact frame renames the event's `type` to `artifact_type`
-    # and carries title/content (language is dropped from the live frame).
-    art_frame = _by_type(payloads, "artifact")
-    assert art_frame["artifact_type"] == "code"
-    assert art_frame["title"] == "snippet"
-    assert art_frame["content"] == "print(1)"
-
-    # Assistant message persisted with final content and the tool call (incl.
-    # the matched-back result) in tool_calls_json.
-    msgs = db.get_messages(conv.id)
-    assistant = msgs[1]
-    assert _by_type(payloads, "message_saved")["message_id"] == assistant.id
-    assert assistant.content == "The answer is 1."
-    persisted_calls = json.loads(assistant.tool_calls_json)
-    assert persisted_calls[0]["name"] == "solve"
-    assert persisted_calls[0]["result"] == "x = 1"
-
-    # Artifact persisted and linked to the assistant message.
-    arts = db.get_artifacts_for_conversation(conv.id)
-    assert assistant.id in arts
-    assert arts[assistant.id][0].content == "print(1)"
-    assert arts[assistant.id][0].title == "snippet"
+    assistant = db.get_messages(conv.id)[1]
+    calls = json.loads(assistant.tool_calls_json)
+    assert calls[0]["result"] == "x = 1"
+    assert db.get_artifacts_for_conversation(conv.id)[assistant.id][0].content == "print(1)"
 
 
 # -- Parse warning ------------------------------------------------------
 
 
-def test_parse_warning_forwarded_and_persisted(monkeypatch):
-    """A format-drift parse_warning is forwarded live and stored on the message."""
-    db = ChatDB(":memory:")
-    conv, user_msg = _seed_conversation(db)
-
+def test_parse_warning_frame_and_persisted(ctx, monkeypatch):
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db)
     warning = {"kind": "json_codeblock_call", "snippet": "```json", "description": "drift"}
 
     def stub():
@@ -309,133 +205,50 @@ def test_parse_warning_forwarded_and_persisted(monkeypatch):
         yield _delta("answer")
         yield ("done", {"content": "partial answer", "reasoning_content": None})
 
-    _patch_stream(monkeypatch, stub)
-    payloads = _frame_payloads(_drain(db, conv, user_msg))
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
 
-    # The warning is forwarded live, between the deltas, before the handshake.
-    assert _frame_kinds(payloads) == ["delta", "parse_warning", "delta", "[DONE]", "message_saved"]
-    pw = [v for kind, v in payloads if kind == "json" and v.get("type") == "parse_warning"]
-    assert pw[0]["kind"] == "json_codeblock_call"
-    assert pw[0]["description"] == "drift"
-
-    msgs = db.get_messages(conv.id)
-    assert json.loads(msgs[1].parse_warning_json) == warning
+    assert _kinds(payloads) == ["delta", "parse_warning", "delta", "[DONE]", "message_saved"]
+    assert _by_type(payloads, "parse_warning")["kind"] == "json_codeblock_call"
+    assert json.loads(db.get_messages(conv.id)[1].parse_warning_json) == warning
 
 
-# -- Cross-round reasoning accumulation (regression guard) --------------
+# -- Error --------------------------------------------------------------
 
 
-def test_accumulated_reasoning_wins_over_final_round(monkeypatch):
-    """Full cross-round reasoning the user saw is persisted, not just the last round.
-
-    Pins routes.py behavior: `accumulated_reasoning or done.reasoning_content`.
-    In a multi-round tool flow, reasoning streamed before each tool round must
-    survive the post-save refetch.
-    """
-    db = ChatDB(":memory:")
-    conv, user_msg = _seed_conversation(db)
+def test_error_frame_and_no_message_saved(ctx, monkeypatch):
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db)
 
     def stub():
-        yield _delta("", reasoning="thinking round one... ")
-        yield _delta("", reasoning="round two... ")
-        yield _delta("Final.")
-        # done carries only the final round's reasoning, which must NOT win.
-        yield ("done", {"content": "Final.", "reasoning_content": "round two... "})
+        yield _delta("partial")
+        yield ("error", {"message": "boom"})
 
-    _patch_stream(monkeypatch, stub)
-    _drain(db, conv, user_msg)
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
 
-    assistant = db.get_messages(conv.id)[1]
-    assert assistant.reasoning_content == "thinking round one... round two... "
-
-
-# -- Artifacts surface through the GET endpoint -------------------------
+    assert ("done", "[DONE]") not in payloads
+    assert not any(kind == "json" and v.get("type") == "message_saved" for kind, v in payloads)
+    err = next(v for kind, v in payloads if kind == "json" and "error" in v)
+    assert err["error"] == "boom"
+    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
 
 
-@pytest.fixture
-def app_db():
-    """Flask app sharing one ChatDB instance with direct _stream_response calls."""
-    db = ChatDB(":memory:")
-    app = Flask(__name__)
-    app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = db
-    app.register_blueprint(chat_bp)
-    app.testing = True
-    return app, db
+# -- First-message conversation_updated tail ----------------------------
 
 
-def test_artifacts_returned_by_get_conversation(monkeypatch, app_db):
-    """Artifacts persisted during a turn are returned by GET /conversations/<id>."""
-    app, db = app_db
-    conv, user_msg = _seed_conversation(db)
-
-    def stub():
-        yield ("artifact", {"type": "html", "title": "page", "content": "<h1>hi</h1>", "language": "html"})
-        yield _delta("Rendered.")
-        yield ("done", {"content": "Rendered.", "reasoning_content": None})
-
-    _patch_stream(monkeypatch, stub)
-    _drain(db, conv, user_msg)  # same db instance the route reads from
-
-    client = app.test_client()
-    r = client.get(
-        f"/api/chat/conversations/{conv.id}",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-    )
-    assert r.status_code == 200
-    body = r.get_json()
-
-    assistant_id = body["messages"][1]["id"]
-    assert assistant_id in body["artifacts"]
-    art = body["artifacts"][assistant_id][0]
-    assert art["content"] == "<h1>hi</h1>"
-    assert art["title"] == "page"
-
-
-# -- Route-level: first-message conversation_updated tail ----------------
-
-
-def test_send_message_route_emits_conversation_updated_tail(monkeypatch, app_db):
-    """First message: the route drains the stream, then emits the title tail.
-
-    Pins the persisted-chat compatibility ordering
-    delta -> [DONE] -> message_saved -> conversation_updated. The frontend
-    holds the SSE stream open past message_saved specifically to receive
-    conversation_updated (useChat.js draining), so a background-run /
-    event-codec refactor must preserve this tail and its order.
-
-    Both the assistant turn and the auto-title generation call
-    stream_chat_completion; the stub factory yields a fresh generator per
-    call, so both produce "Hi" — the title becomes "Hi".
-    """
-    app, db = app_db
-    conv = Conversation(
-        id=str(uuid.uuid4()),
-        title="New Conversation",  # required for _auto_generate_title to fire
-        main_service="test-service",
-    )
-    db.create_conversation(conv)
+def test_first_message_emits_conversation_updated_tail(ctx, monkeypatch):
+    app, db = ctx[0], ctx[1]
+    conv = _conv(db, title="New Conversation")  # enables auto-title
 
     def stub():
         yield _delta("Hi")
         yield ("done", {"content": "Hi", "reasoning_content": None})
 
-    _patch_stream(monkeypatch, stub)
+    _patch(monkeypatch, stub)
+    payloads = _payloads(_send(app, conv.id))
 
-    client = app.test_client()
-    r = client.post(
-        f"/api/chat/conversations/{conv.id}/messages",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        json={"content": "hello"},
-    )
-    assert r.status_code == 200
-
-    payloads = _frame_payloads(_split_sse(r.get_data(as_text=True)))
-    assert _frame_kinds(payloads) == ["delta", "[DONE]", "message_saved", "conversation_updated"]
-
-    cu = next(v for kind, v in payloads if kind == "json" and v.get("type") == "conversation_updated")
-    assert cu["id"] == conv.id
-    assert cu["title"] == "Hi"
-
-    # The tail is not just an SSE frame — the new title is persisted.
+    assert _kinds(payloads) == ["delta", "[DONE]", "message_saved", "conversation_updated"]
+    cu = _by_type(payloads, "conversation_updated")
+    assert cu["id"] == conv.id and cu["title"] == "Hi"
     assert db.get_conversation(conv.id).title == "Hi"

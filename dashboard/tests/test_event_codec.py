@@ -51,3 +51,86 @@ def test_encode_sse_handles_non_serializable_via_default_str():
 
     out = event_codec.encode_sse({"x": Weird()})
     assert json.loads(out[len("data: "):-2]) == {"x": "weird!"}
+
+
+# -- EventBus -----------------------------------------------------------
+
+from chat.event_bus import EventBus, SUBSCRIBER_QUEUE_MAX
+
+
+def test_event_bus_basic_pubsub():
+    bus = EventBus()
+    q = bus.subscribe("r1")
+    bus.publish("r1", "a")
+    bus.publish("r1", "b")
+    assert q.get_nowait() == "a"
+    assert q.get_nowait() == "b"
+
+
+def test_event_bus_publish_to_no_subscribers_is_noop():
+    bus = EventBus()
+    bus.publish("nobody", "x")  # must not raise
+    assert bus.subscriber_count("nobody") == 0
+
+
+def test_event_bus_unsubscribe_stops_delivery():
+    bus = EventBus()
+    q = bus.subscribe("r1")
+    bus.unsubscribe("r1", q)
+    bus.publish("r1", "x")
+    assert q.empty()
+    assert bus.subscriber_count("r1") == 0
+
+
+def test_event_bus_bounded_evicts_oldest_keeps_newest():
+    """A non-draining observer can't grow without bound; the newest events
+    (e.g. the terminal stream_end) survive, the oldest are evicted."""
+    bus = EventBus()
+    q = bus.subscribe("r1")
+    overflow = SUBSCRIBER_QUEUE_MAX + 50
+    for i in range(overflow):
+        bus.publish("r1", i)
+
+    assert q.qsize() == SUBSCRIBER_QUEUE_MAX
+    drained = []
+    while not q.empty():
+        drained.append(q.get_nowait())
+    # Oldest 50 were evicted; the most recent value (a stand-in for stream_end)
+    # is retained.
+    assert drained[-1] == overflow - 1
+    assert drained[0] == overflow - SUBSCRIBER_QUEUE_MAX
+
+
+def test_event_bus_overflow_racing_drainer_still_delivers(monkeypatch):
+    """If a drainer empties the queue between the failed put and the eviction
+    get (get_nowait -> Empty), the event must still be delivered, not dropped.
+    Otherwise a terminal stream_end could be lost and the observer would hang.
+    """
+    import queue as _queue
+    bus = EventBus()
+    q = bus.subscribe("r1")
+    for i in range(SUBSCRIBER_QUEUE_MAX):
+        q.put_nowait(i)  # fill to capacity so publish hits Full
+
+    real_get = q.get_nowait
+    state = {"first": True}
+
+    def flaky_get():
+        if state["first"]:
+            state["first"] = False
+            # Simulate the drainer emptying the queue, then report Empty.
+            while True:
+                try:
+                    real_get()
+                except _queue.Empty:
+                    break
+            raise _queue.Empty
+        return real_get()
+
+    monkeypatch.setattr(q, "get_nowait", flaky_get)
+    bus.publish("r1", "TERMINAL")
+
+    items = []
+    while not q.empty():
+        items.append(q.get_nowait())
+    assert "TERMINAL" in items
