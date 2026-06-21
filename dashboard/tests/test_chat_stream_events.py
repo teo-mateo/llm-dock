@@ -153,6 +153,11 @@ def _frame_kinds(payloads):
     return kinds
 
 
+def _by_type(payloads, t):
+    """Return the single typed-JSON frame with `type == t`."""
+    return next(v for kind, v in payloads if kind == "json" and v.get("type") == t)
+
+
 def _split_sse(text):
     """Split a raw SSE response body into individual `data: ...\\n\\n` frames.
 
@@ -195,14 +200,18 @@ def test_plain_stream_emits_deltas_and_done(monkeypatch):
     # [DONE] precedes message_saved (the frontend's draining logic depends on
     # message_saved arriving after [DONE]).
     assert _frame_kinds(payloads) == ["delta", "delta", "[DONE]", "message_saved"]
-    saved = [v for kind, v in payloads if kind == "json" and v.get("type") == "message_saved"]
-    assert saved[0]["seq"] == 2
 
     # The assistant row is persisted with the full content.
     msgs = db.get_messages(conv.id)
     assert [m.role for m in msgs] == ["user", "assistant"]
     assert msgs[1].content == "Hello world"
     assert msgs[1].model_service == "test-service"
+
+    # message_saved payload shape: the frontend builds the persisted assistant
+    # off message_id, so both message_id and seq must match the saved row.
+    saved = _by_type(payloads, "message_saved")
+    assert saved["message_id"] == msgs[1].id
+    assert saved["seq"] == msgs[1].seq == 2
 
 
 # -- Tool stream --------------------------------------------------------
@@ -245,16 +254,33 @@ def test_tool_stream_emits_all_event_types_and_persists(monkeypatch):
         "message_saved",
     ]
 
-    # The tool_call frame carries name/arguments/server_id.
-    tc = next(v for kind, v in payloads if kind == "json" and v.get("type") == "tool_call")
+    # Live frame payload shapes — these are exactly the fields the UI renders
+    # tool activity and artifacts from, so a refactor must keep them.
+    pending = _by_type(payloads, "tool_call_pending")
+    assert pending["index"] == 0 and pending["name"] == "solve"
+
+    tc = _by_type(payloads, "tool_call")
     assert tc["name"] == "solve"
     assert tc["arguments"] == {"x": 1}
     assert tc["server_id"] == "sympy-math"
+
+    tr = _by_type(payloads, "tool_result")
+    assert tr["name"] == "solve"
+    assert tr["result"] == "x = 1"
+    assert tr["server_id"] == "sympy-math"
+
+    # Note the SSE artifact frame renames the event's `type` to `artifact_type`
+    # and carries title/content (language is dropped from the live frame).
+    art_frame = _by_type(payloads, "artifact")
+    assert art_frame["artifact_type"] == "code"
+    assert art_frame["title"] == "snippet"
+    assert art_frame["content"] == "print(1)"
 
     # Assistant message persisted with final content and the tool call (incl.
     # the matched-back result) in tool_calls_json.
     msgs = db.get_messages(conv.id)
     assistant = msgs[1]
+    assert _by_type(payloads, "message_saved")["message_id"] == assistant.id
     assert assistant.content == "The answer is 1."
     persisted_calls = json.loads(assistant.tool_calls_json)
     assert persisted_calls[0]["name"] == "solve"
