@@ -278,6 +278,41 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.conversation.id).toBe('conv-2')
   })
 
+  it('Stop on a returned-to background run uses active_run.id as the cancel guard', async () => {
+    // Regression for codex iter 8 P2: after navigating back there is no local
+    // stream (runIdRef is null), but the loaded conversation carries active_run.
+    // Stop must still send an expected-run guard so a late cancel can't kill a
+    // newer run.
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => {
+      result.current.setConversation({ ...CONV, active_run: { id: 'run-bg', status: 'running' } })
+    })
+
+    act(() => { result.current.stopStreaming() })
+
+    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1', 'run-bg')
+  })
+
+  it('editMessage is blocked while the conversation has an active background run', async () => {
+    // Regression for codex iter 8 P3: editing during a reattached active run
+    // must not optimistically truncate the transcript only to hit the 409.
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: { id: 'run-bg', status: 'running' },
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    await act(async () => { await result.current.editMessage('u1', 'edited') })
+
+    expect(mockStreamChat).not.toHaveBeenCalled()
+    expect(result.current.messages.some(m => m.id === 'temp-edit')).toBe(false)
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.

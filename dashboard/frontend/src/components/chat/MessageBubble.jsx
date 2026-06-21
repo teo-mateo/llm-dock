@@ -27,7 +27,7 @@ const MD_COMPONENTS = {
   },
 }
 
-export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, isActiveCritique, artifacts }) {
+export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, isActiveCritique, artifacts, disableEdit }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(message.content)
   const proseClass = useProseClass('max-w-none', 'text-[15px]', 'leading-relaxed', 'font-serif', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
@@ -176,7 +176,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
         {/* Action buttons */}
         {!isTemp && (
           <div className={`flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
-            {isUser && !editing && (
+            {isUser && !editing && !disableEdit && (
               <button
                 onClick={() => setEditing(true)}
                 className="text-xs text-fg-subtle hover:text-fg-muted"

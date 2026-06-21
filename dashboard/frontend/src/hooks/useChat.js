@@ -2,6 +2,13 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { getConversation, cancelActiveRun } from '../services/chat'
 import { streamChat } from '../services/sse'
 
+// A conversation has a live background run when its active_run is queued or
+// running. Used to block send/edit (and to find the run id for Stop) when we
+// returned to a conversation whose run is still going but we hold no SSE stream.
+function isRunActive(run) {
+  return !!run && (run.status === 'running' || run.status === 'queued')
+}
+
 export default function useChat({ onConversationUpdated } = {}) {
   const [conversation, setConversation] = useState(null)
   const [messages, setMessages] = useState([])
@@ -141,7 +148,10 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [refetchMessages])
 
   const sendMessage = useCallback(async (content, images) => {
-    if (!conversation || streaming || cancellingRef.current) return
+    // Block a send while a run is active for this conversation (including a
+    // returned-to background run, active_run set but streaming false) — mirrors
+    // the composer's disabled state and the backend active-run 409 guard.
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
     setError(null)
     setStreaming(true)
     setStreamingContent('')
@@ -294,7 +304,11 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
-    if (!conversation || streaming || cancellingRef.current) return
+    // Block edits while a run is active for this conversation — including a
+    // background run we returned to (active_run set, streaming false). Without
+    // this the edit optimistically truncates the transcript, then the backend
+    // rejects the PUT with the active-run 409.
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
     const msg = messages.find(m => m.id === msgId)
     if (!msg || msg.role !== 'user') return
 
@@ -423,7 +437,12 @@ export default function useChat({ onConversationUpdated } = {}) {
     // run started after this one. Navigation (loadConversation / unmount)
     // deliberately does NOT call this — it only detaches the observer, leaving
     // the run to finish and persist.
-    cancelAndReconcile(conversation?.id, runIdRef.current)
+    // Prefer the locally-captured run id; fall back to the conversation's
+    // active_run id for a run we returned to (no local stream, so runIdRef is
+    // null) — still passing an expected-run guard so a late cancel can't kill a
+    // newer run.
+    const expectedRunId = runIdRef.current || conversation?.active_run?.id || null
+    cancelAndReconcile(conversation?.id, expectedRunId)
     runIdRef.current = null
     if (abortRef.current) {
       abortRef.current.abort()

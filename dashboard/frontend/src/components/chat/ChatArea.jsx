@@ -250,6 +250,7 @@ export default function ChatArea({
           hasSidekick={!!conversation.sidekick_service}
           onCritique={handleOpenCritique}
           onEdit={onEdit}
+          disableEdit={busy}
           streaming={streaming}
           streamingContent={streamingContent}
           streamingReasoning={streamingReasoning}
