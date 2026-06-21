@@ -234,6 +234,94 @@ def test_completed_run_clears_active_run_in_list():
 # -- deletion cleanup ---------------------------------------------------
 
 
+def test_create_run_with_user_message_success():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    user = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                   content="hi", seq=0)
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                  status=ChatRunStatus.QUEUED, user_message_id=user.id)
+
+    created = db.create_run_with_user_message(user, run)
+    assert created is not None and created.status == "queued"
+    msgs = db.get_messages(conv.id)
+    assert [m.role for m in msgs] == ["user"]
+    assert msgs[0].seq == 1  # assigned inside the transaction
+
+
+def test_create_run_rejected_when_active_run_exists():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))  # already active
+
+    user = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                   content="second", seq=0)
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                  status=ChatRunStatus.QUEUED, user_message_id=user.id)
+    created = db.create_run_with_user_message(user, run)
+
+    assert created is None
+    # The would-be user message was rolled back with the rejected run.
+    assert db.get_messages(conv.id) == []
+    assert db.get_chat_run(run.id) is None
+
+
+def test_create_run_with_edit_truncation_rolls_back_on_conflict():
+    """An edit that loses the active-run race must not destroy the tail."""
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    for i in range(3):
+        db.add_message(Message(id=f"m{i}", conversation_id=conv.id, role="user",
+                               content=f"m{i}", seq=db.next_seq(conv.id)))
+    # An active run exists, so the edit below should be rejected.
+    db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
+
+    edited = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                     content="edited", seq=0)
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                  status=ChatRunStatus.QUEUED, user_message_id=edited.id)
+    created = db.create_run_with_user_message(edited, run, delete_from_seq=2)
+
+    assert created is None
+    # The truncation (delete from seq 2) was rolled back — all 3 survive.
+    assert [m.id for m in db.get_messages(conv.id)] == ["m0", "m1", "m2"]
+
+
+def test_concurrent_create_run_only_one_wins(tmp_path):
+    """Two threads racing create_run_with_user_message: exactly one succeeds.
+
+    File-backed DB so each operation opens its own connection (the shared
+    :memory: connection is single-threaded), exercising the real write-lock
+    serialization that makes the conditional insert atomic.
+    """
+    import threading
+    db = ChatDB(str(tmp_path / "race.db"))
+    conv = _conv(db)
+    barrier = threading.Barrier(2)
+    results = []
+    lock = threading.Lock()
+
+    def attempt():
+        user = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                       content="x", seq=0)
+        run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                      status=ChatRunStatus.QUEUED, user_message_id=user.id)
+        barrier.wait()
+        created = db.create_run_with_user_message(user, run)
+        with lock:
+            results.append(created is not None)
+
+    threads = [threading.Thread(target=attempt) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert sorted(results) == [False, True]  # exactly one winner
+    assert len(db.list_active_runs()) == 1
+    assert len(db.get_messages(conv.id)) == 1  # no duplicate user message
+
+
 def test_deleting_conversation_removes_its_runs():
     db = ChatDB(":memory:")
     conv = _conv(db)

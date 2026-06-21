@@ -212,24 +212,29 @@ def delete_conversations_batch():
 # -- Messages --
 
 
-def _start_run_response(db, conv, user_msg, mcp_manager, is_first, first_user_content):
-    """Persist the user message, create a run, start the background job, and
-    return an SSE Response that observes it.
+def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
+                        first_user_content, delete_from_seq=None):
+    """Atomically persist the user message + a queued run (rejecting a second
+    run while one is active), start the background job, and return an SSE
+    Response that observes it.
 
     The HTTP response is only an observer (event_bus): if the client
     disconnects, the run keeps going on the worker pool and the assistant
     reply is persisted regardless. We subscribe to the bus BEFORE starting the
     job so no early events are missed.
-    """
-    db.add_message(user_msg)
-    db.touch_conversation(conv.id)
 
-    run = db.create_chat_run(ChatRun(
+    Returns a 409 response tuple when an active run already exists for the
+    conversation (the user message — and any edit truncation — is rolled back).
+    """
+    run = ChatRun(
         id=str(uuid.uuid4()),
         conversation_id=conv.id,
         status=ChatRunStatus.QUEUED,
         user_message_id=user_msg.id,
-    ))
+    )
+    created = db.create_run_with_user_message(user_msg, run, delete_from_seq=delete_from_seq)
+    if created is None:
+        return jsonify({"error": "A run is already active for this conversation"}), 409
 
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
@@ -257,15 +262,12 @@ def send_message(conv_id):
     if not content and not images:
         return jsonify({"error": "content or images required"}), 400
 
-    # One active run per conversation. A second send while a run is in flight
-    # is rejected rather than racing two turns into the same conversation.
-    if db.get_active_run_for_conversation(conv_id) is not None:
-        return jsonify({"error": "A run is already active for this conversation"}), 409
-
     images_json = json.dumps(images) if images else None
 
     # First message? (computed before persisting the new user message) —
-    # drives one-shot auto-title generation in the background job.
+    # drives one-shot auto-title generation in the background job. The actual
+    # one-active-run-per-conversation guard is enforced atomically in
+    # create_run_with_user_message (a pre-check here would be racy).
     is_first = len(db.get_messages(conv_id)) == 0
 
     user_msg = Message(
@@ -274,7 +276,7 @@ def send_message(conv_id):
         role="user",
         content=content,
         images_json=images_json,
-        seq=db.next_seq(conv_id),
+        seq=0,  # assigned atomically inside create_run_with_user_message
     )
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
@@ -303,13 +305,7 @@ def edit_message(conv_id, msg_id):
     if not content and not images:
         return jsonify({"error": "content or images required"}), 400
 
-    if db.get_active_run_for_conversation(conv_id) is not None:
-        return jsonify({"error": "A run is already active for this conversation"}), 409
-
     images_json = json.dumps(images) if images else None
-
-    # Delete this message and all subsequent, then re-send at the same seq.
-    db.delete_messages_from_seq(conv_id, msg.seq)
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
     mcp_mgr = _get_mcp() if enabled_servers else None
@@ -320,12 +316,14 @@ def edit_message(conv_id, msg_id):
         role="user",
         content=content,
         images_json=images_json,
-        seq=msg.seq,
+        seq=0,  # assigned atomically inside create_run_with_user_message
     )
 
-    # An edit replaces an existing turn, so it is never the first message and
-    # does not trigger auto-title.
-    return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False, first_user_content=content)
+    # The truncate-from-seq and re-send happen in one transaction (with the
+    # active-run guard), so a rejected edit doesn't destroy the tail. An edit
+    # replaces an existing turn, so it never triggers auto-title.
+    return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False,
+                               first_user_content=content, delete_from_seq=msg.seq)
 
 
 # -- Critique --

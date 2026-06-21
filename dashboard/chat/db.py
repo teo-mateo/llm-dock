@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import logging
 from typing import Optional, List, Tuple
@@ -94,6 +93,10 @@ class ChatDB:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        # Background runs mean concurrent writers (worker thread + request
+        # threads). Wait for the write lock instead of erroring with
+        # SQLITE_BUSY, so the conditional run-insert below serializes cleanly.
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def _close_conn(self, conn: sqlite3.Connection):
@@ -631,6 +634,56 @@ class ChatDB:
             )
             conn.commit()
             return self.get_chat_run(run_id)
+        finally:
+            self._close_conn(conn)
+
+    def create_run_with_user_message(self, user_msg: Message, run: ChatRun,
+                                     delete_from_seq: int = None) -> Optional[ChatRun]:
+        """Atomically start a turn: (optionally truncate from a seq for edits),
+        insert the user message, and insert the run — but ONLY if no active run
+        exists for the conversation.
+
+        The active-run guard and the message insert share one transaction, so
+        the one-active-run-per-conversation invariant holds even under two
+        concurrent sends (the loser's INSERT ... WHERE NOT EXISTS affects 0
+        rows; everything it wrote, including an edit's truncation, is rolled
+        back). Returns the created run, or None if an active run already exists.
+        """
+        active_ph = ",".join("?" for _ in ACTIVE_STATUSES)
+        now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        conn = self._get_conn()
+        try:
+            if delete_from_seq is not None:
+                conn.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
+                    (user_msg.conversation_id, delete_from_seq),
+                )
+            user_msg.seq = self.next_seq(user_msg.conversation_id, conn=conn)
+            self.add_message(user_msg, conn=conn)
+            cur = conn.execute(
+                f"""INSERT INTO chat_runs
+                       (id, conversation_id, user_message_id, status, active_step, error)
+                    SELECT ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM chat_runs
+                        WHERE conversation_id = ? AND status IN ({active_ph})
+                    )""",
+                (run.id, run.conversation_id, run.user_message_id, run.status,
+                 run.active_step, run.error,
+                 run.conversation_id, *sorted(ACTIVE_STATUSES)),
+            )
+            if cur.rowcount == 0:
+                conn.rollback()  # active run already exists — undo everything
+                return None
+            conn.execute(
+                f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
+                (run.conversation_id,),
+            )
+            conn.commit()
+            return self.get_chat_run(run.id)
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             self._close_conn(conn)
 
