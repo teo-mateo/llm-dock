@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -14,9 +13,11 @@ from auth import require_auth
 from .db import ChatDB
 from .models import Conversation, Message, Critique, Artifact
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
-from .llm_proxy import stream_chat_completion, build_messages_array, resolve_service
+from .llm_proxy import stream_chat_completion, resolve_service
 from .critique import build_critique_context, request_critique, validate_annotations
-from .mcp_registry import list_available_servers, get_tool_hints
+from .mcp_registry import list_available_servers
+from .prompt_builder import build_chat_messages
+from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from . import settings_store
 from .tool_loop import stream_with_tools
 
@@ -331,21 +332,11 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
     db.add_message(user_msg)
     db.touch_conversation(conv.id)
 
-    # Build messages array, augmenting system prompt with tool hints and
-    # an explicit "today's date" line. Models keep training on data with a
-    # past cutoff, so without this they'll write 2024/2025 in queries even
-    # when the user is asking about now.
+    # Build messages array, augmenting system prompt with tool hints and an
+    # explicit "today's date" line (see prompt_builder).
     messages = db.get_messages(conv.id)
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    system_prompt = conv.main_system_prompt
-    if enabled_servers:
-        hints = get_tool_hints(enabled_servers)
-        if hints:
-            system_prompt = f"{system_prompt}\n\n{hints}" if system_prompt else hints
-    today = datetime.date.today()
-    date_line = f"Current date: {today.isoformat()} ({today.strftime('%A')}). Use this as \"today\" when interpreting time-sensitive questions."
-    system_prompt = f"{system_prompt}\n\n{date_line}" if system_prompt else date_line
-    messages_array = build_messages_array(system_prompt, messages)
+    messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
 
     # Get MCP tools
     tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
@@ -423,37 +414,37 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
     try:
         for event_type, data in stream:
             if event_type == "__heartbeat__":
-                yield f"data: {json.dumps({'type': 'heartbeat', 'elapsed_s': data['elapsed_s']})}\n\n"
+                yield encode_sse_event("heartbeat", {"elapsed_s": data["elapsed_s"]})
                 continue
             if event_type == "delta":
                 accumulated_content += data.get("content", "") or ""
                 accumulated_reasoning += data.get("reasoning_content", "") or ""
-                yield f"data: {data['raw']}\n\n"
+                yield encode_sse_delta(data["raw"])
             elif event_type == "tool_call_pending":
-                yield f"data: {json.dumps({'type': 'tool_call_pending', 'index': data['index'], 'name': data['name']})}\n\n"
+                yield encode_sse_event("tool_call_pending", {"index": data["index"], "name": data["name"]})
             elif event_type == "parse_warning":
                 # Format-drift signal from llm_proxy. Stash so we can persist
                 # alongside the message on `done`; also forward live so the UI
                 # shows the chip before the response finishes streaming.
                 last_parse_warning = data
-                yield f"data: {json.dumps({'type': 'parse_warning', **data})}\n\n"
+                yield encode_sse_event("parse_warning", data)
             elif event_type == "tool_call":
                 collected_tool_calls.append({
                     "name": data["name"],
                     "arguments": data["arguments"],
                     "server_id": data["server_id"],
                 })
-                yield f"data: {json.dumps({'type': 'tool_call', 'name': data['name'], 'arguments': data['arguments'], 'server_id': data['server_id']})}\n\n"
+                yield encode_sse_event("tool_call", {"name": data["name"], "arguments": data["arguments"], "server_id": data["server_id"]})
             elif event_type == "tool_result":
                 for tc in reversed(collected_tool_calls):
                     if tc["name"] == data["name"] and "result" not in tc:
                         tc["result"] = data["result"]
                         break
-                yield f"data: {json.dumps({'type': 'tool_result', 'name': data['name'], 'result': data['result'], 'server_id': data['server_id']})}\n\n"
+                yield encode_sse_event("tool_result", {"name": data["name"], "result": data["result"], "server_id": data["server_id"]})
             elif event_type == "artifact":
                 collected_artifacts.append(data)
                 # Send artifact to frontend (without full content to keep SSE lean)
-                yield f"data: {json.dumps({'type': 'artifact', 'artifact_type': data['type'], 'title': data.get('title'), 'content': data['content']}, default=str)}\n\n"
+                yield encode_sse_event("artifact", {"artifact_type": data["type"], "title": data.get("title"), "content": data["content"]})
             elif event_type == "done":
                 next_seq = db.next_seq(conv.id)
                 assistant_msg = Message(
@@ -492,19 +483,19 @@ def _stream_response(db: ChatDB, conv: Conversation, user_msg: Message, mcp_mana
                         language=art_data.get("language"),
                     ))
                 db.touch_conversation(conv.id)
-                yield "data: [DONE]\n\n"
-                yield f"data: {json.dumps({'type': 'message_saved', 'message_id': assistant_msg_id, 'seq': next_seq})}\n\n"
+                yield DONE
+                yield encode_sse_event("message_saved", {"message_id": assistant_msg_id, "seq": next_seq})
             elif event_type == "error":
                 # Set had_error BEFORE yielding — a client disconnect during
                 # the yield would otherwise fire GeneratorExit -> finally
                 # without the flag set, and a server-side model failure with
                 # accumulated deltas would still write a partial.
                 had_error = True
-                yield f"data: {json.dumps({'error': data['message']})}\n\n"
+                yield encode_sse({"error": data["message"]})
                 return
 
         if not done:
-            yield f"data: {json.dumps({'error': 'Stream ended unexpectedly'})}\n\n"
+            yield encode_sse({"error": "Stream ended unexpectedly"})
     except GeneratorExit:
         # Client disconnected mid-stream (navigation, tab close, network
         # drop). Flask raises this at the next yield after the WSGI layer
@@ -610,7 +601,7 @@ def send_message(conv_id):
             try:
                 new_title = _auto_generate_title(db, conv_id, content, conv.main_service)
                 if new_title:
-                    yield f"data: {json.dumps({'type': 'conversation_updated', 'id': conv_id, 'title': new_title})}\n\n"
+                    yield encode_sse_event("conversation_updated", {"id": conv_id, "title": new_title})
             except Exception:
                 logger.exception("auto-title failed")
 
@@ -738,11 +729,11 @@ def spinoff():
     def generate():
         for event_type, event_data in stream_chat_completion(service_name, messages_array):
             if event_type == "delta":
-                yield f"data: {event_data['raw']}\n\n"
+                yield encode_sse_delta(event_data["raw"])
             elif event_type == "done":
-                yield "data: [DONE]\n\n"
+                yield DONE
             elif event_type == "error":
-                yield f"data: {json.dumps({'error': event_data['message']})}\n\n"
+                yield encode_sse({"error": event_data["message"]})
                 return
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
