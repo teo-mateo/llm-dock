@@ -340,6 +340,40 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.runReady).toBe(true)
   })
 
+  it('surfaces a failed background run error on load via last_run', async () => {
+    // Phase 7: a run that failed while we weren't observing shows up as
+    // last_run (active_run is only queued/running). loadConversation must
+    // surface its error in the chat area.
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: null,
+      last_run: { id: 'r1', status: 'failed', error: 'model exploded' },
+      messages: [],
+      critiques: {},
+      artifacts: {},
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    expect(result.current.error).toBe('model exploded')
+  })
+
+  it('does not surface an error when the last run completed', async () => {
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      last_run: { id: 'r1', status: 'completed', error: null },
+      messages: [],
+      critiques: {},
+      artifacts: {},
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    expect(result.current.error).toBeNull()
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.

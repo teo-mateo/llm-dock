@@ -176,6 +176,8 @@ class ChatDB:
             conv.messages = self.get_messages(conv_id, conn=conn)
             run = self._active_run_for(conn, conv_id)
             conv.active_run = run.active_run_dict() if run else None
+            last = self._latest_run_for(conn, conv_id)
+            conv.last_run = last.last_run_dict() if last else None
             return conv
         finally:
             self._close_conn(conn)
@@ -518,6 +520,20 @@ class ChatDB:
                 WHERE conversation_id = ? AND status IN ({placeholders})
                 ORDER BY created_at DESC, rowid DESC LIMIT 1""",
             (conv_id, *sorted(ACTIVE_STATUSES)),
+        ).fetchone()
+        return self._row_to_chat_run(row) if row else None
+
+    def _latest_run_for(self, conn: sqlite3.Connection, conv_id: str) -> Optional[ChatRun]:
+        """Most recent run for a conversation regardless of status, or None.
+
+        Unlike _active_run_for this includes terminal runs, so the caller can
+        surface a failed background run's error after the fact. Same
+        created_at/rowid ordering as _active_run_for for a consistent tiebreak.
+        """
+        row = conn.execute(
+            """SELECT * FROM chat_runs WHERE conversation_id = ?
+               ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+            (conv_id,),
         ).fetchone()
         return self._row_to_chat_run(row) if row else None
 

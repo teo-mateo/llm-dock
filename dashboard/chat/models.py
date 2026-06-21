@@ -123,6 +123,18 @@ class ChatRun:
             "started_at": self.started_at,
         }
 
+    def last_run_dict(self):
+        """Trimmed shape for the most-recent run on a single conversation load.
+
+        Carries `error` (unlike active_run_dict) so the chat area can surface a
+        background run that failed while the user was elsewhere.
+        """
+        return {
+            "id": self.id,
+            "status": self.status,
+            "error": self.error,
+        }
+
 
 @dataclass
 class Conversation:
@@ -141,6 +153,11 @@ class Conversation:
     # Populated by the DB layer from chat_runs (not a stored column). The
     # active_run_dict() shape of the conversation's queued/running run, or None.
     active_run: Optional[dict] = None
+    # last_run_dict() of the most recent run regardless of status, or None.
+    # Only populated on single-conversation loads; lets the chat area surface a
+    # failed run's error after refetch. Distinct from active_run, which is the
+    # trimmed shape for queued/running runs in list payloads.
+    last_run: Optional[dict] = None
 
     def to_dict(self, include_messages=False):
         d = {
@@ -154,6 +171,7 @@ class Conversation:
             "selected_text": self.selected_text,
             "mcp_servers": json.loads(self.mcp_servers_json) if self.mcp_servers_json else [],
             "active_run": self.active_run,
+            "last_run": self.last_run,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
