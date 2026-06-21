@@ -14,6 +14,11 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [messages, setMessages] = useState([])
   const [critiques, setCritiques] = useState({})
   const [streaming, setStreaming] = useState(false)
+  // True once the run id for the in-flight stream is known (run_started parsed).
+  // The Stop control is gated on this so it is never offered without a run id —
+  // every Stop therefore sends an expected-run guard, never an unguarded cancel
+  // that a concurrently-started run (another tab/client) could be hit by.
+  const [runReady, setRunReady] = useState(false)
   // True from Stop until the cancel POST (and its reconcile) settle. Blocks a
   // new send/edit during that window so an unguarded cancel can't be processed
   // against a run the user started after Stop — closing the early-Stop
@@ -135,6 +140,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     }
     drainingRef.current = false
     runIdRef.current = null
+    setRunReady(false)
     setStreaming(false)
     setStreamingContent('')
     setStreamingReasoning('')
@@ -176,6 +182,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     abortRef.current = controller
     drainingRef.current = false
     runIdRef.current = null
+    setRunReady(false)
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -254,7 +261,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated,
-        onRunStarted: (evt) => { runIdRef.current = evt.run_id },
+        onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -332,6 +339,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     abortRef.current = controller
     drainingRef.current = false
     runIdRef.current = null
+    setRunReady(false)
     liveControllersRef.current.add(controller)
 
     let fullContent = ''
@@ -398,7 +406,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated,
-          onRunStarted: (evt) => { runIdRef.current = evt.run_id },
+          onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -444,6 +452,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     const expectedRunId = runIdRef.current || conversation?.active_run?.id || null
     cancelAndReconcile(conversation?.id, expectedRunId)
     runIdRef.current = null
+    setRunReady(false)
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
@@ -474,6 +483,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     critiques,
     setCritiques,
     streaming,
+    runReady,
     cancelling,
     streamingContent,
     streamingReasoning,

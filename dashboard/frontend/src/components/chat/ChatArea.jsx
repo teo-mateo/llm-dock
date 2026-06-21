@@ -32,6 +32,7 @@ export default function ChatArea({
   streamingParseWarning,
   error,
   cancelling,
+  runReady,
   onSend,
   onEdit,
   onStopStreaming,
@@ -216,7 +217,12 @@ export default function ChatArea({
               disabled={busy}
             />
           </div>
-          {(streaming || hasActiveRun) && !cancelling && (
+          {/* Gate the live-stream Stop on runReady: it must not appear until
+              run_started has delivered the run id, so Stop always cancels with
+              an expected-run guard rather than an unguarded "cancel whatever is
+              active" that a concurrently-started run could be hit by. The
+              returned-to active_run path already has an id (active_run.id). */}
+          {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
             <button
               onClick={onStopStreaming}
               className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"

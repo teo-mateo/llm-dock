@@ -313,6 +313,33 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.messages.some(m => m.id === 'temp-edit')).toBe(false)
   })
 
+  it('runReady stays false until run_started, gating an unguarded Stop', async () => {
+    // Regression for codex iter 9 P2: the Stop control must not be exposed
+    // before the run id is known, so the UI can never issue an unguarded
+    // cancel. runReady is the gate; it flips true only on run_started.
+    let handlers
+    mockStreamChat.mockImplementation((_url, _body, h) => {
+      handlers = h
+      return new Promise(() => {}) // no run_started yet
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('hi')
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.runReady).toBe(false)
+
+    await act(async () => {
+      handlers.onRunStarted({ type: 'run_started', run_id: 'run-x' })
+      await Promise.resolve()
+    })
+    expect(result.current.runReady).toBe(true)
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.

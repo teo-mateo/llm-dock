@@ -290,3 +290,34 @@ describe('ChatArea — active background run on return', () => {
     expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
   })
 })
+
+describe('ChatArea — Stop gating on runReady', () => {
+  // Regression for codex iter 9 P2: while streaming but before run_started has
+  // delivered the run id (runReady false), Stop must be hidden so the UI can't
+  // issue an unguarded cancel. Once runReady is true, Stop appears.
+  function renderStreaming(runReady) {
+    return render(
+      <ChatArea
+        conversation={{ id: 'conv-1', main_service: 'vllm-test', main_system_prompt: '', mcp_servers: [], active_run: null }}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        streaming={true}
+        runReady={runReady}
+        onStopStreaming={() => {}}
+      />
+    )
+  }
+
+  it('hides Stop while streaming until the run id is known', () => {
+    renderStreaming(false)
+    expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull()
+  })
+
+  it('shows Stop once runReady is true', () => {
+    renderStreaming(true)
+    expect(screen.getByRole('button', { name: /Stop/ })).toBeTruthy()
+  })
+})
