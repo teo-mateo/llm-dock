@@ -31,6 +31,7 @@ export default function ChatArea({
   streamingArtifacts,
   streamingParseWarning,
   error,
+  cancelling,
   onSend,
   onEdit,
   onStopStreaming,
@@ -197,13 +198,13 @@ export default function ChatArea({
               sidekickService={conversation.sidekick_service}
               onChangeMain={v => handleModelChange('main_service', v)}
               onChangeSidekick={v => handleModelChange('sidekick_service', v)}
-              disabled={streaming}
+              disabled={streaming || cancelling}
             />
             <McpToggle
               conversationId={conversation.id}
               enabledServers={conversation.mcp_servers}
               onUpdate={() => onReloadConversation?.(conversation.id)}
-              disabled={streaming}
+              disabled={streaming || cancelling}
             />
           </div>
           {streaming && (
@@ -257,7 +258,7 @@ export default function ChatArea({
           ref={composerRef}
           focusKey={conversation.id}
           onSend={handleSend}
-          disabled={streaming || !conversation.main_service}
+          disabled={streaming || cancelling || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
         />

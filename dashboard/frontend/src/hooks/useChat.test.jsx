@@ -190,6 +190,47 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.conversation.id).toBe('conv-2')
   })
 
+  it('blocks a new send until the cancel settles, closing the unguarded race', async () => {
+    // Regression for codex iter 5 P2: when Stop is pressed before run_started,
+    // the cancel is unguarded (no expected_run_id). A new run must not be able
+    // to start while that cancel is in flight, or the server could cancel the
+    // NEW run instead. The hook blocks send/edit until the cancel settles.
+    installInFlightStream(null) // early Stop: no run id captured
+    let resolveCancel
+    mockCancelActiveRun.mockImplementation(() => new Promise((res) => { resolveCancel = res }))
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+
+    await act(async () => {
+      result.current.sendMessage('A')
+      await Promise.resolve()
+    })
+    const callsAfterA = mockStreamChat.mock.calls.length
+
+    act(() => { result.current.stopStreaming() })
+    expect(mockCancelActiveRun).toHaveBeenCalledWith('conv-1', null)
+
+    // Attempt to send B while the cancel is unresolved — must be blocked.
+    await act(async () => {
+      result.current.sendMessage('B')
+      await Promise.resolve()
+    })
+    expect(mockStreamChat.mock.calls.length).toBe(callsAfterA)
+
+    // Cancel settles → the block lifts and B can start.
+    await act(async () => {
+      resolveCancel({ run: null })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      result.current.sendMessage('B')
+      await Promise.resolve()
+    })
+    expect(mockStreamChat.mock.calls.length).toBe(callsAfterA + 1)
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.

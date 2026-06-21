@@ -29,6 +29,7 @@ export default function ChatPage() {
     streamingArtifacts,
     streamingParseWarning,
     error,
+    cancelling,
     loadConversation,
     sendMessage,
     editMessage,
@@ -164,6 +165,7 @@ export default function ChatPage() {
         streamingArtifacts={streamingArtifacts}
         streamingParseWarning={streamingParseWarning}
         error={error}
+        cancelling={cancelling}
         onSend={sendMessage}
         onEdit={editMessage}
         onStopStreaming={stopStreaming}

@@ -7,6 +7,13 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [messages, setMessages] = useState([])
   const [critiques, setCritiques] = useState({})
   const [streaming, setStreaming] = useState(false)
+  // True from Stop until the cancel POST (and its reconcile) settle. Blocks a
+  // new send/edit during that window so an unguarded cancel can't be processed
+  // against a run the user started after Stop — closing the early-Stop
+  // (no run id) stale-cancel race. Mirrored into cancellingRef for the
+  // synchronous guard in send/edit.
+  const [cancelling, setCancelling] = useState(false)
+  const cancellingRef = useRef(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [toolEvents, setToolEvents] = useState([])
@@ -72,10 +79,23 @@ export default function useChat({ onConversationUpdated } = {}) {
   // the conversation they moved to.
   const cancelAndReconcile = useCallback((convId, expectedRunId) => {
     if (!convId) return
+    // Hold the cancelling flag across BOTH the cancel POST and its reconcile so
+    // send/edit stay blocked until the server has processed the cancel. This is
+    // what makes the no-id (early Stop) path safe: a new run can't be created
+    // while an unguarded cancel is in flight, so the cancel can only ever apply
+    // to the run the user actually stopped.
+    cancellingRef.current = true
+    setCancelling(true)
     cancelActiveRun(convId, expectedRunId)
       .catch(() => { /* no active run / already terminal — harmless */ })
+      .then(() => {
+        // Reconcile only if still observing this conversation (the user may
+        // have navigated away while the cancel was in flight).
+        if (conversationRef.current?.id === convId) return refetchMessages(convId)
+      })
       .finally(() => {
-        if (conversationRef.current?.id === convId) refetchMessages(convId)
+        cancellingRef.current = false
+        setCancelling(false)
       })
   }, [refetchMessages])
 
@@ -105,7 +125,7 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [refetchMessages])
 
   const sendMessage = useCallback(async (content, images) => {
-    if (!conversation || streaming) return
+    if (!conversation || streaming || cancellingRef.current) return
     setError(null)
     setStreaming(true)
     setStreamingContent('')
@@ -258,7 +278,7 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
-    if (!conversation || streaming) return
+    if (!conversation || streaming || cancellingRef.current) return
     const msg = messages.find(m => m.id === msgId)
     if (!msg || msg.role !== 'user') return
 
@@ -419,6 +439,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     critiques,
     setCritiques,
     streaming,
+    cancelling,
     streamingContent,
     streamingReasoning,
     toolEvents,
