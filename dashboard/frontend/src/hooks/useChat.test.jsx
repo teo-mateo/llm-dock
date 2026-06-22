@@ -40,6 +40,10 @@ beforeEach(() => {
   mockGetConversation.mockReset()
   mockCancelActiveRun.mockResolvedValue({ run: null })
   mockGetConversation.mockResolvedValue({ ...CONV, messages: [], critiques: {}, artifacts: {} })
+  // Default: a stream that stays open. Reattach (loadConversation onto an
+  // active_run) and any send that doesn't set its own impl get a valid promise
+  // to attach to instead of undefined.
+  mockStreamChat.mockImplementation(() => new Promise(() => {}))
 })
 
 afterEach(() => {
@@ -307,9 +311,12 @@ describe('useChat stop/cancel wiring', () => {
     const { result } = renderHook(() => useChat({}))
 
     await act(async () => { await result.current.loadConversation('conv-1') })
+    // Loading an active-run conversation reattaches to its stream (one call);
+    // the blocked edit must not open ANOTHER stream.
+    const callsAfterLoad = mockStreamChat.mock.calls.length
     await act(async () => { await result.current.editMessage('u1', 'edited') })
 
-    expect(mockStreamChat).not.toHaveBeenCalled()
+    expect(mockStreamChat.mock.calls.length).toBe(callsAfterLoad)
     expect(result.current.messages.some(m => m.id === 'temp-edit')).toBe(false)
   })
 
@@ -372,6 +379,207 @@ describe('useChat stop/cancel wiring', () => {
     await act(async () => { await result.current.loadConversation('conv-1') })
 
     expect(result.current.error).toBeNull()
+  })
+
+  it('reattaches to the live run stream when loading an in-progress conversation', async () => {
+    // The fix for the "no progress on return" bug: loading a conversation whose
+    // run is still active opens GET /chat/runs/<id>/stream and renders live.
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: { id: 'run-bg', status: 'running' },
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    let handlers
+    mockStreamChat.mockImplementation((url, _body, h) => {
+      handlers = { url, ...h }
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    // Opened the run-stream endpoint (GET, no body) and entered streaming.
+    expect(handlers.url).toBe('/chat/runs/run-bg/stream')
+    expect(handlers.method).toBe('GET')
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.runReady).toBe(true)
+
+    // Replayed + live deltas render into streamingContent.
+    act(() => {
+      handlers.onDelta({ content: 'Hello ', reasoning_content: '' })
+      handlers.onDelta({ content: 'world', reasoning_content: '' })
+    })
+    expect(result.current.streamingContent).toBe('Hello world')
+  })
+
+  it('opens only one run stream when the same conversation is loaded twice concurrently', async () => {
+    // Regression for codex iter 4 P1: React StrictMode runs the URL-load effect
+    // twice on mount, and A→B→A navigation re-loads A while the first A fetch is
+    // pending. Both same-id loads pass the conversation-id guard; without a load
+    // generation each would open its own GET run stream and replay/live-render
+    // every delta twice. Two deferred same-id loads must open exactly one stream.
+    const resolvers = []
+    mockGetConversation.mockImplementation(() => new Promise((res) => { resolvers.push(res) }))
+    const streamUrls = []
+    mockStreamChat.mockImplementation((url) => { streamUrls.push(url); return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      // Kick off both loads before either fetch resolves (StrictMode double-mount).
+      const p1 = result.current.loadConversation('conv-1')
+      const p2 = result.current.loadConversation('conv-1')
+      const data = {
+        ...CONV,
+        active_run: { id: 'run-bg', status: 'running' },
+        messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+        critiques: {},
+        artifacts: {},
+      }
+      resolvers.forEach((r) => r(data))  // resolve BOTH pending fetches
+      await Promise.all([p1, p2])
+    })
+
+    // Exactly one reattach stream — the superseded load did not open a second.
+    expect(streamUrls).toEqual(['/chat/runs/run-bg/stream'])
+    expect(result.current.streaming).toBe(true)
+  })
+
+  it('does not commit a superseded same-id load that resolves out of order', async () => {
+    // Regression for codex iter 5 P1: two concurrent same-id loads can return
+    // different snapshots and resolve oldest-last. The older snapshot
+    // ({active_run: running}) must NOT overwrite the newer ({active_run: null}),
+    // or `conversation.active_run` would stay stale — blocking send/edit and
+    // keeping Stop visible — even though the superseded load is correctly barred
+    // from reattaching. The generation gates the state commit, not just reattach.
+    let resolveOld, resolveNew
+    mockGetConversation
+      .mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))   // gen 1
+      .mockImplementationOnce(() => new Promise((r) => { resolveNew = r }))   // gen 2 (latest)
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      const p1 = result.current.loadConversation('conv-1')  // older generation
+      const p2 = result.current.loadConversation('conv-1')  // newer generation
+      // Newest resolves FIRST, oldest LAST — the dangerous ordering.
+      resolveNew({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      resolveOld({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      await Promise.all([p1, p2])
+    })
+
+    // The latest snapshot wins: no stale active run left to block the composer.
+    expect(result.current.conversation.active_run).toBe(null)
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('does not reattach when the loaded conversation has no active run', async () => {
+    mockGetConversation.mockResolvedValue({
+      ...CONV, active_run: null, messages: [], critiques: {}, artifacts: {},
+    })
+    const calls = []
+    mockStreamChat.mockImplementation((url) => { calls.push(url); return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    expect(calls).toEqual([])
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('reattach to an already-finished run refetches instead of hanging', async () => {
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: { id: 'run-bg', status: 'running' },
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    let handlers
+    mockStreamChat.mockImplementation((url, _body, h) => { handlers = h; return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    expect(result.current.streaming).toBe(true)
+
+    // The run finished just as we reattached: a terminal run_status arrives.
+    await act(async () => {
+      handlers.onRunStatus({ type: 'run_status', status: 'completed' })
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('reattach reconciles when the run is cancelled elsewhere (silent stream close)', async () => {
+    // Codex iter 1 P1: a cancel from another tab emits no frame, so the reattach
+    // stream just closes. The hook must still drop streaming + refetch.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    let resolveStream
+    mockStreamChat.mockImplementation(() => new Promise((res) => { resolveStream = res }))
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    expect(result.current.streaming).toBe(true)
+
+    await act(async () => { resolveStream(); await Promise.resolve(); await Promise.resolve() })
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('reattach reconciles on a live failure delivered after attach', async () => {
+    // Codex iter 1 P1: a failure encoded as an error frame must clear the stale
+    // active_run (refetch) so it stops blocking the next send.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, last_run: { id: 'run-bg', status: 'failed', error: 'boom' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    let handlers
+    mockStreamChat.mockImplementation((_u, _b, h) => { handlers = h; return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    await act(async () => { handlers.onError('boom'); await Promise.resolve(); await Promise.resolve() })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.error).toBeTruthy()
+  })
+
+  it('reattach reconciles when the run-stream request fails to open', async () => {
+    // Codex iter 1 P2: a setup/transport failure rejects the streamChat promise
+    // before its reader loop; it must not leave the UI streaming forever.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    mockStreamChat.mockImplementation(() => Promise.reject(new Error('network down')))
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      await result.current.loadConversation('conv-1')
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.error).toBe('network down')
+  })
+
+  it('loadConversation stays stable when onConversationUpdated identity changes', () => {
+    // Regression for codex iter 3 P1: ChatPage passes a fresh onConversationUpdated
+    // every render. If loadConversation changed identity with it, ChatPage's
+    // URL-load effect would re-run and reload in a loop. The hook holds the
+    // callback behind a ref so loadConversation (and send/edit/reattach) stay
+    // referentially stable.
+    const { result, rerender } = renderHook(
+      ({ cb }) => useChat({ onConversationUpdated: cb }),
+      { initialProps: { cb: () => {} } },
+    )
+    const firstLoad = result.current.loadConversation
+    const firstSend = result.current.sendMessage
+
+    rerender({ cb: () => {} }) // brand-new callback identity
+
+    expect(result.current.loadConversation).toBe(firstLoad)
+    expect(result.current.sendMessage).toBe(firstSend)
   })
 
   it('stopStreaming with no active conversation is a harmless no-op', async () => {

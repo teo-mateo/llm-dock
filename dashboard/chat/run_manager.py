@@ -177,10 +177,19 @@ class ChatRunManager:
     def subscribe(self, run_id: str):
         return self.event_bus.subscribe(run_id)
 
-    def observe(self, run_id: str, q):
+    def subscribe_with_replay(self, run_id: str):
+        """Subscribe and capture the run's in-flight history (for reattach)."""
+        return self.event_bus.subscribe_with_replay(run_id)
+
+    def observe(self, run_id: str, q, replay=()):
         """SSE generator: drain the bus queue for a run, emitting legacy SSE
         frames, until the STREAM_END sentinel. Injects heartbeats on idle so
         the connection stays alive during slow model output.
+
+        `replay` is the history captured atomically with the subscription (see
+        subscribe_with_replay): for a client reattaching mid-run it replays
+        everything generated before it subscribed, so the in-progress turn
+        renders in full before the live tail. Empty for the fresh-send path.
 
         Closing this generator (client disconnect) only unsubscribes — the
         background run keeps going.
@@ -193,6 +202,15 @@ class ChatRunManager:
             # _sse_frames_for to avoid a duplicate). Lets the client POST
             # /runs/<id>/cancel even for a still-queued run.
             yield encode_sse_event("run_started", {"run_id": run_id})
+            # Replay the in-flight history first so a reattaching client sees the
+            # content generated before it returned. These events are NOT on the
+            # live queue (the snapshot was taken atomically with the subscribe),
+            # so there is no duplication with the loop below.
+            for event in replay:
+                for frame in _sse_frames_for(event):
+                    yield frame
+                if event.type == STREAM_END:
+                    return
             while True:
                 try:
                     event = q.get(timeout=HEARTBEAT_INTERVAL_S)

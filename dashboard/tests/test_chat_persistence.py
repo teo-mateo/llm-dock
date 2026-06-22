@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import runtime
 from chat.db import ChatDB
+from chat.event_bus import EventBus
 from chat.models import Conversation, Message, ChatRun
 from chat.runs import ChatRunStatus
 from chat.runtime import ChatRunner, ChatTurnRequest
@@ -189,6 +190,37 @@ def test_null_policy_pre_start_cancel_does_not_open_stream(monkeypatch):
     assert opened["iterated"] is False        # the costly stream never opened
     assert bus.types() == ["run_cancelled"]   # no run_started for a pre-start cancel
     assert [m.role for m in policy.messages] == ["user"]  # no assistant appended
+
+
+def test_direct_runner_completion_frees_replay_history(monkeypatch):
+    """A ChatRunner driven directly with a real bus (no run-manager) ends on
+    run_completed and never emits the manager-only stream_end, yet its replay
+    history is still freed — proving cleanup is on the terminal-event contract,
+    not the sentinel."""
+    _patch_stream(monkeypatch, _stub)  # two deltas + done
+    bus = EventBus()
+    conv = _conv()
+    policy = NullPersistencePolicy(messages=[_user_msg(conv)])
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id, status=ChatRunStatus.QUEUED)
+
+    ChatRunner(persistence=policy, event_bus=bus).run(run, ChatTurnRequest(conversation=conv))
+
+    assert run.id not in bus._replay  # freed on run_completed, no stream_end needed
+
+
+def test_direct_runner_failure_frees_replay_history(monkeypatch):
+    def _boom():
+        yield ("error", {"message": "model exploded"})
+
+    _patch_stream(monkeypatch, _boom)
+    bus = EventBus()
+    conv = _conv()
+    policy = NullPersistencePolicy(messages=[_user_msg(conv)])
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id, status=ChatRunStatus.QUEUED)
+
+    ChatRunner(persistence=policy, event_bus=bus).run(run, ChatTurnRequest(conversation=conv))
+
+    assert run.id not in bus._replay  # freed on run_failed
 
 
 # -- seam shape ----------------------------------------------------------

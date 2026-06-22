@@ -64,18 +64,50 @@ export default function useChat({ onConversationUpdated } = {}) {
   // kill a newer run that started after the one the user stopped. Reset at the
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
+  // Monotonic load generation. Incremented synchronously at the start of every
+  // loadConversation; the post-fetch reattach only fires if it is still the
+  // latest. The id guard (observedConvIdRef) alone is insufficient when two
+  // loads share a conversation id — React StrictMode runs the URL-load effect
+  // twice on mount, and an A→B→A navigation re-loads A while A's first fetch is
+  // pending. Without the generation, both same-id loads pass the id guard, each
+  // opens its own run stream, and the replay + live deltas render twice.
+  const loadGenRef = useRef(0)
+  // Hold the caller's onConversationUpdated behind a ref and expose a STABLE
+  // wrapper. Callers (ChatPage) pass a fresh inline function each render; if the
+  // stream callbacks depended on it directly, sendMessage/editMessage/reattachRun
+  // — and therefore loadConversation — would change identity every render, and
+  // ChatPage's URL-load effect (deps on loadConversation) would re-run and
+  // reload in a loop. The wrapper's identity never changes, so those callbacks
+  // stay stable.
+  const onConversationUpdatedRef = useRef(onConversationUpdated)
+  useEffect(() => { onConversationUpdatedRef.current = onConversationUpdated }, [onConversationUpdated])
+  const handleConversationUpdated = useCallback((evt) => {
+    onConversationUpdatedRef.current?.(evt)
+  }, [])
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
   // own pipe before the trailing conversation_updated event (auto-title)
   // arrives.
-  const refetchMessages = useCallback(async (convId) => {
+  //
+  // `isFresh` is an optional predicate, re-checked AFTER the fetch resolves,
+  // that must still hold for the result to be committed. The id guard alone
+  // can't order two same-id fetches: with concurrent same-id loads the
+  // responses can arrive oldest-last, so an older snapshot ({active_run:
+  // running}) would otherwise overwrite a newer one ({active_run: null}) and
+  // leave stale state. loadConversation passes its generation here so only the
+  // latest load commits. Other callers (post-save drain, reconcile) pass none
+  // and keep the plain id-only behavior.
+  const refetchMessages = useCallback(async (convId, isFresh) => {
+    const stillCurrent = () => observedConvIdRef.current === convId
+                               && (isFresh ? isFresh() : true)
     try {
       const data = await getConversation(convId)
-      // Drop the result if the user navigated to a different conversation while
-      // this fetch was in flight — otherwise a late resolve writes stale
-      // conversation/messages over the one now intended (request-sequencing).
-      if (observedConvIdRef.current !== convId) return
+      // Drop the result if the user navigated to a different conversation, or a
+      // newer same-id load superseded this one, while the fetch was in flight —
+      // otherwise a late resolve writes stale conversation/messages over the one
+      // now intended (request-sequencing).
+      if (!stillCurrent()) return null
       setConversation(data)
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
@@ -86,9 +118,11 @@ export default function useChat({ onConversationUpdated } = {}) {
       if (data.last_run?.status === 'failed' && data.last_run.error) {
         setError(data.last_run.error)
       }
+      return data
     } catch (err) {
-      if (observedConvIdRef.current !== convId) return
+      if (!stillCurrent()) return null
       setError(err.message)
+      return null
     }
   }, [])
 
@@ -127,7 +161,144 @@ export default function useChat({ onConversationUpdated } = {}) {
       })
   }, [refetchMessages])
 
+  // Reattach to a still-running background run's live stream (the user
+  // navigated away and came back). Feeds the run-stream SSE frames through the
+  // same handlers as a live send so the in-progress turn renders in full — the
+  // backend replays the buffered history first, then the live tail. No
+  // optimistic user row here: the transcript was just refetched, so the user
+  // message is already persisted.
+  const reattachRun = useCallback((conv) => {
+    const run = conv.active_run
+    if (!isRunActive(run)) return
+
+    setError(null)
+    setStreaming(true)
+    setStreamingContent('')
+    setStreamingReasoning('')
+    setToolEvents([])
+    setPendingToolCalls([])
+    setHeartbeat(null)
+    setStreamingArtifacts([])
+    setStreamingParseWarning(null)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    drainingRef.current = false
+    runIdRef.current = run.id        // id known → Stop stays guarded
+    setRunReady(true)
+    liveControllersRef.current.add(controller)
+
+    // Did a terminal signal (saved / run_status / error) already reconcile this
+    // reattach? If the stream instead closes silently — the run was cancelled
+    // elsewhere, which the bus emits no frame for — or a setup/transport error
+    // rejects the promise, we still must drop `streaming` and refetch so the
+    // (now terminal) active_run can't leave the composer stuck disabled.
+    let terminalSeen = false
+    const reconcile = () => {
+      // Gate entirely on still observing this conversation: if the user
+      // navigated away (which aborted this stream), do nothing — clearing
+      // `streaming` here would stomp the conversation they moved to (which may
+      // itself be reattaching).
+      if (observedConvIdRef.current !== conv.id) return
+      setStreaming(false)
+      setHeartbeat(null)
+      setPendingToolCalls([])
+      refetchMessages(conv.id)
+    }
+
+    streamChat(`/chat/runs/${run.id}/stream`, null, {
+      method: 'GET',
+      signal: controller.signal,
+      onDelta: ({ content: c, reasoning_content: r }) => {
+        setHeartbeat(null)
+        if (c) setStreamingContent(prev => prev + c)
+        if (r) setStreamingReasoning(prev => prev + r)
+      },
+      onHeartbeat: (evt) => setHeartbeat({ elapsed_s: evt.elapsed_s }),
+      onParseWarning: (evt) => setStreamingParseWarning({
+        kind: evt.kind, snippet: evt.snippet, description: evt.description,
+      }),
+      onToolCallPending: (evt) => {
+        setHeartbeat(null)
+        setPendingToolCalls(prev => {
+          const others = prev.filter(p => p.index !== evt.index)
+          return [...others, { index: evt.index, name: evt.name }]
+        })
+      },
+      onToolCall: (evt) => {
+        setHeartbeat(null)
+        setPendingToolCalls([])
+        setToolEvents(prev => [...prev, { type: 'call', ...evt }])
+      },
+      onToolResult: (evt) => {
+        setHeartbeat(null)
+        setToolEvents(prev => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            const e = prev[i]
+            if (e.type === 'call' && e.name === evt.name && !('result' in e)) {
+              const next = [...prev]
+              next[i] = { ...e, result: evt.result, server_id: evt.server_id }
+              return next
+            }
+          }
+          return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
+        })
+        // New round begins after a tool result — reset the visible content.
+        setStreamingContent('')
+      },
+      onArtifact: (evt) => setStreamingArtifacts(prev => [...prev, evt]),
+      onConversationUpdated: handleConversationUpdated,
+      onMessageSaved: () => {
+        terminalSeen = true
+        setStreamingContent('')
+        setStreamingReasoning('')
+        setStreaming(false)
+        setPendingToolCalls([])
+        setHeartbeat(null)
+        drainingRef.current = true
+        refetchMessages(conv.id)
+      },
+      onRunStatus: () => {
+        // The run was already terminal when we reattached (it finished just
+        // before/as we returned) — no live frames coming. Refetch shows the
+        // persisted reply, or a failed-run error via last_run.
+        terminalSeen = true
+        reconcile()
+      },
+      onError: (msg) => {
+        // A live failure delivered after attach. Surface it AND refetch so the
+        // now-failed active_run stops blocking the next send/edit.
+        terminalSeen = true
+        setError(msg)
+        setStreamingContent('')
+        setStreamingReasoning('')
+        drainingRef.current = false
+        reconcile()
+      },
+    })
+      .catch((err) => {
+        // Setup/transport failure (token/fetch/response body) before streamChat's
+        // own reader loop — it rejects here rather than calling onError.
+        if (err?.name !== 'AbortError') {
+          terminalSeen = true
+          if (observedConvIdRef.current === conv.id) setError(err?.message || 'Reattach failed')
+          reconcile()
+        }
+      })
+      .finally(() => {
+        liveControllersRef.current.delete(controller)
+        // Closed with no terminal signal — the run was cancelled elsewhere (the
+        // bus emits no frame for run_cancelled / stream_end). Reconcile so the
+        // UI doesn't stay stuck on `streaming`.
+        if (!terminalSeen) reconcile()
+      })
+  }, [refetchMessages, handleConversationUpdated])
+
   const loadConversation = useCallback(async (convId) => {
+    // Claim this load's generation synchronously, before awaiting the fetch.
+    // Only the latest load may reattach; a superseded same-id load (StrictMode
+    // double-mount, or A→B→A re-entry) must not open a second run stream.
+    const gen = ++loadGenRef.current
     // Claim the intended conversation synchronously, before awaiting the fetch.
     // This is what makes a concurrent post-cancel reconcile for the PREVIOUS
     // conversation skip: it gates on observedConvIdRef, which now already names
@@ -156,8 +327,19 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
     setError(null)
-    await refetchMessages(convId)
-  }, [refetchMessages])
+    // Pass the generation as the freshness predicate so a superseded same-id
+    // load neither commits its (stale) snapshot nor reattaches — refetchMessages
+    // returns null for it, short-circuiting the reattach below.
+    const data = await refetchMessages(convId, () => loadGenRef.current === gen)
+    // If the conversation's run is still going, reattach to its live stream so
+    // the in-progress turn streams in as if we never left. Gate on BOTH the
+    // intended conversation and this load's generation so a slow load that lost
+    // the navigation race — or a superseded same-id load — doesn't attach.
+    if (data && loadGenRef.current === gen && observedConvIdRef.current === convId
+        && isRunActive(data.active_run)) {
+      reattachRun(data)
+    }
+  }, [refetchMessages, reattachRun])
 
   const sendMessage = useCallback(async (content, images) => {
     // Block a send while a run is active for this conversation (including a
@@ -266,7 +448,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         onDone: () => {
           // Will be followed by message_saved
         },
-        onConversationUpdated,
+        onConversationUpdated: handleConversationUpdated,
         onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
         onMessageSaved: (data) => {
           const assistantMsg = {
@@ -314,7 +496,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, refetchMessages, handleConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     // Block edits while a run is active for this conversation — including a
@@ -348,9 +530,6 @@ export default function useChat({ onConversationUpdated } = {}) {
     setRunReady(false)
     liveControllersRef.current.add(controller)
 
-    let fullContent = ''
-    let fullReasoning = ''
-
     try {
       await streamChat(
         `/chat/conversations/${conversation.id}/messages/${msgId}`,
@@ -361,11 +540,9 @@ export default function useChat({ onConversationUpdated } = {}) {
           onDelta: ({ content: c, reasoning_content: r }) => {
             setHeartbeat(null)
             if (c) {
-              fullContent += c
               setStreamingContent(prev => prev + c)
             }
             if (r) {
-              fullReasoning += r
               setStreamingReasoning(prev => prev + r)
             }
           },
@@ -405,13 +582,12 @@ export default function useChat({ onConversationUpdated } = {}) {
               return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
             })
             setStreamingContent('')
-            fullContent = ''
           },
           onArtifact: (evt) => {
             setStreamingArtifacts(prev => [...prev, evt])
           },
           onDone: () => {},
-          onConversationUpdated,
+          onConversationUpdated: handleConversationUpdated,
           onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
           onMessageSaved: () => {
             setStreamingContent('')
@@ -439,7 +615,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, handleConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
