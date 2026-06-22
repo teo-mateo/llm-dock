@@ -27,10 +27,15 @@ class _FakeResp:
         self.closed = True
 
 
-def _patch(monkeypatch, resp):
+def _patch(monkeypatch, resp, captured=None):
     monkeypatch.setattr(llm_proxy, "resolve_service",
                         lambda name: {"host_port": 1234, "api_key": "k"})
-    monkeypatch.setattr(llm_proxy.requests, "post", lambda *a, **k: resp)
+
+    def _post(*a, **k):
+        if captured is not None:
+            captured.update(k.get("json", {}))
+        return resp
+    monkeypatch.setattr(llm_proxy.requests, "post", _post)
 
 
 def test_response_closed_on_normal_completion(monkeypatch):
@@ -56,3 +61,37 @@ def test_response_closed_on_early_generator_close(monkeypatch):
     assert next(gen)[0] == "delta"   # consume one event, leaving the stream open
     gen.close()                      # GeneratorExit -> finally -> resp.close()
     assert resp.closed
+
+
+def test_tool_choice_override_with_tools(monkeypatch):
+    # tool_choice overrides the default "auto" when tools are supplied.
+    resp = _FakeResp(['data: [DONE]'])
+    captured = {}
+    _patch(monkeypatch, resp, captured)
+
+    list(llm_proxy.stream_chat_completion("svc", [], tools=[{"type": "function"}],
+                                          tool_choice="none"))
+    assert captured["tool_choice"] == "none"
+    assert "tools" in captured
+
+
+def test_tool_choice_pinned_without_tools(monkeypatch):
+    # tool_choice="none" is still sent even when no tool schemas are in the
+    # request (the forced-final path), for backends that honor it.
+    resp = _FakeResp(['data: [DONE]'])
+    captured = {}
+    _patch(monkeypatch, resp, captured)
+
+    list(llm_proxy.stream_chat_completion("svc", [], tools=None, tool_choice="none"))
+    assert captured["tool_choice"] == "none"
+    assert "tools" not in captured
+
+
+def test_default_tool_choice_auto_with_tools(monkeypatch):
+    # Unchanged default: tools without an explicit tool_choice -> "auto".
+    resp = _FakeResp(['data: [DONE]'])
+    captured = {}
+    _patch(monkeypatch, resp, captured)
+
+    list(llm_proxy.stream_chat_completion("svc", [], tools=[{"type": "function"}]))
+    assert captured["tool_choice"] == "auto"
