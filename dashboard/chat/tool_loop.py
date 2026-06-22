@@ -117,10 +117,17 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
             # No tool calls and no done event — shouldn't happen, but handle gracefully
             return
 
-    # Exceeded max rounds — do one final call without tools to force a response
+    # Exceeded max rounds — do one final call that forbids further tool calls
+    # (tool_choice="none") so the model produces a prose answer instead of yet
+    # another tool call we would not execute.
     logger.warning(f"Exceeded {MAX_TOOL_ROUNDS} tool call rounds, forcing final response")
-    for event_type, data in stream_chat_completion(service_name, messages_array, tools=None):
+    final_content = []
+    final_reasoning = []
+    for event_type, data in stream_chat_completion(service_name, messages_array, tools=tools,
+                                                   tool_choice="none"):
         if event_type == "delta":
+            final_content.append(data.get("content") or "")
+            final_reasoning.append(data.get("reasoning_content") or "")
             yield ("delta", data)
         elif event_type == "tool_call_pending":
             yield ("tool_call_pending", data)
@@ -132,3 +139,16 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
         elif event_type == "error":
             yield ("error", data)
             return
+        # A "tool_calls" event (a backend that ignored tool_choice="none" and
+        # emitted another call) is intentionally NOT executed here — we are past
+        # the round cap. It falls through to the synthesized done below.
+
+    # The forced-final stream ended without a terminal done/error — e.g. it
+    # emitted a tool_calls event (unhandled above) or exhausted silently.
+    # Synthesize a done from whatever prose streamed so the turn ALWAYS
+    # terminates cleanly, instead of the caller failing it as "Stream ended
+    # unexpectedly" after the user already waited out every tool round.
+    yield ("done", {
+        "content": "".join(final_content),
+        "reasoning_content": "".join(final_reasoning) or None,
+    })

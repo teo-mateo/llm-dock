@@ -95,7 +95,8 @@ def build_messages_array(system_prompt: str, messages: list) -> list:
     return arr
 
 
-def stream_chat_completion(service_name: str, messages_array: list, tools: list = None):
+def stream_chat_completion(service_name: str, messages_array: list, tools: list = None,
+                           tool_choice: str = None):
     """Stream a chat completion from a llama.cpp service.
 
     Yields (event_type, data) tuples:
@@ -103,6 +104,10 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
       - ("done", {"content": full_content, "reasoning_content": full_reasoning})
       - ("tool_calls", {"tool_calls": [{"id": ..., "function": {"name": ..., "arguments": ...}}]})
       - ("error", {"message": ...})
+
+    `tool_choice` overrides the default. When `tools` are supplied it defaults to
+    "auto"; pass "none" to forbid tool calls (e.g. the tool-loop's forced final
+    response, which must produce prose, not yet another tool call).
     """
     svc = resolve_service(service_name)
     if svc is None:
@@ -120,13 +125,17 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     }
     if tools:
         payload["tools"] = tools
-        payload["tool_choice"] = "auto"
+        payload["tool_choice"] = tool_choice or "auto"
         # Tool-using turns are sensitive to sampling variance: at vLLM's
         # default temperature=1.0, the model occasionally drifts from the
         # structured tool-call format into XML-in-content (`<arg_key>...`
         # `</function>` ghost calls, etc.). 0.3 keeps the format on-rails
         # without making the answer prose feel robotic.
         payload["temperature"] = 0.3
+    elif tool_choice is not None:
+        # No tool schemas in the request, but still pin tool_choice (e.g.
+        # "none" on the forced final response) for backends that honor it.
+        payload["tool_choice"] = tool_choice
 
     collected_content = ""
     collected_reasoning = ""
