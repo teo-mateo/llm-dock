@@ -64,6 +64,18 @@ export default function useChat({ onConversationUpdated } = {}) {
   // kill a newer run that started after the one the user stopped. Reset at the
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
+  // Hold the caller's onConversationUpdated behind a ref and expose a STABLE
+  // wrapper. Callers (ChatPage) pass a fresh inline function each render; if the
+  // stream callbacks depended on it directly, sendMessage/editMessage/reattachRun
+  // — and therefore loadConversation — would change identity every render, and
+  // ChatPage's URL-load effect (deps on loadConversation) would re-run and
+  // reload in a loop. The wrapper's identity never changes, so those callbacks
+  // stay stable.
+  const onConversationUpdatedRef = useRef(onConversationUpdated)
+  useEffect(() => { onConversationUpdatedRef.current = onConversationUpdated }, [onConversationUpdated])
+  const handleConversationUpdated = useCallback((evt) => {
+    onConversationUpdatedRef.current?.(evt)
+  }, [])
 
   // Refetch the conversation from the server WITHOUT touching the active
   // SSE stream. Used by the message_saved handler so we don't cancel our
@@ -215,7 +227,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         setStreamingContent('')
       },
       onArtifact: (evt) => setStreamingArtifacts(prev => [...prev, evt]),
-      onConversationUpdated,
+      onConversationUpdated: handleConversationUpdated,
       onMessageSaved: () => {
         terminalSeen = true
         setStreamingContent('')
@@ -260,7 +272,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         // UI doesn't stay stuck on `streaming`.
         if (!terminalSeen) reconcile()
       })
-  }, [refetchMessages, onConversationUpdated])
+  }, [refetchMessages, handleConversationUpdated])
 
   const loadConversation = useCallback(async (convId) => {
     // Claim the intended conversation synchronously, before awaiting the fetch.
@@ -407,7 +419,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         onDone: () => {
           // Will be followed by message_saved
         },
-        onConversationUpdated,
+        onConversationUpdated: handleConversationUpdated,
         onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
         onMessageSaved: (data) => {
           const assistantMsg = {
@@ -455,7 +467,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, refetchMessages, handleConversationUpdated])
 
   const editMessage = useCallback(async (msgId, content) => {
     // Block edits while a run is active for this conversation — including a
@@ -489,9 +501,6 @@ export default function useChat({ onConversationUpdated } = {}) {
     setRunReady(false)
     liveControllersRef.current.add(controller)
 
-    let fullContent = ''
-    let fullReasoning = ''
-
     try {
       await streamChat(
         `/chat/conversations/${conversation.id}/messages/${msgId}`,
@@ -502,11 +511,9 @@ export default function useChat({ onConversationUpdated } = {}) {
           onDelta: ({ content: c, reasoning_content: r }) => {
             setHeartbeat(null)
             if (c) {
-              fullContent += c
               setStreamingContent(prev => prev + c)
             }
             if (r) {
-              fullReasoning += r
               setStreamingReasoning(prev => prev + r)
             }
           },
@@ -546,13 +553,12 @@ export default function useChat({ onConversationUpdated } = {}) {
               return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
             })
             setStreamingContent('')
-            fullContent = ''
           },
           onArtifact: (evt) => {
             setStreamingArtifacts(prev => [...prev, evt])
           },
           onDone: () => {},
-          onConversationUpdated,
+          onConversationUpdated: handleConversationUpdated,
           onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
           onMessageSaved: () => {
             setStreamingContent('')
@@ -580,7 +586,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, loadConversation, refetchMessages, onConversationUpdated])
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, handleConversationUpdated])
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:

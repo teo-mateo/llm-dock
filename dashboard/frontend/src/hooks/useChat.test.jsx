@@ -504,6 +504,25 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.error).toBe('network down')
   })
 
+  it('loadConversation stays stable when onConversationUpdated identity changes', () => {
+    // Regression for codex iter 3 P1: ChatPage passes a fresh onConversationUpdated
+    // every render. If loadConversation changed identity with it, ChatPage's
+    // URL-load effect would re-run and reload in a loop. The hook holds the
+    // callback behind a ref so loadConversation (and send/edit/reattach) stay
+    // referentially stable.
+    const { result, rerender } = renderHook(
+      ({ cb }) => useChat({ onConversationUpdated: cb }),
+      { initialProps: { cb: () => {} } },
+    )
+    const firstLoad = result.current.loadConversation
+    const firstSend = result.current.sendMessage
+
+    rerender({ cb: () => {} }) // brand-new callback identity
+
+    expect(result.current.loadConversation).toBe(firstLoad)
+    expect(result.current.sendMessage).toBe(firstSend)
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.
