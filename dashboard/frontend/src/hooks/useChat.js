@@ -64,6 +64,14 @@ export default function useChat({ onConversationUpdated } = {}) {
   // kill a newer run that started after the one the user stopped. Reset at the
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
+  // Monotonic load generation. Incremented synchronously at the start of every
+  // loadConversation; the post-fetch reattach only fires if it is still the
+  // latest. The id guard (observedConvIdRef) alone is insufficient when two
+  // loads share a conversation id — React StrictMode runs the URL-load effect
+  // twice on mount, and an A→B→A navigation re-loads A while A's first fetch is
+  // pending. Without the generation, both same-id loads pass the id guard, each
+  // opens its own run stream, and the replay + live deltas render twice.
+  const loadGenRef = useRef(0)
   // Hold the caller's onConversationUpdated behind a ref and expose a STABLE
   // wrapper. Callers (ChatPage) pass a fresh inline function each render; if the
   // stream callbacks depended on it directly, sendMessage/editMessage/reattachRun
@@ -275,6 +283,10 @@ export default function useChat({ onConversationUpdated } = {}) {
   }, [refetchMessages, handleConversationUpdated])
 
   const loadConversation = useCallback(async (convId) => {
+    // Claim this load's generation synchronously, before awaiting the fetch.
+    // Only the latest load may reattach; a superseded same-id load (StrictMode
+    // double-mount, or A→B→A re-entry) must not open a second run stream.
+    const gen = ++loadGenRef.current
     // Claim the intended conversation synchronously, before awaiting the fetch.
     // This is what makes a concurrent post-cancel reconcile for the PREVIOUS
     // conversation skip: it gates on observedConvIdRef, which now already names
@@ -305,9 +317,11 @@ export default function useChat({ onConversationUpdated } = {}) {
     setError(null)
     const data = await refetchMessages(convId)
     // If the conversation's run is still going, reattach to its live stream so
-    // the in-progress turn streams in as if we never left. Gate on the intended
-    // conversation so a slow load that lost the navigation race doesn't attach.
-    if (data && observedConvIdRef.current === convId && isRunActive(data.active_run)) {
+    // the in-progress turn streams in as if we never left. Gate on BOTH the
+    // intended conversation and this load's generation so a slow load that lost
+    // the navigation race — or a superseded same-id load — doesn't attach.
+    if (data && loadGenRef.current === gen && observedConvIdRef.current === convId
+        && isRunActive(data.active_run)) {
       reattachRun(data)
     }
   }, [refetchMessages, reattachRun])

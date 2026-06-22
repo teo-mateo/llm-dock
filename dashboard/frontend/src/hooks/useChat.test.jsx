@@ -414,6 +414,38 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.streamingContent).toBe('Hello world')
   })
 
+  it('opens only one run stream when the same conversation is loaded twice concurrently', async () => {
+    // Regression for codex iter 4 P1: React StrictMode runs the URL-load effect
+    // twice on mount, and A→B→A navigation re-loads A while the first A fetch is
+    // pending. Both same-id loads pass the conversation-id guard; without a load
+    // generation each would open its own GET run stream and replay/live-render
+    // every delta twice. Two deferred same-id loads must open exactly one stream.
+    const resolvers = []
+    mockGetConversation.mockImplementation(() => new Promise((res) => { resolvers.push(res) }))
+    const streamUrls = []
+    mockStreamChat.mockImplementation((url) => { streamUrls.push(url); return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      // Kick off both loads before either fetch resolves (StrictMode double-mount).
+      const p1 = result.current.loadConversation('conv-1')
+      const p2 = result.current.loadConversation('conv-1')
+      const data = {
+        ...CONV,
+        active_run: { id: 'run-bg', status: 'running' },
+        messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+        critiques: {},
+        artifacts: {},
+      }
+      resolvers.forEach((r) => r(data))  // resolve BOTH pending fetches
+      await Promise.all([p1, p2])
+    })
+
+    // Exactly one reattach stream — the superseded load did not open a second.
+    expect(streamUrls).toEqual(['/chat/runs/run-bg/stream'])
+    expect(result.current.streaming).toBe(true)
+  })
+
   it('does not reattach when the loaded conversation has no active run', async () => {
     mockGetConversation.mockResolvedValue({
       ...CONV, active_run: null, messages: [], critiques: {}, artifacts: {},
