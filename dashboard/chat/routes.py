@@ -362,8 +362,8 @@ def stream_run(run_id):
             yield encode_sse_event("run_status", {"status": run.status, "error": run.error})
         return Response(terminal(), mimetype="text/event-stream", headers=headers)
 
-    q = manager.subscribe(run_id)
-    return Response(stream_with_context(manager.observe(run_id, q)),
+    q, replay = manager.subscribe_with_replay(run_id)
+    return Response(stream_with_context(manager.observe(run_id, q, replay)),
                     mimetype="text/event-stream", headers=headers)
 
 

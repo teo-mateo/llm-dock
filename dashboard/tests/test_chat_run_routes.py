@@ -340,6 +340,84 @@ def test_observe_backstop_closes_when_run_goes_terminal(ctx, monkeypatch):
         next(gen)
 
 
+def _delta_evt(content):
+    return runtime.ChatRuntimeEvent(
+        "delta", {"content": content, "reasoning_content": "",
+                  "raw": json.dumps({"choices": [{"delta": {"content": content}}]})})
+
+
+def test_reattach_replays_in_flight_history(ctx):
+    """A client reattaching mid-run replays everything generated before it
+    subscribed, then receives live events exactly once."""
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    # Progress that happened before the client returned.
+    bus.publish(run.id, _delta_evt("Hello "))
+    bus.publish(run.id, _delta_evt("world"))
+
+    q, replay = manager.subscribe_with_replay(run.id)
+    gen = manager.observe(run.id, q, replay)
+
+    assert "run_started" in next(gen)
+    # Replayed history comes before any live event.
+    assert "Hello " in next(gen)
+    assert "world" in next(gen)
+
+    # A live event after reattach is delivered too, and only once.
+    bus.publish(run.id, _delta_evt("!"))
+    assert "!" in next(gen)
+
+    bus.publish(run.id, runtime.ChatRuntimeEvent(run_manager_module.STREAM_END, {}))
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_reattach_after_completion_drops_replay(ctx, monkeypatch):
+    """Once a run ends (STREAM_END) its replay history is dropped; a later
+    reattach falls back to the DB terminal backstop instead of replaying."""
+    app, db, manager = ctx
+    monkeypatch.setattr(run_manager_module, "HEARTBEAT_INTERVAL_S", 0.02)
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    bus.publish(run.id, _delta_evt("partial"))
+    bus.publish(run.id, runtime.ChatRuntimeEvent(run_manager_module.STREAM_END, {}))
+    db.complete_chat_run(run.id)
+
+    q, replay = manager.subscribe_with_replay(run.id)
+    assert replay == []  # history dropped on STREAM_END
+
+    gen = manager.observe(run.id, q, replay)
+    assert "run_started" in next(gen)
+    nxt = next(gen)  # no replay, no live events -> backstop closes on terminal
+    assert "run_status" in nxt and "completed" in nxt
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_subscribe_with_replay_snapshot_excludes_later_events(ctx):
+    """The history captured by subscribe_with_replay is a cut: events published
+    AFTER it go to the queue (and are not duplicated in the snapshot)."""
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    bus.publish(run.id, _delta_evt("before"))
+    q, replay = manager.subscribe_with_replay(run.id)
+    bus.publish(run.id, _delta_evt("after"))
+
+    replay_text = "".join(f for ev in replay for f in run_manager_module._sse_frames_for(ev))
+    assert "before" in replay_text
+    assert "after" not in replay_text  # later event is on the queue, not the snapshot
+    queued = run_manager_module._sse_frames_for(q.get_nowait())
+    assert any("after" in f for f in queued)
+
+
 def test_run_started_emitted_first_even_when_workers_saturated(tmp_path, monkeypatch):
     """run_started reaches the client immediately even if the run's worker is
     still queued behind a saturated pool (the observer synthesizes it)."""

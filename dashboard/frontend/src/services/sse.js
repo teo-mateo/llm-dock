@@ -8,7 +8,7 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
  * Stream a chat completion via SSE.
  * Uses fetch + ReadableStream because EventSource doesn't support auth headers.
  */
-export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolCallPending, onToolResult, onArtifact, onConversationUpdated, onHeartbeat, onParseWarning, onRunStarted, signal, method = 'POST' }) {
+export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolCallPending, onToolResult, onArtifact, onConversationUpdated, onHeartbeat, onParseWarning, onRunStarted, onRunStatus, signal, method = 'POST' }) {
   const token = getToken()
   if (!token) throw new Error('Not authenticated')
 
@@ -18,7 +18,8 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    // GET reattach (the run-stream endpoint) carries no body.
+    body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(body),
     signal,
   })
 
@@ -84,6 +85,13 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
           }
           if (parsed.type === 'heartbeat') {
             onHeartbeat?.(parsed)
+            continue
+          }
+          if (parsed.type === 'run_status') {
+            // Emitted by the reattach stream when the run is already terminal
+            // (finished before/just as we reconnected) — the caller refetches
+            // the persisted result rather than expecting live frames.
+            onRunStatus?.(parsed)
             continue
           }
           if (parsed.type === 'parse_warning') {

@@ -40,6 +40,10 @@ beforeEach(() => {
   mockGetConversation.mockReset()
   mockCancelActiveRun.mockResolvedValue({ run: null })
   mockGetConversation.mockResolvedValue({ ...CONV, messages: [], critiques: {}, artifacts: {} })
+  // Default: a stream that stays open. Reattach (loadConversation onto an
+  // active_run) and any send that doesn't set its own impl get a valid promise
+  // to attach to instead of undefined.
+  mockStreamChat.mockImplementation(() => new Promise(() => {}))
 })
 
 afterEach(() => {
@@ -307,9 +311,12 @@ describe('useChat stop/cancel wiring', () => {
     const { result } = renderHook(() => useChat({}))
 
     await act(async () => { await result.current.loadConversation('conv-1') })
+    // Loading an active-run conversation reattaches to its stream (one call);
+    // the blocked edit must not open ANOTHER stream.
+    const callsAfterLoad = mockStreamChat.mock.calls.length
     await act(async () => { await result.current.editMessage('u1', 'edited') })
 
-    expect(mockStreamChat).not.toHaveBeenCalled()
+    expect(mockStreamChat.mock.calls.length).toBe(callsAfterLoad)
     expect(result.current.messages.some(m => m.id === 'temp-edit')).toBe(false)
   })
 
@@ -372,6 +379,76 @@ describe('useChat stop/cancel wiring', () => {
     await act(async () => { await result.current.loadConversation('conv-1') })
 
     expect(result.current.error).toBeNull()
+  })
+
+  it('reattaches to the live run stream when loading an in-progress conversation', async () => {
+    // The fix for the "no progress on return" bug: loading a conversation whose
+    // run is still active opens GET /chat/runs/<id>/stream and renders live.
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: { id: 'run-bg', status: 'running' },
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    let handlers
+    mockStreamChat.mockImplementation((url, _body, h) => {
+      handlers = { url, ...h }
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    // Opened the run-stream endpoint (GET, no body) and entered streaming.
+    expect(handlers.url).toBe('/chat/runs/run-bg/stream')
+    expect(handlers.method).toBe('GET')
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.runReady).toBe(true)
+
+    // Replayed + live deltas render into streamingContent.
+    act(() => {
+      handlers.onDelta({ content: 'Hello ', reasoning_content: '' })
+      handlers.onDelta({ content: 'world', reasoning_content: '' })
+    })
+    expect(result.current.streamingContent).toBe('Hello world')
+  })
+
+  it('does not reattach when the loaded conversation has no active run', async () => {
+    mockGetConversation.mockResolvedValue({
+      ...CONV, active_run: null, messages: [], critiques: {}, artifacts: {},
+    })
+    const calls = []
+    mockStreamChat.mockImplementation((url) => { calls.push(url); return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+
+    expect(calls).toEqual([])
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('reattach to an already-finished run refetches instead of hanging', async () => {
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: { id: 'run-bg', status: 'running' },
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    let handlers
+    mockStreamChat.mockImplementation((url, _body, h) => { handlers = h; return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    expect(result.current.streaming).toBe(true)
+
+    // The run finished just as we reattached: a terminal run_status arrives.
+    await act(async () => {
+      handlers.onRunStatus({ type: 'run_status', status: 'completed' })
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(false)
   })
 
   it('stopStreaming with no active conversation is a harmless no-op', async () => {

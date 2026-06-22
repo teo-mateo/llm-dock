@@ -75,7 +75,7 @@ export default function useChat({ onConversationUpdated } = {}) {
       // Drop the result if the user navigated to a different conversation while
       // this fetch was in flight — otherwise a late resolve writes stale
       // conversation/messages over the one now intended (request-sequencing).
-      if (observedConvIdRef.current !== convId) return
+      if (observedConvIdRef.current !== convId) return null
       setConversation(data)
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
@@ -86,9 +86,11 @@ export default function useChat({ onConversationUpdated } = {}) {
       if (data.last_run?.status === 'failed' && data.last_run.error) {
         setError(data.last_run.error)
       }
+      return data
     } catch (err) {
-      if (observedConvIdRef.current !== convId) return
+      if (observedConvIdRef.current !== convId) return null
       setError(err.message)
+      return null
     }
   }, [])
 
@@ -127,6 +129,107 @@ export default function useChat({ onConversationUpdated } = {}) {
       })
   }, [refetchMessages])
 
+  // Reattach to a still-running background run's live stream (the user
+  // navigated away and came back). Feeds the run-stream SSE frames through the
+  // same handlers as a live send so the in-progress turn renders in full — the
+  // backend replays the buffered history first, then the live tail. No
+  // optimistic user row here: the transcript was just refetched, so the user
+  // message is already persisted.
+  const reattachRun = useCallback((conv) => {
+    const run = conv.active_run
+    if (!isRunActive(run)) return
+
+    setError(null)
+    setStreaming(true)
+    setStreamingContent('')
+    setStreamingReasoning('')
+    setToolEvents([])
+    setPendingToolCalls([])
+    setHeartbeat(null)
+    setStreamingArtifacts([])
+    setStreamingParseWarning(null)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    drainingRef.current = false
+    runIdRef.current = run.id        // id known → Stop stays guarded
+    setRunReady(true)
+    liveControllersRef.current.add(controller)
+
+    streamChat(`/chat/runs/${run.id}/stream`, null, {
+      method: 'GET',
+      signal: controller.signal,
+      onDelta: ({ content: c, reasoning_content: r }) => {
+        setHeartbeat(null)
+        if (c) setStreamingContent(prev => prev + c)
+        if (r) setStreamingReasoning(prev => prev + r)
+      },
+      onHeartbeat: (evt) => setHeartbeat({ elapsed_s: evt.elapsed_s }),
+      onParseWarning: (evt) => setStreamingParseWarning({
+        kind: evt.kind, snippet: evt.snippet, description: evt.description,
+      }),
+      onToolCallPending: (evt) => {
+        setHeartbeat(null)
+        setPendingToolCalls(prev => {
+          const others = prev.filter(p => p.index !== evt.index)
+          return [...others, { index: evt.index, name: evt.name }]
+        })
+      },
+      onToolCall: (evt) => {
+        setHeartbeat(null)
+        setPendingToolCalls([])
+        setToolEvents(prev => [...prev, { type: 'call', ...evt }])
+      },
+      onToolResult: (evt) => {
+        setHeartbeat(null)
+        setToolEvents(prev => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            const e = prev[i]
+            if (e.type === 'call' && e.name === evt.name && !('result' in e)) {
+              const next = [...prev]
+              next[i] = { ...e, result: evt.result, server_id: evt.server_id }
+              return next
+            }
+          }
+          return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
+        })
+        // New round begins after a tool result — reset the visible content.
+        setStreamingContent('')
+      },
+      onArtifact: (evt) => setStreamingArtifacts(prev => [...prev, evt]),
+      onConversationUpdated,
+      onMessageSaved: () => {
+        setStreamingContent('')
+        setStreamingReasoning('')
+        setStreaming(false)
+        setPendingToolCalls([])
+        setHeartbeat(null)
+        drainingRef.current = true
+        refetchMessages(conv.id)
+      },
+      onRunStatus: () => {
+        // The run was already terminal when we reattached (it finished just
+        // before/as we returned) — no live frames coming. Refetch shows the
+        // persisted reply, or a failed-run error via last_run.
+        setStreaming(false)
+        setHeartbeat(null)
+        setPendingToolCalls([])
+        refetchMessages(conv.id)
+      },
+      onError: (msg) => {
+        setError(msg)
+        setStreaming(false)
+        setStreamingContent('')
+        setStreamingReasoning('')
+        setPendingToolCalls([])
+        setHeartbeat(null)
+        drainingRef.current = false
+      },
+    }).finally(() => {
+      liveControllersRef.current.delete(controller)
+    })
+  }, [refetchMessages, onConversationUpdated])
+
   const loadConversation = useCallback(async (convId) => {
     // Claim the intended conversation synchronously, before awaiting the fetch.
     // This is what makes a concurrent post-cancel reconcile for the PREVIOUS
@@ -156,8 +259,14 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
     setError(null)
-    await refetchMessages(convId)
-  }, [refetchMessages])
+    const data = await refetchMessages(convId)
+    // If the conversation's run is still going, reattach to its live stream so
+    // the in-progress turn streams in as if we never left. Gate on the intended
+    // conversation so a slow load that lost the navigation race doesn't attach.
+    if (data && observedConvIdRef.current === convId && isRunActive(data.active_run)) {
+      reattachRun(data)
+    }
+  }, [refetchMessages, reattachRun])
 
   const sendMessage = useCallback(async (content, images) => {
     // Block a send while a run is active for this conversation (including a
