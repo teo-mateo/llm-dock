@@ -451,6 +451,59 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.streaming).toBe(false)
   })
 
+  it('reattach reconciles when the run is cancelled elsewhere (silent stream close)', async () => {
+    // Codex iter 1 P1: a cancel from another tab emits no frame, so the reattach
+    // stream just closes. The hook must still drop streaming + refetch.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    let resolveStream
+    mockStreamChat.mockImplementation(() => new Promise((res) => { resolveStream = res }))
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    expect(result.current.streaming).toBe(true)
+
+    await act(async () => { resolveStream(); await Promise.resolve(); await Promise.resolve() })
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('reattach reconciles on a live failure delivered after attach', async () => {
+    // Codex iter 1 P1: a failure encoded as an error frame must clear the stale
+    // active_run (refetch) so it stops blocking the next send.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, last_run: { id: 'run-bg', status: 'failed', error: 'boom' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    let handlers
+    mockStreamChat.mockImplementation((_u, _b, h) => { handlers = h; return new Promise(() => {}) })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    await act(async () => { handlers.onError('boom'); await Promise.resolve(); await Promise.resolve() })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.error).toBeTruthy()
+  })
+
+  it('reattach reconciles when the run-stream request fails to open', async () => {
+    // Codex iter 1 P2: a setup/transport failure rejects the streamChat promise
+    // before its reader loop; it must not leave the UI streaming forever.
+    mockGetConversation
+      .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      .mockResolvedValue({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+    mockStreamChat.mockImplementation(() => Promise.reject(new Error('network down')))
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      await result.current.loadConversation('conv-1')
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.error).toBe('network down')
+  })
+
   it('stopStreaming with no active conversation is a harmless no-op', async () => {
     const { result } = renderHook(() => useChat({}))
     // No conversation loaded.

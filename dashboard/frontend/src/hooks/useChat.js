@@ -156,6 +156,24 @@ export default function useChat({ onConversationUpdated } = {}) {
     setRunReady(true)
     liveControllersRef.current.add(controller)
 
+    // Did a terminal signal (saved / run_status / error) already reconcile this
+    // reattach? If the stream instead closes silently — the run was cancelled
+    // elsewhere, which the bus emits no frame for — or a setup/transport error
+    // rejects the promise, we still must drop `streaming` and refetch so the
+    // (now terminal) active_run can't leave the composer stuck disabled.
+    let terminalSeen = false
+    const reconcile = () => {
+      // Gate entirely on still observing this conversation: if the user
+      // navigated away (which aborted this stream), do nothing — clearing
+      // `streaming` here would stomp the conversation they moved to (which may
+      // itself be reattaching).
+      if (observedConvIdRef.current !== conv.id) return
+      setStreaming(false)
+      setHeartbeat(null)
+      setPendingToolCalls([])
+      refetchMessages(conv.id)
+    }
+
     streamChat(`/chat/runs/${run.id}/stream`, null, {
       method: 'GET',
       signal: controller.signal,
@@ -199,6 +217,7 @@ export default function useChat({ onConversationUpdated } = {}) {
       onArtifact: (evt) => setStreamingArtifacts(prev => [...prev, evt]),
       onConversationUpdated,
       onMessageSaved: () => {
+        terminalSeen = true
         setStreamingContent('')
         setStreamingReasoning('')
         setStreaming(false)
@@ -211,23 +230,36 @@ export default function useChat({ onConversationUpdated } = {}) {
         // The run was already terminal when we reattached (it finished just
         // before/as we returned) — no live frames coming. Refetch shows the
         // persisted reply, or a failed-run error via last_run.
-        setStreaming(false)
-        setHeartbeat(null)
-        setPendingToolCalls([])
-        refetchMessages(conv.id)
+        terminalSeen = true
+        reconcile()
       },
       onError: (msg) => {
+        // A live failure delivered after attach. Surface it AND refetch so the
+        // now-failed active_run stops blocking the next send/edit.
+        terminalSeen = true
         setError(msg)
-        setStreaming(false)
         setStreamingContent('')
         setStreamingReasoning('')
-        setPendingToolCalls([])
-        setHeartbeat(null)
         drainingRef.current = false
+        reconcile()
       },
-    }).finally(() => {
-      liveControllersRef.current.delete(controller)
     })
+      .catch((err) => {
+        // Setup/transport failure (token/fetch/response body) before streamChat's
+        // own reader loop — it rejects here rather than calling onError.
+        if (err?.name !== 'AbortError') {
+          terminalSeen = true
+          if (observedConvIdRef.current === conv.id) setError(err?.message || 'Reattach failed')
+          reconcile()
+        }
+      })
+      .finally(() => {
+        liveControllersRef.current.delete(controller)
+        // Closed with no terminal signal — the run was cancelled elsewhere (the
+        // bus emits no frame for run_cancelled / stream_end). Reconcile so the
+        // UI doesn't stay stuck on `streaming`.
+        if (!terminalSeen) reconcile()
+      })
   }, [refetchMessages, onConversationUpdated])
 
   const loadConversation = useCallback(async (convId) => {
