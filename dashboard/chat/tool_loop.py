@@ -144,11 +144,26 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
         # the round cap. It falls through to the synthesized done below.
 
     # The forced-final stream ended without a terminal done/error — e.g. it
-    # emitted a tool_calls event (unhandled above) or exhausted silently.
-    # Synthesize a done from whatever prose streamed so the turn ALWAYS
-    # terminates cleanly, instead of the caller failing it as "Stream ended
-    # unexpectedly" after the user already waited out every tool round.
-    yield ("done", {
-        "content": "".join(final_content),
-        "reasoning_content": "".join(final_reasoning) or None,
-    })
+    # emitted a tool_calls event (unhandled above) or exhausted silently. The
+    # turn must still terminate cleanly instead of the caller failing it as
+    # "Stream ended unexpectedly" after the user waited out every tool round.
+    content = "".join(final_content)
+    if content.strip():
+        # Some prose streamed before the (dropped) final tool call — finalize it
+        # so the partial answer is preserved rather than lost.
+        yield ("done", {
+            "content": content,
+            "reasoning_content": "".join(final_reasoning) or None,
+        })
+    else:
+        # No answer at all — the model only kept trying to call tools. Fail with
+        # a truthful, actionable message. Completing with empty content would let
+        # ChatRunner persist an empty assistant message and report the run as a
+        # silent success; this surfaces what actually happened instead.
+        yield ("error", {
+            "message": (
+                f"The model kept calling tools and did not return a final answer "
+                f"after {MAX_TOOL_ROUNDS} tool rounds. Try rephrasing the request "
+                f"or turning off some tools."
+            ),
+        })

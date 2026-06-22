@@ -75,15 +75,40 @@ def test_forced_final_tool_call_still_yields_done(monkeypatch):
     assert record[-1]["tool_choice"] == "none"
 
 
-def test_forced_final_silent_exhaustion_yields_done(monkeypatch):
+def test_forced_final_silent_exhaustion_with_prose_yields_done(monkeypatch):
     """The forced final stream ends with neither done nor tool_calls (silent
-    exhaustion). The turn must still synthesize a done rather than vanish."""
+    exhaustion) but DID stream prose — finalize that partial answer."""
     rounds = [[_tool_calls_event()] for _ in range(tool_loop.MAX_TOOL_ROUNDS)]
     forced = [("delta", {"content": "Hi", "reasoning_content": ""})]  # no done
     events, _ = _run(monkeypatch, rounds + [forced])
 
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "Hi"
+
+
+def test_forced_final_tool_only_no_content_yields_error(monkeypatch):
+    """Codex #71 iter1 P1: the forced final emits ONLY a tool call (no prose).
+    There is genuinely no answer, so the turn must terminate as an error — not
+    an empty `done` that ChatRunner would persist as a silent success."""
+    rounds = [[_tool_calls_event()] for _ in range(tool_loop.MAX_TOOL_ROUNDS)]
+    forced = [("tool_call_pending", {"index": 0, "name": "srv__search"}),
+              _tool_calls_event()]  # no content delta at all
+    events, _ = _run(monkeypatch, rounds + [forced])
+
+    assert events[-1][0] == "error"
+    assert "done" not in [e[0] for e in events]  # never falsely completes
+    msg = events[-1][1]["message"]
+    assert "tool" in msg.lower()
+
+
+def test_forced_final_whitespace_only_content_yields_error(monkeypatch):
+    """Whitespace-only prose is not a real answer — treat as the empty case."""
+    rounds = [[_tool_calls_event()] for _ in range(tool_loop.MAX_TOOL_ROUNDS)]
+    forced = [("delta", {"content": "  \n", "reasoning_content": ""}), _tool_calls_event()]
+    events, _ = _run(monkeypatch, rounds + [forced])
+
+    assert events[-1][0] == "error"
+    assert "done" not in [e[0] for e in events]
 
 
 def test_forced_final_normal_done_is_forwarded(monkeypatch):
