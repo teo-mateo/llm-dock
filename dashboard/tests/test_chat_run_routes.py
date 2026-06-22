@@ -362,9 +362,9 @@ def test_reattach_replays_in_flight_history(ctx):
     gen = manager.observe(run.id, q, replay)
 
     assert "run_started" in next(gen)
-    # Replayed history comes before any live event.
-    assert "Hello " in next(gen)
-    assert "world" in next(gen)
+    # Replayed history comes before any live event; the two buffered deltas are
+    # coalesced into a single frame carrying the full content so far.
+    assert "Hello world" in next(gen)
 
     # A live event after reattach is delivered too, and only once.
     bus.publish(run.id, _delta_evt("!"))
@@ -373,6 +373,43 @@ def test_reattach_replays_in_flight_history(ctx):
     bus.publish(run.id, runtime.ChatRuntimeEvent(run_manager_module.STREAM_END, {}))
     with pytest.raises(StopIteration):
         next(gen)
+
+
+def test_replay_coalesces_deltas_but_keeps_tool_boundaries(ctx):
+    """Consecutive deltas fold into one frame; a tool event between two delta
+    runs keeps them as separate frames (per-round boundaries preserved)."""
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    bus.publish(run.id, _delta_evt("round1-a "))
+    bus.publish(run.id, _delta_evt("round1-b"))
+    bus.publish(run.id, runtime.ChatRuntimeEvent(
+        "tool_call", {"name": "calc", "arguments": "{}", "server_id": "s"}))
+    bus.publish(run.id, _delta_evt("round2"))
+
+    _, replay = manager.subscribe_with_replay(run.id)
+    frames = ["".join(run_manager_module._sse_frames_for(ev)) for ev in replay]
+    # round1 deltas coalesced, then the tool_call, then round2 — 3 segments.
+    assert len(frames) == 3
+    assert "round1-a round1-b" in frames[0]
+    assert "tool_call" in frames[1] and "calc" in frames[1]
+    assert "round2" in frames[2]
+
+
+def test_terminal_runtime_event_drops_replay_without_stream_end(ctx):
+    """A run that ends on run_completed (no manager stream_end — e.g. a direct
+    ChatRunner) still frees its replay history."""
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    bus.publish(run.id, _delta_evt("partial"))
+    assert run.id in bus._replay
+    bus.publish(run.id, runtime.ChatRuntimeEvent("run_completed", {"message_id": "m", "seq": 2}))
+    assert run.id not in bus._replay
 
 
 def test_reattach_after_completion_drops_replay(ctx, monkeypatch):
