@@ -446,6 +446,33 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.streaming).toBe(true)
   })
 
+  it('does not commit a superseded same-id load that resolves out of order', async () => {
+    // Regression for codex iter 5 P1: two concurrent same-id loads can return
+    // different snapshots and resolve oldest-last. The older snapshot
+    // ({active_run: running}) must NOT overwrite the newer ({active_run: null}),
+    // or `conversation.active_run` would stay stale — blocking send/edit and
+    // keeping Stop visible — even though the superseded load is correctly barred
+    // from reattaching. The generation gates the state commit, not just reattach.
+    let resolveOld, resolveNew
+    mockGetConversation
+      .mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))   // gen 1
+      .mockImplementationOnce(() => new Promise((r) => { resolveNew = r }))   // gen 2 (latest)
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => {
+      const p1 = result.current.loadConversation('conv-1')  // older generation
+      const p2 = result.current.loadConversation('conv-1')  // newer generation
+      // Newest resolves FIRST, oldest LAST — the dangerous ordering.
+      resolveNew({ ...CONV, active_run: null, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      resolveOld({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
+      await Promise.all([p1, p2])
+    })
+
+    // The latest snapshot wins: no stale active run left to block the composer.
+    expect(result.current.conversation.active_run).toBe(null)
+    expect(result.current.streaming).toBe(false)
+  })
+
   it('does not reattach when the loaded conversation has no active run', async () => {
     mockGetConversation.mockResolvedValue({
       ...CONV, active_run: null, messages: [], critiques: {}, artifacts: {},

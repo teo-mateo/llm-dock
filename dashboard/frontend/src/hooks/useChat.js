@@ -89,13 +89,25 @@ export default function useChat({ onConversationUpdated } = {}) {
   // SSE stream. Used by the message_saved handler so we don't cancel our
   // own pipe before the trailing conversation_updated event (auto-title)
   // arrives.
-  const refetchMessages = useCallback(async (convId) => {
+  //
+  // `isFresh` is an optional predicate, re-checked AFTER the fetch resolves,
+  // that must still hold for the result to be committed. The id guard alone
+  // can't order two same-id fetches: with concurrent same-id loads the
+  // responses can arrive oldest-last, so an older snapshot ({active_run:
+  // running}) would otherwise overwrite a newer one ({active_run: null}) and
+  // leave stale state. loadConversation passes its generation here so only the
+  // latest load commits. Other callers (post-save drain, reconcile) pass none
+  // and keep the plain id-only behavior.
+  const refetchMessages = useCallback(async (convId, isFresh) => {
+    const stillCurrent = () => observedConvIdRef.current === convId
+                               && (isFresh ? isFresh() : true)
     try {
       const data = await getConversation(convId)
-      // Drop the result if the user navigated to a different conversation while
-      // this fetch was in flight — otherwise a late resolve writes stale
-      // conversation/messages over the one now intended (request-sequencing).
-      if (observedConvIdRef.current !== convId) return null
+      // Drop the result if the user navigated to a different conversation, or a
+      // newer same-id load superseded this one, while the fetch was in flight —
+      // otherwise a late resolve writes stale conversation/messages over the one
+      // now intended (request-sequencing).
+      if (!stillCurrent()) return null
       setConversation(data)
       setMessages(data.messages || [])
       setCritiques(data.critiques || {})
@@ -108,7 +120,7 @@ export default function useChat({ onConversationUpdated } = {}) {
       }
       return data
     } catch (err) {
-      if (observedConvIdRef.current !== convId) return null
+      if (!stillCurrent()) return null
       setError(err.message)
       return null
     }
@@ -315,7 +327,10 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
     setError(null)
-    const data = await refetchMessages(convId)
+    // Pass the generation as the freshness predicate so a superseded same-id
+    // load neither commits its (stale) snapshot nor reattaches — refetchMessages
+    // returns null for it, short-circuiting the reattach below.
+    const data = await refetchMessages(convId, () => loadGenRef.current === gen)
     // If the conversation's run is still going, reattach to its live stream so
     // the in-progress turn streams in as if we never left. Gate on BOTH the
     // intended conversation and this load's generation so a slow load that lost
