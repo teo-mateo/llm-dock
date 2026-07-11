@@ -34,6 +34,7 @@
       - ${HOME}/.cache/torch:/root/.cache/torch
       - ${HOME}/.triton:/root/.triton
       - ${HOME}/.cache/models:/local-models:ro
+      - ./chat-templates:/chat-templates:ro
 
     networks:
       - llm-network
