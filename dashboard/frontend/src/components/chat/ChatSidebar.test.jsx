@@ -94,15 +94,47 @@ describe('ChatSidebar shift-click range selection', () => {
     expect(selectedTitles()).toEqual(['A', 'A1', 'B', 'C', 'C1', 'D'])
   })
 
-  // Note: the in-real-browsers scenario where the user clicks directly
-  // on the visible 14px <input> (whose click bubbles up to the label's
-  // onClick) cannot be reproduced under jsdom — its label activation
-  // model doesn't propagate input clicks to a wrapping label's onClick
-  // the way real browsers do. The label-padding tests above (which click
-  // the label element directly) cover the case codex iter 2 actually
-  // flagged: the synthetic activation when the user clicks the larger
-  // hit target. Direct-input clicks are exercised manually in the
-  // browser as part of the PR's test plan.
+  // Direct clicks on the 14px <input> itself take a different code path
+  // from label-padding clicks: the input's own onClick stops propagation
+  // (so the label's preventDefault never cancels the native toggle) and
+  // toggles selection itself. These tests click the input element
+  // directly so a regression in either duplicated input handler — or a
+  // reintroduced preventDefault that desyncs the visible checkbox from
+  // selection state — fails here even while the label-padding tests stay
+  // green.
+  function inputFor(title) {
+    const row = screen.getByText(title).closest('.group')
+    return within(row).getByRole('checkbox')
+  }
+
+  it('clicking directly on a root checkbox input selects it and checks the box', () => {
+    renderSidebar()
+    fireEvent.click(inputFor('B'))
+    expect(inputFor('B').checked).toBe(true)
+    expect(selectedTitles()).toEqual(['B'])
+  })
+
+  it('clicking directly on a spinoff checkbox input selects it and checks the box', () => {
+    renderSidebar()
+    fireEvent.click(inputFor('A1'))
+    expect(inputFor('A1').checked).toBe(true)
+    expect(selectedTitles()).toEqual(['A1'])
+  })
+
+  it('shift-clicking directly on an input extends the range from the anchor', () => {
+    renderSidebar()
+    fireEvent.click(inputFor('A'))                      // anchor = A
+    fireEvent.click(inputFor('C'), { shiftKey: true })  // range A..C
+    expect(selectedTitles()).toEqual(['A', 'A1', 'B', 'C'])
+  })
+
+  it('clicking a selected input directly deselects it', () => {
+    renderSidebar()
+    fireEvent.click(inputFor('B'))
+    fireEvent.click(inputFor('B'))
+    expect(inputFor('B').checked).toBe(false)
+    expect(selectedTitles()).toEqual([])
+  })
 
   it('Clear resets the anchor so the next shift-click no longer extends the old range', () => {
     renderSidebar()
