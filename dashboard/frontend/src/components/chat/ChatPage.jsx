@@ -34,6 +34,7 @@ export default function ChatPage() {
     loadConversation,
     sendMessage,
     editMessage,
+    resendMessage,
     stopStreaming,
   } = useChat({
     onConversationUpdated: (evt) => patchConversation(evt.id, { title: evt.title }),
@@ -178,6 +179,7 @@ export default function ChatPage() {
         runReady={runReady}
         onSend={sendMessage}
         onEdit={editMessage}
+        onResend={resendMessage}
         onStopStreaming={stopStreaming}
         onReloadConversation={loadConversation}
         onRefreshConversations={refresh}

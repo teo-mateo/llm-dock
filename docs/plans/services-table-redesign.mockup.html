@@ -1,0 +1,674 @@
+<title>llm-dock · Services table redesign</title>
+<style>
+  :root {
+    --ground: #F6F7F9;
+    --surface: #FFFFFF;
+    --ink: #1C2433;
+    --muted: #6B7486;
+    --faint: #9AA1B0;
+    --border: #E5E8ED;
+    --border-soft: #EEF0F4;
+    --green: #15803D;
+    --green-bg: #EAF6EE;
+    --red: #C2331F;
+    --red-bg: #FBEEEB;
+    --accent: #3B5BDB;
+    --accent-bg: #EEF1FC;
+    --amber: #B45309;
+    --amber-bg: #FCF3E6;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+    margin: 0;
+    padding: 40px 24px 80px;
+  }
+  .page { max-width: 1180px; margin: 0 auto; }
+
+  /* ---------- intro ---------- */
+  .intro { margin-bottom: 28px; }
+  .intro .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--faint); margin: 0 0 6px;
+  }
+  .intro h1 { font-size: 22px; font-weight: 650; margin: 0 0 8px; text-wrap: balance; }
+  .intro p { color: var(--muted); max-width: 68ch; margin: 0; }
+
+  /* ---------- mock panel ---------- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(28,36,51,0.04), 0 4px 16px rgba(28,36,51,0.04);
+    overflow: hidden;
+  }
+
+  /* GPU strip */
+  .gpu-strip {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-soft);
+    background: linear-gradient(to bottom, #FBFBFD, #F8F9FB);
+  }
+  .gpu-strip .gpu-name { font-weight: 600; font-size: 13px; }
+  .gpu-bar {
+    flex: 1; min-width: 160px; max-width: 320px;
+    height: 6px; border-radius: 3px; background: var(--border-soft);
+    position: relative; overflow: hidden;
+  }
+  .gpu-bar > span {
+    position: absolute; inset: 0 auto 0 0; width: 80%;
+    background: linear-gradient(to right, #7C93E8, #3B5BDB);
+    border-radius: 3px;
+  }
+  .gpu-figures { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .gpu-figures strong { color: var(--ink); font-weight: 600; }
+
+  /* toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px;
+  }
+  .toolbar h2 { font-size: 15px; font-weight: 650; margin: 0; }
+  .counts { display: flex; gap: 6px; align-items: center; }
+  .count-chip {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+  .count-chip.run { background: var(--green-bg); color: var(--green); }
+  .count-chip.fail { background: var(--red-bg); color: var(--red); }
+  .count-chip.idle { background: var(--border-soft); color: var(--muted); }
+  .toolbar .spacer { flex: 1; }
+  .key-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: var(--ground); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px;
+  }
+  .key-chip .k-label { font-family: var(--sans); font-size: 11px; color: var(--faint); }
+  .key-chip button {
+    border: 0; background: none; padding: 0; cursor: pointer;
+    color: var(--faint); display: inline-flex;
+  }
+  .key-chip button:hover, .key-chip button:focus-visible { color: var(--accent); }
+  .filter {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 13px; width: 180px;
+    background: var(--surface); color: var(--ink); font-family: var(--sans);
+  }
+  .filter::placeholder { color: var(--faint); }
+  .filter:focus { outline: none; border-color: var(--accent); }
+  .btn-primary {
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: var(--sans);
+  }
+  .btn-primary:hover { background: #3350C4; }
+  .btn-ghost {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 13px; color: var(--muted); cursor: pointer;
+    font-family: var(--sans);
+  }
+  .btn-ghost:hover { border-color: var(--faint); color: var(--ink); }
+
+  /* ---------- table ---------- */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 880px; }
+  thead th {
+    font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--faint); text-align: left; padding: 8px 14px;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border);
+    background: #FBFBFD;
+  }
+  thead th.num { text-align: right; }
+  thead th:first-child { padding-left: 20px; }
+  thead th:last-child { padding-right: 20px; }
+
+  .group-row td {
+    padding: 14px 14px 5px 20px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--faint);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .group-row.g-run td { color: var(--green); }
+  .group-row.g-fail td { color: var(--red); }
+  .group-row td .g-count { font-weight: 500; color: var(--faint); margin-left: 6px; letter-spacing: 0; }
+
+  tbody tr.svc { border-bottom: 1px solid var(--border-soft); }
+  tbody tr.svc:hover { background: #FAFBFD; }
+  tbody tr.svc.running { box-shadow: inset 3px 0 0 var(--green); }
+  tbody tr.svc.failed  { box-shadow: inset 3px 0 0 var(--red); }
+  td { padding: 9px 14px; vertical-align: middle; }
+  td:first-child { padding-left: 20px; }
+  td:last-child { padding-right: 20px; }
+
+  .svc-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: var(--ink); text-decoration: none;
+  }
+  a.svc-name:hover { color: var(--accent); text-decoration: underline; }
+  tr.ghost .svc-name { color: var(--muted); }
+  .copy-name {
+    border: 0; background: none; cursor: pointer; color: transparent;
+    padding: 1px 4px; margin-left: 2px; font-size: 12px; border-radius: 4px;
+  }
+  tr:hover .copy-name { color: var(--faint); }
+  .copy-name:hover { color: var(--accent) !important; background: var(--accent-bg); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .pill.running { background: var(--green-bg); color: var(--green); }
+  .pill.running .dot { background: var(--green); }
+  .pill.failed { background: var(--red-bg); color: var(--red); }
+  .pill.failed .dot { background: var(--red); }
+  .pill.stopped { background: var(--border-soft); color: var(--muted); }
+  .pill.stopped .dot { background: var(--faint); }
+  .pill.ghost { background: none; border: 1px dashed var(--border); color: var(--faint); }
+  .pill.ghost .dot { background: none; border: 1px solid var(--faint); }
+  .pill .code { font-family: var(--mono); font-weight: 500; font-size: 11px; opacity: 0.75; }
+
+  .port { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  a.port { color: var(--accent); text-decoration: none; }
+  a.port:hover { text-decoration: underline; }
+  .public-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    color: var(--amber); background: var(--amber-bg);
+    border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 1px;
+  }
+
+  .engine {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px; white-space: nowrap;
+  }
+  .engine.llamacpp { background: #FCF3E6; color: #92610C; }
+  .engine.vllm    { background: #F1EDFB; color: #6741C6; }
+  .engine.ds4     { background: #FBEDF3; color: #B0326F; }
+  .engine.webui   { background: #E8F4F4; color: #0F766E; }
+
+  .size-cell { text-align: right; }
+  .size-val { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  tr.ghost .size-val { color: var(--muted); }
+  .size-bar {
+    width: 72px; height: 3px; border-radius: 2px; background: var(--border-soft);
+    margin: 4px 0 0 auto; position: relative; overflow: hidden;
+  }
+  .size-bar > span { position: absolute; inset: 0 auto 0 0; background: #B9C2D4; border-radius: 2px; }
+  tr.running .size-bar > span { background: var(--green); }
+  .size-bar.over > span { background: var(--red); width: 100% !important; }
+
+  .webui-check { color: var(--green); font-size: 13px; }
+  .webui-dash { color: var(--faint); }
+
+  .actions { display: flex; gap: 2px; justify-content: flex-end; }
+  .actions button {
+    border: 0; background: none; cursor: pointer; border-radius: 6px;
+    width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--faint);
+  }
+  tr:hover .actions button { color: var(--muted); }
+  .actions button:hover { background: var(--border-soft); color: var(--ink); }
+  .actions button.primary { color: var(--muted); }
+  .actions button.primary:hover { color: var(--green); background: var(--green-bg); }
+  .actions button.primary.stop:hover { color: var(--red); background: var(--red-bg); }
+  .actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .actions svg { width: 14px; height: 14px; }
+
+  /* ---------- rationale ---------- */
+  .rationale { margin-top: 40px; }
+  .rationale h2 { font-size: 16px; font-weight: 650; margin: 0 0 4px; }
+  .rationale > p { color: var(--muted); margin: 0 0 20px; max-width: 68ch; }
+  .decisions { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .decision {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .decision h3 { font-size: 13px; font-weight: 650; margin: 0 0 5px; }
+  .decision p { font-size: 12.5px; color: var(--muted); margin: 0; }
+  .decision .was {
+    display: inline-block; font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--red); margin-bottom: 6px;
+  }
+  code {
+    font-family: var(--mono); font-size: 0.92em;
+    background: var(--border-soft); border-radius: 4px; padding: 1px 5px;
+  }
+</style>
+
+<div class="page">
+  <div class="intro">
+    <p class="eyebrow">llm-dock · design proposal</p>
+    <h1>Services table, redesigned</h1>
+    <p>Same data as the current dashboard, reorganized so state reads at a glance: red means something actually failed, running and failed services surface to the top, and the per-row noise (repeated API keys, triple-encoded status) is gone.</p>
+  </div>
+
+  <div class="panel">
+    <div class="gpu-strip">
+      <span class="gpu-name">RTX PRO 6000</span>
+      <div class="gpu-bar"><span></span></div>
+      <span class="gpu-figures"><strong>78.4</strong> / 97.9 GB &nbsp;·&nbsp; 19.5 GB free</span>
+    </div>
+
+    <div class="toolbar">
+      <h2>Services</h2>
+      <div class="counts">
+        <span class="count-chip run">2 running</span>
+        <span class="count-chip fail">2 failed</span>
+        <span class="count-chip idle">15 idle</span>
+      </div>
+      <div class="spacer"></div>
+      <span class="key-chip">
+        <span class="k-label">default key</span>
+        key-d45f8969…
+        <button title="Copy default API key" aria-label="Copy default API key">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </span>
+      <button class="btn-ghost" title="Rotate default key">⟳ Rotate key</button>
+      <input class="filter" placeholder="Filter services…">
+      <button class="btn-primary">+ New service</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Status</th>
+            <th>Port</th>
+            <th>Engine</th>
+            <th class="num">Size</th>
+            <th>WebUI</th>
+            <th class="num">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="group-row g-run"><td colspan="7">Running <span class="g-count">2</span></td></tr>
+
+          <tr class="svc running">
+            <td><a href="#" class="svc-name">ds4-deepseek-v4-flash</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill running"><span class="dot"></span>Running</span></td>
+            <td><span class="port">3315</span></td>
+            <td><span class="engine ds4">ds4</span></td>
+            <td class="size-cell"><span class="size-val">80.76 GB</span><div class="size-bar"><span style="width:82%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary stop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc running">
+            <td><span class="svc-name">open-webui</span><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill running"><span class="dot"></span>Running</span></td>
+            <td><a href="#" class="port">3300</a></td>
+            <td><span class="engine webui">webui</span></td>
+            <td class="size-cell"><span class="size-val" style="color:var(--faint)">—</span></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button title="Open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M7 7h10v10"/></svg></button>
+                <button title="Restart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="group-row g-fail"><td colspan="7">Failed <span class="g-count">2</span></td></tr>
+
+          <tr class="svc failed">
+            <td><a href="#" class="svc-name">vllm-bge-m3</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill failed"><span class="dot"></span>Failed <span class="code">exit 255</span></span></td>
+            <td><span class="port">3370</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">4.27 GB</span><div class="size-bar"><span style="width:5%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc failed">
+            <td><a href="#" class="svc-name">vllm-qwen3-6-27b-fp8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill failed"><span class="dot"></span>Failed <span class="code">exit 1</span></span></td>
+            <td><span class="port">3301</span><span class="public-tag">PUBLIC</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">28.77 GB</span><div class="size-bar"><span style="width:29%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="group-row"><td colspan="7">Stopped <span class="g-count">9</span></td></tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-gemma-4-31b-it-q4-xl</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><a href="#" class="port">3309</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">17.53 GB</span><div class="size-bar"><span style="width:18%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-gemma-4-31b-it-q8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><a href="#" class="port">3303</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">33.73 GB</span><div class="size-bar"><span style="width:34%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-gemma-4-e4b-it-q8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><a href="#" class="port">3317</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">8.06 GB</span><div class="size-bar"><span style="width:8%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-mistral-medium-3-5-128b-q4</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><a href="#" class="port">3308</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">70.49 GB</span><div class="size-bar"><span style="width:72%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-qwen3-5-397b-a17b-iq4xs</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped <span class="code">137</span></span></td>
+            <td><a href="#" class="port">3306</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">176.93 GB</span><div class="size-bar over"><span></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">llamacpp-qwen3.6-27b-mtp-q8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><a href="#" class="port">3307</a></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">34.19 GB</span><div class="size-bar"><span style="width:35%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">vllm-qwen3-5-4b</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><span class="port">3318</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">8.70 GB</span><div class="size-bar"><span style="width:9%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">vllm-qwen3-6-27b-bf16</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped</span></td>
+            <td><span class="port">3314</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">51.77 GB</span><div class="size-bar"><span style="width:53%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc">
+            <td><a href="#" class="svc-name">vllm-qwen3.6-35b-a3b-fp8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill stopped"><span class="dot"></span>Stopped <span class="code">137</span></span></td>
+            <td><span class="port">3310</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">34.92 GB</span><div class="size-bar"><span style="width:36%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="group-row"><td colspan="7">Not created <span class="g-count">6</span></td></tr>
+
+          <tr class="svc ghost">
+            <td><a href="#" class="svc-name">llamacpp-qwen3.6-35b-a3b-q8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3313</span></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">36.65 GB</span><div class="size-bar"><span style="width:37%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc ghost">
+            <td><a href="#" class="svc-name">llamacpp-UNSLOTH-qwen3-5-122b-a10b-q4</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3305</span></td>
+            <td><span class="engine llamacpp">llama.cpp</span></td>
+            <td class="size-cell"><span class="size-val">63.66 GB</span><div class="size-bar"><span style="width:65%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc ghost">
+            <td><a href="#" class="svc-name">vllm-gemma-4-31b-bf16-mtp</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3312</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">58.28 GB</span><div class="size-bar"><span style="width:60%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc ghost">
+            <td><a href="#" class="svc-name">vllm-gemma-4-31b-fp8</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3311</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val" style="color:var(--faint)">—</span></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc ghost">
+            <td><a href="#" class="svc-name">vllm-nomic-embed-text-v1.5</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3380</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">1.94 GB</span><div class="size-bar"><span style="width:2%"></span></div></td>
+            <td><span class="webui-dash">—</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+
+          <tr class="svc ghost" style="border-bottom:0">
+            <td><a href="#" class="svc-name">vllm-qwen3.6-35b-a3b</a><button class="copy-name" title="Copy name">⧉</button></td>
+            <td><span class="pill ghost"><span class="dot"></span>Not created</span></td>
+            <td><span class="port" style="color:var(--muted)">3304</span></td>
+            <td><span class="engine vllm">vLLM</span></td>
+            <td class="size-cell"><span class="size-val">66.99 GB</span><div class="size-bar"><span style="width:68%"></span></div></td>
+            <td><span class="webui-check">✓</span></td>
+            <td>
+              <div class="actions">
+                <button class="primary" title="Start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5Z"/></svg></button>
+                <button title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+                <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="rationale">
+    <h2>What changed, and why</h2>
+    <p>Each decision maps to a concrete problem in the current table. All of it is implementable in <code>ServicesTable.jsx</code> without backend changes — the data is already there.</p>
+    <div class="decisions">
+      <div class="decision">
+        <span class="was">Was: 13 red rows</span>
+        <h3>Red only means failed</h3>
+        <p>Exit 0 and 137 (docker stop / SIGKILL) are normal outcomes of stopping a model — they render as neutral gray "Stopped". Red is reserved for real crashes (exit 1, 255). Today <code>vllm-bge-m3</code>'s genuine failure drowns among eleven false alarms.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: alphabetical order</span>
+        <h3>State groups, actionable first</h3>
+        <p>Running pins to the top (it's what's using your VRAM), Failed comes second (it's what needs you), then Stopped and Not created. Within a group, alphabetical. No more scanning 19 rows to find the one that's alive.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: key-d45f8969… × 19</span>
+        <h3>API key shown once</h3>
+        <p>Every service shares the default key, so repeating it per row is pure noise and doubles row height. It moves to a single copyable chip in the toolbar, next to "Rotate key" which acts on it. A per-row key would only reappear if a service ever diverges from the default.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: dot + text + row tint</span>
+        <h3>Status encoded once, as a pill</h3>
+        <p>Three redundant encodings collapse into one pill. The row keeps just a 3px left stripe for running/failed so state is scannable even when the status column is out of your foveal view.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: bare "80.76 GB" text</span>
+        <h3>Size in VRAM context</h3>
+        <p>Right-aligned tabular numerals with a tiny bar scaled to total VRAM (97.9 GB). You see instantly that mistral-q4 nearly fills the card and qwen3-5-397b (red bar) can never fit resident. This is the column that answers "can I start this right now?" — the GPU strip above gives the free-memory anchor.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: ▶ ✎ ⧉ ◎ + FontAwesome</span>
+        <h3>One icon language, destructive tucked away</h3>
+        <p>A single consistent SVG set replaces the mixed unicode glyphs. Start/stop stays primary; Delete moves into a "⋯" overflow menu (with Rename and YAML) so a 24 px slip can't nuke a service. Secondary icons stay dim until row hover.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: cryptic ◎ per row</span>
+        <h3>Public port as a label, not a button</h3>
+        <p>Port 3301 gets a small <code>PUBLIC</code> tag; "make this the public port" moves into the overflow menu. An every-row icon button for a rare action was spending prime pixels on noise.</p>
+      </div>
+      <div class="decision">
+        <span class="was">Was: "Loading GPU info…"</span>
+        <h3>GPU strip is part of the frame</h3>
+        <p>A slim, always-present strip above the toolbar: card name, a usage bar, used/free figures. It loads into a fixed-height slot so nothing jumps, and it gives the size bars their reference point. Count chips (2 running · 2 failed · 15 idle) summarize the table before you read it.</p>
+      </div>
+    </div>
+  </div>
+</div>

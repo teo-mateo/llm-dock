@@ -27,7 +27,7 @@ const MD_COMPONENTS = {
   },
 }
 
-export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, isActiveCritique, artifacts, disableEdit }) {
+export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, onResend, prevUserId, isActiveCritique, artifacts, disableEdit }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(message.content)
   const proseClass = useProseClass('max-w-none', 'text-[15px]', 'leading-relaxed', 'font-serif', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
@@ -68,7 +68,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
       ></span>
       <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div className={`max-w-[90%] ${isUser ? 'order-1' : ''}`}>
-          {/* Role label — light/minimal, no mono meta line */}
+          {/* Role label */}
           <div className={`text-[10px] text-fg-subtle mb-1 ${isUser ? 'text-right' : ''}`}>
             {isUser ? 'You' : message.model_service || 'Assistant'}
           </div>
@@ -117,6 +117,19 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
             {artifacts.map((art, idx) => (
               <ArtifactRenderer key={art.id || idx} artifact={art} />
             ))}
+          </div>
+        )}
+
+        {/* Regenerate button for assistant messages */}
+        {!isUser && prevUserId && !disableEdit && (
+          <div className="flex justify-end py-0.5">
+            <button
+              onClick={() => onResend?.(prevUserId)}
+              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full border border-border bg-surface text-fg-subtle hover:text-fg hover:border-border-strong hover:bg-surface-muted transition-colors"
+            >
+              <i className="fa-solid fa-rotate-right"></i>
+              Regenerate
+            </button>
           </div>
         )}
 
@@ -173,15 +186,16 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
           )}
         </div>
 
-        {/* Action buttons */}
+{/* Action buttons */}
         {!isTemp && (
-          <div className={`flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
+          <div className={`flex gap-2 mt-1 ${isUser ? 'justify-end opacity-0 group-hover:opacity-100' : ''} transition-opacity`}>
             {isUser && !editing && !disableEdit && (
               <button
                 onClick={() => setEditing(true)}
-                className="text-xs text-fg-subtle hover:text-fg-muted"
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border bg-surface text-fg-muted hover:text-fg hover:border-border-strong hover:bg-surface-muted transition-colors"
               >
-                <i className="fa-solid fa-pen-to-square mr-1"></i>Edit
+                <i className="fa-solid fa-pen-to-square text-[11px]"></i>
+                Edit
               </button>
             )}
             {!isUser && hasSidekick && (

@@ -32,6 +32,7 @@ export default function MessageList({
   hasSidekick,
   onCritique,
   onEdit,
+  onResend,
   disableEdit,
   streaming,
   streamingContent,
@@ -82,20 +83,30 @@ export default function MessageList({
             }}
           ></div>
         )}
-        {messages.map(msg => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            critique={critiques[msg.id]}
-            critiqueLoading={critiqueLoading[msg.id]}
-            hasSidekick={hasSidekick}
-            onCritique={onCritique}
-            onEdit={onEdit}
-            disableEdit={disableEdit}
-            isActiveCritique={activeCritiqueId === msg.id}
-            artifacts={artifacts[msg.id]}
-          />
-        ))}
+        {messages.map((msg, idx) => {
+          const prevUserId = (() => {
+            for (let j = idx - 1; j >= 0; j--) {
+              if (messages[j].role === 'user') return messages[j].id
+            }
+            return null
+          })()
+          return (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              prevUserId={prevUserId}
+              critique={critiques[msg.id]}
+              critiqueLoading={critiqueLoading[msg.id]}
+              hasSidekick={hasSidekick}
+              onCritique={onCritique}
+              onEdit={onEdit}
+              onResend={onResend}
+              disableEdit={disableEdit}
+              isActiveCritique={activeCritiqueId === msg.id}
+              artifacts={artifacts[msg.id]}
+            />
+          )
+        })}
 
         {/* Streaming assistant turn — one timeline node for the whole
             in-flight turn, aligned to the shared spine via the gutter. */}

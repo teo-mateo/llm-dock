@@ -35,6 +35,7 @@ export default function ChatArea({
   runReady,
   onSend,
   onEdit,
+  onResend,
   onStopStreaming,
   onReloadConversation,
   onRefreshConversations,
@@ -256,6 +257,7 @@ export default function ChatArea({
           hasSidekick={!!conversation.sidekick_service}
           onCritique={handleOpenCritique}
           onEdit={onEdit}
+          onResend={onResend}
           disableEdit={busy}
           streaming={streaming}
           streamingContent={streamingContent}

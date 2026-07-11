@@ -498,14 +498,9 @@ export default function useChat({ onConversationUpdated } = {}) {
     }
   }, [conversation, messages, streaming, refetchMessages, handleConversationUpdated])
 
-  const editMessage = useCallback(async (msgId, content) => {
-    // Block edits while a run is active for this conversation — including a
-    // background run we returned to (active_run set, streaming false). Without
-    // this the edit optimistically truncates the transcript, then the backend
-    // rejects the PUT with the active-run 409.
-    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
-    const msg = messages.find(m => m.id === msgId)
-    if (!msg || msg.role !== 'user') return
+const sendFromSeq = useCallback(async (msg, content) => {
+    // Shared: truncate to seq, open SSE PUT, and stream response.
+    // Used by both editMessage (new content) and resendMessage (original).
 
     setError(null)
     setStreaming(true)
@@ -517,7 +512,6 @@ export default function useChat({ onConversationUpdated } = {}) {
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
 
-    // Truncate messages from this point
     setMessages(prev => {
       const truncated = prev.filter(m => m.seq < msg.seq)
       return [...truncated, { ...msg, content, id: 'temp-edit' }]
@@ -532,7 +526,7 @@ export default function useChat({ onConversationUpdated } = {}) {
 
     try {
       await streamChat(
-        `/chat/conversations/${conversation.id}/messages/${msgId}`,
+        `/chat/conversations/${conversation.id}/messages/${msg.id}`,
         { content },
         {
           method: 'PUT',
@@ -594,9 +588,6 @@ export default function useChat({ onConversationUpdated } = {}) {
             setStreamingReasoning('')
             setStreaming(false)
             setHeartbeat(null)
-            // See note in sendMessage: refetch only, don't abort the stream,
-            // and enter the drain window so loadConversation also leaves it
-            // alone if the user navigates now.
             drainingRef.current = true
             refetchMessages(conversation.id)
           },
@@ -615,7 +606,23 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, loadConversation, refetchMessages, handleConversationUpdated])
+  }, [conversation, messages, loadConversation, refetchMessages, handleConversationUpdated])
+
+  const editMessage = useCallback(async (msgId, content) => {
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
+    const msg = messages.find(m => m.id === msgId)
+    if (!msg || msg.role !== 'user') return
+
+    await sendFromSeq(msg, content)
+  }, [conversation, messages, streaming, sendFromSeq])
+
+  const resendMessage = useCallback(async (msgId) => {
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
+    const msg = messages.find(m => m.id === msgId)
+    if (!msg || msg.role !== 'user') return
+
+    await sendFromSeq(msg, msg.content)
+  }, [conversation, messages, streaming, sendFromSeq])
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
@@ -679,6 +686,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     loadConversation,
     sendMessage,
     editMessage,
+    resendMessage,
     stopStreaming,
     setConversation,
   }
