@@ -40,9 +40,13 @@ DEFAULT_MODELS = [
     {"id": "google/gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
     {"id": "x-ai/grok-4.5", "label": "Grok 4.5"},
     {"id": "deepseek/deepseek-v3.2", "label": "DeepSeek V3.2"},
+    {"id": "deepseek/deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
+    {"id": "deepseek/deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
     {"id": "qwen/qwen3.7-max", "label": "Qwen3.7 Max"},
     {"id": "moonshotai/kimi-k2.6", "label": "Kimi K2.6"},
     {"id": "z-ai/glm-5", "label": "GLM 5"},
+    {"id": "z-ai/glm-5.2", "label": "GLM 5.2"},
+    {"id": "tencent/hy3", "label": "Hunyuan 3"},
 ]
 
 
