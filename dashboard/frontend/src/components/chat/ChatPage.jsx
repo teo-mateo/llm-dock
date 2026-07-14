@@ -14,7 +14,7 @@ export default function ChatPage() {
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, refresh, create, remove, removeMany, patchConversation } = useConversations()
+  const { conversations, refresh, create, remove, removeMany, rename, patchConversation } = useConversations()
   const { services: runningServices } = useRunningServices()
   const { data: openRouterData } = useOpenRouterModels()
   const {
@@ -88,6 +88,11 @@ export default function ChatPage() {
       refresh()
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRename = useCallback(async (id, title) => {
+    await rename(id, title)
+    patchConversation(id, { title })
+  }, [rename, patchConversation])
 
   // Default main model for new conversations: the first running local
   // service wins; with none running, fall back to the first curated
@@ -165,6 +170,7 @@ export default function ChatPage() {
         onCreate={handleCreate}
         onDelete={handleDelete}
         onDeleteMany={handleDeleteMany}
+        onRename={handleRename}
       />
       <ChatArea
         conversation={conversation}
