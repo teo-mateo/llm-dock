@@ -1,11 +1,16 @@
 """Persistent chat settings (singleton).
 
-Currently holds one value: the user-customized default
-``main_system_prompt`` used for new conversations. If the setting is
-absent (or the settings file does not exist or fails to parse), the
-built-in ``DEFAULT_MAIN_SYSTEM_PROMPT`` from ``constants.py`` is used.
-This lets the dashboard surface the default prompt as something the user
-can edit without a code change + service restart.
+Holds user-customized settings that fall back to built-in defaults when
+absent (or when the settings file does not exist or fails to parse):
+
+- ``main_system_prompt`` — the default system prompt for new
+  conversations (built-in: ``DEFAULT_MAIN_SYSTEM_PROMPT`` in
+  ``constants.py``).
+- ``openrouter_models`` — the curated OpenRouter model list shown in the
+  chat model pickers (built-in: ``DEFAULT_MODELS`` in ``openrouter.py``).
+
+This lets the dashboard surface these as editable without a code change +
+service restart.
 
 Storage: a single JSON file (``dashboard/chat_settings.json`` by
 default), one top-level object. Written atomically via tempfile + fsync +
@@ -25,6 +30,7 @@ import tempfile
 import threading
 
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT
+from .openrouter import DEFAULT_MODELS as DEFAULT_OPENROUTER_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +130,16 @@ def set_main_system_prompt(content: str) -> None:
 
 def reset_main_system_prompt() -> None:
     """Remove any stored override so new conversations get the built-in."""
+    _reset_key("main_system_prompt")
+
+
+def _reset_key(key: str) -> None:
+    """Remove ``key`` from the store, unlinking the file if it ends up empty."""
     with _lock:
         data = _load_unlocked()
-        if "main_system_prompt" not in data:
+        if key not in data:
             return
-        del data["main_system_prompt"]
+        del data[key]
         if data:
             _save_unlocked(data)
             return
@@ -140,3 +151,87 @@ def reset_main_system_prompt() -> None:
                 os.unlink(path)
             except OSError as e:
                 logger.warning("chat_settings: cannot unlink %s: %s", path, e)
+
+
+# -- Curated OpenRouter model list --
+
+def _valid_openrouter_models(value) -> bool:
+    """True if ``value`` is a well-formed stored model list (may be empty)."""
+    if not isinstance(value, list):
+        return False
+    seen = set()
+    for entry in value:
+        if not isinstance(entry, dict):
+            return False
+        model = entry.get("id")
+        if not isinstance(model, str) or not model.strip():
+            return False
+        label = entry.get("label")
+        if label is not None and not isinstance(label, str):
+            return False
+        if model in seen:
+            return False
+        seen.add(model)
+    return True
+
+
+def _normalize_openrouter_models(models: list) -> list:
+    return [
+        {"id": m["id"].strip(), "label": (m.get("label") or m["id"]).strip() or m["id"].strip()}
+        for m in models
+    ]
+
+
+def get_openrouter_models() -> list:
+    """Return the customized model list, or the built-in if not set/invalid.
+
+    An empty stored list is honored — it means the user hid every
+    OpenRouter model from the picker without unsetting the API key.
+    """
+    with _lock:
+        data = _load_unlocked()
+    value = data.get("openrouter_models")
+    if _valid_openrouter_models(value):
+        return value
+    return [dict(m) for m in DEFAULT_OPENROUTER_MODELS]
+
+
+def is_openrouter_models_customized() -> bool:
+    """True if a valid override is stored AND differs from the built-in."""
+    with _lock:
+        data = _load_unlocked()
+    value = data.get("openrouter_models")
+    return _valid_openrouter_models(value) and value != DEFAULT_OPENROUTER_MODELS
+
+
+def set_openrouter_models(models: list) -> None:
+    """Persist ``models`` as the curated OpenRouter model list.
+
+    Each entry must be a dict with a non-empty string ``id``; ``label`` is
+    optional and defaults to the id. An empty list is allowed. Raises
+    ``TypeError`` / ``ValueError`` on malformed input.
+    """
+    if not isinstance(models, list):
+        raise TypeError("openrouter_models must be a list")
+    seen = set()
+    for entry in models:
+        if not isinstance(entry, dict):
+            raise ValueError("each model must be an object with an 'id'")
+        model = entry.get("id")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("each model must have a non-empty string 'id'")
+        label = entry.get("label")
+        if label is not None and not isinstance(label, str):
+            raise ValueError("model 'label' must be a string when present")
+        if model.strip() in seen:
+            raise ValueError(f"duplicate model id: {model.strip()}")
+        seen.add(model.strip())
+    with _lock:
+        data = _load_unlocked()
+        data["openrouter_models"] = _normalize_openrouter_models(models)
+        _save_unlocked(data)
+
+
+def reset_openrouter_models() -> None:
+    """Remove any stored override, reverting the picker to the built-in list."""
+    _reset_key("openrouter_models")

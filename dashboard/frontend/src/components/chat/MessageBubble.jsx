@@ -14,6 +14,7 @@ import ToolResultBlock from './ToolResultBlock'
 import FormatDriftChip from './FormatDriftChip'
 import { detectFormatDrift } from './formatDrift'
 import useProseClass from '../../hooks/useProseClass'
+import { formatModelLabel } from '../../utils/openrouter'
 
 const MD_COMPONENTS = {
   pre: CopyablePre,
@@ -70,7 +71,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
         <div className={`max-w-[90%] ${isUser ? 'order-1' : ''}`}>
           {/* Role label — light/minimal, no mono meta line */}
           <div className={`text-[10px] text-fg-subtle mb-1 ${isUser ? 'text-right' : ''}`}>
-            {isUser ? 'You' : message.model_service || 'Assistant'}
+            {isUser ? 'You' : formatModelLabel(message.model_service) || 'Assistant'}
           </div>
 
         {/* Thinking block for assistant */}

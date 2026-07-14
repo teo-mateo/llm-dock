@@ -13,6 +13,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 COMPOSE_FILE = os.getenv("COMPOSE_FILE", "../docker-compose.yml")
 COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT_NAME", "dockerized-models")
 GLOBAL_API_KEY = os.getenv("LLM_DOCK_API_KEY")
+# Optional. When set, OpenRouter-hosted models become selectable in the chat
+# model pickers. Read via ``config.OPENROUTER_API_KEY`` (attribute access).
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 
 def set_global_api_key(new_key: str, dotenv_path: str = DOTENV_PATH):

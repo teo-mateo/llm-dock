@@ -6,7 +6,7 @@ import re
 import requests
 
 from .constants import CRITIQUE_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
-from .llm_proxy import resolve_service
+from .llm_proxy import build_endpoint, resolve_service, unreachable_message
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -33,13 +33,9 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
     """Send a critique request to the sidekick model and parse the response."""
     svc = resolve_service(sidekick_service)
     if svc is None:
-        return {"error": f"Service '{sidekick_service}' is not reachable. Is it running?"}
+        return {"error": unreachable_message(sidekick_service)}
 
-    url = f"http://localhost:{svc['host_port']}/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {svc['api_key']}",
-        "Content-Type": "application/json",
-    }
+    url, headers = build_endpoint(svc)
     payload = {
         "messages": [
             {"role": "system", "content": CRITIQUE_SYSTEM_PROMPT},
@@ -47,6 +43,9 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
         ],
         "temperature": 0.3,
     }
+    if svc.get("model"):
+        # Remote multi-model providers (OpenRouter) require an explicit model.
+        payload["model"] = svc["model"]
 
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=120)
@@ -54,8 +53,11 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
             return {"error": f"Sidekick returned HTTP {resp.status_code}: {resp.text}"}
 
         data = resp.json()
-        raw_content = data["choices"][0]["message"].get("content", "")
-        raw_reasoning = data["choices"][0]["message"].get("reasoning_content", "")
+        message = data["choices"][0]["message"]
+        # OpenAI-compatible providers define content as string|null — an
+        # explicit null bypasses .get()'s default, so normalize with `or`.
+        raw_content = message.get("content") or ""
+        raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
 
         # The actual critique may be in content or reasoning_content depending on model
         critique_text = raw_content if raw_content.strip() else raw_reasoning
