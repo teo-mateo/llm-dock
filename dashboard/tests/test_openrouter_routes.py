@@ -311,6 +311,28 @@ def test_critique_openrouter_request_shape(monkeypatch):
     assert captured["json"]["model"] == "vendor/model-a"
 
 
+def test_critique_null_content_falls_back_to_reasoning(monkeypatch):
+    """Non-streaming message.content is string|null; an explicit null must
+    not crash .strip() — the critique should be parsed from `reasoning`."""
+    monkeypatch.setattr(critique, "resolve_service",
+                        lambda name: {"host_port": 1234, "api_key": "k"})
+
+    class _JsonResp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {
+                "content": None,
+                "reasoning": '{"verdict": "ok", "summary": "s", "annotations": []}',
+            }}]}
+
+    monkeypatch.setattr(critique.requests, "post", lambda *a, **k: _JsonResp())
+    result = critique.request_critique("svc", "ctx")
+    assert result.get("verdict") == "ok"
+    assert "error" not in result
+
+
 def test_critique_unconfigured_returns_specific_error(monkeypatch):
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", None)
     result = critique.request_critique("openrouter:vendor/model-a", "ctx")

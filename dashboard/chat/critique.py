@@ -53,8 +53,10 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
             return {"error": f"Sidekick returned HTTP {resp.status_code}: {resp.text}"}
 
         data = resp.json()
-        raw_content = data["choices"][0]["message"].get("content", "")
         message = data["choices"][0]["message"]
+        # OpenAI-compatible providers define content as string|null — an
+        # explicit null bypasses .get()'s default, so normalize with `or`.
+        raw_content = message.get("content") or ""
         raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
 
         # The actual critique may be in content or reasoning_content depending on model
