@@ -247,6 +247,26 @@ def test_stream_local_request_has_no_model_field(monkeypatch):
     assert "model" not in captured["json"]
 
 
+def test_stream_final_usage_chunk_with_empty_choices(monkeypatch):
+    """OpenRouter emits a final usage chunk with `choices: []` before [DONE]
+    (https://openrouter.ai/docs/api/reference/overview#responses). It must be
+    a no-op, not an IndexError that fails the run after a complete answer."""
+    resp = _FakeResp([
+        ': OPENROUTER PROCESSING',
+        'data: {"choices":[{"delta":{"content":"hello"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}',
+        'data: [DONE]',
+    ])
+    monkeypatch.setattr(llm_proxy, "resolve_service",
+                        lambda name: {"host_port": 1234, "api_key": "k"})
+    monkeypatch.setattr(llm_proxy.requests, "post", lambda *a, **k: resp)
+
+    events = list(llm_proxy.stream_chat_completion("svc", []))
+    kinds = [e[0] for e in events]
+    assert kinds == ["delta", "done"]
+    assert events[-1][1]["content"] == "hello"
+
+
 def test_stream_midstream_error_chunk(monkeypatch):
     """An {\"error\": ...} SSE chunk (e.g. mid-stream rate limit) surfaces
     as an error event instead of being silently swallowed."""

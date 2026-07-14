@@ -222,7 +222,10 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
                 yield ("error", {"message": f"Provider error: {message or json.dumps(err)}"})
                 return
 
-            choice = chunk.get("choices", [{}])[0]
+            # `choices` can be legitimately empty — OpenRouter emits a final
+            # usage chunk with `choices: []` before [DONE]. Treat it (and any
+            # other choice-less chunk) as a no-op instead of IndexError-ing.
+            choice = (chunk.get("choices") or [{}])[0]
             delta = choice.get("delta", {})
             chunk_finish = choice.get("finish_reason")
             if chunk_finish:
