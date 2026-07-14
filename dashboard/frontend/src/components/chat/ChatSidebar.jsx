@@ -1,14 +1,41 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import ThemeSwitcher from '../ThemeSwitcher'
 
-function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete }) {
+function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete, renaming, onRenameStart, onRenameConfirm }) {
   const isSpinoff = !!conv.parent_conversation_id
+  const inputRef = useRef(null)
 
-  // Spinoffs keep their branch icon and swap to a checkbox on hover; main
-  // conversations show the checkbox permanently.
+  useEffect(() => {
+    if (renaming === conv.id) {
+      inputRef.current?.focus()
+    }
+  }, [renaming, conv.id])
+
   const checkboxShown = selectMode || selected
   const spinoffIconVisibilityClass = checkboxShown ? 'opacity-0' : 'group-hover/iconslot:opacity-0'
   const spinoffCheckboxVisibilityClass = checkboxShown ? 'opacity-100' : 'opacity-0 group-hover/iconslot:opacity-100'
+
+  const handleRenameSubmit = (e) => {
+    e.preventDefault()
+    const val = inputRef.current?.value?.trim()
+    if (val && val !== conv.title) {
+      onRenameConfirm(conv.id, val)
+    } else {
+      onRenameConfirm(conv.id, null)
+    }
+  }
+
+  const handleRenameBlur = () => {
+    requestAnimationFrame(() => {
+      if (document.activeElement === inputRef.current) return
+      const val = inputRef.current?.value?.trim()
+      if (val && val !== conv.title) {
+        onRenameConfirm(conv.id, val)
+      } else {
+        onRenameConfirm(conv.id, null)
+      }
+    })
+  }
 
   return (
     <div
@@ -71,22 +98,40 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
         </label>
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm flex items-center gap-1.5 min-w-0">
-          {conv.active_run && (conv.active_run.status === 'running' || conv.active_run.status === 'queued') && (
-            <i
-              className={`fa-solid fa-circle-notch fa-spin text-[10px] flex-shrink-0 ${
-                conv.active_run.status === 'running' ? 'text-accent' : 'text-fg-faint'
-              }`}
-              title={conv.active_run.status === 'running' ? 'Generating…' : 'Queued…'}
-              aria-label={conv.active_run.status === 'running' ? 'Run in progress' : 'Run queued'}
-              data-testid="active-run-indicator"
-            ></i>
-          )}
-          <span className="truncate">{conv.title}</span>
-        </div>
-        <div className="text-[10px] text-fg-faint">
-          {new Date(conv.updated_at).toLocaleDateString()}
-        </div>
+        {renaming === conv.id ? (
+          <form onSubmit={handleRenameSubmit} className="flex items-center gap-1.5">
+            <input
+              ref={inputRef}
+              type="text"
+              defaultValue={conv.title}
+              onBlur={handleRenameBlur}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); handleRenameSubmit(e) }
+                if (e.key === 'Escape') onRenameConfirm(conv.id, null)
+              }}
+              className="flex-1 min-w-0 bg-surface-strong border border-border-strong rounded px-2 py-0.5 text-sm text-fg focus:outline-none focus:border-accent"
+            />
+          </form>
+        ) : (
+          <>
+            <div className="text-sm flex items-center gap-1.5 min-w-0">
+              {conv.active_run && (conv.active_run.status === 'running' || conv.active_run.status === 'queued') && (
+                <i
+                  className={`fa-solid fa-circle-notch fa-spin text-[10px] flex-shrink-0 ${
+                    conv.active_run.status === 'running' ? 'text-accent' : 'text-fg-faint'
+                  }`}
+                  title={conv.active_run.status === 'running' ? 'Generating…' : 'Queued…'}
+                  aria-label={conv.active_run.status === 'running' ? 'Run in progress' : 'Run queued'}
+                  data-testid="active-run-indicator"
+                ></i>
+              )}
+              <span className="truncate">{conv.title}</span>
+            </div>
+            <div className="text-[10px] text-fg-faint">
+              {new Date(conv.updated_at).toLocaleDateString()}
+            </div>
+          </>
+        )}
       </div>
       {confirmDelete === conv.id ? (
         <div className="flex gap-1 flex-shrink-0">
@@ -99,22 +144,52 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
             className="text-[10px] px-1.5 py-0.5 bg-surface-strong rounded text-fg"
           >No</button>
         </div>
+      ) : renaming === conv.id ? (
+        <div className="flex gap-1 flex-shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); handleRenameSubmit(e) }}
+            className="text-success-fg hover:text-success-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="Confirm rename"
+            aria-label="Confirm rename"
+          >
+            <i className="fa-solid fa-check text-xs"></i>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onRenameConfirm(conv.id, null) }}
+            className="text-fg-muted hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="Cancel rename"
+            aria-label="Cancel rename"
+          >
+            <i className="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
       ) : (
-        <button
-          onClick={e => { e.stopPropagation(); setConfirmDelete(conv.id) }}
-          className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
-          title="Delete conversation"
-          aria-label="Delete conversation"
-        >
-          <i className="fa-solid fa-trash text-xs"></i>
-        </button>
+        <>
+          <button
+            onClick={e => { e.stopPropagation(); onRenameStart(conv.id) }}
+            className={`opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer ${selectMode ? 'pointer-events-none opacity-0' : ''}`}
+            title="Rename conversation"
+            aria-label="Rename conversation"
+          >
+            <i className="fa-solid fa-pen text-xs"></i>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDelete(conv.id) }}
+            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="Delete conversation"
+            aria-label="Delete conversation"
+          >
+            <i className="fa-solid fa-trash text-xs"></i>
+          </button>
+        </>
       )}
     </div>
   )
 }
 
-export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany }) {
+export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [renaming, setRenaming] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [confirmBulk, setConfirmBulk] = useState(false)
   // Anchor for shift-click range selection. Holds the id of the last
@@ -187,6 +262,15 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     if (onDeleteMany) await onDeleteMany(ids)
   }
 
+  const handleRenameStart = (id) => {
+    setRenaming(id)
+  }
+
+  const handleRenameConfirm = async (id, newTitle) => {
+    setRenaming(null)
+    if (newTitle && onRename) await onRename(id, newTitle)
+  }
+
   const selectionCount = selectedIds.size
   // Once anything is selected, every row swaps its icon for a checkbox.
   const selectMode = selectionCount > 0
@@ -220,6 +304,9 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           setConfirmDelete={setConfirmDelete}
           onSelect={onSelect}
           onDelete={onDelete}
+          renaming={renaming}
+          onRenameStart={handleRenameStart}
+          onRenameConfirm={handleRenameConfirm}
         />
         {children.map(child => renderConv(child, depth + 1))}
       </div>
