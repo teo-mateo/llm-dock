@@ -5,6 +5,8 @@ import ChatArea from './ChatArea'
 import useConversations from '../../hooks/useConversations'
 import useChat from '../../hooks/useChat'
 import useRunningServices from '../../hooks/useRunningServices'
+import useOpenRouterModels from '../../hooks/useOpenRouterModels'
+import { serviceNameForModel, formatModelLabel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
 
 export default function ChatPage() {
@@ -14,6 +16,7 @@ export default function ChatPage() {
 
   const { conversations, refresh, create, remove, removeMany, patchConversation } = useConversations()
   const { services: runningServices } = useRunningServices()
+  const { data: openRouterData } = useOpenRouterModels()
   const {
     conversation,
     messages,
@@ -86,31 +89,38 @@ export default function ChatPage() {
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Default main model for new conversations: the first running local
+  // service wins; with none running, fall back to the first curated
+  // OpenRouter model (only offered when OPENROUTER_API_KEY is configured).
+  // The backend requires a non-empty main_service so we can't create
+  // without one.
+  const openRouterModels = openRouterData?.configured ? openRouterData.current : []
+  const defaultModelName =
+    runningServices[0]?.name ||
+    (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null)
+
   const handleCreate = useCallback(async () => {
-    // Default the main model to the first running service. When exactly
-    // one model is up this preselects it; the backend requires a non-empty
-    // main_service so we can't create without one.
-    if (runningServices.length === 0) {
-      window.alert('No running model services available. Start a model first.')
+    if (!defaultModelName) {
+      window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
     const conv = await create({
-      main_service: runningServices[0].name,
+      main_service: defaultModelName,
     })
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, runningServices])
+  }, [create, navigate, defaultModelName])
 
   // Empty-state composer: create a conversation, then queue the typed
   // message so it sends as soon as the new conversation loads.
   const handleCreateAndSend = useCallback(async (content, images) => {
-    if (runningServices.length === 0) {
-      window.alert('No running model services available. Start a model first.')
+    if (!defaultModelName) {
+      window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
-    const conv = await create({ main_service: runningServices[0].name })
+    const conv = await create({ main_service: defaultModelName })
     pendingMsgRef.current = { convId: conv.id, content, images }
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, runningServices])
+  }, [create, navigate, defaultModelName])
 
   const handleSelect = useCallback((id) => {
     navigate(`/chat/${id}`)
@@ -159,7 +169,7 @@ export default function ChatPage() {
       <ChatArea
         conversation={conversation}
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
-        defaultModelName={runningServices[0]?.name || null}
+        defaultModelName={formatModelLabel(defaultModelName, openRouterModels)}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}
         critiques={critiques}

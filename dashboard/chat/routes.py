@@ -16,7 +16,7 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import settings_store
+from . import openrouter, settings_store
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,53 @@ def delete_main_system_prompt_setting():
     settings_store.reset_main_system_prompt()
     logger.info("default main_system_prompt reset to built-in")
     return jsonify(_settings_payload())
+
+
+# -- Settings: curated OpenRouter model list --
+
+def _openrouter_settings_payload() -> dict:
+    """Shape returned by every openrouter-models settings endpoint.
+
+    ``configured`` tells the frontend whether OPENROUTER_API_KEY is set —
+    the chat picker hides the OpenRouter group when it isn't, while the
+    Tools-page editor stays usable and just shows a banner.
+    """
+    return {
+        "configured": openrouter.is_configured(),
+        "current": settings_store.get_openrouter_models(),
+        "builtin": openrouter.DEFAULT_MODELS,
+        "customized": settings_store.is_openrouter_models_customized(),
+    }
+
+
+@chat_bp.route("/api/chat/settings/openrouter-models", methods=["GET"])
+@require_auth
+def get_openrouter_models_setting():
+    return jsonify(_openrouter_settings_payload())
+
+
+@chat_bp.route("/api/chat/settings/openrouter-models", methods=["PUT"])
+@require_auth
+def put_openrouter_models_setting():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be {models: [{id, label?}]}"}), 400
+    models = data.get("models")
+    try:
+        settings_store.set_openrouter_models(models)
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    logger.info("openrouter model list updated (%d models)", len(models))
+    return jsonify(_openrouter_settings_payload())
+
+
+@chat_bp.route("/api/chat/settings/openrouter-models", methods=["DELETE"])
+@require_auth
+def delete_openrouter_models_setting():
+    """Drop any customization, reverting the picker to the built-in list."""
+    settings_store.reset_openrouter_models()
+    logger.info("openrouter model list reset to built-in")
+    return jsonify(_openrouter_settings_payload())
 
 
 # -- Conversations CRUD --

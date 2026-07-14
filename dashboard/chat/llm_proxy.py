@@ -59,7 +59,16 @@ def detect_format_drift(content: str, reasoning: str = "", had_tool_calls: bool 
 
 
 def resolve_service(service_name: str) -> dict:
-    """Resolve a service name to host_port and api_key using docker_utils."""
+    """Resolve a service name to connection details.
+
+    Local Docker services resolve to ``{host_port, api_key}`` via
+    docker_utils; ``openrouter:<model-id>`` strings resolve to
+    ``{base_url, api_key, model, extra_headers}`` (or None when no
+    OPENROUTER_API_KEY is configured).
+    """
+    from . import openrouter
+    if openrouter.is_openrouter_service(service_name):
+        return openrouter.resolve(service_name)
     from docker_utils import get_docker_services
     services = get_docker_services()
     for svc in services:
@@ -69,6 +78,45 @@ def resolve_service(service_name: str) -> dict:
                 "api_key": svc["api_key"],
             }
     return None
+
+
+def unreachable_message(service_name: str) -> str:
+    """Error text for a service that failed to resolve."""
+    from . import openrouter
+    if openrouter.is_openrouter_service(service_name):
+        return ("OpenRouter is not configured "
+                "(OPENROUTER_API_KEY missing in dashboard/.env).")
+    return f"Service '{service_name}' is not reachable. Is it running?"
+
+
+def build_endpoint(svc: dict) -> tuple:
+    """Return (url, headers) for a resolved service — local docker or remote.
+
+    ``base_url`` (when present) is an OpenAI-style base already ending in
+    ``/v1``, e.g. ``https://openrouter.ai/api/v1``.
+    """
+    base = svc.get("base_url") or f"http://localhost:{svc['host_port']}/v1"
+    headers = {
+        "Authorization": f"Bearer {svc['api_key']}",
+        "Content-Type": "application/json",
+    }
+    headers.update(svc.get("extra_headers") or {})
+    return f"{base}/chat/completions", headers
+
+
+def _extract_error_message(resp) -> str:
+    """Pull the provider's error message out of a non-200 response body.
+
+    OpenAI-compatible providers return ``{"error": {"message": ...}}``;
+    fall back to the raw body when that shape isn't there.
+    """
+    try:
+        err = resp.json().get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return err["message"]
+    except (ValueError, AttributeError):
+        pass
+    return resp.text
 
 
 def build_messages_array(system_prompt: str, messages: list) -> list:
@@ -111,18 +159,18 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     """
     svc = resolve_service(service_name)
     if svc is None:
-        yield ("error", {"message": f"Service '{service_name}' is not reachable. Is it running?"})
+        yield ("error", {"message": unreachable_message(service_name)})
         return
 
-    url = f"http://localhost:{svc['host_port']}/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {svc['api_key']}",
-        "Content-Type": "application/json",
-    }
+    url, headers = build_endpoint(svc)
     payload = {
         "messages": messages_array,
         "stream": True,
     }
+    if svc.get("model"):
+        # Remote multi-model providers (OpenRouter) require an explicit model;
+        # local single-model servers don't get one and ignore its absence.
+        payload["model"] = svc["model"]
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice or "auto"
@@ -148,7 +196,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
         resp.encoding = "utf-8"
         if resp.status_code != 200:
-            error_body = resp.text
+            error_body = _extract_error_message(resp)
             yield ("error", {"message": f"Model returned HTTP {resp.status_code}: {error_body}"})
             return
 
@@ -165,6 +213,14 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
                 chunk = json.loads(data)
             except json.JSONDecodeError:
                 continue
+
+            # OpenRouter can deliver an error object mid-stream (e.g. a rate
+            # limit hit after streaming started) instead of a choices chunk.
+            if isinstance(chunk, dict) and "error" in chunk:
+                err = chunk["error"] or {}
+                message = err.get("message") if isinstance(err, dict) else None
+                yield ("error", {"message": f"Provider error: {message or json.dumps(err)}"})
+                return
 
             choice = chunk.get("choices", [{}])[0]
             delta = choice.get("delta", {})

@@ -234,6 +234,30 @@ accuracy / tool-posture guidance. See
 `dashboard/mcp_servers.example.json` for the `websearch` `tool_hint`
 carrying the web-research guidance.
 
+## Chatting with OpenRouter models
+
+Chat can target OpenRouter-hosted models alongside local Docker services.
+Enable by setting `OPENROUTER_API_KEY` in `dashboard/.env` (restart the
+dashboard to pick it up); without it, OpenRouter models simply don't
+appear in the chat pickers.
+
+- An OpenRouter model is addressed by the service string
+  `openrouter:<model-id>` (e.g. `openrouter:anthropic/claude-sonnet-5`) in
+  the same `main_service` / `sidekick_service` / `model_service` columns as
+  local service names. `chat/llm_proxy.resolve_service()` branches on the
+  prefix via `chat/openrouter.py`.
+- The curated picker list (built-in defaults in
+  `chat/openrouter.py:DEFAULT_MODELS`) is editable at runtime: Tools page →
+  "OpenRouter models" card, or `GET/PUT/DELETE
+  /api/chat/settings/openrouter-models` (stored under `openrouter_models`
+  in `chat_settings.json`). The list is a picker convenience, **not an
+  allowlist** — any `openrouter:` string resolves as long as the key is
+  set, so removing a model doesn't break conversations already using it.
+- MCP tool calling, streaming, images, and critique all go through the
+  same code paths as local models. OpenRouter requires an explicit
+  `model` field in the payload; local single-model servers must NOT get
+  one (regression-tested in `tests/test_openrouter_routes.py`).
+
 ## Reference: working embedding service
 
 `vllm-nomic-embed-text-v1.5` (port 3320) — see `services.json`. Smoke

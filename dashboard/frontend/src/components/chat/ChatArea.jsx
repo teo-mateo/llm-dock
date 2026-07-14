@@ -128,7 +128,7 @@ export default function ChatArea({
           <p className="text-sm text-fg-subtle mb-6 text-center">
             {defaultModelName
               ? <>Type a message below — a chat will be created with <span className="text-fg-muted">{defaultModelName}</span>.</>
-              : 'No running model services available. Start a model first.'}
+              : 'No model available. Start a local model or configure OpenRouter.'}
           </p>
           <div className="w-full">
             <ChatInput
