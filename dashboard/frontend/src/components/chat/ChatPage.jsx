@@ -12,7 +12,7 @@ export default function ChatPage() {
   const convId = conversationId || null
   const navigate = useNavigate()
 
-  const { conversations, refresh, create, remove, removeMany, patchConversation } = useConversations()
+  const { conversations, refresh, create, remove, removeMany, rename, patchConversation } = useConversations()
   const { services: runningServices } = useRunningServices()
   const {
     conversation,
@@ -86,6 +86,11 @@ export default function ChatPage() {
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleRename = useCallback(async (id, title) => {
+    await rename(id, title)
+    patchConversation(id, { title })
+  }, [rename, patchConversation])
+
   const handleCreate = useCallback(async () => {
     // Default the main model to the first running service. When exactly
     // one model is up this preselects it; the backend requires a non-empty
@@ -155,6 +160,7 @@ export default function ChatPage() {
         onCreate={handleCreate}
         onDelete={handleDelete}
         onDeleteMany={handleDeleteMany}
+        onRename={handleRename}
       />
       <ChatArea
         conversation={conversation}
