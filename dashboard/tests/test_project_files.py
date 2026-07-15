@@ -4,6 +4,7 @@ properties here — every route funnels through project_files.resolve().
 """
 import io
 import os
+import stat as stat_mod
 import sys
 
 import pytest
@@ -280,6 +281,22 @@ class TestOps:
         with pytest.raises(pf.ProjectFilesError) as e:
             pf.write_text(made_root, "link", "x", create_only=True)
         assert e.value.status == 409
+
+    def test_writes_preserve_permission_bits(self, made_root):
+        """Regression (PR #79 codex 3.2): mkstemp stages at 0600 — an edit
+        or overwriting upload must not strip the target's mode (e.g. a
+        0755 script's exec bit), and fresh files get 0644, not 0600."""
+        node = pf.write_text(made_root, "run.sh", "#!/bin/sh\n")
+        abs_path = os.path.join(made_root, "run.sh")
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o644  # new-file default
+        os.chmod(abs_path, 0o755)
+        pf.write_text(made_root, "run.sh", "#!/bin/sh\necho hi\n")
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o755  # edit preserves
+
+        pf.save_stream(made_root, "", "run.sh", io.BytesIO(b"#!/bin/sh\n"), overwrite=True)
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o755  # overwrite upload preserves
+        pf.save_stream(made_root, "", "fresh.bin", io.BytesIO(b"x"))
+        assert stat_mod.S_IMODE(os.lstat(os.path.join(made_root, "fresh.bin")).st_mode) == 0o644
 
     def test_write_text_conflict_when_file_deleted(self, made_root):
         node = pf.write_text(made_root, "f.txt", "one")

@@ -42,9 +42,15 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
     }
   }, [projectId, path])
 
+  // Initial load decision is taken from createModeRef, NOT the isNew prop:
+  // after the first successful save the parent flips isNew to false, and a
+  // prop-driven load() would refetch the just-saved snapshot and clobber
+  // anything typed while that save was in flight. The effect re-runs only
+  // when projectId/path change — which remounts the editor anyway (keyed
+  // by path in ProjectPage).
   useEffect(() => {
-    if (!isNew) load()
-  }, [load, isNew])
+    if (!createModeRef.current) load()
+  }, [load])
 
   const save = useCallback(async ({ force = false } = {}) => {
     // `content` is the snapshot this save submits. The user can keep

@@ -188,6 +188,39 @@ describe('ProjectPage editor integration', () => {
   })
 })
 
+describe('ProjectPage new-file first-save race (regression: codex 3.1)', () => {
+  it('typing during the first save of a new file survives the isNew flip', async () => {
+    // First save of a new file resolves while the user has already typed
+    // newer content. onSaved flips isNew on the editor prop — that flip
+    // must NOT trigger a reload of the just-saved snapshot, which would
+    // clobber the newer text and mark it clean.
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    const ta = await screen.findByTestId('editor-textarea')
+
+    let resolveSave
+    mockSaveContent.mockImplementation(() => new Promise(res => { resolveSave = res }))
+    fireEvent.change(ta, { target: { value: 'content A' } })
+    fireEvent.click(screen.getByText('Save'))                 // create A, pending
+    fireEvent.change(ta, { target: { value: 'content B' } })  // keep typing
+
+    mockGetContent.mockResolvedValue({ path: 'fresh.md', content: 'content A', revision: 'rA' })
+    resolveSave({ path: 'fresh.md', revision: 'rA' })
+    await waitFor(() => expect(screen.getByText('Save').disabled).toBe(false))
+
+    // B intact, still dirty, and no reload happened.
+    expect(screen.getByTestId('editor-textarea').value).toBe('content B')
+    expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
+    expect(mockGetContent).not.toHaveBeenCalled()
+
+    // And B saves as a normal guarded (non-create) write.
+    mockSaveContent.mockResolvedValue({ path: 'fresh.md', revision: 'rB' })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenLastCalledWith('p1', 'fresh.md', 'content B', 'rA', false))
+  })
+})
+
 describe('ProjectPage stale-response guard', () => {
   it('a slow tree response for the previous project never commits after switching', async () => {
     // Project A's fetch is slow; the user switches to B; A resolves LAST.

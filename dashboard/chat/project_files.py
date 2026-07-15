@@ -249,6 +249,14 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
         raise ProjectFilesError("a directory with that name exists", status=409)
     if os.path.exists(abs_target) and not overwrite:
         raise ProjectFilesError("file already exists", status=409)
+    # Same permission fidelity as write_text: mkstemp stages at 0600, so an
+    # overwriting upload must keep the target's mode and a fresh one gets
+    # a normal default instead of 0600.
+    publish_mode = 0o644
+    if overwrite and os.path.lexists(abs_target):
+        target_st = os.lstat(abs_target)
+        if stat_mod.S_ISREG(target_st.st_mode):
+            publish_mode = stat_mod.S_IMODE(target_st.st_mode)
 
     # Stage in a UNIQUE, exclusively-created temp file in the destination
     # directory (same filesystem → atomic publication). A deterministic
@@ -267,6 +275,7 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
                     if written > MAX_UPLOAD_BYTES:
                         raise ProjectFilesError("file too large", status=413)
                     f.write(chunk)
+            os.chmod(tmp_path, publish_mode)
             if overwrite:
                 os.replace(tmp_path, abs_target)
             else:
@@ -349,12 +358,16 @@ def write_text(root: str, rel_path: str, content: str,
     abs_dir = os.path.dirname(abs_path)
     if not os.path.isdir(abs_dir):
         raise ProjectFilesError("parent directory not found", status=404)
+    # mkstemp stages at 0600; without this an edit would silently strip the
+    # target's permission bits (e.g. a 0755 script losing its exec bit).
+    publish_mode = 0o644
     if os.path.lexists(abs_path):
         if create_only:
             raise ProjectFilesError("file already exists", status=409)
         st = os.lstat(abs_path)
         if not stat_mod.S_ISREG(st.st_mode):
             raise ProjectFilesError("not a regular file", status=409)
+        publish_mode = stat_mod.S_IMODE(st.st_mode)
         if base_revision is not None:
             # A file too large for read_text can't be what the client
             # loaded — it definitely changed. Otherwise compare content.
@@ -373,6 +386,7 @@ def write_text(root: str, rel_path: str, content: str,
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(encoded)
+            os.chmod(tmp_path, publish_mode)
             if create_only:
                 # Atomic no-replace publication, same as upload's contract.
                 try:
