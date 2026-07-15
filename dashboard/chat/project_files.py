@@ -499,19 +499,23 @@ def copy_path(root: str, rel_src: str, rel_dst: str) -> dict:
         raise ProjectFilesError("destination directory not found", status=404)
 
     src_st = os.lstat(abs_src)
+    # The component checks above only see CLIENT paths; an in-root symlink
+    # alias can spell a destination whose PHYSICAL location differs — both
+    # deeper than the client path suggests and inside the source itself.
+    # Judge depth and self-containment on realpaths: the real destination
+    # is its existing parent's realpath plus the final component. Copying
+    # past the depth cap would mint entries build_tree returns but every
+    # other route rejects as "path too deep".
+    real_dst = os.path.join(os.path.realpath(abs_dst_dir), os.path.basename(abs_dst))
+    phys_dst_depth = len(os.path.relpath(real_dst, os.path.realpath(root)).split(os.sep))
+    if phys_dst_depth > MAX_PATH_DEPTH:
+        raise ProjectFilesError("path too deep")
     with _fs_errors():
         if stat_mod.S_ISDIR(src_st.st_mode):
-            # The component-prefix check above only sees CLIENT paths; an
-            # in-root symlink alias (alias -> d) would let "d" ->
-            # "alias/copy" physically target d/copy and send copytree
-            # into its own output. Compare physical paths: the real
-            # destination is its existing parent's realpath plus the
-            # final component.
             real_src = os.path.realpath(abs_src)
-            real_dst = os.path.join(os.path.realpath(abs_dst_dir), os.path.basename(abs_dst))
             if real_dst == real_src or real_dst.startswith(real_src + os.sep):
                 raise ProjectFilesError("cannot copy a directory into itself")
-            _precheck_copy_tree(abs_src, len(dst_parts))
+            _precheck_copy_tree(abs_src, phys_dst_depth)
             try:
                 shutil.copytree(abs_src, abs_dst, symlinks=True)
             except FileExistsError:

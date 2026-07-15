@@ -919,6 +919,34 @@ class TestCopy:
         assert "into itself" in str(e.value)
         assert not os.path.exists(os.path.join(made_root, "d", "copy"))
 
+    def test_copy_depth_cap_via_symlink_alias(self, made_root):
+        # A root-level alias to a deep directory spells a 2-component
+        # client path whose PHYSICAL depth is at the cap — the copied
+        # directory's children would land past it (regression: codex
+        # PR83 5.1).
+        deep_parts = ["p"] * (pf.MAX_PATH_DEPTH - 1)
+        deep_abs = os.path.join(made_root, *deep_parts)
+        os.makedirs(deep_abs)
+        os.symlink(deep_abs, os.path.join(made_root, "alias"))
+        self._write(made_root, "d/x.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", "alias/c")
+        assert "depth" in str(e.value)
+        assert not os.path.exists(os.path.join(deep_abs, "c"))
+
+    def test_copy_file_past_depth_cap_via_symlink_alias(self, made_root):
+        # Same bypass with a single file: the destination itself sits past
+        # the cap, which would mint an entry no other route can address.
+        deep_parts = ["p"] * pf.MAX_PATH_DEPTH
+        deep_abs = os.path.join(made_root, *deep_parts)
+        os.makedirs(deep_abs)
+        os.symlink(deep_abs, os.path.join(made_root, "alias"))
+        self._write(made_root, "a.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "a.txt", "alias/a.txt")
+        assert "too deep" in str(e.value)
+        assert not os.path.exists(os.path.join(deep_abs, "a.txt"))
+
     def test_copy_through_symlink_alias_to_elsewhere_still_works(self, made_root):
         # An alias that does NOT land inside the source stays usable.
         pf.mkdir(made_root, "d")
