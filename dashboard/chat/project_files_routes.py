@@ -101,7 +101,16 @@ def project_files_download(project_id):
     root, err = _project_root_or_404(project_id)
     if err:
         return err
-    abs_path = pf.stat_file(root, request.args.get("path", ""))
+    rel_path = request.args.get("path", "")
+    # Validate the path shape FIRST so traversal attempts stay 400s, then
+    # handle the lazily-created root: before the first mutation any
+    # requested file is simply absent — without this guard resolve() would
+    # walk up past the missing root and misreport 400 "escapes project
+    # root" for an ordinary 404.
+    pf.split_rel_path(rel_path)
+    if not os.path.isdir(root):
+        return jsonify({"error": "file not found"}), 404
+    abs_path = pf.stat_file(root, rel_path)
     return send_file(abs_path, as_attachment=True)
 
 

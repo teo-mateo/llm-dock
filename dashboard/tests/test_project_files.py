@@ -326,6 +326,17 @@ def test_traversal_rejected_on_all_routes(client):
     assert r.status_code == 400
 
 
+def test_download_from_fresh_project_is_404_not_traversal(client):
+    """Before any mutation the project root doesn't exist on disk; a
+    download of a missing file must be an ordinary 404, not a
+    'path escapes project root' 400."""
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/download?path=missing.txt",
+                   headers=_auth())
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "file not found"
+
+
 def test_download_of_directory_400(client):
     pid = _mkproject(client)
     client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir", json={"path": "d"}, headers=_auth())

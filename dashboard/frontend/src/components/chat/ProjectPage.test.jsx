@@ -167,6 +167,36 @@ describe('ProjectPage stale-response guard', () => {
   })
 })
 
+describe('ProjectPage stale-mutation guard', () => {
+  it('a mutation finishing after a project switch cannot repopulate the page with old rows', async () => {
+    // Start a slow mkdir on project A, switch to B, then let A's mutation
+    // (and its follow-up refresh) resolve. The follow-up refresh claims a
+    // NEWER generation than B's fetch, so the generation guard alone would
+    // let it commit — the project-id binding must reject it.
+    const treeA = [{ name: 'a-only.txt', path: 'a-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    const treeB = [{ name: 'b-only.txt', path: 'b-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    mockTree.mockImplementation((pid) =>
+      Promise.resolve({ tree: pid === 'pa' ? treeA : treeB }))
+    let resolveMkdir
+    mockMkdir.mockImplementation(() => new Promise(res => { resolveMkdir = res }))
+    vi.spyOn(window, 'prompt').mockReturnValue('slow-dir')
+
+    const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
+    await screen.findByText('a-only.txt')
+    fireEvent.click(screen.getByText('New folder'))         // A's mutation, pending
+    await waitFor(() => expect(mockMkdir).toHaveBeenCalled())
+
+    rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
+    await screen.findByText('b-only.txt')
+
+    resolveMkdir({})                                        // A's run() resumes: refresh('pa')
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByText('a-only.txt')).toBeNull()
+    expect(screen.getByText('b-only.txt')).toBeTruthy()
+  })
+})
+
 describe('ProjectPage upload row visibility', () => {
   it('expands the target dir after uploading into it', async () => {
     await renderPage()

@@ -101,17 +101,26 @@ export default function ProjectPage({ project }) {
   // the user switched to project B, would install A's rows under B and
   // route row actions (which close over B's id) at the wrong project.
   const genRef = useRef(0)
+  // The project currently rendered, updated every render. The generation
+  // alone is outrunnable: a stale A-closure (e.g. a mutation's follow-up
+  // refresh) that STARTS after B's refresh claims a newer generation and
+  // would win — so every commit is also bound to the project id captured
+  // when the request began.
+  const projectIdRef = useRef(project?.id)
+  projectIdRef.current = project?.id
 
   const refresh = useCallback(async () => {
-    if (!project?.id) return
+    const pid = project?.id
+    if (!pid) return
     const gen = ++genRef.current
+    const stillCurrent = () => genRef.current === gen && projectIdRef.current === pid
     try {
-      const data = await getProjectFilesTree(project.id)
-      if (genRef.current !== gen) return
+      const data = await getProjectFilesTree(pid)
+      if (!stillCurrent()) return
       setTree(data.tree || [])
       setError(null)
     } catch (err) {
-      if (genRef.current !== gen) return
+      if (!stillCurrent()) return
       setError(err.message)
     }
   }, [project?.id])
@@ -120,21 +129,26 @@ export default function ProjectPage({ project }) {
     setTree([])
     setExpanded(new Set())
     setError(null)
+    setBusy(false)
     refresh()
   }, [refresh])
 
   const run = useCallback(async (fn) => {
+    // Same binding as refresh: a slow mutation for the previous project
+    // must not flip busy/error state on the project now displayed (its
+    // follow-up refresh is already id-bound and commits nothing).
+    const pid = project?.id
     setBusy(true)
     setError(null)
     try {
       await fn()
       await refresh()
     } catch (err) {
-      setError(err.message)
+      if (projectIdRef.current === pid) setError(err.message)
     } finally {
-      setBusy(false)
+      if (projectIdRef.current === pid) setBusy(false)
     }
-  }, [refresh])
+  }, [project?.id, refresh])
 
   const toggle = useCallback((path) => {
     setExpanded(prev => {
