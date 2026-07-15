@@ -169,14 +169,12 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     if (!editorDirtyRef.current) return true
     return window.confirm('Discard unsaved changes?')
   }, [editingUnder])
-  // After a successful rename/move of the open file or an ancestor, carry
-  // the editor to the new path (the keyed remount reloads from there — a
-  // dirty buffer was already discard-confirmed by guardEditedPath).
-  const remapEditing = useCallback((srcPath, dstPath) => {
-    setEditing(prev => (prev && isSelfOrDescendant(prev.path, srcPath)
-      ? { ...prev, path: dstPath + prev.path.slice(srcPath.length) }
-      : prev))
-  }, [])
+  // The guard samples the buffer BEFORE the request, but the editor would
+  // stay writable during the await — anything typed in that window would
+  // be silently discarded by the post-success remount/close. So affected
+  // mutations close the editor for the duration of the request (nothing
+  // to type into) and reopen it afterwards: at the remapped path on
+  // success, at the original path on failure.
   // Expansion state follows too: entries under the source move to the
   // destination (a remapped selection must not end up inside a collapsed
   // branch, and stale entries must not pre-expand a folder later
@@ -348,9 +346,19 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     const dst = input.trim().replace(/^\/+|\/+$/g, '')
     if (!dst || dst === node.path) return
     if (!guardEditedPath(node.path)) return
+    const pid = project?.id
+    const affectedEditing = editingUnder(node.path) ? editing : null
+    if (affectedEditing) setEditing(null)
     const ok = await run(() => moveProjectPath(project.id, node.path, dst))
-    if (!ok) return
-    remapEditing(node.path, dst)
+    if (!ok) {
+      // Restore only when still on the same project — a mid-flight switch
+      // already reset the editor state for the new project.
+      if (affectedEditing && projectIdRef.current === pid) setEditing(affectedEditing)
+      return
+    }
+    if (affectedEditing) {
+      setEditing({ ...affectedEditing, path: dst + affectedEditing.path.slice(node.path.length) })
+    }
     remapExpanded(node.path, dst)
     // Same remap as moveInto: a rename of the selected dir or one of its
     // ancestors must carry the selection to the new path, not strand it
@@ -359,17 +367,22 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       ? dst + prev.slice(node.path.length)
       : prev))
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
-  }, [project?.id, run, guardEditedPath, remapEditing, remapExpanded])
+  }, [project?.id, run, guardEditedPath, editingUnder, editing, remapExpanded])
 
   const handleDelete = useCallback(async (node) => {
     if (!guardEditedPath(node.path)) return
     const label = node.type === 'dir' ? `folder "${node.path}" and everything in it` : `"${node.path}"`
     if (!window.confirm(`Delete ${label}?`)) return
+    const pid = project?.id
+    const affectedEditing = editingUnder(node.path) ? editing : null
+    if (affectedEditing) setEditing(null) // closed before flight; stays closed on success
     const ok = await run(() => deleteProjectPath(project.id, node.path))
-    if (!ok) return
-    setEditing(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
+    if (!ok) {
+      if (affectedEditing && projectIdRef.current === pid) setEditing(affectedEditing)
+      return
+    }
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
-  }, [project?.id, run, guardEditedPath])
+  }, [project?.id, run, guardEditedPath, editingUnder, editing])
 
   const handleOpenFile = useCallback((node) => {
     if (!confirmDiscardEdits()) return
@@ -411,9 +424,17 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     }
     const dstPath = dstDir ? `${dstDir}/${baseName(srcPath)}` : baseName(srcPath)
     if (!guardEditedPath(srcPath)) return
+    const pid = project?.id
+    const affectedEditing = editingUnder(srcPath) ? editing : null
+    if (affectedEditing) setEditing(null)
     const ok = await run(() => moveProjectPath(project.id, srcPath, dstPath))
-    if (!ok) return
-    remapEditing(srcPath, dstPath)
+    if (!ok) {
+      if (affectedEditing && projectIdRef.current === pid) setEditing(affectedEditing)
+      return
+    }
+    if (affectedEditing) {
+      setEditing({ ...affectedEditing, path: dstPath + affectedEditing.path.slice(srcPath.length) })
+    }
     remapExpanded(srcPath, dstPath)
     // Keep the selection meaningful when the selected dir itself moved.
     setSelectedDir(prev => {
@@ -424,7 +445,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     })
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, srcPath) ? null : prev))
     expandTo(dstDir)
-  }, [project?.id, run, expandTo, guardEditedPath, remapEditing, remapExpanded])
+  }, [project?.id, run, expandTo, guardEditedPath, editingUnder, editing, remapExpanded])
 
   // -- Clipboard --
 

@@ -445,6 +445,46 @@ describe('ProjectPage open-editor mutation guard (regression: codex 2.1)', () =>
     expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
   })
 
+  it('the editor is unmounted while an affecting move is in flight, so nothing can be typed into a doomed buffer (regression: codex 6.1)', async () => {
+    await openDocsFile({ dirty: false })
+    let resolveMove
+    mockMove.mockImplementation(() => new Promise(res => { resolveMove = res }))
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'archive/docs'))
+    // In flight: no writable textarea exists — the iteration-2 guard's
+    // pre-await dirty sample can't be raced by typing.
+    expect(screen.queryByTestId('editor-textarea')).toBeNull()
+
+    resolveMove({})
+    // Reopened at the new path, freshly loaded from disk.
+    await waitFor(() => expect(mockGetContent).toHaveBeenLastCalledWith('p1', 'archive/docs/a.txt'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+  })
+
+  it('a failed affecting move reopens the editor at its original path', async () => {
+    await openDocsFile({ dirty: false })
+    mockGetContent.mockClear()
+    mockMove.mockRejectedValue(new Error('destination already exists'))
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    expect(await screen.findByText('destination already exists')).toBeTruthy()
+    await waitFor(() => expect(mockGetContent).toHaveBeenLastCalledWith('p1', 'docs/a.txt'))
+    expect(screen.getByTestId('file-editor')).toBeTruthy()
+  })
+
+  it('the editor closes before an affecting delete resolves and stays closed', async () => {
+    await openDocsFile({ dirty: false })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let resolveDelete
+    mockDelete.mockImplementation(() => new Promise(res => { resolveDelete = res }))
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Delete'))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('p1', 'docs'))
+    expect(screen.queryByTestId('editor-textarea')).toBeNull()
+    resolveDelete({ ok: true })
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByTestId('file-editor')).toBeNull()
+  })
+
   it('cut-pasting the open file itself carries the editor to the destination', async () => {
     await openDocsFile({ dirty: false })
     fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
