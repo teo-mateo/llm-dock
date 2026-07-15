@@ -177,6 +177,21 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       ? { ...prev, path: dstPath + prev.path.slice(srcPath.length) }
       : prev))
   }, [])
+  // Expansion state follows too: entries under the source move to the
+  // destination (a remapped selection must not end up inside a collapsed
+  // branch, and stale entries must not pre-expand a folder later
+  // recreated at the old path), and the destination's ancestors open up
+  // so the moved/renamed node is actually visible.
+  const remapExpanded = useCallback((srcPath, dstPath) => {
+    setExpanded(prev => {
+      const next = new Set()
+      for (const p of prev) {
+        next.add(isSelfOrDescendant(p, srcPath) ? dstPath + p.slice(srcPath.length) : p)
+      }
+      for (const a of ancestorsOf(dstPath)) next.add(a)
+      return next
+    })
+  }, [])
   const fileInputRef = useRef(null)
   // Directory the next file-picker selection uploads into.
   const uploadDirRef = useRef('')
@@ -334,6 +349,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     const ok = await run(() => moveProjectPath(project.id, node.path, dst))
     if (!ok) return
     remapEditing(node.path, dst)
+    remapExpanded(node.path, dst)
     // Same remap as moveInto: a rename of the selected dir or one of its
     // ancestors must carry the selection to the new path, not strand it
     // on a path the refreshed tree no longer contains.
@@ -341,7 +357,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       ? dst + prev.slice(node.path.length)
       : prev))
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
-  }, [project?.id, run, guardEditedPath, remapEditing])
+  }, [project?.id, run, guardEditedPath, remapEditing, remapExpanded])
 
   const handleDelete = useCallback(async (node) => {
     if (!guardEditedPath(node.path)) return
@@ -396,6 +412,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     const ok = await run(() => moveProjectPath(project.id, srcPath, dstPath))
     if (!ok) return
     remapEditing(srcPath, dstPath)
+    remapExpanded(srcPath, dstPath)
     // Keep the selection meaningful when the selected dir itself moved.
     setSelectedDir(prev => {
       if (prev && isSelfOrDescendant(prev, srcPath)) {
@@ -405,7 +422,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     })
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, srcPath) ? null : prev))
     expandTo(dstDir)
-  }, [project?.id, run, expandTo, guardEditedPath, remapEditing])
+  }, [project?.id, run, expandTo, guardEditedPath, remapEditing, remapExpanded])
 
   // -- Clipboard --
 

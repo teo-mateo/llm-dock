@@ -476,6 +476,32 @@ describe('ProjectPage rename selection follow (regression: codex 1.1)', () => {
     await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'notes'))
     // Selection followed docs/inner → notes/inner instead of falling back.
     await waitFor(() => expect(screen.getByTestId('crumb-notes/inner')).toBeTruthy())
+    // And the expansion set followed too: the selected tree row is
+    // actually visible, not hidden inside a collapsed "notes" branch
+    // (regression: codex 3.1).
+    expect(screen.getByTestId('tree-node-notes/inner')).toBeTruthy()
+  })
+
+  it('moving an ancestor of the selected folder keeps the selected tree row visible (regression: codex 3.1)', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    fireEvent.click(screen.getByTestId('tree-node-docs/inner'))
+    const movedTree = [
+      { name: 'archive', path: 'archive', type: 'dir', modified_at: 1, children: [
+        { name: 'docs', path: 'archive/docs', type: 'dir', modified_at: 1, children: [
+          { name: 'inner', path: 'archive/docs/inner', type: 'dir', modified_at: 1, children: [] },
+          { name: 'a.txt', path: 'archive/docs/a.txt', type: 'file', size: 5, modified_at: 1 },
+        ] },
+      ] },
+      { name: 'readme.md', path: 'readme.md', type: 'file', size: 12, modified_at: 1 },
+    ]
+    mockTree.mockResolvedValue({ tree: movedTree })
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'archive/docs'))
+    // Selection followed to archive/docs/inner AND its whole branch is
+    // expanded, so the selected tree row is on screen.
+    await waitFor(() => expect(screen.getByTestId('crumb-archive/docs/inner')).toBeTruthy())
+    expect(screen.getByTestId('tree-node-archive/docs/inner')).toBeTruthy()
   })
 
   it('renaming the selected folder itself follows to the new path', async () => {
