@@ -220,6 +220,28 @@ class TestOps:
             pf.delete(made_root, "nope")
         assert e.value.status == 404
 
+    def test_dangling_symlink_is_a_first_class_entry(self, made_root):
+        """A broken symlink is an ordinary tree entry: renamable, occupying
+        its name for mkdir and as a move destination (exists() would follow
+        the link and misreport the slot as free)."""
+        os.symlink("no-such-target", os.path.join(made_root, "broken"))
+
+        # mkdir at its path: 409, not FileExistsError → 500.
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.mkdir(made_root, "broken")
+        assert e.value.status == 409
+
+        # It can't be silently replaced as a move destination.
+        pf.save_stream(made_root, "", "f.txt", io.BytesIO(b"x"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.move(made_root, "f.txt", "broken")
+        assert e.value.status == 409
+
+        # And it is itself movable (the link, not its target).
+        node = pf.move(made_root, "broken", "renamed-link")
+        assert node["path"] == "renamed-link"
+        assert os.path.islink(os.path.join(made_root, "renamed-link"))
+
     def test_symlink_listed_as_file_never_followed(self, made_root, tmp_path):
         outside = tmp_path / "out"
         outside.mkdir()

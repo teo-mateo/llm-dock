@@ -276,7 +276,10 @@ def mkdir(root: str, rel_path: str) -> dict:
     if not parts:
         raise ProjectFilesError("path is required")
     abs_path = resolve(root, rel_path)
-    if os.path.exists(abs_path):
+    # lexists: a dangling symlink is an ordinary entry in the tree (listed
+    # by build_tree) and must count as occupying its name — exists() would
+    # follow the link and report the slot free.
+    if os.path.lexists(abs_path):
         raise ProjectFilesError("path already exists", status=409)
     with _fs_errors():
         os.makedirs(abs_path)
@@ -295,9 +298,12 @@ def move(root: str, rel_src: str, rel_dst: str) -> dict:
         raise ProjectFilesError("destination is required")
     abs_src = resolve(root, rel_src)
     abs_dst = resolve(root, rel_dst)
-    if not os.path.exists(abs_src):
+    # lexists on both sides: a dangling symlink is movable (the operation
+    # applies to the link itself, as delete already does) and occupies its
+    # destination name.
+    if not os.path.lexists(abs_src):
         raise ProjectFilesError("source not found", status=404)
-    if os.path.exists(abs_dst):
+    if os.path.lexists(abs_dst):
         raise ProjectFilesError("destination already exists", status=409)
     if dst_parts[:len(src_parts)] == src_parts:
         raise ProjectFilesError("cannot move a directory into itself")
