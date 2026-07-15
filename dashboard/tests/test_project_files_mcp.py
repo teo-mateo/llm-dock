@@ -68,6 +68,18 @@ class TestUnscoped:
     def test_search_files(self):
         assert "not part of a project" in srv.search_files("x")
 
+    def test_create_file(self):
+        assert "not part of a project" in srv.create_file("a.md", "x")
+
+    def test_write_file(self):
+        assert "not part of a project" in srv.write_file("a.md", "x")
+
+    def test_edit_file(self):
+        assert "not part of a project" in srv.edit_file("a.md", "a", "b")
+
+    def test_insert_text(self):
+        assert "not part of a project" in srv.insert_text("a.md", 0, "x")
+
 
 class TestListFiles:
     def test_lists_tree_with_relative_paths(self, proj_root):
@@ -257,6 +269,173 @@ class TestSearchFiles:
         assert "scan budget" not in out
 
 
+class TestCreateFile:
+    def test_creates_a_file(self, proj_root):
+        out = srv.create_file("new.md", "hello\n")
+        assert out.startswith("Created new.md")
+        assert (proj_root / "new.md").read_text() == "hello\n"
+
+    def test_creates_missing_parent_folders(self, proj_root):
+        out = srv.create_file("a/b/c.md", "deep\n")
+        assert out.startswith("Created a/b/c.md")
+        assert (proj_root / "a" / "b" / "c.md").read_text() == "deep\n"
+
+    def test_empty_content_by_default(self, proj_root):
+        srv.create_file("empty.md")
+        assert (proj_root / "empty.md").read_text() == ""
+
+    def test_refuses_to_overwrite(self, proj_root):
+        out = srv.create_file("notes.md", "clobber")
+        assert out.startswith("Error:")
+        assert "exists" in out
+        assert (proj_root / "notes.md").read_text().startswith("hello project")
+
+    def test_lazily_creates_the_project_root(self, tmp_path, monkeypatch):
+        root = tmp_path / "never-created"
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
+        out = srv.create_file("first.md", "x")
+        assert out.startswith("Created first.md")
+        assert (root / "first.md").read_text() == "x"
+
+    def test_traversal_rejected(self, proj_root, tmp_path):
+        assert srv.create_file("../outside.md", "x").startswith("Error:")
+        assert not (tmp_path / "outside.md").exists()
+
+    def test_parent_that_is_a_file_rejected(self, proj_root):
+        out = srv.create_file("notes.md/sub.md", "x")
+        assert out.startswith("Error:")
+
+    def test_nul_content_rejected(self, proj_root):
+        assert srv.create_file("bin.md", "a\x00b").startswith("Error:")
+
+
+class TestWriteFile:
+    def test_replaces_entire_content(self, proj_root):
+        out = srv.write_file("notes.md", "rewritten\n")
+        assert out.startswith("Wrote notes.md")
+        assert (proj_root / "notes.md").read_text() == "rewritten\n"
+
+    def test_missing_file_points_to_create_file(self, proj_root):
+        out = srv.write_file("nope.md", "x")
+        assert out.startswith("Error:")
+        assert not (proj_root / "nope.md").exists()
+
+    def test_directory_rejected(self, proj_root):
+        assert srv.write_file("docs", "x").startswith("Error:")
+
+    def test_missing_root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(tmp_path / "never-created"))
+        out = srv.write_file("a.md", "x")
+        assert out.startswith("Error:")
+        assert "create_file" in out
+
+    def test_size_cap_enforced(self, proj_root, monkeypatch):
+        monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 10)
+        out = srv.write_file("notes.md", "x" * 11)
+        assert out.startswith("Error:")
+
+
+class TestEditFile:
+    def test_replaces_unique_snippet(self, proj_root):
+        out = srv.edit_file("notes.md", "hello project", "hi there")
+        assert out == f"Replaced 1 occurrence in notes.md ({(proj_root / 'notes.md').stat().st_size} bytes)"
+        assert (proj_root / "notes.md").read_text().startswith("hi there\n")
+
+    def test_multiline_snippet(self, proj_root):
+        (proj_root / "multi.md").write_text("one\ntwo\nthree\n")
+        out = srv.edit_file("multi.md", "one\ntwo\n", "uno\n")
+        assert out.startswith("Replaced 1 occurrence")
+        assert (proj_root / "multi.md").read_text() == "uno\nthree\n"
+
+    def test_not_found_is_a_clear_error(self, proj_root):
+        out = srv.edit_file("notes.md", "no such text", "x")
+        assert out.startswith("Error:")
+        assert "not found" in out
+
+    def test_ambiguous_snippet_reports_the_count(self, proj_root):
+        (proj_root / "dup.md").write_text("aaa\nbbb\naaa\n")
+        out = srv.edit_file("dup.md", "aaa", "ccc")
+        assert out.startswith("Error:")
+        assert "2 times" in out
+        assert (proj_root / "dup.md").read_text() == "aaa\nbbb\naaa\n"  # untouched
+
+    def test_replace_all(self, proj_root):
+        (proj_root / "dup.md").write_text("aaa\nbbb\naaa\n")
+        out = srv.edit_file("dup.md", "aaa", "ccc", replace_all=True)
+        assert out.startswith("Replaced 2 occurrences")
+        assert (proj_root / "dup.md").read_text() == "ccc\nbbb\nccc\n"
+
+    def test_empty_new_text_deletes_the_snippet(self, proj_root):
+        (proj_root / "del.md").write_text("keep DROPME keep\n")
+        srv.edit_file("del.md", " DROPME", "")
+        assert (proj_root / "del.md").read_text() == "keep keep\n"
+
+    def test_empty_old_text_rejected(self, proj_root):
+        assert srv.edit_file("notes.md", "", "x").startswith("Error:")
+
+    def test_missing_file(self, proj_root):
+        assert srv.edit_file("nope.md", "a", "b").startswith("Error:")
+
+    def test_concurrent_change_fails_loudly(self, proj_root, monkeypatch):
+        # Simulate the file changing between the tool's read and its
+        # write: hand edit_file a stale revision for the real content.
+        real_read = pf.read_text
+
+        def stale_read(root, path):
+            doc = real_read(root, path)
+            return {**doc, "revision": "0" * 16}
+
+        monkeypatch.setattr(pf, "read_text", stale_read)
+        out = srv.edit_file("notes.md", "hello project", "hi")
+        assert out.startswith("Error:")
+        assert "changed on disk" in out
+        assert (proj_root / "notes.md").read_text().startswith("hello project")
+
+
+class TestInsertText:
+    def test_insert_at_top(self, proj_root):
+        (proj_root / "ins.md").write_text("second\n")
+        out = srv.insert_text("ins.md", 0, "first")
+        assert out.startswith("Inserted after line 0")
+        assert (proj_root / "ins.md").read_text() == "first\nsecond\n"
+
+    def test_insert_after_line(self, proj_root):
+        (proj_root / "ins.md").write_text("one\nthree\n")
+        srv.insert_text("ins.md", 1, "two")
+        assert (proj_root / "ins.md").read_text() == "one\ntwo\nthree\n"
+
+    def test_append_at_end(self, proj_root):
+        (proj_root / "ins.md").write_text("one\n")
+        srv.insert_text("ins.md", 1, "two")
+        assert (proj_root / "ins.md").read_text() == "one\ntwo\n"
+
+    def test_append_after_unterminated_last_line_does_not_glue(self, proj_root):
+        (proj_root / "ins.md").write_text("one")  # no trailing newline
+        srv.insert_text("ins.md", 1, "two")
+        assert (proj_root / "ins.md").read_text() == "one\ntwo\n"
+
+    def test_multiline_insert(self, proj_root):
+        (proj_root / "ins.md").write_text("top\n")
+        srv.insert_text("ins.md", 1, "a\nb")
+        assert (proj_root / "ins.md").read_text() == "top\na\nb\n"
+
+    def test_line_past_end_rejected(self, proj_root):
+        (proj_root / "ins.md").write_text("one\n")
+        out = srv.insert_text("ins.md", 5, "x")
+        assert out.startswith("Error:")
+        assert "past the end" in out
+
+    def test_invalid_line_values(self, proj_root):
+        assert srv.insert_text("notes.md", -1, "x").startswith("Error:")
+        assert srv.insert_text("notes.md", True, "x").startswith("Error:")
+
+    def test_empty_text_rejected(self, proj_root):
+        assert srv.insert_text("notes.md", 0, "").startswith("Error:")
+
+    def test_missing_file(self, proj_root):
+        assert srv.insert_text("nope.md", 0, "x").startswith("Error:")
+
+
 # ---------------------------------------------------------------------------
 # Glue: scoped manager, auto-enable, routes helper
 # ---------------------------------------------------------------------------
@@ -420,9 +599,13 @@ class TestSnapshotThreading:
 class TestRoutesHelper:
     @pytest.fixture
     def app(self, tmp_path):
+        from chat.db import ChatDB
         app = Flask(__name__)
         app.config["MCP_MANAGER"] = FakeManager()
         app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+        # _mcp_for_conversation builds the deleted-project revalidation
+        # closure over the DB.
+        app.config["CHAT_DB"] = ChatDB(":memory:")
         return app
 
     def test_none_without_servers_or_project(self, app):
@@ -450,6 +633,97 @@ class TestRoutesHelper:
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
+
+
+class TestDeletedProjectSweep:
+    """Regression: codex PR84 3.1 — a write-tool call landing after the
+    user deletes the project must not leave an orphan project directory.
+    The scoped manager revalidates at its commit point (after every
+    project-files call, success or failure) and sweeps the directory when
+    the project row is gone — the same whoever-acts-last-cleans-up
+    contract as the HTTP mutation routes."""
+
+    @pytest.fixture
+    def app(self, tmp_path):
+        from chat.db import ChatDB
+        app = Flask(__name__)
+        app.config["MCP_MANAGER"] = FakeManager()
+        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+        app.config["CHAT_DB"] = ChatDB(":memory:")
+        return app
+
+    def _make_project(self, app):
+        from chat.models import Project
+        import uuid
+        return app.config["CHAT_DB"].create_project(
+            Project(id=str(uuid.uuid4()), name="P")).id
+
+    def _scoped_manager(self, app, pid):
+        from chat.routes import _mcp_for_conversation
+        with app.app_context():
+            return _mcp_for_conversation(_conv(project_id=pid), [], pid)
+
+    class _WritingInner:
+        """Stands in for the real subprocess spawn: the call itself
+        recreates the project root, exactly like a late create_file."""
+
+        def __init__(self, root, raise_after_write=False):
+            self.root = root
+            self.raise_after_write = raise_after_write
+
+        def call_tool(self, server_id, tool_name, arguments, extra_env=None):
+            os.makedirs(self.root, exist_ok=True)
+            with open(os.path.join(self.root, "late.md"), "w") as fh:
+                fh.write("resurrected")
+            if self.raise_after_write:
+                raise RuntimeError("tool call timed out")
+            return ("Created late.md (11 bytes)", [])
+
+    def test_late_write_after_project_delete_is_swept(self, app, tmp_path):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root)
+
+        # The user deletes the project: directory pass + row + sweep,
+        # like the delete route.
+        pf.delete_project_root(str(tmp_path / "storage"), pid)
+        app.config["CHAT_DB"].delete_project(pid)
+        pf.delete_project_root(str(tmp_path / "storage"), pid)
+
+        text, _ = mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert text.startswith("Created")  # the tool itself succeeded...
+        assert not os.path.exists(root)    # ...but no orphan survives
+
+    def test_live_project_write_is_kept(self, app, tmp_path):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root)
+        mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert os.path.exists(os.path.join(root, "late.md"))
+
+    def test_sweep_runs_even_when_the_call_raises(self, app, tmp_path):
+        # A timed-out subprocess may have written before dying — the
+        # revalidation is in a finally, not only on success.
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root, raise_after_write=True)
+        app.config["CHAT_DB"].delete_project(pid)
+        with pytest.raises(RuntimeError):
+            mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert not os.path.exists(root)
+
+    def test_other_servers_do_not_revalidate(self, app):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        calls = []
+        mgr._revalidate = lambda: calls.append(1)
+        mgr.call_tool("sympy-math", "solve", {})
+        assert calls == []
+        mgr.call_tool(SERVER_ID, "list_files", {})
+        assert calls == [1]
 
 
 class TestSpinoffInheritance:
@@ -603,6 +877,30 @@ class TestEndToEnd:
         text, _ = scoped.call_tool(SERVER_ID, "search_files", {"query": "NEEDLE"})
         assert "hello.txt:1: end to end needle" in text
 
+    def test_write_round_trip_through_subprocess(self, tmp_path):
+        from chat.mcp_client import MCPClientManager
+
+        root = tmp_path / "p-e2e-write"
+        root.mkdir()
+
+        manager = MCPClientManager()
+        scoped = ProjectScopedMCPManager(manager, str(root))
+
+        text, _ = scoped.call_tool(SERVER_ID, "create_file",
+                                   {"path": "notes/todo.md", "content": "- first\n"})
+        assert text.startswith("Created notes/todo.md")
+
+        text, _ = scoped.call_tool(SERVER_ID, "edit_file",
+                                   {"path": "notes/todo.md",
+                                    "old_text": "- first", "new_text": "- first (done)"})
+        assert text.startswith("Replaced 1 occurrence")
+
+        text, _ = scoped.call_tool(SERVER_ID, "insert_text",
+                                   {"path": "notes/todo.md", "line": 1, "text": "- second"})
+        assert text.startswith("Inserted after line 1")
+
+        assert (root / "notes" / "todo.md").read_text() == "- first (done)\n- second\n"
+
     def test_unscoped_call_reports_no_project(self):
         from chat.mcp_client import MCPClientManager
 
@@ -610,7 +908,7 @@ class TestEndToEnd:
         text, _ = manager.call_tool(SERVER_ID, "list_files", {})
         assert "not part of a project" in text
 
-    def test_tool_discovery_lists_all_three(self):
+    def test_tool_discovery_lists_all_seven(self):
         from chat.mcp_client import MCPClientManager
 
         manager = MCPClientManager()
@@ -620,4 +918,8 @@ class TestEndToEnd:
             f"{SERVER_ID}__list_files",
             f"{SERVER_ID}__read_file",
             f"{SERVER_ID}__search_files",
+            f"{SERVER_ID}__create_file",
+            f"{SERVER_ID}__write_file",
+            f"{SERVER_ID}__edit_file",
+            f"{SERVER_ID}__insert_text",
         }

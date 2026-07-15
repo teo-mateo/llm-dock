@@ -811,6 +811,186 @@ class TestErrorCodes:
         assert "code" not in r.get_json()
 
 
+class TestWriteTextCAS:
+    """write_text's base_revision comparison and its os.replace are one
+    atomic unit under a cross-process lock (regression: codex PR84 1.1).
+    A writer landing between another writer's check and publish must
+    block, then observe the published content and conflict — never be
+    silently overwritten. flock contends between separate opens even in
+    one process, so threads model the Flask-process vs MCP-subprocess
+    pair faithfully."""
+
+    def test_concurrent_writer_blocks_then_conflicts(self, made_root, monkeypatch):
+        import threading
+
+        with open(os.path.join(made_root, "f.md"), "wb") as fh:
+            fh.write(b"base")
+        rev = pf.read_text(made_root, "f.md")["revision"]
+
+        inside = threading.Event()   # A is past its revision check, lock held
+        resume = threading.Event()   # allow A to publish
+        paused_once = threading.Event()
+        real_mkstemp = pf.tempfile.mkstemp
+
+        def pausing_mkstemp(*a, **kw):
+            # Pause only the FIRST writer, exactly between its check
+            # (already done) and its publication (about to happen).
+            if not paused_once.is_set():
+                paused_once.set()
+                inside.set()
+                assert resume.wait(timeout=10)
+            return real_mkstemp(*a, **kw)
+
+        monkeypatch.setattr(pf.tempfile, "mkstemp", pausing_mkstemp)
+
+        a_errors, b_outcome = [], {}
+
+        def writer_a():
+            try:
+                pf.write_text(made_root, "f.md", "A version", base_revision=rev)
+            except Exception as e:  # noqa: BLE001 — surfaced via assert below
+                a_errors.append(e)
+
+        def writer_b():
+            try:
+                pf.write_text(made_root, "f.md", "B version", base_revision=rev)
+                b_outcome["won"] = True
+            except pf.ProjectFilesError as e:
+                b_outcome["error"] = e
+
+        ta = threading.Thread(target=writer_a)
+        ta.start()
+        assert inside.wait(timeout=10)
+
+        tb = threading.Thread(target=writer_b)
+        tb.start()
+        tb.join(timeout=0.3)
+        # The race window is CLOSED: B cannot slip its write in while A
+        # sits between check and publish.
+        assert tb.is_alive(), "second writer entered the critical section concurrently"
+
+        resume.set()
+        ta.join(timeout=10)
+        tb.join(timeout=10)
+        assert not ta.is_alive() and not tb.is_alive()
+        assert not a_errors
+
+        # A published; B then saw A's content and conflicted.
+        assert "won" not in b_outcome
+        assert b_outcome["error"].code == "revision_conflict"
+        with open(os.path.join(made_root, "f.md"), "rb") as fh:
+            assert fh.read() == b"A version"
+
+    def _paused_cas_writer(self, made_root, monkeypatch):
+        """Start a CAS write of f.md and pause it INSIDE the critical
+        section (between its revision check and its publication).
+        Returns (thread, resume_event, errors)."""
+        import threading
+
+        with open(os.path.join(made_root, "f.md"), "wb") as fh:
+            fh.write(b"base")
+        rev = pf.read_text(made_root, "f.md")["revision"]
+
+        inside, resume, paused_once = threading.Event(), threading.Event(), threading.Event()
+        real_mkstemp = pf.tempfile.mkstemp
+
+        def pausing_mkstemp(*a, **kw):
+            if not paused_once.is_set():
+                paused_once.set()
+                inside.set()
+                assert resume.wait(timeout=10)
+            return real_mkstemp(*a, **kw)
+
+        monkeypatch.setattr(pf.tempfile, "mkstemp", pausing_mkstemp)
+
+        errors = []
+
+        def writer():
+            try:
+                pf.write_text(made_root, "f.md", "A version", base_revision=rev)
+            except Exception as e:  # noqa: BLE001 — surfaced via assert
+                errors.append(e)
+
+        t = threading.Thread(target=writer)
+        t.start()
+        assert inside.wait(timeout=10)
+        return t, resume, errors
+
+    def test_overwrite_upload_blocks_during_cas(self, made_root, monkeypatch):
+        # Regression: codex PR84 2.1 — the OTHER mutators must take the
+        # same lock, or an explorer upload landing inside the CAS window
+        # would be silently replaced by the paused writer's publication.
+        import threading
+
+        ta, resume, a_errors = self._paused_cas_writer(made_root, monkeypatch)
+
+        def uploader():
+            pf.save_stream(made_root, "", "f.md", io.BytesIO(b"upload version"), overwrite=True)
+
+        tc = threading.Thread(target=uploader)
+        tc.start()
+        tc.join(timeout=0.3)
+        assert tc.is_alive(), "upload published inside the CAS critical section"
+
+        resume.set()
+        ta.join(timeout=10)
+        tc.join(timeout=10)
+        assert not ta.is_alive() and not tc.is_alive()
+        assert not a_errors
+        # Serialized order: CAS write first, upload after — the upload
+        # (the later operation) wins and is NOT lost.
+        with open(os.path.join(made_root, "f.md"), "rb") as fh:
+            assert fh.read() == b"upload version"
+
+    def test_delete_blocks_during_cas(self, made_root, monkeypatch):
+        import threading
+
+        ta, resume, a_errors = self._paused_cas_writer(made_root, monkeypatch)
+
+        deleted = threading.Event()
+
+        def deleter():
+            pf.delete(made_root, "f.md")
+            deleted.set()
+
+        tc = threading.Thread(target=deleter)
+        tc.start()
+        tc.join(timeout=0.3)
+        assert tc.is_alive(), "delete ran inside the CAS critical section"
+
+        resume.set()
+        ta.join(timeout=10)
+        tc.join(timeout=10)
+        assert not a_errors
+        assert deleted.is_set()
+        # The delete was the later operation — the file stays gone
+        # instead of being resurrected by the paused writer.
+        assert not os.path.exists(os.path.join(made_root, "f.md"))
+
+
+class TestWriteTextMustExist:
+    """must_exist: the replace-only precondition (regression: codex
+    PR84 2.2 — evaluated inside the lock, not pre-checked by callers)."""
+
+    def test_missing_file_404(self, made_root):
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "nope.md", "x", must_exist=True)
+        assert e.value.status == 404
+        assert not os.path.exists(os.path.join(made_root, "nope.md"))
+
+    def test_existing_file_is_replaced(self, made_root):
+        with open(os.path.join(made_root, "f.md"), "w") as fh:
+            fh.write("old")
+        node = pf.write_text(made_root, "f.md", "new", must_exist=True)
+        assert node["size"] == 3
+        with open(os.path.join(made_root, "f.md")) as fh:
+            assert fh.read() == "new"
+
+    def test_mutually_exclusive_with_create_only(self, made_root):
+        with pytest.raises(pf.ProjectFilesError):
+            pf.write_text(made_root, "f.md", "x", create_only=True, must_exist=True)
+
+
 # ---------------------------------------------------------------------------
 # copy_path (file-explorer copy/paste)
 # ---------------------------------------------------------------------------

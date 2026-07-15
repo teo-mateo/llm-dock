@@ -37,9 +37,18 @@ class ProjectScopedMCPManager:
     only the spawn environment differs.
     """
 
-    def __init__(self, inner, project_root: str):
+    def __init__(self, inner, project_root: str, revalidate=None):
         self._inner = inner
         self._project_root = project_root
+        # Commit-point revalidation, mirroring the HTTP mutation routes'
+        # _revalidate_or_cleanup: the run snapshots its project at start,
+        # so a tool call can outlive a project deletion — a write tool
+        # would then recreate the project directory as an orphan the UI
+        # can never show. The callback (built where the DB is known)
+        # checks the project row after each project-files call and sweeps
+        # the directory if the row is gone; whichever side acts last
+        # cleans up, so no orphan survives either interleaving.
+        self._revalidate = revalidate
 
     def get_tools(self, server_id: str) -> list:
         return self._inner.get_tools(server_id)
@@ -48,7 +57,13 @@ class ProjectScopedMCPManager:
         return self._inner.get_all_tools(server_ids)
 
     def call_tool(self, server_id: str, tool_name: str, arguments: dict) -> tuple:
-        extra_env = None
-        if server_id == SERVER_ID:
-            extra_env = {PROJECT_ROOT_ENV: self._project_root}
-        return self._inner.call_tool(server_id, tool_name, arguments, extra_env=extra_env)
+        if server_id != SERVER_ID:
+            return self._inner.call_tool(server_id, tool_name, arguments)
+        extra_env = {PROJECT_ROOT_ENV: self._project_root}
+        try:
+            return self._inner.call_tool(server_id, tool_name, arguments, extra_env=extra_env)
+        finally:
+            # Also on error/timeout paths: the subprocess may have written
+            # before dying.
+            if self._revalidate is not None:
+                self._revalidate()

@@ -1,10 +1,18 @@
-"""Project Files MCP server — read-only view of one project's file area.
+"""Project Files MCP server — read/write access to one project's file area.
 
 Spawned per tool call by MCPClientManager like the other built-ins, but
 scoped: the dashboard injects LLM_DOCK_PROJECT_ROOT (the absolute
 directory of the conversation's project) into the subprocess environment
 at spawn time (see chat/project_files_mcp.py). Without it, every tool
 answers with a clear error instead of guessing a directory.
+
+Read tools: list_files, read_file, search_files. Write tools:
+create_file, write_file (full replace), edit_file (exact-snippet
+replace), insert_text (line-based insert). Writes go through
+chat.project_files.write_text — atomic temp-file publication, UTF-8/NUL
+validation, the 2 MB text cap, and (for the read-modify-write tools) the
+content-revision guard, so a concurrent editor save turns into a clear
+error instead of a silent overwrite.
 
 All path handling is delegated to chat.project_files — the same layer the
 HTTP file routes use — so `..` traversal, absolute paths and symlink
@@ -60,7 +68,15 @@ def list_files(path: str = "") -> str:
     Optionally pass a directory path (relative to the project root) to
     list only that subtree. Returns one entry per line: directories end
     with '/', files show their size. Use the printed paths verbatim with
-    read_file / search_files.
+    the other project-files tools.
+
+    Examples:
+    - list_files() → the whole tree:
+        docs/
+        docs/plan.md (1204 bytes)
+        notes.md (88 bytes)
+    - list_files(path="docs") → only the entries under docs/
+    - list_files(path="docs/notes") → a nested subfolder
     """
     root = _project_root()
     if root is None:
@@ -93,11 +109,18 @@ def list_files(path: str = "") -> str:
 def read_file(path: str, offset: int = 0) -> str:
     """Read a text file from the project (UTF-8, up to 2 MB).
 
-    path is relative to the project root, e.g. 'docs/plan.md'. At most
-    ~64k characters are returned per call; a longer file ends with a
-    notice giving the offset to pass to read the next chunk. Binary
-    files and files over the size cap are rejected — use list_files to
-    check sizes first.
+    path is relative to the project root. At most ~64k characters are
+    returned per call; a longer file ends with a notice giving the
+    offset to pass to read the next chunk. Binary files and files over
+    the size cap are rejected — use list_files to check sizes first.
+
+    Examples:
+    - read_file(path="docs/plan.md") → the file's full text
+    - read_file(path="notes.md") → "hello project\\n..."
+    - A long file ends with:
+        (truncated: showing characters 0–65536 of 180000 — call
+        read_file again with offset=65536 to continue)
+      then read_file(path="logs/big.txt", offset=65536) → the next chunk
     """
     root = _project_root()
     if root is None:
@@ -130,6 +153,15 @@ def search_files(query: str, path: str = "") -> str:
     oversized files are skipped). Optionally restrict the search to a
     subdirectory via path. Content matches are returned as
     'path:line_number: line text'.
+
+    Examples:
+    - search_files(query="deadline") →
+        docs/plan.md:12: the deadline is Friday
+        notes.md:3: moved the DEADLINE to next week
+    - search_files(query="config") → also matches file NAMES:
+        src/config.yaml (name match)
+    - search_files(query="TODO", path="src") → content/name matches
+      under src/ only
     """
     root = _project_root()
     if root is None:
@@ -194,6 +226,196 @@ def search_files(query: str, path: str = "") -> str:
             f"scan budget reached — narrow the search with a subdirectory path)"
         )
     return result
+
+
+def _ensure_parent(root: str, path: str):
+    """Create the missing parent folders of `path` (resolve-safe).
+
+    Raises ProjectFilesError for invalid paths or when a parent component
+    exists but is not a directory.
+    """
+    parts = pf.split_rel_path(path)
+    if not parts:
+        raise pf.ProjectFilesError("path is required")
+    parent = "/".join(parts[:-1])
+    if not parent:
+        return
+    abs_parent = pf.resolve(root, parent)
+    if os.path.isdir(abs_parent):
+        return
+    if os.path.lexists(abs_parent):
+        raise pf.ProjectFilesError("parent path exists and is not a directory")
+    pf.mkdir(root, parent)
+
+
+@mcp.tool()
+def create_file(path: str, content: str = "") -> str:
+    """Create a new text file in the project (UTF-8, up to 2 MB).
+
+    path is relative to the project root; missing parent folders are
+    created automatically. Fails if the file already exists — use
+    write_file to replace an existing file's content, or edit_file /
+    insert_text for targeted changes.
+
+    Examples:
+    - create_file(path="notes/todo.md", content="- buy milk\\n")
+      → "Created notes/todo.md (11 bytes)" (the notes/ folder is
+      created automatically if missing)
+    - create_file(path="empty.txt") → creates an empty file
+    - create_file(path="report.md", content="# Report\\n\\n## Findings\\n")
+      → a new multi-line markdown file
+    - create_file on a path that already exists
+      → "Error: file already exists" — switch to write_file or edit_file
+    """
+    root = _project_root()
+    if root is None:
+        return NO_PROJECT_ERROR
+    if not isinstance(content, str):
+        return "Error: content must be a string"
+    try:
+        # The project directory itself is created lazily by the first
+        # mutation, mirroring the HTTP upload/write routes.
+        os.makedirs(root, exist_ok=True)
+        _ensure_parent(root, path)
+        node = pf.write_text(root, path, content, create_only=True)
+    except pf.ProjectFilesError as e:
+        return f"Error: {e}"
+    return f"Created {node['path']} ({node['size']} bytes)"
+
+
+@mcp.tool()
+def write_file(path: str, content: str) -> str:
+    """Replace an existing project text file's ENTIRE content (UTF-8, up to 2 MB).
+
+    Fails if the file does not exist — use create_file for new files.
+    For small changes prefer edit_file or insert_text, which modify only
+    part of the file and guard against concurrent edits.
+
+    Examples:
+    - write_file(path="config.yaml", content="port: 8080\\nlog: info\\n")
+      → "Wrote config.yaml (20 bytes)" — the previous content is gone
+    - write_file(path="docs/summary.md", content="# Summary\\n...full new text...")
+      → full rewrite of an existing document
+    - write_file(path="does-not-exist.md", content="x")
+      → "Error: file not found" — use create_file instead
+    """
+    root = _project_root()
+    if root is None:
+        return NO_PROJECT_ERROR
+    if not isinstance(content, str):
+        return "Error: content must be a string"
+    if not os.path.isdir(root):
+        return "Error: file not found (the project has no files yet) — use create_file"
+    try:
+        # must_exist: the replace-only precondition is evaluated inside
+        # write_text's locked critical section — a caller-side existence
+        # check could be invalidated by a concurrent delete/move.
+        node = pf.write_text(root, path, content, must_exist=True)
+    except pf.ProjectFilesError as e:
+        return f"Error: {e}"
+    return f"Wrote {node['path']} ({node['size']} bytes)"
+
+
+@mcp.tool()
+def edit_file(path: str, old_text: str, new_text: str, replace_all: bool = False) -> str:
+    """Replace an exact text snippet inside a project text file.
+
+    old_text must match the file's content exactly — same whitespace,
+    same line breaks — so call read_file first and copy the text
+    verbatim. Unless replace_all is true, old_text must occur exactly
+    once; include a few surrounding lines to make it unique. new_text
+    may be empty to delete the snippet.
+
+    Examples:
+    - edit_file(path="todo.md", old_text="- buy milk",
+                new_text="- buy milk (done)")
+      → "Replaced 1 occurrence in todo.md (64 bytes)"
+    - Delete a line (include its newline):
+      edit_file(path="todo.md", old_text="- obsolete task\\n", new_text="")
+    - Multi-line replacement:
+      edit_file(path="plan.md",
+                old_text="## Phase 2\\nTBD\\n",
+                new_text="## Phase 2\\nShip the explorer.\\n")
+    - If old_text is ambiguous you get
+      "Error: old_text occurs 3 times" — either add surrounding lines,
+      e.g. old_text="## Shopping\\n- buy milk", or pass replace_all=true
+      to change every occurrence:
+      edit_file(path="report.md", old_text="colour", new_text="color",
+                replace_all=true) → "Replaced 3 occurrences in report.md"
+    """
+    root = _project_root()
+    if root is None:
+        return NO_PROJECT_ERROR
+    if not isinstance(old_text, str) or old_text == "":
+        return "Error: old_text must be a non-empty string"
+    if not isinstance(new_text, str):
+        return "Error: new_text must be a string"
+    if not os.path.isdir(root):
+        return "Error: file not found (the project has no files yet)"
+    try:
+        doc = pf.read_text(root, path)
+        count = doc["content"].count(old_text)
+        if count == 0:
+            return ("Error: old_text was not found in the file — call read_file "
+                    "and copy the exact text, including whitespace and line breaks")
+        if count > 1 and not replace_all:
+            return (f"Error: old_text occurs {count} times — include more "
+                    f"surrounding context to make it unique, or pass replace_all=true")
+        updated = doc["content"].replace(old_text, new_text)
+        # base_revision: if the file changed on disk between our read and
+        # this write (e.g. the user saved the in-browser editor), fail
+        # loudly instead of silently reverting their edit.
+        node = pf.write_text(root, path, updated, base_revision=doc["revision"])
+    except pf.ProjectFilesError as e:
+        return f"Error: {e}"
+    return f"Replaced {count} occurrence{'s' if count != 1 else ''} in {node['path']} ({node['size']} bytes)"
+
+
+@mcp.tool()
+def insert_text(path: str, line: int, text: str) -> str:
+    """Insert text into a project text file after a given line.
+
+    line is 1-based and refers to the line the text is inserted AFTER;
+    pass 0 to insert at the very top of the file. text is inserted as
+    whole lines (a trailing newline is added if missing). Use read_file
+    to find the right line number first.
+
+    Examples (file todo.md contains "# TODO\\n- first\\n- second\\n"):
+    - insert_text(path="todo.md", line=0, text="<!-- draft -->")
+      → new first line, everything else shifts down
+    - insert_text(path="todo.md", line=1, text="- urgent")
+      → inserted between "# TODO" and "- first"
+    - insert_text(path="todo.md", line=3, text="- third")
+      → appended after the last line
+    - Multi-line insert:
+      insert_text(path="todo.md", line=1, text="- a\\n- b")
+      → two new lines after line 1
+    - insert_text(path="todo.md", line=99, text="x")
+      → "Error: line 99 is past the end of the file (3 lines)"
+    """
+    root = _project_root()
+    if root is None:
+        return NO_PROJECT_ERROR
+    if not isinstance(line, int) or isinstance(line, bool) or line < 0:
+        return "Error: line must be a non-negative integer (0 inserts at the top)"
+    if not isinstance(text, str) or text == "":
+        return "Error: text must be a non-empty string"
+    if not os.path.isdir(root):
+        return "Error: file not found (the project has no files yet)"
+    try:
+        doc = pf.read_text(root, path)
+        lines = doc["content"].splitlines(keepends=True)
+        if line > len(lines):
+            return f"Error: line {line} is past the end of the file ({len(lines)} lines)"
+        # Appending after a final line that lacks its newline must not
+        # glue the two lines together.
+        if line == len(lines) and lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.insert(line, text if text.endswith("\n") else text + "\n")
+        node = pf.write_text(root, path, "".join(lines), base_revision=doc["revision"])
+    except pf.ProjectFilesError as e:
+        return f"Error: {e}"
+    return f"Inserted after line {line} of {node['path']} ({node['size']} bytes)"
 
 
 if __name__ == "__main__":
