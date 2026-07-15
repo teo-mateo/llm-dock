@@ -126,6 +126,37 @@ class TestOps:
         # Nothing left behind — neither the file nor the temp.
         assert os.listdir(made_root) == []
 
+    def test_upload_never_clobbers_dot_uploading_user_file(self, made_root):
+        """Regression: a deterministic '<target>.uploading' staging name
+        would open-truncate a legitimate user file of that name."""
+        pf.save_stream(made_root, "", "report.uploading", io.BytesIO(b"user data"))
+        pf.save_stream(made_root, "", "report", io.BytesIO(b"new"))
+        with open(os.path.join(made_root, "report.uploading"), "rb") as f:
+            assert f.read() == b"user data"
+        with open(os.path.join(made_root, "report"), "rb") as f:
+            assert f.read() == b"new"
+
+    def test_no_overwrite_publication_is_atomic(self, made_root, monkeypatch):
+        """The 409 contract holds even when the target appears AFTER the
+        pre-check (concurrent upload of the same name): the final link()
+        is no-replace, so the existing file survives untouched."""
+        real_mkstemp = pf.tempfile.mkstemp
+
+        def racing_mkstemp(*args, **kwargs):
+            # The competing upload wins between pre-check and publication.
+            with open(os.path.join(made_root, "f.txt"), "wb") as f:
+                f.write(b"winner")
+            return real_mkstemp(*args, **kwargs)
+
+        monkeypatch.setattr(pf.tempfile, "mkstemp", racing_mkstemp)
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.save_stream(made_root, "", "f.txt", io.BytesIO(b"loser"))
+        assert e.value.status == 409
+        with open(os.path.join(made_root, "f.txt"), "rb") as f:
+            assert f.read() == b"winner"
+        # No stray temp files left behind.
+        assert os.listdir(made_root) == ["f.txt"]
+
     def test_move_and_conflicts(self, made_root):
         pf.mkdir(made_root, "a")
         pf.save_stream(made_root, "a", "f.txt", io.BytesIO(b"x"))
@@ -293,6 +324,58 @@ def test_delete_via_http(client):
     assert r.status_code == 200
     r = client.get(f"{PROJECTS_PATH}/{pid}/files", headers=_auth())
     assert r.get_json()["tree"] == []
+
+
+def test_upload_oversized_request_rejected_before_parsing(client, monkeypatch):
+    """HTTP-level 413: the Content-Length check runs BEFORE request.files
+    is touched, so an oversized body is refused without multipart parsing."""
+    monkeypatch.setattr(pf, "MAX_UPLOAD_BYTES", 10)
+    pid = _mkproject(client)
+    r = _upload(client, pid, "big.bin", b"x" * 1000)
+    assert r.status_code == 413
+
+
+def test_tree_get_does_not_create_project_dir(client, tmp_path):
+    """Read-only routes must never (re)create the files directory — a GET
+    racing a project delete would otherwise leave an orphan dir."""
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["tree"] == []
+    assert not (tmp_path / "storage" / pid).exists()
+
+
+def test_mutating_op_racing_project_delete_cleans_up(client, tmp_path, monkeypatch):
+    """A mutating file op that races a project delete must not leave an
+    orphan directory: the commit-point revalidation notices the row is
+    gone, removes the directory it recreated, and returns 404.
+
+    NOTE: patch the module-level `pf` imported at the top of THIS file —
+    it is the same module object the blueprint's route functions closed
+    over. Re-importing chat.project_files_routes here would grab a fresh
+    module copy when another test file (test_mcp_admin_routes) has purged
+    chat.* from sys.modules, and the patch would miss the routes.
+    """
+    pid = _mkproject(client)
+    files_dir = tmp_path / "storage" / pid
+
+    real_mkdir = pf.mkdir
+    state = {"deleted": False}
+
+    def racing_mkdir(root, rel_path):
+        node = real_mkdir(root, rel_path)
+        if not state["deleted"]:
+            state["deleted"] = True
+            # The concurrent project delete wins mid-operation: row gone,
+            # directory rmtree'd — but our mkdir already recreated paths.
+            client.delete(f"{PROJECTS_PATH}/{pid}", headers=_auth())
+        return node
+
+    monkeypatch.setattr(pf, "mkdir", racing_mkdir)
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir", json={"path": "d"},
+                    headers=_auth())
+    assert r.status_code == 404
+    assert not files_dir.exists()
 
 
 def test_project_delete_removes_files_dir(client, tmp_path):

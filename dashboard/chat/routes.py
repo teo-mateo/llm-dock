@@ -40,6 +40,14 @@ def init_chat(app, db_path: str = None):
     # Background-run infrastructure (#58): an event bus for live observers and
     # a manager owning the worker pool. Runs from a previous process that died
     # mid-flight are marked failed so they don't linger as stuck active runs.
+    # Cap request bodies so Werkzeug rejects an oversized upload DURING
+    # multipart parsing (before it is fully spooled to disk) — covers
+    # chunked bodies that carry no Content-Length. Slightly above the
+    # per-file cap to leave room for multipart framing. setdefault so a
+    # deployment can still override it in app config.
+    from .project_files import MAX_UPLOAD_BYTES
+    app.config.setdefault("MAX_CONTENT_LENGTH", int(MAX_UPLOAD_BYTES * 1.05))
+
     bus = EventBus()
     run_manager = ChatRunManager(db, bus)
     run_manager.recover_interrupted_runs()

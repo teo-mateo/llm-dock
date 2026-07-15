@@ -14,6 +14,7 @@ project root.
 import os
 import shutil
 import logging
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -173,10 +174,14 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
     if os.path.exists(abs_target) and not overwrite:
         raise ProjectFilesError("file already exists", status=409)
 
+    # Stage in a UNIQUE, exclusively-created temp file in the destination
+    # directory (same filesystem → atomic publication). A deterministic
+    # "<target>.uploading" name would collide with a legitimate user file
+    # of that name and with a concurrent upload of the same target.
     written = 0
-    tmp_path = abs_target + ".uploading"
+    fd, tmp_path = tempfile.mkstemp(prefix=".upload-", suffix=".tmp", dir=abs_dir)
     try:
-        with open(tmp_path, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             while True:
                 chunk = stream.read(1024 * 1024)
                 if not chunk:
@@ -185,7 +190,16 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
                 if written > MAX_UPLOAD_BYTES:
                     raise ProjectFilesError("file too large", status=413)
                 f.write(chunk)
-        os.replace(tmp_path, abs_target)
+        if overwrite:
+            os.replace(tmp_path, abs_target)
+        else:
+            # Atomic no-replace publication: link() fails with EEXIST if the
+            # target appeared since the pre-check, upholding the 409 contract
+            # even against a concurrent upload of the same name.
+            try:
+                os.link(tmp_path, abs_target)
+            except FileExistsError:
+                raise ProjectFilesError("file already exists", status=409)
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
