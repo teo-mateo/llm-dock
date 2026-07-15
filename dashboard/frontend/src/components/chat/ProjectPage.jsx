@@ -306,10 +306,21 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   }, [project?.id, run, expandTo])
 
   const handleRename = useCallback(async (node) => {
-    const newPath = window.prompt('New path (relative to project root)', node.path)
-    if (!newPath || !newPath.trim() || newPath.trim() === node.path) return
-    const ok = await run(() => moveProjectPath(project.id, node.path, newPath.trim()))
-    if (ok) setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
+    const input = window.prompt('New path (relative to project root)', node.path)
+    if (!input || !input.trim()) return
+    // Normalize like the backend (split_rel_path strips slashes) so the
+    // selection remap below works with the path the tree will report.
+    const dst = input.trim().replace(/^\/+|\/+$/g, '')
+    if (!dst || dst === node.path) return
+    const ok = await run(() => moveProjectPath(project.id, node.path, dst))
+    if (!ok) return
+    // Same remap as moveInto: a rename of the selected dir or one of its
+    // ancestors must carry the selection to the new path, not strand it
+    // on a path the refreshed tree no longer contains.
+    setSelectedDir(prev => (prev && isSelfOrDescendant(prev, node.path)
+      ? dst + prev.slice(node.path.length)
+      : prev))
+    setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
   }, [project?.id, run])
 
   const handleDelete = useCallback(async (node) => {

@@ -381,6 +381,53 @@ describe('ProjectPage drag and drop', () => {
   })
 })
 
+describe('ProjectPage rename selection follow (regression: codex 1.1)', () => {
+  const renamedTree = [
+    { name: 'notes', path: 'notes', type: 'dir', modified_at: 1, children: [
+      { name: 'inner', path: 'notes/inner', type: 'dir', modified_at: 1, children: [] },
+      { name: 'a.txt', path: 'notes/a.txt', type: 'file', size: 5, modified_at: 1 },
+    ] },
+    { name: 'readme.md', path: 'readme.md', type: 'file', size: 12, modified_at: 1 },
+  ]
+
+  it('renaming an ancestor of the selected folder carries the selection along', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    fireEvent.click(screen.getByTestId('tree-node-docs/inner'))
+    mockTree.mockResolvedValue({ tree: renamedTree })
+    vi.spyOn(window, 'prompt').mockReturnValue('notes')
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Rename'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'notes'))
+    // Selection followed docs/inner → notes/inner instead of falling back.
+    await waitFor(() => expect(screen.getByTestId('crumb-notes/inner')).toBeTruthy())
+  })
+
+  it('renaming the selected folder itself follows to the new path', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    mockTree.mockResolvedValue({ tree: renamedTree })
+    // Slashes are normalized away, matching the backend's path handling.
+    vi.spyOn(window, 'prompt').mockReturnValue('/notes/')
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Rename'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'notes'))
+    await waitFor(() => expect(screen.getByTestId('crumb-notes')).toBeTruthy())
+    expect(screen.getByTestId('file-row-notes/a.txt')).toBeTruthy()
+  })
+
+  it('a failed rename leaves the selection where it was', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    mockMove.mockRejectedValue(new Error('destination already exists'))
+    vi.spyOn(window, 'prompt').mockReturnValue('notes')
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Rename'))
+    expect(await screen.findByText('destination already exists')).toBeTruthy()
+    expect(screen.getByTestId('crumb-docs')).toBeTruthy()
+  })
+})
+
 describe('ProjectPage editor integration', () => {
   it('clicking a file row opens the editor with its content; closing returns to the listing', async () => {
     await renderPage()
