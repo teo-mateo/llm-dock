@@ -5,7 +5,12 @@ import ChatPage from './ChatPage'
 
 // Stub the heavy presentational children — this test is about the
 // data/effect wiring in ChatPage, not what the sidebar/area render.
-vi.mock('./ChatSidebar', () => ({ default: () => null }))
+// The sidebar stub captures its props so tests can drive the handlers
+// ChatPage wires into it (delete → project-count refresh, etc.).
+const { sidebarProps } = vi.hoisted(() => ({ sidebarProps: { current: null } }))
+vi.mock('./ChatSidebar', () => ({
+  default: (props) => { sidebarProps.current = props; return null },
+}))
 vi.mock('./ChatArea', () => ({ default: () => null }))
 
 // Running services come from an SSE hook; give it one model so the page
@@ -14,16 +19,23 @@ vi.mock('../../hooks/useServicesSSE', () => ({
   default: () => ({ services: [{ name: 'vllm-test', kind: 'chat' }], loading: false }),
 }))
 
-const { mockGetConversation, mockListConversations, mockCancelActiveRun } = vi.hoisted(() => ({
+const { mockGetConversation, mockListConversations, mockCancelActiveRun,
+        mockListProjects, mockDeleteConversation, mockDeleteConversations } = vi.hoisted(() => ({
   mockGetConversation: vi.fn(),
   mockListConversations: vi.fn(),
   mockCancelActiveRun: vi.fn(),
+  mockListProjects: vi.fn(),
+  mockDeleteConversation: vi.fn(),
+  mockDeleteConversations: vi.fn(),
 }))
 vi.mock('../../services/chat', async (importActual) => ({
   ...(await importActual()),
   getConversation: (...a) => mockGetConversation(...a),
   listConversations: (...a) => mockListConversations(...a),
   cancelActiveRun: (...a) => mockCancelActiveRun(...a),
+  listProjects: (...a) => mockListProjects(...a),
+  deleteConversation: (...a) => mockDeleteConversation(...a),
+  deleteConversations: (...a) => mockDeleteConversations(...a),
 }))
 
 // streamChat is never expected to fire here (no active run), but stub it to a
@@ -40,7 +52,14 @@ beforeEach(() => {
     messages: [], active_run: null, last_run: null,
   })
   mockListConversations.mockResolvedValue({ conversations: [] })
+  mockListProjects.mockReset()
+  mockListProjects.mockResolvedValue({ projects: [] })
+  mockDeleteConversation.mockReset()
+  mockDeleteConversation.mockResolvedValue({ ok: true })
+  mockDeleteConversations.mockReset()
+  mockDeleteConversations.mockResolvedValue({ ok: true, deleted: 1 })
   mockStreamChat.mockImplementation(() => new Promise(() => {}))
+  sidebarProps.current = null
 })
 
 afterEach(() => cleanup())
@@ -79,5 +98,40 @@ describe('ChatPage URL-load effect', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(mockGetConversation).toHaveBeenCalledTimes(1)
     expect(mockGetConversation).toHaveBeenCalledWith('abc')
+  })
+})
+
+describe('ChatPage delete → project count refresh', () => {
+  function renderPage() {
+    return render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('refreshes projects after a single conversation delete', async () => {
+    // Regression for codex iteration 3 on PR #77: deleting a project's
+    // conversation must refetch the cached per-project counts, or the
+    // sidebar keeps claiming chats the project no longer has.
+    renderPage()
+    await waitFor(() => expect(mockListProjects).toHaveBeenCalledTimes(1))
+
+    await act(async () => { await sidebarProps.current.onDelete('c1') })
+
+    expect(mockDeleteConversation).toHaveBeenCalledWith('c1')
+    expect(mockListProjects).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes projects after a bulk conversation delete', async () => {
+    renderPage()
+    await waitFor(() => expect(mockListProjects).toHaveBeenCalledTimes(1))
+
+    await act(async () => { await sidebarProps.current.onDeleteMany(['c1', 'c2']) })
+
+    expect(mockDeleteConversations).toHaveBeenCalledWith(['c1', 'c2'])
+    expect(mockListProjects).toHaveBeenCalledTimes(2)
   })
 })

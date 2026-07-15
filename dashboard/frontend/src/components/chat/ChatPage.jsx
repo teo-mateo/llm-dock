@@ -185,15 +185,20 @@ export default function ChatPage() {
   const handleDelete = useCallback(async (id) => {
     const shouldNavigate = activeWillBeDeleted([id])
     await remove(id)
+    // Deleted conversations may have belonged to a project — refresh the
+    // cached per-project counts so a section can't claim chats it no
+    // longer has.
+    await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [remove, activeWillBeDeleted, navigate])
+  }, [remove, refreshProjects, activeWillBeDeleted, navigate])
 
   const handleDeleteMany = useCallback(async (ids) => {
     if (!ids || ids.length === 0) return
     const shouldNavigate = activeWillBeDeleted(ids)
     await removeMany(ids)
+    await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [removeMany, activeWillBeDeleted, navigate])
+  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate])
 
   return (
     <div className="flex-1 flex overflow-hidden">
