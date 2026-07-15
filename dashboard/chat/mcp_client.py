@@ -7,7 +7,7 @@ import logging
 import threading
 from typing import Optional
 
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.stdio import StdioServerParameters, get_default_environment, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
@@ -31,9 +31,16 @@ async def _open_streams(config: dict):
         async with streamablehttp_client(url, headers=headers) as (read, write, _get_session_id):
             yield read, write
     else:
+        env = config.get("env")
+        if env:
+            # StdioServerParameters treats a provided env as the WHOLE
+            # environment; merge over the SDK's safe default set so PATH,
+            # HOME etc. survive alongside the injected variables.
+            env = {**get_default_environment(), **env}
         params = StdioServerParameters(
             command=config["command"][0],
             args=config["command"][1:],
+            env=env,
         )
         async with stdio_client(params) as (read, write):
             yield read, write
@@ -78,19 +85,13 @@ class MCPClientManager:
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
 
-    def _run_async(self, coro):
-        """Run an async coroutine from sync code."""
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=30)
+    def _run_async(self, coro, timeout: float = 30):
+        """Run an async coroutine from sync code.
 
-    def run_with_timeout(self, coro, timeout: float):
-        """Run a coroutine on the manager's event loop with a custom timeout.
-
-        Exposed for one-shot admin operations (the Tools page test endpoint)
-        that want a tighter deadline than the 30s default and don't want to
-        touch the cached chat path. On timeout, cancel the future so the
-        running coroutine (and its `stdio_client` subprocess) gets a chance
-        to clean up instead of leaking past the HTTP response.
+        On timeout (or any waiter-side error), cancel the future so the
+        running coroutine — and the `stdio_client` subprocess it holds —
+        gets torn down instead of grinding on after the caller already
+        returned an error (e.g. a search still scanning a huge project).
         """
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         try:
@@ -98,6 +99,15 @@ class MCPClientManager:
         except Exception:
             future.cancel()
             raise
+
+    def run_with_timeout(self, coro, timeout: float):
+        """Run a coroutine on the manager's event loop with a custom timeout.
+
+        Exposed for one-shot admin operations (the Tools page test endpoint)
+        that want a tighter deadline than the 30s default and don't want to
+        touch the cached chat path.
+        """
+        return self._run_async(coro, timeout=timeout)
 
     def get_tools(self, server_id: str) -> list:
         """Get tools for a server in OpenAI format. Uses cache."""
@@ -118,11 +128,20 @@ class MCPClientManager:
             logger.exception(f"Failed to discover tools from {server_id}")
             return []
 
-    def call_tool(self, server_id: str, tool_name: str, arguments: dict) -> tuple:
-        """Execute a tool on an MCP server. Returns (result_text, artifacts)."""
+    def call_tool(self, server_id: str, tool_name: str, arguments: dict,
+                  extra_env: Optional[dict] = None) -> tuple:
+        """Execute a tool on an MCP server. Returns (result_text, artifacts).
+
+        extra_env, when given, is merged into the environment of a
+        stdio server's subprocess for THIS call only — per-call scope
+        (e.g. the project-files server's project directory) without
+        mutating the shared registry config.
+        """
         config = get_server_config(server_id)
         if not config:
             return (f"Error: Unknown MCP server '{server_id}'", [])
+        if extra_env:
+            config = {**config, "env": {**(config.get("env") or {}), **extra_env}}
 
         try:
             return self._run_async(self._execute_tool(config, tool_name, arguments))

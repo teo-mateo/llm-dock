@@ -69,6 +69,30 @@ def _get_run_manager():
     return current_app.config["CHAT_RUN_MANAGER"]
 
 
+def _mcp_for_conversation(conv, enabled_servers):
+    """MCP manager for a run, or None when the turn has no tools.
+
+    Project conversations always get a manager — the project-files server
+    is auto-enabled for them (see runtime._build_stream) — wrapped so its
+    subprocess spawns learn the project's directory via the environment.
+    """
+    from . import project_files as pf
+    from .project_files_mcp import ProjectScopedMCPManager
+
+    # Membership is root-only: a spin-off keeps project_id NULL and follows
+    # its root ancestor, so scoping must use the resolved project.
+    project_id = conv.project_id
+    if project_id is None and conv.parent_conversation_id:
+        project_id = _get_db().resolve_project_id(conv.id)
+    if not (enabled_servers or project_id):
+        return None
+    manager = _get_mcp()
+    if project_id:
+        storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
+        manager = ProjectScopedMCPManager(manager, pf.project_root(storage_root, project_id))
+    return manager
+
+
 @chat_bp.route("/api/chat/mcp-servers", methods=["GET"])
 @require_auth
 def get_mcp_servers():
@@ -467,7 +491,7 @@ def send_message(conv_id):
     )
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    mcp_manager = _get_mcp() if enabled_servers else None
+    mcp_manager = _mcp_for_conversation(conv, enabled_servers)
 
     return _start_run_response(db, conv, user_msg, mcp_manager, is_first, content)
 
@@ -495,7 +519,7 @@ def edit_message(conv_id, msg_id):
     images_json = json.dumps(images) if images else None
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    mcp_mgr = _get_mcp() if enabled_servers else None
+    mcp_mgr = _mcp_for_conversation(conv, enabled_servers)
 
     new_msg = Message(
         id=str(uuid.uuid4()),

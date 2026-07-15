@@ -322,6 +322,31 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
+    def resolve_project_id(self, conv_id: str) -> Optional[str]:
+        """Effective project of a conversation: its own project_id, or the
+        nearest ancestor's. Project membership is root-only — spin-off rows
+        keep project_id NULL and follow their root ancestor — so this is
+        what tool scoping must use, not the row's own column. The visited
+        set guards against a parent cycle (impossible through the API, but
+        a walk must never be the thing that hangs on corrupt data)."""
+        seen = set()
+        conn = self._get_conn()
+        try:
+            while conv_id and conv_id not in seen:
+                seen.add(conv_id)
+                row = conn.execute(
+                    "SELECT project_id, parent_conversation_id FROM conversations WHERE id = ?",
+                    (conv_id,),
+                ).fetchone()
+                if row is None:
+                    return None
+                if row["project_id"]:
+                    return row["project_id"]
+                conv_id = row["parent_conversation_id"]
+            return None
+        finally:
+            self._close_conn(conn)
+
     def list_conversations(self, limit: int = 50, offset: int = 0) -> Tuple[List[Conversation], int]:
         """List conversations, newest-updated first.
 
