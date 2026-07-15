@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
 import useConversations from '../../hooks/useConversations'
+import useProjects from '../../hooks/useProjects'
 import useChat from '../../hooks/useChat'
+import { updateConversation } from '../../services/chat'
 import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import { serviceNameForModel, formatModelLabel } from '../../utils/openrouter'
@@ -15,6 +17,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
 
   const { conversations, refresh, create, remove, removeMany, rename, patchConversation } = useConversations()
+  const { projects, refresh: refreshProjects, create: createProject, rename: renameProject, remove: removeProject } = useProjects()
   const { services: runningServices } = useRunningServices()
   const { data: openRouterData } = useOpenRouterModels()
   const {
@@ -115,6 +118,37 @@ export default function ChatPage() {
     navigate(`/chat/${conv.id}`)
   }, [create, navigate, defaultModelName])
 
+  const handleCreateInProject = useCallback(async (projectId) => {
+    if (!defaultModelName) {
+      window.alert('No model available. Start a local model or configure OpenRouter.')
+      return
+    }
+    const conv = await create({
+      main_service: defaultModelName,
+      project_id: projectId,
+    })
+    await refreshProjects()
+    navigate(`/chat/${conv.id}`)
+  }, [create, navigate, defaultModelName, refreshProjects])
+
+  const handleCreateProject = useCallback(async () => {
+    const name = window.prompt('Project name')
+    if (!name || !name.trim()) return
+    await createProject({ name: name.trim() })
+  }, [createProject])
+
+  const handleDeleteProject = useCallback(async (id) => {
+    // Conversations are detached server-side, not deleted — refresh the
+    // list so they reappear as unfiled.
+    await removeProject(id)
+    await refresh()
+  }, [removeProject, refresh])
+
+  const handleMoveMany = useCallback(async (ids, projectId) => {
+    await Promise.all(ids.map(id => updateConversation(id, { project_id: projectId })))
+    await Promise.all([refresh(), refreshProjects()])
+  }, [refresh, refreshProjects])
+
   // Empty-state composer: create a conversation, then queue the typed
   // message so it sends as soon as the new conversation loads.
   const handleCreateAndSend = useCallback(async (content, images) => {
@@ -151,15 +185,20 @@ export default function ChatPage() {
   const handleDelete = useCallback(async (id) => {
     const shouldNavigate = activeWillBeDeleted([id])
     await remove(id)
+    // Deleted conversations may have belonged to a project — refresh the
+    // cached per-project counts so a section can't claim chats it no
+    // longer has.
+    await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [remove, activeWillBeDeleted, navigate])
+  }, [remove, refreshProjects, activeWillBeDeleted, navigate])
 
   const handleDeleteMany = useCallback(async (ids) => {
     if (!ids || ids.length === 0) return
     const shouldNavigate = activeWillBeDeleted(ids)
     await removeMany(ids)
+    await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [removeMany, activeWillBeDeleted, navigate])
+  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate])
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -171,6 +210,12 @@ export default function ChatPage() {
         onDelete={handleDelete}
         onDeleteMany={handleDeleteMany}
         onRename={handleRename}
+        projects={projects}
+        onCreateProject={handleCreateProject}
+        onRenameProject={renameProject}
+        onDeleteProject={handleDeleteProject}
+        onCreateInProject={handleCreateInProject}
+        onMoveMany={handleMoveMany}
       />
       <ChatArea
         conversation={conversation}

@@ -2,12 +2,22 @@ import sqlite3
 import logging
 from typing import Optional, List, Tuple
 
-from .models import Conversation, Message, Critique, Artifact, ChatRun
+from .models import Conversation, Message, Critique, Artifact, ChatRun, Project
 from .runs import ChatRunStatus, ACTIVE_STATUSES, TERMINAL_STATUSES, ALL_STATUSES
 
 logger = logging.getLogger(__name__)
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS projects (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_updated ON projects(updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id                     TEXT PRIMARY KEY,
     title                  TEXT NOT NULL DEFAULT 'New Conversation',
@@ -76,6 +86,31 @@ CREATE INDEX IF NOT EXISTS idx_chat_runs_conversation ON chat_runs(conversation_
 CREATE INDEX IF NOT EXISTS idx_chat_runs_status ON chat_runs(status);
 """
 
+# conversations.project_id was added via ALTER TABLE, which in sqlite cannot
+# carry a foreign key — these triggers provide the referential half. They
+# close the validate-then-write race (a project deleted between a route's
+# existence check and the conversation write): the write itself fails with
+# IntegrityError('project not found') instead of persisting an orphan id.
+# delete_project detaches conversations in the same transaction as the
+# project row's deletion, so the triggers never fire on that path.
+TRIGGERS_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_conversations_project_fk_insert
+BEFORE INSERT ON conversations
+WHEN NEW.project_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM projects WHERE id = NEW.project_id)
+BEGIN
+    SELECT RAISE(ABORT, 'project not found');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_conversations_project_fk_update
+BEFORE UPDATE OF project_id ON conversations
+WHEN NEW.project_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM projects WHERE id = NEW.project_id)
+BEGIN
+    SELECT RAISE(ABORT, 'project not found');
+END;
+"""
+
 
 class ChatDB:
     def __init__(self, db_path: str = "chat.db"):
@@ -109,6 +144,11 @@ class ChatDB:
             conn.executescript(SCHEMA_SQL)
             conn.commit()
             self._migrate(conn)
+            # Created AFTER migrations: the triggers reference
+            # conversations.project_id, which on a pre-existing DB only
+            # exists once _migrate has added it.
+            conn.executescript(TRIGGERS_SQL)
+            conn.commit()
         finally:
             self._close_conn(conn)
 
@@ -120,6 +160,9 @@ class ChatDB:
             ("conversations", "mcp_servers_json", "ALTER TABLE conversations ADD COLUMN mcp_servers_json TEXT"),
             ("messages", "tool_calls_json", "ALTER TABLE messages ADD COLUMN tool_calls_json TEXT"),
             ("messages", "parse_warning_json", "ALTER TABLE messages ADD COLUMN parse_warning_json TEXT"),
+            # No FK here: sqlite's ALTER TABLE can't add one, so project
+            # detachment on delete is handled explicitly in delete_project.
+            ("conversations", "project_id", "ALTER TABLE conversations ADD COLUMN project_id TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -128,6 +171,101 @@ class ChatDB:
                 logger.info(f"Migration: added {column} column to {table}")
             except sqlite3.OperationalError:
                 pass  # column already exists
+
+    # -- Projects --
+
+    def _row_to_project(self, row: sqlite3.Row) -> Project:
+        return Project(
+            id=row["id"],
+            name=row["name"],
+            description=row["description"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def create_project(self, project: Project) -> Project:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO projects (id, name, description) VALUES (?, ?, ?)",
+                (project.id, project.name, project.description),
+            )
+            conn.commit()
+            return self.get_project(project.id)
+        finally:
+            self._close_conn(conn)
+
+    def get_project(self, project_id: str) -> Optional[Project]:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM projects WHERE id = ?", (project_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            project = self._row_to_project(row)
+            project.conversation_count = conn.execute(
+                "SELECT COUNT(*) FROM conversations WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+            return project
+        finally:
+            self._close_conn(conn)
+
+    def list_projects(self) -> List[Project]:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM projects ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+            projects = [self._row_to_project(row) for row in rows]
+            counts = dict(conn.execute(
+                "SELECT project_id, COUNT(*) FROM conversations "
+                "WHERE project_id IS NOT NULL GROUP BY project_id"
+            ).fetchall())
+            for p in projects:
+                p.conversation_count = counts.get(p.id, 0)
+            return projects
+        finally:
+            self._close_conn(conn)
+
+    def update_project(self, project_id: str, **kwargs) -> Optional[Project]:
+        allowed = {"name", "description"}
+        fields = []
+        params = []
+        for key, val in kwargs.items():
+            if key in allowed:
+                fields.append(f"{key} = ?")
+                params.append(val)
+        if not fields:
+            return self.get_project(project_id)
+        fields.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')")
+        params.append(project_id)
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                f"UPDATE projects SET {', '.join(fields)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
+            return self.get_project(project_id)
+        finally:
+            self._close_conn(conn)
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete a project, detaching its conversations (they become
+        unfiled rather than being destroyed)."""
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE conversations SET project_id = NULL WHERE project_id = ?",
+                (project_id,),
+            )
+            cur = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            self._close_conn(conn)
 
     # -- Conversations --
 
@@ -142,6 +280,7 @@ class ChatDB:
             parent_conversation_id=row["parent_conversation_id"],
             selected_text=row["selected_text"],
             mcp_servers_json=row["mcp_servers_json"],
+            project_id=row["project_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -153,11 +292,12 @@ class ChatDB:
                 """INSERT INTO conversations
                    (id, title, main_service, sidekick_service,
                     main_system_prompt, sidekick_system_prompt,
-                    parent_conversation_id, selected_text, mcp_servers_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    parent_conversation_id, selected_text, mcp_servers_json, project_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (conv.id, conv.title, conv.main_service, conv.sidekick_service,
                  conv.main_system_prompt, conv.sidekick_system_prompt,
-                 conv.parent_conversation_id, conv.selected_text, conv.mcp_servers_json),
+                 conv.parent_conversation_id, conv.selected_text, conv.mcp_servers_json,
+                 conv.project_id),
             )
             conn.commit()
             return self.get_conversation(conv.id)
@@ -183,13 +323,25 @@ class ChatDB:
             self._close_conn(conn)
 
     def list_conversations(self, limit: int = 50, offset: int = 0) -> Tuple[List[Conversation], int]:
+        """List conversations, newest-updated first.
+
+        A negative limit returns the ENTIRE list in one statement — a
+        consistent snapshot (offset pagination over the mutable
+        updated_at ordering can skip or duplicate rows when conversations
+        are touched between page fetches).
+        """
         conn = self._get_conn()
         try:
             total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+            if limit is None or limit < 0:
+                rows = conn.execute(
+                    "SELECT * FROM conversations ORDER BY updated_at DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
             convs = [self._row_to_conversation(row) for row in rows]
             self._attach_active_runs(conn, convs)
             return convs, total
@@ -198,7 +350,8 @@ class ChatDB:
 
     def update_conversation(self, conv_id: str, **kwargs) -> Optional[Conversation]:
         allowed = {"title", "main_service", "sidekick_service",
-                    "main_system_prompt", "sidekick_system_prompt", "mcp_servers_json"}
+                    "main_system_prompt", "sidekick_system_prompt", "mcp_servers_json",
+                    "project_id"}
         fields = []
         params = []
         for key, val in kwargs.items():

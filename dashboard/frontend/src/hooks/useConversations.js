@@ -8,7 +8,13 @@ export default function useConversations() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listConversations()
+      // Fetch the ENTIRE list in one request (limit -1 = unlimited). The
+      // sidebar groups conversations into project sections, so a partial
+      // page would silently hide conversations; and offset pagination over
+      // the mutable updated_at ordering can skip or duplicate rows when
+      // runs/renames touch conversations between page fetches. One request
+      // is one SQL statement server-side — a consistent snapshot.
+      const data = await listConversations(-1, 0)
       if (mountedRef.current) {
         setConversations(data.conversations || [])
       }

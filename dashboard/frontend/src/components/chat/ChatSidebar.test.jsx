@@ -149,6 +149,189 @@ describe('ChatSidebar shift-click range selection', () => {
   })
 })
 
+describe('ChatSidebar project grouping', () => {
+  const projects = [
+    { id: 'p1', name: 'Alpha Project', conversation_count: 2 },
+    { id: 'p2', name: 'Beta Project', conversation_count: 0 },
+  ]
+  const convs = [
+    { id: 'A', title: 'A', parent_conversation_id: null, project_id: 'p1', updated_at: '2026-01-01' },
+    { id: 'A1', title: 'A1', parent_conversation_id: 'A', project_id: null, updated_at: '2026-01-01' },
+    { id: 'B', title: 'B', parent_conversation_id: null, project_id: 'p1', updated_at: '2026-01-01' },
+    { id: 'C', title: 'C', parent_conversation_id: null, project_id: null, updated_at: '2026-01-01' },
+    { id: 'D', title: 'D', parent_conversation_id: null, project_id: 'gone', updated_at: '2026-01-01' },
+  ]
+
+  function renderWithProjects(overrides = {}) {
+    return render(
+      <ChatSidebar
+        conversations={convs}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+        projects={projects}
+        onCreateProject={() => {}}
+        onRenameProject={() => {}}
+        onDeleteProject={() => {}}
+        onCreateInProject={() => {}}
+        onMoveMany={() => {}}
+        {...overrides}
+      />
+    )
+  }
+
+  it('renders project headers with their conversations grouped under them', () => {
+    renderWithProjects()
+    expect(screen.getByText('Alpha Project')).toBeTruthy()
+    expect(screen.getByText('Beta Project')).toBeTruthy()
+    // A (and its spinoff A1) and B are under Alpha; C is unfiled.
+    expect(screen.getByText('A')).toBeTruthy()
+    expect(screen.getByText('A1')).toBeTruthy()
+    expect(screen.getByText('C')).toBeTruthy()
+  })
+
+  it('a conversation pointing at an unknown project renders as unfiled', () => {
+    renderWithProjects()
+    expect(screen.getByText('D')).toBeTruthy()
+  })
+
+  it('an empty project shows an empty placeholder', () => {
+    renderWithProjects()
+    expect(screen.getByText('Empty project')).toBeTruthy()
+  })
+
+  it('a project whose conversations are not loaded is never claimed empty', () => {
+    // Server says 3 conversations, but none made it into the loaded list —
+    // show a "not loaded" placeholder (and the authoritative count), not
+    // "Empty project".
+    render(
+      <ChatSidebar
+        conversations={[]}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+        projects={[{ id: 'p9', name: 'Ghost', conversation_count: 3 }]}
+      />
+    )
+    expect(screen.queryByText('Empty project')).toBeNull()
+    expect(screen.getByText('3 conversations not loaded')).toBeTruthy()
+    expect(within(screen.getByTestId('project-header-p9')).getByText('3')).toBeTruthy()
+  })
+
+  it('collapsing a project hides its conversations', () => {
+    renderWithProjects()
+    fireEvent.click(screen.getByTestId('project-header-p1'))
+    expect(screen.queryByText('A')).toBeNull()
+    expect(screen.queryByText('A1')).toBeNull()
+    expect(screen.queryByText('B')).toBeNull()
+    // Unfiled conversations stay visible.
+    expect(screen.getByText('C')).toBeTruthy()
+    // Expanding brings them back.
+    fireEvent.click(screen.getByTestId('project-header-p1'))
+    expect(screen.getByText('A')).toBeTruthy()
+  })
+
+  it('spinoffs render under their parent inside the project regardless of own project_id', () => {
+    renderWithProjects()
+    // A1 has project_id null but its parent A is in p1 — it must render
+    // (under A), not be duplicated in the unfiled section.
+    expect(screen.getAllByText('A1')).toHaveLength(1)
+  })
+
+  it('shift-click range never crosses into a collapsed project', () => {
+    renderWithProjects()
+    // Collapse Alpha (A, A1, B hidden). Anchor on C, shift-click D:
+    // range must be just C..D — no hidden rows selected.
+    fireEvent.click(screen.getByTestId('project-header-p1'))
+    fireEvent.click(checkboxFor('C'))
+    fireEvent.click(checkboxFor('D'), { shiftKey: true })
+    // Expand and verify hidden rows were not swept into the selection.
+    fireEvent.click(screen.getByTestId('project-header-p1'))
+    expect(selectedTitles()).toEqual(['C', 'D'])
+  })
+
+  it('selection toolbar offers Move to… with each project and No project', () => {
+    renderWithProjects()
+    fireEvent.click(checkboxFor('C'))
+    const select = screen.getByTitle('Move selected to project')
+    const options = within(select).getAllByRole('option').map(o => o.textContent)
+    expect(options).toEqual(['Move to…', 'Alpha Project', 'Beta Project', 'No project'])
+  })
+
+  it('choosing a project in Move to… calls onMoveMany with ids and project id', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('C'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: 'p2' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['C'], 'p2')
+  })
+
+  it('choosing No project calls onMoveMany with null', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('A'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: '__none__' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['A'], null)
+  })
+
+  it('moving a selected spinoff resolves to its root (membership is root-only)', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('A1'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: 'p2' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['A'], 'p2')
+  })
+
+  it('selecting a root and its spinoff moves the root once (deduped)', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('A'))
+    fireEvent.click(checkboxFor('A1'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: 'p2' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['A'], 'p2')
+  })
+
+  it('project delete asks for confirmation then calls onDeleteProject', () => {
+    const onDeleteProject = vi.fn()
+    renderWithProjects({ onDeleteProject })
+    const header = screen.getByTestId('project-header-p1')
+    fireEvent.click(within(header).getByLabelText('Delete project'))
+    fireEvent.click(within(header).getByText('Yes'))
+    expect(onDeleteProject).toHaveBeenCalledWith('p1')
+  })
+
+  it('new-conversation-in-project button calls onCreateInProject without toggling collapse', () => {
+    const onCreateInProject = vi.fn()
+    renderWithProjects({ onCreateInProject })
+    const header = screen.getByTestId('project-header-p2')
+    fireEvent.click(within(header).getByLabelText('New conversation in project'))
+    expect(onCreateInProject).toHaveBeenCalledWith('p2')
+    // Beta stayed expanded (its placeholder is still visible).
+    expect(screen.getByText('Empty project')).toBeTruthy()
+  })
+
+  it('without projects the sidebar renders the flat list as before', () => {
+    render(
+      <ChatSidebar
+        conversations={convs}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+      />
+    )
+    for (const t of ['A', 'A1', 'B', 'C', 'D']) {
+      expect(screen.getByText(t)).toBeTruthy()
+    }
+    expect(screen.queryByText('Alpha Project')).toBeNull()
+  })
+})
+
 describe('ChatSidebar active-run indicator', () => {
   function renderWith(convs) {
     return render(
