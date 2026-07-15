@@ -128,10 +128,10 @@ The diagram will be rendered automatically as an artifact.""",
     },
     "project-files": {
         "name": "Project Files",
-        "description": "Read this conversation's project files — list, read, search. Auto-enabled for conversations inside a project; does nothing outside one.",
+        "description": "Read and edit this conversation's project files — list, read, search, create, write. Auto-enabled for conversations inside a project; does nothing outside one.",
         "command": [sys.executable, os.path.join(_SERVERS_DIR, "project_files_server.py")],
         "icon": "fa-folder-tree",
-        "tool_hint": "This conversation belongs to a project with a file area (documents, notes, data the user keeps alongside the project's conversations). You have read-only access to it: list_files shows the file tree, read_file returns a text file's content, search_files finds a substring across file names and contents. Paths are relative to the project root, e.g. 'docs/plan.md' — use them exactly as list_files prints them. When the user refers to project files or material \"in the project\", consult these tools instead of guessing.",
+        "tool_hint": "This conversation belongs to a project with a file area (documents, notes, data the user keeps alongside the project's conversations). Reading: list_files shows the file tree, read_file returns a text file's content, search_files finds a substring across file names and contents. Writing: create_file makes a new text file (parent folders are created automatically; it refuses to overwrite), write_file replaces an existing file's entire content, edit_file swaps one exact snippet for another (copy the snippet verbatim from read_file — for small changes prefer this over write_file), insert_text adds lines after a given line number. All files are UTF-8 text up to 2 MB; paths are relative to the project root, e.g. 'docs/plan.md' — use them exactly as list_files prints them. When the user refers to project files or material \"in the project\", consult these tools instead of guessing, and when they ask you to save or update something in the project, actually write the file rather than only replying in chat.",
     },
     "render-html": {
         "name": "Render HTML",
