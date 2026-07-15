@@ -114,6 +114,19 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   const [busy, setBusy] = useState(false)
   // {path, isNew} when the editor is open; replaces the tree area.
   const [editing, setEditing] = useState(null)
+  // Local mirror of the editor's dirty state: the toolbar stays visible
+  // while the editor is open, and starting another New file would remount
+  // the keyed editor — an in-page replacement ChatPage's navigation guard
+  // never sees. Guard it here.
+  const editorDirtyRef = useRef(false)
+  const handleEditorDirtyChange = useCallback((d) => {
+    editorDirtyRef.current = d
+    onEditorDirtyChange?.(d)
+  }, [onEditorDirtyChange])
+  const confirmDiscardEdits = useCallback(() => {
+    if (!editing || !editorDirtyRef.current) return true
+    return window.confirm('Discard unsaved changes?')
+  }, [editing])
   const fileInputRef = useRef(null)
   // Directory the next file-picker selection uploads into.
   const uploadDirRef = useRef('')
@@ -237,13 +250,14 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   }, [])
 
   const handleNewFile = useCallback((parentDir) => {
+    if (!confirmDiscardEdits()) return
     const name = window.prompt('File name')
     if (!name || !name.trim()) return
     const path = parentDir ? `${parentDir}/${name.trim()}` : name.trim()
     // If it already exists, open it instead of silently overwriting on save.
     const existing = findNode(tree, path)
     setEditing({ path, isNew: !existing })
-  }, [tree])
+  }, [tree, confirmDiscardEdits])
 
   const handleDownload = useCallback(async (node) => {
     try {
@@ -338,7 +352,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
           projectId={project.id}
           path={editing.path}
           isNew={editing.isNew}
-          onDirtyChange={onEditorDirtyChange}
+          onDirtyChange={handleEditorDirtyChange}
           onClose={() => setEditing(null)}
           onSaved={() => {
             // A saved new file now exists on disk; drop the isNew flag so

@@ -188,6 +188,47 @@ describe('ProjectPage editor integration', () => {
   })
 })
 
+describe('ProjectPage in-page editor replacement guard (regression: codex 5.1)', () => {
+  it('New file over a dirty editor asks first; cancel keeps path and text', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(confirmSpy).toHaveBeenCalled()
+    // Cancelled: same editor, text intact, no name prompt shown.
+    expect(promptSpy).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+    expect(screen.getByText('readme.md')).toBeTruthy()
+  })
+
+  it('confirming the discard opens the new file editor', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea').value).toBe(''))
+    expect(screen.getByText('b.md')).toBeTruthy()
+  })
+
+  it('New file with a clean editor does not ask', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    await screen.findByTestId('editor-textarea')
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('ProjectPage new-file first-save race (regression: codex 3.1)', () => {
   it('typing during the first save of a new file survives the isNew flip', async () => {
     // First save of a new file resolves while the user has already typed
