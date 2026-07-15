@@ -258,6 +258,23 @@ describe('ChatSidebar project grouping', () => {
     expect(onMoveMany).toHaveBeenCalledWith(['A'], null)
   })
 
+  it('moving a selected spinoff resolves to its root (membership is root-only)', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('A1'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: 'p2' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['A'], 'p2')
+  })
+
+  it('selecting a root and its spinoff moves the root once (deduped)', () => {
+    const onMoveMany = vi.fn()
+    renderWithProjects({ onMoveMany })
+    fireEvent.click(checkboxFor('A'))
+    fireEvent.click(checkboxFor('A1'))
+    fireEvent.change(screen.getByTitle('Move selected to project'), { target: { value: 'p2' } })
+    expect(onMoveMany).toHaveBeenCalledWith(['A'], 'p2')
+  })
+
   it('project delete asks for confirmation then calls onDeleteProject', () => {
     const onDeleteProject = vi.fn()
     renderWithProjects({ onDeleteProject })

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sqlite3
 import uuid
 
 from flask import Blueprint, jsonify, request, current_app, Response, stream_with_context
@@ -251,8 +252,14 @@ def create_conversation():
         return jsonify({"error": "main_service is required"}), 400
 
     project_id = data.get("project_id")
-    if project_id is not None and _get_db().get_project(project_id) is None:
-        return jsonify({"error": "Project not found"}), 400
+    if project_id is not None:
+        if not isinstance(project_id, str):
+            return jsonify({"error": "project_id must be a string or null"}), 400
+        # Membership is root-only: spin-offs follow their parent's project.
+        if data.get("parent_conversation_id"):
+            return jsonify({"error": "Spin-off conversations inherit their parent's project"}), 400
+        if _get_db().get_project(project_id) is None:
+            return jsonify({"error": "Project not found"}), 400
 
     # Honor an explicit prompt from the client (a fork or programmatic
     # caller may want one), otherwise fall back to whatever the user has
@@ -274,7 +281,12 @@ def create_conversation():
         selected_text=data.get("selected_text"),
         project_id=project_id,
     )
-    conv = _get_db().create_conversation(conv)
+    try:
+        conv = _get_db().create_conversation(conv)
+    except sqlite3.IntegrityError:
+        # The project was deleted between the existence check above and the
+        # insert — the DB trigger rejected the orphan reference.
+        return jsonify({"error": "Project not found"}), 400
     return jsonify(conv.to_dict(include_messages=True)), 201
 
 
@@ -311,12 +323,25 @@ def get_conversation(conv_id):
 def update_conversation(conv_id):
     data = request.get_json() or {}
     db = _get_db()
-    # project_id: null detaches (back to unfiled); a non-null value must
-    # name an existing project.
+    # project_id: null detaches (back to unfiled); a non-null value must be
+    # a string naming an existing project, and only root conversations can
+    # be assigned — spin-offs follow their parent's project.
     if "project_id" in data and data["project_id"] is not None:
+        if not isinstance(data["project_id"], str):
+            return jsonify({"error": "project_id must be a string or null"}), 400
+        existing = db.get_conversation(conv_id)
+        if existing is None:
+            return jsonify({"error": "Conversation not found"}), 404
+        if existing.parent_conversation_id:
+            return jsonify({"error": "Spin-off conversations inherit their parent's project"}), 400
         if db.get_project(data["project_id"]) is None:
             return jsonify({"error": "Project not found"}), 400
-    conv = db.update_conversation(conv_id, **data)
+    try:
+        conv = db.update_conversation(conv_id, **data)
+    except sqlite3.IntegrityError:
+        # The project was deleted between the existence check above and the
+        # write — the DB trigger rejected the orphan reference.
+        return jsonify({"error": "Project not found"}), 400
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
     return jsonify(conv.to_dict())

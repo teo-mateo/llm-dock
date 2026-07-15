@@ -86,6 +86,31 @@ CREATE INDEX IF NOT EXISTS idx_chat_runs_conversation ON chat_runs(conversation_
 CREATE INDEX IF NOT EXISTS idx_chat_runs_status ON chat_runs(status);
 """
 
+# conversations.project_id was added via ALTER TABLE, which in sqlite cannot
+# carry a foreign key — these triggers provide the referential half. They
+# close the validate-then-write race (a project deleted between a route's
+# existence check and the conversation write): the write itself fails with
+# IntegrityError('project not found') instead of persisting an orphan id.
+# delete_project detaches conversations in the same transaction as the
+# project row's deletion, so the triggers never fire on that path.
+TRIGGERS_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_conversations_project_fk_insert
+BEFORE INSERT ON conversations
+WHEN NEW.project_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM projects WHERE id = NEW.project_id)
+BEGIN
+    SELECT RAISE(ABORT, 'project not found');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_conversations_project_fk_update
+BEFORE UPDATE OF project_id ON conversations
+WHEN NEW.project_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM projects WHERE id = NEW.project_id)
+BEGIN
+    SELECT RAISE(ABORT, 'project not found');
+END;
+"""
+
 
 class ChatDB:
     def __init__(self, db_path: str = "chat.db"):
@@ -119,6 +144,11 @@ class ChatDB:
             conn.executescript(SCHEMA_SQL)
             conn.commit()
             self._migrate(conn)
+            # Created AFTER migrations: the triggers reference
+            # conversations.project_id, which on a pre-existing DB only
+            # exists once _migrate has added it.
+            conn.executescript(TRIGGERS_SQL)
+            conn.commit()
         finally:
             self._close_conn(conn)
 

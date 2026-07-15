@@ -213,6 +213,71 @@ def test_conversation_list_carries_project_id(client):
     assert {c["project_id"] for c in convs} == {p["id"], None}
 
 
+def test_create_conversation_non_string_project_id_400(client):
+    for bad in [{"x": 1}, ["x"], 42, True]:
+        r = client.post(CONVERSATIONS_PATH,
+                        json={"main_service": "svc", "project_id": bad},
+                        headers=_auth())
+        assert r.status_code == 400, bad
+
+
+def test_update_conversation_non_string_project_id_400(client):
+    conv = _create_conversation(client)
+    for bad in [{"x": 1}, ["x"], 42, True]:
+        r = client.put(f"{CONVERSATIONS_PATH}/{conv['id']}",
+                       json={"project_id": bad}, headers=_auth())
+        assert r.status_code == 400, bad
+
+
+def test_spinoff_cannot_be_created_with_project(client):
+    p = _create_project(client)
+    parent = _create_conversation(client, project_id=p["id"])
+    r = client.post(CONVERSATIONS_PATH,
+                    json={"main_service": "svc",
+                          "parent_conversation_id": parent["id"],
+                          "project_id": p["id"]},
+                    headers=_auth())
+    assert r.status_code == 400
+    assert "inherit" in r.get_json()["error"]
+
+
+def test_spinoff_cannot_be_moved_into_project(client):
+    p = _create_project(client)
+    parent = _create_conversation(client)
+    spinoff = _create_conversation(client, parent_conversation_id=parent["id"])
+    r = client.put(f"{CONVERSATIONS_PATH}/{spinoff['id']}",
+                   json={"project_id": p["id"]}, headers=_auth())
+    assert r.status_code == 400
+    assert "inherit" in r.get_json()["error"]
+
+
+def test_db_trigger_rejects_orphan_project_reference():
+    """The referential triggers close the validate-then-write race: a
+    write carrying a project_id whose project no longer exists must fail
+    at the DB layer, not persist an orphan."""
+    import sqlite3
+    import pytest as _pytest
+    from chat.db import ChatDB
+    from chat.models import Conversation, Project
+
+    db = ChatDB(":memory:")
+    p = db.create_project(Project(id="p1", name="p"))
+    conv = db.create_conversation(Conversation(id="c1", title="t", main_service="svc"))
+
+    db.delete_project(p.id)
+
+    # Update path: moving into the now-deleted project must abort.
+    with _pytest.raises(sqlite3.IntegrityError):
+        db.update_conversation(conv.id, project_id="p1")
+    assert db.get_conversation(conv.id).project_id is None
+
+    # Insert path: creating directly into the deleted project must abort.
+    with _pytest.raises(sqlite3.IntegrityError):
+        db.create_conversation(
+            Conversation(id="c2", title="t", main_service="svc", project_id="p1"))
+    assert db.get_conversation("c2") is None
+
+
 def test_list_projects_counts(client):
     p1 = _create_project(client, name="one")
     p2 = _create_project(client, name="two")

@@ -417,9 +417,21 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   }
 
   const handleBulkMove = async (targetProjectId) => {
-    const ids = Array.from(selectedIds)
+    // Membership is root-only (spin-offs always render under — and follow —
+    // their root), so resolve every selected id to its root before moving:
+    // moving a spin-off moves the tree the user actually sees. The Set also
+    // dedupes a selection that contains both a root and its descendants.
+    const byId = new Map(conversations.map(c => [c.id, c]))
+    const rootIds = new Set()
+    for (const id of selectedIds) {
+      let cursor = id
+      while (byId.get(cursor)?.parent_conversation_id) {
+        cursor = byId.get(cursor).parent_conversation_id
+      }
+      rootIds.add(cursor)
+    }
     clearSelection()
-    if (onMoveMany) await onMoveMany(ids, targetProjectId)
+    if (onMoveMany) await onMoveMany(Array.from(rootIds), targetProjectId)
   }
 
   const selectionCount = selectedIds.size
