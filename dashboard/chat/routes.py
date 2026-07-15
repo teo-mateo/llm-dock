@@ -239,8 +239,11 @@ def update_project(project_id):
 @require_auth
 def delete_project(project_id):
     """Delete a project. Its conversations are detached (become unfiled),
-    not deleted."""
+    not deleted; its files directory IS removed."""
     if _get_db().delete_project(project_id):
+        from . import project_files as pf
+        storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
+        pf.delete_project_root(storage_root, project_id)
         return jsonify({"ok": True})
     return jsonify({"error": "Project not found"}), 404
 
@@ -663,3 +666,4 @@ def spinoff():
 # the blueprint 'chat'". This bottom-of-file import runs while chat.routes
 # is being imported by app.py — before the blueprint is registered.
 from . import mcp_admin_routes  # noqa: E402,F401
+from . import project_files_routes  # noqa: E402,F401

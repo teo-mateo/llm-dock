@@ -92,3 +92,6 @@ opencode.json
 
 # test harness output
 tools/traces/
+
+# Project files (machine-local user content, managed by the dashboard)
+dashboard/project_files/
