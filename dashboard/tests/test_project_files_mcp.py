@@ -96,6 +96,17 @@ class TestListFiles:
         out = srv.list_files("../..")
         assert out.startswith("Error:")
 
+    def test_entry_cap_truncates_with_notice(self, proj_root, monkeypatch):
+        # regression: codex 1.1 — unbounded listings would blow the model
+        # context on a big-but-legitimate project
+        monkeypatch.setattr(srv, "MAX_LIST_ENTRIES", 3)
+        for i in range(6):
+            (proj_root / f"file-{i}.txt").write_text("x")
+        out = srv.list_files()
+        lines = out.splitlines()
+        assert len(lines) == 4  # 3 entries + notice
+        assert "truncated at 3 of" in lines[-1]
+
     def test_missing_subdir_is_an_error_not_a_crash(self, proj_root):
         assert srv.list_files("nope").startswith("Error:")
 
@@ -163,6 +174,59 @@ class TestSearchFiles:
         assert "truncated at 2 matches" in out
         # cap counts matches, not lines scanned: 2 matches + the notice
         assert len(out.splitlines()) == 3
+
+    def test_cap_enforced_after_name_match(self, tmp_path, monkeypatch):
+        # regression: codex 1.3 — a name match landing exactly on the cap
+        # let the same file's content matches overshoot it
+        root = tmp_path / "cap-proj"
+        root.mkdir()
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
+        monkeypatch.setattr(srv, "MAX_SEARCH_RESULTS", 2)
+        (root / "aaa.txt").write_text("needle\n")            # content match 1
+        (root / "needle-b.txt").write_text("needle inside\n")  # name match 2, content would be 3
+        out = srv.search_files("needle")
+        lines = out.splitlines()
+        assert len(lines) == 3  # exactly cap + notice, no overshoot
+        assert "needle-b.txt (name match)" in lines
+        assert not any("needle-b.txt:1:" in l for l in lines)
+        assert "truncated at 2 matches" in lines[-1]
+
+    def test_scan_budget_stops_early_with_notice(self, tmp_path, monkeypatch):
+        # regression: codex 1.2 — a no-match query must stop reading files
+        # once the byte budget is spent instead of grinding to the timeout
+        root = tmp_path / "budget-proj"
+        root.mkdir()
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
+        monkeypatch.setattr(srv, "MAX_SEARCH_SCAN_BYTES", 10)
+        (root / "aaa.txt").write_text("needle A\n")  # 9 bytes: within budget
+        (root / "bbb.txt").write_text("needle B\n")  # would exceed: not scanned
+        out = srv.search_files("needle")
+        assert "aaa.txt:1:" in out
+        assert "bbb.txt" not in out
+        assert "scan budget reached" in out
+
+    def test_scan_budget_notice_even_with_no_matches(self, tmp_path, monkeypatch):
+        root = tmp_path / "budget-proj-2"
+        root.mkdir()
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
+        monkeypatch.setattr(srv, "MAX_SEARCH_SCAN_BYTES", 1)
+        (root / "aaa.txt").write_text("nothing here\n")
+        out = srv.search_files("zzz-not-there")
+        assert out.startswith("No matches.")
+        assert "scan budget reached" in out
+
+    def test_oversized_files_do_not_consume_budget(self, tmp_path, monkeypatch):
+        # files read_text would reject are skipped before budget accounting
+        root = tmp_path / "budget-proj-3"
+        root.mkdir()
+        monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
+        monkeypatch.setattr(srv, "MAX_SEARCH_SCAN_BYTES", 20)
+        big = "x" * (pf.MAX_TEXT_EDIT_BYTES + 1)
+        (root / "aaa-big.txt").write_text(big)
+        (root / "bbb.txt").write_text("needle\n")
+        out = srv.search_files("needle")
+        assert "bbb.txt:1: needle" in out
+        assert "scan budget" not in out
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +348,31 @@ class TestRoutesHelper:
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
+
+
+class TestRunAsyncTimeout:
+    def test_timeout_cancels_the_coroutine(self):
+        # regression: codex 1.2 — a timed-out call must not leave the
+        # coroutine (and the server subprocess it holds) running on the
+        # loop after the caller has already received the error
+        import asyncio
+        import concurrent.futures
+        import threading
+        from chat.mcp_client import MCPClientManager
+
+        manager = MCPClientManager()
+        cancelled = threading.Event()
+
+        async def slow():
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        with pytest.raises(concurrent.futures.TimeoutError):
+            manager._run_async(slow(), timeout=0.2)
+        assert cancelled.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,11 @@ mcp = FastMCP("project-files")
 
 MAX_SEARCH_RESULTS = 200
 MAX_MATCH_LINE_CHARS = 200
+# Tool output feeds straight into the model context; a big-but-legitimate
+# project must degrade into an explicit truncation notice, not a
+# context-blowing (or 30s-timeout-hitting) response.
+MAX_LIST_ENTRIES = 500
+MAX_SEARCH_SCAN_BYTES = 64 * 1024 * 1024
 
 NO_PROJECT_ERROR = (
     "Error: this conversation is not part of a project, so there are no "
@@ -73,6 +78,13 @@ def list_files(path: str = "") -> str:
             lines.append(f"{node['path']} ({node['size']} bytes)")
     if not lines:
         return "(no files here)"
+    if len(lines) > MAX_LIST_ENTRIES:
+        total = len(lines)
+        lines = lines[:MAX_LIST_ENTRIES]
+        lines.append(
+            f"(truncated at {MAX_LIST_ENTRIES} of {total} entries — "
+            f"pass a subdirectory path to list less)"
+        )
     return "\n".join(lines)
 
 
@@ -119,19 +131,31 @@ def search_files(query: str, path: str = "") -> str:
     needle = query.lower()
     matches = []
     truncated = False
+    scan_capped = False
+    scanned_bytes = 0
     for node in _flatten(tree):
-        if len(matches) >= MAX_SEARCH_RESULTS:
-            truncated = True
-            break
         if needle in node["name"].lower():
             suffix = "/" if node["type"] == "dir" else ""
             matches.append(f"{node['path']}{suffix} (name match)")
+            if len(matches) >= MAX_SEARCH_RESULTS:
+                truncated = True
+                break
         if node["type"] != "file":
             continue
+        # Total read budget: a no-match query over a big-but-legitimate
+        # project must stop scanning instead of grinding past the MCP
+        # call timeout. Only count files read_text will actually accept.
+        size = node.get("size", 0)
+        if size > pf.MAX_TEXT_EDIT_BYTES:
+            continue  # read_text would reject it anyway — skip the call
+        if scanned_bytes + size > MAX_SEARCH_SCAN_BYTES:
+            scan_capped = True
+            break
+        scanned_bytes += size
         try:
             content = pf.read_text(root, node["path"])["content"]
         except pf.ProjectFilesError:
-            continue  # binary, oversized, or a symlink — not searchable
+            continue  # binary or a symlink — not searchable
         for lineno, line in enumerate(content.splitlines(), start=1):
             if needle in line.lower():
                 matches.append(
@@ -140,12 +164,20 @@ def search_files(query: str, path: str = "") -> str:
                 if len(matches) >= MAX_SEARCH_RESULTS:
                     truncated = True
                     break
+        if truncated:
+            break
 
     if not matches:
-        return "No matches."
-    result = "\n".join(matches)
+        result = "No matches."
+    else:
+        result = "\n".join(matches)
     if truncated:
         result += f"\n(truncated at {MAX_SEARCH_RESULTS} matches — refine the query)"
+    if scan_capped:
+        result += (
+            f"\n(search stopped early: {MAX_SEARCH_SCAN_BYTES // (1024 * 1024)} MB "
+            f"scan budget reached — narrow the search with a subdirectory path)"
+        )
     return result
 
 
