@@ -169,6 +169,33 @@ describe('ProjectFileEditor', () => {
     await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'mine', null, false))
   })
 
+  it('arms a beforeunload guard while dirty and disarms after save', async () => {
+    await renderEditor()
+    const fire = () => {
+      const evt = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(evt)
+      return evt.defaultPrevented
+    }
+    expect(fire()).toBe(false)                                 // clean: no guard
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'x' } })
+    expect(fire()).toBe(true)                                  // dirty: guarded
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(screen.queryByTestId('dirty-indicator')).toBeNull())
+    expect(fire()).toBe(false)                                 // clean again
+  })
+
+  it('reports dirty transitions via onDirtyChange and resets on unmount', async () => {
+    const onDirtyChange = vi.fn()
+    const { unmount } = render(
+      <ProjectFileEditor projectId="p1" path="notes.md" onClose={() => {}} onDirtyChange={onDirtyChange} />
+    )
+    await screen.findByTestId('editor-textarea')
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'x' } })
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    unmount()
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+  })
+
   it('shows a load error for binary files', async () => {
     mockGet.mockRejectedValue(new Error('not a text file'))
     render(<ProjectFileEditor projectId="p1" path="img.png" onClose={() => {}} />)

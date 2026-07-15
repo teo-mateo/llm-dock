@@ -20,13 +20,16 @@ vi.mock('../../hooks/useServicesSSE', () => ({
 }))
 
 const { mockGetConversation, mockListConversations, mockCancelActiveRun,
-        mockListProjects, mockDeleteConversation, mockDeleteConversations } = vi.hoisted(() => ({
+        mockListProjects, mockDeleteConversation, mockDeleteConversations,
+        mockFilesTree, mockGetFileContent } = vi.hoisted(() => ({
   mockGetConversation: vi.fn(),
   mockListConversations: vi.fn(),
   mockCancelActiveRun: vi.fn(),
   mockListProjects: vi.fn(),
   mockDeleteConversation: vi.fn(),
   mockDeleteConversations: vi.fn(),
+  mockFilesTree: vi.fn(),
+  mockGetFileContent: vi.fn(),
 }))
 vi.mock('../../services/chat', async (importActual) => ({
   ...(await importActual()),
@@ -36,6 +39,8 @@ vi.mock('../../services/chat', async (importActual) => ({
   listProjects: (...a) => mockListProjects(...a),
   deleteConversation: (...a) => mockDeleteConversation(...a),
   deleteConversations: (...a) => mockDeleteConversations(...a),
+  getProjectFilesTree: (...a) => mockFilesTree(...a),
+  getProjectFileContent: (...a) => mockGetFileContent(...a),
 }))
 
 // streamChat is never expected to fire here (no active run), but stub it to a
@@ -58,6 +63,10 @@ beforeEach(() => {
   mockDeleteConversation.mockResolvedValue({ ok: true })
   mockDeleteConversations.mockReset()
   mockDeleteConversations.mockResolvedValue({ ok: true, deleted: 1 })
+  mockFilesTree.mockReset().mockResolvedValue({
+    tree: [{ name: 'a.md', path: 'a.md', type: 'file', size: 1, modified_at: 1 }],
+  })
+  mockGetFileContent.mockReset().mockResolvedValue({ path: 'a.md', content: 'body', revision: 'r1' })
   mockStreamChat.mockImplementation(() => new Promise(() => {}))
   sidebarProps.current = null
 })
@@ -98,6 +107,61 @@ describe('ChatPage URL-load effect', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(mockGetConversation).toHaveBeenCalledTimes(1)
     expect(mockGetConversation).toHaveBeenCalledWith('abc')
+  })
+})
+
+describe('ChatPage dirty-editor navigation guard (regression: PR #79 codex 4.1)', () => {
+  function renderProjectRoute() {
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
+    })
+    return render(
+      <MemoryRouter initialEntries={['/chat/project/p1']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+          <Route path="/chat/project/:projectId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  async function openAndDirtyEditor() {
+    renderProjectRoute()
+    const { screen: s } = await import('@testing-library/react')
+    const row = await s.findByTestId('file-row-a.md')
+    await act(async () => { s.getByTestId('file-row-a.md').click() })
+    const ta = await s.findByTestId('editor-textarea')
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.change(ta, { target: { value: 'unsaved edits' } })
+    return { s, row, ta }
+  }
+
+  it('sidebar navigation while dirty asks first; cancel keeps the editor and text', async () => {
+    const { s } = await openAndDirtyEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onSelect('some-conv') })
+    expect(confirmSpy).toHaveBeenCalled()
+    // Still on the project route, edits intact.
+    expect(s.getByTestId('editor-textarea').value).toBe('unsaved edits')
+  })
+
+  it('confirming the discard navigates away and unmounts the editor', async () => {
+    const { s } = await openAndDirtyEditor()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onSelect('some-conv') })
+    expect(s.queryByTestId('editor-textarea')).toBeNull()
+  })
+
+  it('navigation with a clean editor does not ask', async () => {
+    renderProjectRoute()
+    const { screen: s } = await import('@testing-library/react')
+    await s.findByTestId('file-row-a.md')
+    // spyOn returns the accumulated spy from earlier tests in this file
+    // (no restoreAllMocks here) — clear its history first.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmSpy.mockClear()
+    await act(async () => { await sidebarProps.current.onSelect('some-conv') })
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 })
 

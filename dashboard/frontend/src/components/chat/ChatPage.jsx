@@ -108,29 +108,43 @@ export default function ChatPage() {
     runningServices[0]?.name ||
     (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null)
 
+  // True while the project file editor holds unsaved changes. In-app
+  // navigation unmounts the editor without its own close handler, so the
+  // navigation entry points below confirm before discarding. (Browser
+  // close/reload is guarded by the editor's beforeunload handler.)
+  const editorDirtyRef = useRef(false)
+  const confirmDiscardEdits = useCallback(() => {
+    if (!editorDirtyRef.current) return true
+    if (!window.confirm('Discard unsaved changes?')) return false
+    editorDirtyRef.current = false
+    return true
+  }, [])
+
   const handleCreate = useCallback(async () => {
     if (!defaultModelName) {
       window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
+    if (!confirmDiscardEdits()) return
     const conv = await create({
       main_service: defaultModelName,
     })
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, defaultModelName])
+  }, [create, navigate, defaultModelName, confirmDiscardEdits])
 
   const handleCreateInProject = useCallback(async (projectId) => {
     if (!defaultModelName) {
       window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
+    if (!confirmDiscardEdits()) return
     const conv = await create({
       main_service: defaultModelName,
       project_id: projectId,
     })
     await refreshProjects()
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, defaultModelName, refreshProjects])
+  }, [create, navigate, defaultModelName, refreshProjects, confirmDiscardEdits])
 
   const handleCreateProject = useCallback(async () => {
     const name = window.prompt('Project name')
@@ -165,12 +179,14 @@ export default function ChatPage() {
   }, [create, navigate, defaultModelName])
 
   const handleSelect = useCallback((id) => {
+    if (!confirmDiscardEdits()) return
     navigate(`/chat/${id}`)
-  }, [navigate])
+  }, [navigate, confirmDiscardEdits])
 
   const handleOpenProject = useCallback((id) => {
+    if (!confirmDiscardEdits()) return
     navigate(`/chat/project/${id}`)
-  }, [navigate])
+  }, [navigate, confirmDiscardEdits])
 
   // Deletes cascade to descendant spinoffs server-side. If the active
   // conversation is one of the deleted rows OR a descendant of any of
@@ -227,7 +243,10 @@ export default function ChatPage() {
         onMoveMany={handleMoveMany}
       />
       {projectId ? (
-        <ProjectPage project={projects.find(p => p.id === projectId) || null} />
+        <ProjectPage
+          project={projects.find(p => p.id === projectId) || null}
+          onEditorDirtyChange={(d) => { editorDirtyRef.current = d }}
+        />
       ) : (
       <ChatArea
         conversation={conversation}

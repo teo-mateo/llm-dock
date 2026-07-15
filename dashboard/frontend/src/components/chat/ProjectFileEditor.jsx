@@ -5,7 +5,7 @@ import { getProjectFileContent, saveProjectFileContent } from '../../services/ch
 // dirty tracking, Ctrl/Cmd+S, and optimistic-concurrency saves (the
 // loaded revision is sent as base_revision; a 409 means the file changed
 // on disk and the user chooses to reload or overwrite).
-export default function ProjectFileEditor({ projectId, path, isNew = false, onClose, onSaved }) {
+export default function ProjectFileEditor({ projectId, path, isNew = false, onClose, onSaved, onDirtyChange }) {
   const [content, setContent] = useState('')
   const [baseRevision, setBaseRevision] = useState(null)
   const [loading, setLoading] = useState(!isNew)
@@ -98,6 +98,27 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
     if (dirty && !window.confirm('Discard unsaved changes?')) return
     onClose()
   }, [dirty, onClose])
+
+  // Surface dirty state to the parent so in-app navigation (sidebar
+  // clicks route away and unmount this editor without handleClose) can
+  // guard against silent discards. Reset on unmount.
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  onDirtyChangeRef.current = onDirtyChange
+  useEffect(() => {
+    onDirtyChangeRef.current?.(dirty)
+  }, [dirty])
+  useEffect(() => () => onDirtyChangeRef.current?.(false), [])
+
+  // Browser close/reload guard while dirty.
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" data-testid="file-editor">

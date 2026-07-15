@@ -107,7 +107,7 @@ function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, o
   )
 }
 
-export default function ProjectPage({ project }) {
+export default function ProjectPage({ project, onEditorDirtyChange }) {
   const [tree, setTree] = useState([])
   const [expanded, setExpanded] = useState(() => new Set())
   const [error, setError] = useState(null)
@@ -338,6 +338,7 @@ export default function ProjectPage({ project }) {
           projectId={project.id}
           path={editing.path}
           isNew={editing.isNew}
+          onDirtyChange={onEditorDirtyChange}
           onClose={() => setEditing(null)}
           onSaved={() => {
             // A saved new file now exists on disk; drop the isNew flag so

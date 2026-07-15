@@ -347,6 +347,10 @@ def write_text(root: str, rel_path: str, content: str,
         raise ProjectFilesError("path is required")
     if not isinstance(content, str):
         raise ProjectFilesError("content must be a string")
+    if "\x00" in content:
+        # read_text treats NUL as binary; accepting it here would create a
+        # file this editor then refuses to reopen.
+        raise ProjectFilesError("content must not contain NUL bytes")
     try:
         encoded = content.encode("utf-8")
     except UnicodeEncodeError:

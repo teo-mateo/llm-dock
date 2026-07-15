@@ -332,6 +332,14 @@ class TestOps:
             pf.read_text(made_root, "big.txt")
         assert e.value.status == 413
 
+    def test_write_text_rejects_nul_content(self, made_root):
+        """Regression (PR #79 codex 4.2): read_text calls NUL binary, so
+        accepting it on write would create a file the editor can't reopen."""
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "before\x00after")
+        assert e.value.status == 400
+        assert os.listdir(made_root) == []
+
     def test_write_text_size_cap(self, made_root, monkeypatch):
         monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 4)
         with pytest.raises(pf.ProjectFilesError) as e:
@@ -675,6 +683,13 @@ def test_content_traversal_and_bad_bodies_400(client):
                    json={"path": "f.txt", "content": "c", "create_only": True,
                          "base_revision": "abc"},
                    headers=_auth())
+    assert r.status_code == 400
+
+
+def test_content_nul_rejected_http(client):
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "a\x00b"}, headers=_auth())
     assert r.status_code == 400
 
 
