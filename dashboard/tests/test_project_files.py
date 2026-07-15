@@ -809,3 +809,222 @@ class TestErrorCodes:
                        headers=_auth())
         assert r.status_code == 400
         assert "code" not in r.get_json()
+
+
+# ---------------------------------------------------------------------------
+# copy_path (file-explorer copy/paste)
+# ---------------------------------------------------------------------------
+
+
+class TestCopy:
+    def _write(self, root, rel, content=b"data", mode=None):
+        abs_path = os.path.join(root, *rel.split("/"))
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, "wb") as f:
+            f.write(content)
+        if mode is not None:
+            os.chmod(abs_path, mode)
+        return abs_path
+
+    def test_copy_file(self, made_root):
+        self._write(made_root, "a.txt", b"hello")
+        node = pf.copy_path(made_root, "a.txt", "b.txt")
+        assert node["path"] == "b.txt"
+        assert node["type"] == "file"
+        with open(os.path.join(made_root, "b.txt"), "rb") as f:
+            assert f.read() == b"hello"
+        # Source untouched.
+        assert os.path.exists(os.path.join(made_root, "a.txt"))
+
+    def test_copy_preserves_mode(self, made_root):
+        self._write(made_root, "run.sh", b"#!/bin/sh\n", mode=0o755)
+        pf.copy_path(made_root, "run.sh", "run2.sh")
+        st = os.lstat(os.path.join(made_root, "run2.sh"))
+        assert stat_mod.S_IMODE(st.st_mode) == 0o755
+
+    def test_copy_into_directory(self, made_root):
+        self._write(made_root, "a.txt")
+        pf.mkdir(made_root, "docs")
+        node = pf.copy_path(made_root, "a.txt", "docs/a.txt")
+        assert node["path"] == "docs/a.txt"
+
+    def test_copy_directory_recursive(self, made_root):
+        self._write(made_root, "d/sub/x.txt", b"x")
+        self._write(made_root, "d/y.txt", b"y")
+        node = pf.copy_path(made_root, "d", "d2")
+        assert node["type"] == "dir"
+        with open(os.path.join(made_root, "d2", "sub", "x.txt"), "rb") as f:
+            assert f.read() == b"x"
+        with open(os.path.join(made_root, "d2", "y.txt"), "rb") as f:
+            assert f.read() == b"y"
+        # Original intact.
+        assert os.path.exists(os.path.join(made_root, "d", "sub", "x.txt"))
+
+    def test_copy_dangling_symlink_copies_the_link(self, made_root, tmp_path):
+        # A dangling link is an ordinary tree entry (build_tree lists it,
+        # move/delete operate on the link itself) — copy matches.
+        target = str(tmp_path / "does-not-exist.txt")
+        os.symlink(target, os.path.join(made_root, "link"))
+        pf.copy_path(made_root, "link", "link2")
+        dst = os.path.join(made_root, "link2")
+        assert os.path.islink(dst)
+        assert os.readlink(dst) == target
+
+    def test_copy_of_escaping_symlink_rejected_at_resolve(self, made_root, tmp_path):
+        # A link whose target EXISTS outside the root can't even be
+        # addressed — resolve()'s realpath containment check fires first.
+        # Same contract as move/delete.
+        outside = tmp_path / "outside-secret.txt"
+        outside.write_text("secret")
+        os.symlink(str(outside), os.path.join(made_root, "link"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "link", "link2")
+        assert "escapes" in str(e.value)
+
+    def test_copy_dir_containing_symlink_keeps_it_a_link(self, made_root, tmp_path):
+        outside = tmp_path / "outside-file.txt"
+        outside.write_text("secret")
+        pf.mkdir(made_root, "d")
+        os.symlink(str(outside), os.path.join(made_root, "d", "link"))
+        pf.copy_path(made_root, "d", "d2")
+        assert os.path.islink(os.path.join(made_root, "d2", "link"))
+
+    def test_copy_missing_source_404(self, made_root):
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "nope.txt", "x.txt")
+        assert e.value.status == 404
+
+    def test_copy_onto_existing_409(self, made_root):
+        self._write(made_root, "a.txt")
+        self._write(made_root, "b.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "a.txt", "b.txt")
+        assert e.value.status == 409
+        assert e.value.code == "already_exists"
+
+    def test_copy_dir_into_itself_rejected(self, made_root):
+        pf.mkdir(made_root, "d")
+        with pytest.raises(pf.ProjectFilesError):
+            pf.copy_path(made_root, "d", "d/inner")
+
+    def test_copy_into_self_via_symlink_alias_rejected(self, made_root):
+        # The client-path prefix check can't see that "alias/copy" is
+        # physically d/copy when alias -> d; the physical-path comparison
+        # must catch it (regression: codex PR83 4.1).
+        pf.mkdir(made_root, "d")
+        self._write(made_root, "d/x.txt")
+        os.symlink(os.path.join(made_root, "d"), os.path.join(made_root, "alias"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", "alias/copy")
+        assert "into itself" in str(e.value)
+        assert not os.path.exists(os.path.join(made_root, "d", "copy"))
+
+    def test_copy_depth_cap_via_symlink_alias(self, made_root):
+        # A root-level alias to a deep directory spells a 2-component
+        # client path whose PHYSICAL depth is at the cap — the copied
+        # directory's children would land past it (regression: codex
+        # PR83 5.1).
+        deep_parts = ["p"] * (pf.MAX_PATH_DEPTH - 1)
+        deep_abs = os.path.join(made_root, *deep_parts)
+        os.makedirs(deep_abs)
+        os.symlink(deep_abs, os.path.join(made_root, "alias"))
+        self._write(made_root, "d/x.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", "alias/c")
+        assert "depth" in str(e.value)
+        assert not os.path.exists(os.path.join(deep_abs, "c"))
+
+    def test_copy_file_past_depth_cap_via_symlink_alias(self, made_root):
+        # Same bypass with a single file: the destination itself sits past
+        # the cap, which would mint an entry no other route can address.
+        deep_parts = ["p"] * pf.MAX_PATH_DEPTH
+        deep_abs = os.path.join(made_root, *deep_parts)
+        os.makedirs(deep_abs)
+        os.symlink(deep_abs, os.path.join(made_root, "alias"))
+        self._write(made_root, "a.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "a.txt", "alias/a.txt")
+        assert "too deep" in str(e.value)
+        assert not os.path.exists(os.path.join(deep_abs, "a.txt"))
+
+    def test_copy_through_symlink_alias_to_elsewhere_still_works(self, made_root):
+        # An alias that does NOT land inside the source stays usable.
+        pf.mkdir(made_root, "d")
+        pf.mkdir(made_root, "other")
+        self._write(made_root, "d/x.txt")
+        os.symlink(os.path.join(made_root, "other"), os.path.join(made_root, "alias"))
+        node = pf.copy_path(made_root, "d", "alias/d")
+        assert node["type"] == "dir"
+        assert os.path.exists(os.path.join(made_root, "other", "d", "x.txt"))
+
+    def test_copy_root_rejected(self, made_root):
+        with pytest.raises(pf.ProjectFilesError):
+            pf.copy_path(made_root, "", "x")
+
+    def test_copy_to_missing_parent_404(self, made_root):
+        self._write(made_root, "a.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "a.txt", "missing-dir/a.txt")
+        assert e.value.status == 404
+
+    def test_copy_depth_cap_at_destination(self, made_root):
+        # Source: shallow dir with one file. Destination sits at the depth
+        # cap, so the copied CHILD would exceed it.
+        self._write(made_root, "d/x.txt")
+        deep = "/".join(["p"] * (pf.MAX_PATH_DEPTH - 1))
+        os.makedirs(os.path.join(made_root, *deep.split("/")))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", f"{deep}/d")
+        assert "depth" in str(e.value)
+        # Nothing partially copied.
+        assert not os.path.exists(os.path.join(made_root, *deep.split("/"), "d"))
+
+    def test_copy_dir_with_fifo_rejected_before_copying(self, made_root):
+        pf.mkdir(made_root, "d")
+        self._write(made_root, "d/ok.txt")
+        os.mkfifo(os.path.join(made_root, "d", "pipe"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", "d2")
+        assert "special file" in str(e.value)
+        assert not os.path.exists(os.path.join(made_root, "d2"))
+
+    def test_copy_bare_fifo_rejected(self, made_root):
+        os.mkfifo(os.path.join(made_root, "pipe"))
+        with pytest.raises(pf.ProjectFilesError):
+            pf.copy_path(made_root, "pipe", "pipe2")
+
+    def test_copy_traversal_rejected(self, made_root):
+        self._write(made_root, "a.txt")
+        with pytest.raises(pf.ProjectFilesError):
+            pf.copy_path(made_root, "a.txt", "../escape.txt")
+        with pytest.raises(pf.ProjectFilesError):
+            pf.copy_path(made_root, "../outside.txt", "a2.txt")
+
+
+def test_copy_via_http(client):
+    pid = _mkproject(client)
+    _upload(client, pid, "a.txt", b"hello")
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/copy",
+                    json={"path": "a.txt", "new_path": "b.txt"}, headers=_auth())
+    assert r.status_code == 201
+    assert r.get_json()["path"] == "b.txt"
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/download?path=b.txt", headers=_auth())
+    assert r.data == b"hello"
+    # Source still present.
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files", headers=_auth())
+    assert [n["name"] for n in r.get_json()["tree"]] == ["a.txt", "b.txt"]
+
+
+def test_copy_via_http_conflict_and_bad_body(client):
+    pid = _mkproject(client)
+    _upload(client, pid, "a.txt")
+    _upload(client, pid, "b.txt")
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/copy",
+                    json={"path": "a.txt", "new_path": "b.txt"}, headers=_auth())
+    assert r.status_code == 409
+    assert r.get_json()["code"] == "already_exists"
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/copy",
+                    data="nope", headers=_auth(), content_type="application/json")
+    assert r.status_code == 400
+    assert client.post(f"{PROJECTS_PATH}/{pid}/files/copy",
+                       json={"path": "a.txt", "new_path": "b.txt"}).status_code == 401
