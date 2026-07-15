@@ -253,23 +253,20 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
         raise ProjectFilesError("target directory not found", status=404)
     rel_target = f"{dir_rel.strip('/')}/{filename}" if dir_rel.strip("/") else filename
     abs_target = resolve(root, rel_target)
+    # Fast-fail prechecks; re-checked under the project lock before
+    # publication (the body may take arbitrarily long to stream).
     if os.path.isdir(abs_target):
         raise ProjectFilesError("a directory with that name exists", status=409)
     if os.path.exists(abs_target) and not overwrite:
         raise ProjectFilesError("file already exists", status=409, code="already_exists")
-    # Same permission fidelity as write_text: mkstemp stages at 0600, so an
-    # overwriting upload must keep the target's mode and a fresh one gets
-    # a normal default instead of 0600.
-    publish_mode = 0o644
-    if overwrite and os.path.lexists(abs_target):
-        target_st = os.lstat(abs_target)
-        if stat_mod.S_ISREG(target_st.st_mode):
-            publish_mode = stat_mod.S_IMODE(target_st.st_mode)
 
     # Stage in a UNIQUE, exclusively-created temp file in the destination
     # directory (same filesystem → atomic publication). A deterministic
     # "<target>.uploading" name would collide with a legitimate user file
     # of that name and with a concurrent upload of the same target.
+    # Streaming happens OUTSIDE the project lock — an upload must not
+    # hold up other writers for the duration of its body — only the
+    # publication step synchronizes.
     written = 0
     with _fs_errors():
         fd, tmp_path = tempfile.mkstemp(prefix=".upload-", suffix=".tmp", dir=abs_dir)
@@ -283,17 +280,28 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
                     if written > MAX_UPLOAD_BYTES:
                         raise ProjectFilesError("file too large", status=413)
                     f.write(chunk)
-            os.chmod(tmp_path, publish_mode)
-            if overwrite:
-                os.replace(tmp_path, abs_target)
-            else:
-                # Atomic no-replace publication: link() fails with EEXIST if the
-                # target appeared since the pre-check, upholding the 409 contract
-                # even against a concurrent upload of the same name.
-                try:
-                    os.link(tmp_path, abs_target)
-                except FileExistsError:
-                    raise ProjectFilesError("file already exists", status=409, code="already_exists")
+            with _write_lock(root):
+                if os.path.isdir(abs_target) and not os.path.islink(abs_target):
+                    raise ProjectFilesError("a directory with that name exists", status=409)
+                # Same permission fidelity as write_text: mkstemp stages at
+                # 0600, so an overwriting upload must keep the target's mode
+                # and a fresh one gets a normal default instead of 0600.
+                publish_mode = 0o644
+                if overwrite and os.path.lexists(abs_target):
+                    target_st = os.lstat(abs_target)
+                    if stat_mod.S_ISREG(target_st.st_mode):
+                        publish_mode = stat_mod.S_IMODE(target_st.st_mode)
+                os.chmod(tmp_path, publish_mode)
+                if overwrite:
+                    os.replace(tmp_path, abs_target)
+                else:
+                    # Atomic no-replace publication: link() fails with EEXIST if the
+                    # target appeared since the pre-check, upholding the 409 contract
+                    # even against a concurrent upload of the same name.
+                    try:
+                        os.link(tmp_path, abs_target)
+                    except FileExistsError:
+                        raise ProjectFilesError("file already exists", status=409, code="already_exists")
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -335,17 +343,22 @@ def read_text(root: str, rel_path: str) -> dict:
 
 @contextmanager
 def _write_lock(root: str):
-    """Serialize write_text's compare-and-publish across processes.
+    """Serialize a project's file mutations across processes.
 
-    An exclusive flock on the project root directory: the base_revision
-    comparison and the os.replace that publishes the new content must be
-    one atomic unit, or a writer landing between them (the Flask editor
-    and a spawned MCP tool process are genuinely concurrent) would be
-    silently overwritten despite the revision guard. flock contends
-    between separate opens even within one process, so two threads of the
-    same server are covered too. Per-project granularity is coarse but
-    contention is a single user's editor vs. their chat turn — never a
-    throughput concern.
+    An exclusive flock on the project root directory, taken by EVERY
+    mutator (write_text, save_stream's publication, mkdir, move, copy,
+    delete): write_text's base_revision comparison and the os.replace
+    that publishes the new content must be one atomic unit with respect
+    to anything that could change the checked path — the Flask routes
+    and a spawned MCP tool process are genuinely concurrent — or the
+    interleaved mutation would be silently undone despite the revision
+    guard. flock contends between separate opens even within one
+    process, so two threads of the same server are covered too.
+    Per-project granularity is coarse but contention is a single user's
+    UI action vs. their chat turn — never a throughput concern. Slow
+    work stays outside the lock (uploads stream to their temp file
+    before acquiring it); the held section is checks plus a rename,
+    rmtree, or copy.
     """
     fd = os.open(root, os.O_RDONLY)
     try:
@@ -359,7 +372,8 @@ def _write_lock(root: str):
 
 
 def write_text(root: str, rel_path: str, content: str,
-               base_revision: str = None, create_only: bool = False) -> dict:
+               base_revision: str = None, create_only: bool = False,
+               must_exist: bool = False) -> dict:
     """Write UTF-8 text to a file (create or overwrite), atomically via a
     temp file in the same directory. The target's parent must exist and
     the target itself must be absent or a regular file — symlinks and
@@ -374,10 +388,17 @@ def write_text(root: str, rel_path: str, content: str,
     with 409 if the path already exists (the client believed it was
     creating a file, but its tree snapshot was stale). Publication is an
     atomic no-replace link, mirroring save_stream's upload contract.
+
+    must_exist=True is the replace-only precondition: the save is
+    rejected with 404 if the path does NOT exist. Evaluated inside the
+    locked critical section, so a caller-side existence precheck can't
+    be invalidated by a concurrent delete/move before the write lands.
     """
     parts = split_rel_path(rel_path)
     if not parts:
         raise ProjectFilesError("path is required")
+    if create_only and must_exist:
+        raise ProjectFilesError("create_only and must_exist are mutually exclusive")
     if not isinstance(content, str):
         raise ProjectFilesError("content must be a string")
     if "\x00" in content:
@@ -418,9 +439,12 @@ def write_text(root: str, rel_path: str, content: str,
                     current = f.read()
                 if _content_revision(current) != base_revision:
                     raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
-        elif base_revision is not None:
-            # Client edited a file that has since been deleted/renamed.
-            raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
+        else:
+            if must_exist:
+                raise ProjectFilesError("file not found", status=404)
+            if base_revision is not None:
+                # Client edited a file that has since been deleted/renamed.
+                raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
 
         with _fs_errors():
             fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
@@ -449,13 +473,14 @@ def mkdir(root: str, rel_path: str) -> dict:
     if not parts:
         raise ProjectFilesError("path is required")
     abs_path = resolve(root, rel_path)
-    # lexists: a dangling symlink is an ordinary entry in the tree (listed
-    # by build_tree) and must count as occupying its name — exists() would
-    # follow the link and report the slot free.
-    if os.path.lexists(abs_path):
-        raise ProjectFilesError("path already exists", status=409, code="already_exists")
-    with _fs_errors():
-        os.makedirs(abs_path)
+    with _write_lock(root):
+        # lexists: a dangling symlink is an ordinary entry in the tree (listed
+        # by build_tree) and must count as occupying its name — exists() would
+        # follow the link and report the slot free.
+        if os.path.lexists(abs_path):
+            raise ProjectFilesError("path already exists", status=409, code="already_exists")
+        with _fs_errors():
+            os.makedirs(abs_path)
     rel = "/".join(parts)
     return _node(abs_path, rel)
 
@@ -471,19 +496,20 @@ def move(root: str, rel_src: str, rel_dst: str) -> dict:
         raise ProjectFilesError("destination is required")
     abs_src = resolve(root, rel_src)
     abs_dst = resolve(root, rel_dst)
-    # lexists on both sides: a dangling symlink is movable (the operation
-    # applies to the link itself, as delete already does) and occupies its
-    # destination name.
-    if not os.path.lexists(abs_src):
-        raise ProjectFilesError("source not found", status=404)
-    if os.path.lexists(abs_dst):
-        raise ProjectFilesError("destination already exists", status=409, code="already_exists")
     if dst_parts[:len(src_parts)] == src_parts:
         raise ProjectFilesError("cannot move a directory into itself")
-    if not os.path.isdir(os.path.dirname(abs_dst)):
-        raise ProjectFilesError("destination directory not found", status=404)
-    with _fs_errors():
-        shutil.move(abs_src, abs_dst)
+    with _write_lock(root):
+        # lexists on both sides: a dangling symlink is movable (the operation
+        # applies to the link itself, as delete already does) and occupies its
+        # destination name.
+        if not os.path.lexists(abs_src):
+            raise ProjectFilesError("source not found", status=404)
+        if os.path.lexists(abs_dst):
+            raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+        if not os.path.isdir(os.path.dirname(abs_dst)):
+            raise ProjectFilesError("destination directory not found", status=404)
+        with _fs_errors():
+            shutil.move(abs_src, abs_dst)
     return _node(abs_dst, "/".join(dst_parts))
 
 
@@ -518,66 +544,67 @@ def copy_path(root: str, rel_src: str, rel_dst: str) -> dict:
         raise ProjectFilesError("destination is required")
     abs_src = resolve(root, rel_src)
     abs_dst = resolve(root, rel_dst)
-    if not os.path.lexists(abs_src):
-        raise ProjectFilesError("source not found", status=404)
-    if os.path.lexists(abs_dst):
-        raise ProjectFilesError("destination already exists", status=409, code="already_exists")
     if dst_parts[:len(src_parts)] == src_parts:
         raise ProjectFilesError("cannot copy a directory into itself")
-    abs_dst_dir = os.path.dirname(abs_dst)
-    if not os.path.isdir(abs_dst_dir):
-        raise ProjectFilesError("destination directory not found", status=404)
+    with _write_lock(root):
+        if not os.path.lexists(abs_src):
+            raise ProjectFilesError("source not found", status=404)
+        if os.path.lexists(abs_dst):
+            raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+        abs_dst_dir = os.path.dirname(abs_dst)
+        if not os.path.isdir(abs_dst_dir):
+            raise ProjectFilesError("destination directory not found", status=404)
 
-    src_st = os.lstat(abs_src)
-    # The component checks above only see CLIENT paths; an in-root symlink
-    # alias can spell a destination whose PHYSICAL location differs — both
-    # deeper than the client path suggests and inside the source itself.
-    # Judge depth and self-containment on realpaths: the real destination
-    # is its existing parent's realpath plus the final component. Copying
-    # past the depth cap would mint entries build_tree returns but every
-    # other route rejects as "path too deep".
-    real_dst = os.path.join(os.path.realpath(abs_dst_dir), os.path.basename(abs_dst))
-    phys_dst_depth = len(os.path.relpath(real_dst, os.path.realpath(root)).split(os.sep))
-    if phys_dst_depth > MAX_PATH_DEPTH:
-        raise ProjectFilesError("path too deep")
-    with _fs_errors():
-        if stat_mod.S_ISDIR(src_st.st_mode):
-            real_src = os.path.realpath(abs_src)
-            if real_dst == real_src or real_dst.startswith(real_src + os.sep):
-                raise ProjectFilesError("cannot copy a directory into itself")
-            _precheck_copy_tree(abs_src, phys_dst_depth)
-            try:
-                shutil.copytree(abs_src, abs_dst, symlinks=True)
-            except FileExistsError:
-                raise ProjectFilesError("destination already exists", status=409, code="already_exists")
-            except Exception:
-                # A partial tree is worse than no tree: the client will
-                # retry the whole copy, and a half-populated destination
-                # would then 409 as already_exists.
-                shutil.rmtree(abs_dst, ignore_errors=True)
-                raise
-        elif stat_mod.S_ISLNK(src_st.st_mode):
-            try:
-                os.symlink(os.readlink(abs_src), abs_dst)
-            except FileExistsError:
-                raise ProjectFilesError("destination already exists", status=409, code="already_exists")
-        elif stat_mod.S_ISREG(src_st.st_mode):
-            # Stage in the destination directory, then publish with an
-            # atomic no-replace link — same 409 contract as save_stream
-            # even against a concurrent claim of the destination name.
-            fd, tmp_path = tempfile.mkstemp(prefix=".copy-", suffix=".tmp", dir=abs_dst_dir)
-            try:
-                os.close(fd)
-                shutil.copy2(abs_src, tmp_path)  # preserves mode
+        src_st = os.lstat(abs_src)
+        # The component checks above only see CLIENT paths; an in-root symlink
+        # alias can spell a destination whose PHYSICAL location differs — both
+        # deeper than the client path suggests and inside the source itself.
+        # Judge depth and self-containment on realpaths: the real destination
+        # is its existing parent's realpath plus the final component. Copying
+        # past the depth cap would mint entries build_tree returns but every
+        # other route rejects as "path too deep".
+        real_dst = os.path.join(os.path.realpath(abs_dst_dir), os.path.basename(abs_dst))
+        phys_dst_depth = len(os.path.relpath(real_dst, os.path.realpath(root)).split(os.sep))
+        if phys_dst_depth > MAX_PATH_DEPTH:
+            raise ProjectFilesError("path too deep")
+        with _fs_errors():
+            if stat_mod.S_ISDIR(src_st.st_mode):
+                real_src = os.path.realpath(abs_src)
+                if real_dst == real_src or real_dst.startswith(real_src + os.sep):
+                    raise ProjectFilesError("cannot copy a directory into itself")
+                _precheck_copy_tree(abs_src, phys_dst_depth)
                 try:
-                    os.link(tmp_path, abs_dst)
+                    shutil.copytree(abs_src, abs_dst, symlinks=True)
                 except FileExistsError:
                     raise ProjectFilesError("destination already exists", status=409, code="already_exists")
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-        else:
-            raise ProjectFilesError("not a copyable file type")
+                except Exception:
+                    # A partial tree is worse than no tree: the client will
+                    # retry the whole copy, and a half-populated destination
+                    # would then 409 as already_exists.
+                    shutil.rmtree(abs_dst, ignore_errors=True)
+                    raise
+            elif stat_mod.S_ISLNK(src_st.st_mode):
+                try:
+                    os.symlink(os.readlink(abs_src), abs_dst)
+                except FileExistsError:
+                    raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+            elif stat_mod.S_ISREG(src_st.st_mode):
+                # Stage in the destination directory, then publish with an
+                # atomic no-replace link — same 409 contract as save_stream
+                # even against a concurrent claim of the destination name.
+                fd, tmp_path = tempfile.mkstemp(prefix=".copy-", suffix=".tmp", dir=abs_dst_dir)
+                try:
+                    os.close(fd)
+                    shutil.copy2(abs_src, tmp_path)  # preserves mode
+                    try:
+                        os.link(tmp_path, abs_dst)
+                    except FileExistsError:
+                        raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+            else:
+                raise ProjectFilesError("not a copyable file type")
     return _node(abs_dst, "/".join(dst_parts))
 
 
@@ -586,9 +613,10 @@ def delete(root: str, rel_path: str):
     if not parts:
         raise ProjectFilesError("cannot delete project root")
     abs_path = resolve(root, rel_path)
-    if not os.path.exists(abs_path) and not os.path.islink(abs_path):
-        raise ProjectFilesError("path not found", status=404)
-    if os.path.isdir(abs_path) and not os.path.islink(abs_path):
-        shutil.rmtree(abs_path)
-    else:
-        os.unlink(abs_path)
+    with _write_lock(root):
+        if not os.path.exists(abs_path) and not os.path.islink(abs_path):
+            raise ProjectFilesError("path not found", status=404)
+        if os.path.isdir(abs_path) and not os.path.islink(abs_path):
+            shutil.rmtree(abs_path)
+        else:
+            os.unlink(abs_path)

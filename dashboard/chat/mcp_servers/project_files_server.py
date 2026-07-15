@@ -265,8 +265,10 @@ def write_file(path: str, content: str) -> str:
     if not os.path.isdir(root):
         return "Error: file not found (the project has no files yet) — use create_file"
     try:
-        pf.stat_file(root, path)  # must already exist as a regular file
-        node = pf.write_text(root, path, content)
+        # must_exist: the replace-only precondition is evaluated inside
+        # write_text's locked critical section — a caller-side existence
+        # check could be invalidated by a concurrent delete/move.
+        node = pf.write_text(root, path, content, must_exist=True)
     except pf.ProjectFilesError as e:
         return f"Error: {e}"
     return f"Wrote {node['path']} ({node['size']} bytes)"
