@@ -297,6 +297,21 @@ def test_db_trigger_rejects_orphan_project_reference():
     assert db.get_conversation("c2") is None
 
 
+def test_list_conversations_negative_limit_returns_all(client):
+    """limit=-1 returns the entire list in one consistent snapshot — the
+    sidebar uses this so project grouping never sees a partial page."""
+    for i in range(60):
+        _create_conversation(client)
+    r = client.get(f"{CONVERSATIONS_PATH}?limit=-1", headers=_auth())
+    body = r.get_json()
+    assert body["total"] == 60
+    assert len(body["conversations"]) == 60
+
+    # Default paging behavior is unchanged.
+    r = client.get(CONVERSATIONS_PATH, headers=_auth())
+    assert len(r.get_json()["conversations"]) == 50
+
+
 def test_list_projects_counts(client):
     p1 = _create_project(client, name="one")
     p2 = _create_project(client, name="two")

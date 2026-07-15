@@ -323,13 +323,25 @@ class ChatDB:
             self._close_conn(conn)
 
     def list_conversations(self, limit: int = 50, offset: int = 0) -> Tuple[List[Conversation], int]:
+        """List conversations, newest-updated first.
+
+        A negative limit returns the ENTIRE list in one statement — a
+        consistent snapshot (offset pagination over the mutable
+        updated_at ordering can skip or duplicate rows when conversations
+        are touched between page fetches).
+        """
         conn = self._get_conn()
         try:
             total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+            if limit is None or limit < 0:
+                rows = conn.execute(
+                    "SELECT * FROM conversations ORDER BY updated_at DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
             convs = [self._row_to_conversation(row) for row in rows]
             self._attach_active_runs(conn, convs)
             return convs, total

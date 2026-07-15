@@ -8,22 +8,15 @@ export default function useConversations() {
 
   const refresh = useCallback(async () => {
     try {
-      // Page through the full list. The sidebar groups conversations into
-      // project sections, so a partial page would silently hide any
-      // conversation past the first page — a project's chats could become
-      // unreachable while the section claims to be empty.
-      const PAGE = 200
-      const first = await listConversations(PAGE, 0)
-      const all = first.conversations || []
-      const total = first.total ?? all.length
-      while (all.length < total) {
-        const page = await listConversations(PAGE, all.length)
-        const batch = page.conversations || []
-        if (batch.length === 0) break // total shrank mid-pagination
-        all.push(...batch)
-      }
+      // Fetch the ENTIRE list in one request (limit -1 = unlimited). The
+      // sidebar groups conversations into project sections, so a partial
+      // page would silently hide conversations; and offset pagination over
+      // the mutable updated_at ordering can skip or duplicate rows when
+      // runs/renames touch conversations between page fetches. One request
+      // is one SQL statement server-side — a consistent snapshot.
+      const data = await listConversations(-1, 0)
       if (mountedRef.current) {
-        setConversations(all)
+        setConversations(data.conversations || [])
       }
     } catch {
       // ignore

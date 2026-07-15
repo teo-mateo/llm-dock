@@ -18,34 +18,23 @@ afterEach(() => {
 
 const conv = (i) => ({ id: `c${i}`, title: `C${i}`, updated_at: '2026-01-01' })
 
-describe('useConversations full-list pagination', () => {
-  it('fetches every page so project grouping never works on a partial list', async () => {
-    // 350 conversations, page size 200 → two requests.
+describe('useConversations full-list fetch', () => {
+  it('requests the entire list in ONE unlimited call — no offset pagination', async () => {
+    // Regression for codex iterations 2+4 on PR #77: project grouping must
+    // never operate on a partial list, and offset pagination over the
+    // mutable updated_at ordering can skip or duplicate rows when
+    // conversations are touched between page fetches. A single request is
+    // a consistent snapshot.
     const all = Array.from({ length: 350 }, (_, i) => conv(i))
-    chatApi.listConversations.mockImplementation(async (limit, offset) => ({
-      conversations: all.slice(offset, offset + limit),
+    chatApi.listConversations.mockResolvedValue({
+      conversations: all,
       total: all.length,
-    }))
+    })
 
     const { result } = renderHook(() => useConversations())
     await waitFor(() => expect(result.current.conversations).toHaveLength(350))
 
-    expect(chatApi.listConversations).toHaveBeenCalledWith(200, 0)
-    expect(chatApi.listConversations).toHaveBeenCalledWith(200, 200)
-  })
-
-  it('stops when a page comes back empty even if total was stale', async () => {
-    // total claims 250 but only 150 rows actually exist (rows deleted
-    // between pages) — must not loop forever.
-    const all = Array.from({ length: 150 }, (_, i) => conv(i))
-    chatApi.listConversations.mockImplementation(async (limit, offset) => ({
-      conversations: all.slice(offset, offset + limit),
-      total: 250,
-    }))
-
-    const { result } = renderHook(() => useConversations())
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.conversations).toHaveLength(150)
+    expect(chatApi.listConversations).toHaveBeenCalledTimes(1)
+    expect(chatApi.listConversations).toHaveBeenCalledWith(-1, 0)
   })
 })
