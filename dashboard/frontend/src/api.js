@@ -29,11 +29,18 @@ export async function fetchAPI(endpoint, options = {}) {
   if (!response.ok) {
     const text = await response.text()
     let msg = `HTTP ${response.status}`
+    let code = null
     try {
       const data = JSON.parse(text)
       msg = typeof data.error === 'string' ? data.error : msg
+      // Stable machine-readable identifier for errors the UI branches on
+      // (e.g. 'revision_conflict', 'already_exists') — match on err.code,
+      // never on the message text.
+      if (typeof data.code === 'string') code = data.code
     } catch { /* not JSON */ }
-    throw new Error(msg)
+    const err = new Error(msg)
+    if (code) err.code = code
+    throw err
   }
 
   return response.json()

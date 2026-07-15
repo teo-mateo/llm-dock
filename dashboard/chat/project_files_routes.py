@@ -51,7 +51,10 @@ def _revalidate_or_cleanup(project_id):
 
 @chat_bp.errorhandler(pf.ProjectFilesError)
 def _handle_pf_error(e):
-    return jsonify({"error": str(e)}), e.status
+    body = {"error": str(e)}
+    if e.code:
+        body["code"] = e.code
+    return jsonify(body), e.status
 
 
 @chat_bp.route("/api/chat/projects/<project_id>/files", methods=["GET"])

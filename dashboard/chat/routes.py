@@ -69,21 +69,34 @@ def _get_run_manager():
     return current_app.config["CHAT_RUN_MANAGER"]
 
 
-def _mcp_for_conversation(conv, enabled_servers):
+def _effective_project_id(conv):
+    """The conversation's effective project. Membership is root-only: a
+    spin-off keeps project_id NULL and follows its root ancestor.
+
+    This is the SINGLE owner of project resolution for a chat turn: it is
+    called once when the run is created, and the result is snapshotted into
+    the run (manager scoping AND tool auto-enable both consume the same
+    value), so a root moved mid-turn cannot split scope from toggles.
+    """
+    if conv.project_id:
+        return conv.project_id
+    if conv.parent_conversation_id:
+        return _get_db().resolve_project_id(conv.id)
+    return None
+
+
+def _mcp_for_conversation(conv, enabled_servers, project_id):
     """MCP manager for a run, or None when the turn has no tools.
 
-    Project conversations always get a manager — the project-files server
-    is auto-enabled for them (see runtime._build_stream) — wrapped so its
-    subprocess spawns learn the project's directory via the environment.
+    project_id is the pre-resolved effective project (see
+    _effective_project_id). Project conversations always get a manager —
+    the project-files server is auto-enabled for them (see
+    runtime._build_stream) — wrapped so its subprocess spawns learn the
+    project's directory via the environment.
     """
     from . import project_files as pf
     from .project_files_mcp import ProjectScopedMCPManager
 
-    # Membership is root-only: a spin-off keeps project_id NULL and follows
-    # its root ancestor, so scoping must use the resolved project.
-    project_id = conv.project_id
-    if project_id is None and conv.parent_conversation_id:
-        project_id = _get_db().resolve_project_id(conv.id)
     if not (enabled_servers or project_id):
         return None
     manager = _get_mcp()
@@ -424,7 +437,8 @@ def delete_conversations_batch():
 
 
 def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
-                        first_user_content, delete_from_seq=None):
+                        first_user_content, delete_from_seq=None,
+                        effective_project_id=None):
     """Atomically persist the user message + a queued run (rejecting a second
     run while one is active), start the background job, and return an SSE
     Response that observes it.
@@ -450,7 +464,8 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
     manager.start(conv, run, mcp_manager=mcp_manager, is_first=is_first,
-                  first_user_content=first_user_content)
+                  first_user_content=first_user_content,
+                  effective_project_id=effective_project_id)
 
     return Response(
         stream_with_context(manager.observe(run.id, q)),
@@ -491,9 +506,11 @@ def send_message(conv_id):
     )
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    mcp_manager = _mcp_for_conversation(conv, enabled_servers)
+    project_id = _effective_project_id(conv)
+    mcp_manager = _mcp_for_conversation(conv, enabled_servers, project_id)
 
-    return _start_run_response(db, conv, user_msg, mcp_manager, is_first, content)
+    return _start_run_response(db, conv, user_msg, mcp_manager, is_first, content,
+                               effective_project_id=project_id)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["PUT"])
@@ -519,7 +536,8 @@ def edit_message(conv_id, msg_id):
     images_json = json.dumps(images) if images else None
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    mcp_mgr = _mcp_for_conversation(conv, enabled_servers)
+    project_id = _effective_project_id(conv)
+    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, project_id)
 
     new_msg = Message(
         id=str(uuid.uuid4()),
@@ -534,7 +552,8 @@ def edit_message(conv_id, msg_id):
     # active-run guard), so a rejected edit doesn't destroy the tail. An edit
     # replaces an existing turn, so it never triggers auto-title.
     return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False,
-                               first_user_content=content, delete_from_seq=msg.seq)
+                               first_user_content=content, delete_from_seq=msg.seq,
+                               effective_project_id=project_id)
 
 
 # -- Runs (observation + cancellation, issue #58) --

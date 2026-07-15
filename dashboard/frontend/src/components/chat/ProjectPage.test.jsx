@@ -98,7 +98,7 @@ describe('ProjectPage file tree', () => {
 
   it('offers overwrite when the upload conflicts', async () => {
     mockUpload
-      .mockRejectedValueOnce(new Error('file already exists'))
+      .mockRejectedValueOnce(Object.assign(new Error('file already exists'), { code: 'already_exists' }))
       .mockResolvedValueOnce({})
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderPage()

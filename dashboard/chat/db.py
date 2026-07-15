@@ -109,6 +109,24 @@ WHEN NEW.project_id IS NOT NULL
 BEGIN
     SELECT RAISE(ABORT, 'project not found');
 END;
+
+-- Root-only membership: spin-offs follow their root ancestor and must never
+-- carry their own project_id (resolve_project_id and the sidebar both rely
+-- on this). The HTTP routes reject it too; these make the model
+-- self-defending against any future write path that forgets the rule.
+CREATE TRIGGER IF NOT EXISTS trg_conversations_rootonly_insert
+BEFORE INSERT ON conversations
+WHEN NEW.parent_conversation_id IS NOT NULL AND NEW.project_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'spin-off conversations cannot carry a project');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_conversations_rootonly_update
+BEFORE UPDATE OF project_id, parent_conversation_id ON conversations
+WHEN NEW.parent_conversation_id IS NOT NULL AND NEW.project_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'spin-off conversations cannot carry a project');
+END;
 """
 
 

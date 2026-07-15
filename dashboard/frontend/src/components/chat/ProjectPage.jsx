@@ -213,10 +213,10 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
         try {
           await uploadProjectFile(project.id, file, { dir })
         } catch (err) {
-          if (err.message === 'file already exists' &&
+          if (err.code === 'already_exists' &&
               window.confirm(`"${file.name}" already exists. Overwrite?`)) {
             await uploadProjectFile(project.id, file, { dir, overwrite: true })
-          } else if (err.message !== 'file already exists') {
+          } else if (err.code !== 'already_exists') {
             throw err
           }
         }
