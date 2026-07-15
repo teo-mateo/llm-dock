@@ -166,7 +166,7 @@ Rules enforced at load time:
 - `id` must not contain `__` (collides with `server_id__tool_name`
   namespacing in `mcp_client.py`).
 - `id` must not collide with a built-in (`sympy-math`, `schemdraw-circuits`,
-  `render-html`). Built-ins always win.
+  `render-html`, `project-files`). Built-ins always win.
 - `name`, `description`, `icon`, `tool_hint` are always required.
 - `enabled` defaults to `true`.
 - `transport` defaults to `"stdio"`. Accepted values: `"stdio"`, `"http"`.

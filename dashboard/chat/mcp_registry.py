@@ -126,6 +126,13 @@ Important rules:
 
 The diagram will be rendered automatically as an artifact.""",
     },
+    "project-files": {
+        "name": "Project Files",
+        "description": "Read this conversation's project files — list, read, search. Auto-enabled for conversations inside a project; does nothing outside one.",
+        "command": [sys.executable, os.path.join(_SERVERS_DIR, "project_files_server.py")],
+        "icon": "fa-folder-tree",
+        "tool_hint": "This conversation belongs to a project with a file area (documents, notes, data the user keeps alongside the project's conversations). You have read-only access to it: list_files shows the file tree, read_file returns a text file's content, search_files finds a substring across file names and contents. Paths are relative to the project root, e.g. 'docs/plan.md' — use them exactly as list_files prints them. When the user refers to project files or material \"in the project\", consult these tools instead of guessing.",
+    },
     "render-html": {
         "name": "Render HTML",
         "description": "Render HTML or Markdown as an artifact in the chat",

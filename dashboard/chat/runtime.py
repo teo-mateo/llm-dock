@@ -34,6 +34,7 @@ from .llm_proxy import stream_chat_completion
 from .tool_loop import stream_with_tools
 from .prompt_builder import build_chat_messages
 from .persistence import DbPersistencePolicy
+from .project_files_mcp import with_project_files
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,11 @@ class ChatRunner:
     def _build_stream(self, conv: Conversation, mcp_manager):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
+        if conv.project_id:
+            # Project conversations always get the project-files tools —
+            # membership in a project IS the toggle. This also pulls the
+            # server's tool_hint into the system prompt below.
+            enabled_servers = with_project_files(enabled_servers)
         messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
         tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
         if tools:
