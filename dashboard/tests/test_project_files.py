@@ -811,6 +811,77 @@ class TestErrorCodes:
         assert "code" not in r.get_json()
 
 
+class TestWriteTextCAS:
+    """write_text's base_revision comparison and its os.replace are one
+    atomic unit under a cross-process lock (regression: codex PR84 1.1).
+    A writer landing between another writer's check and publish must
+    block, then observe the published content and conflict — never be
+    silently overwritten. flock contends between separate opens even in
+    one process, so threads model the Flask-process vs MCP-subprocess
+    pair faithfully."""
+
+    def test_concurrent_writer_blocks_then_conflicts(self, made_root, monkeypatch):
+        import threading
+
+        with open(os.path.join(made_root, "f.md"), "wb") as fh:
+            fh.write(b"base")
+        rev = pf.read_text(made_root, "f.md")["revision"]
+
+        inside = threading.Event()   # A is past its revision check, lock held
+        resume = threading.Event()   # allow A to publish
+        paused_once = threading.Event()
+        real_mkstemp = pf.tempfile.mkstemp
+
+        def pausing_mkstemp(*a, **kw):
+            # Pause only the FIRST writer, exactly between its check
+            # (already done) and its publication (about to happen).
+            if not paused_once.is_set():
+                paused_once.set()
+                inside.set()
+                assert resume.wait(timeout=10)
+            return real_mkstemp(*a, **kw)
+
+        monkeypatch.setattr(pf.tempfile, "mkstemp", pausing_mkstemp)
+
+        a_errors, b_outcome = [], {}
+
+        def writer_a():
+            try:
+                pf.write_text(made_root, "f.md", "A version", base_revision=rev)
+            except Exception as e:  # noqa: BLE001 — surfaced via assert below
+                a_errors.append(e)
+
+        def writer_b():
+            try:
+                pf.write_text(made_root, "f.md", "B version", base_revision=rev)
+                b_outcome["won"] = True
+            except pf.ProjectFilesError as e:
+                b_outcome["error"] = e
+
+        ta = threading.Thread(target=writer_a)
+        ta.start()
+        assert inside.wait(timeout=10)
+
+        tb = threading.Thread(target=writer_b)
+        tb.start()
+        tb.join(timeout=0.3)
+        # The race window is CLOSED: B cannot slip its write in while A
+        # sits between check and publish.
+        assert tb.is_alive(), "second writer entered the critical section concurrently"
+
+        resume.set()
+        ta.join(timeout=10)
+        tb.join(timeout=10)
+        assert not ta.is_alive() and not tb.is_alive()
+        assert not a_errors
+
+        # A published; B then saw A's content and conflicted.
+        assert "won" not in b_outcome
+        assert b_outcome["error"].code == "revision_conflict"
+        with open(os.path.join(made_root, "f.md"), "rb") as fh:
+            assert fh.read() == b"A version"
+
+
 # ---------------------------------------------------------------------------
 # copy_path (file-explorer copy/paste)
 # ---------------------------------------------------------------------------

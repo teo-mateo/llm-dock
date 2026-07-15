@@ -12,6 +12,7 @@ component validation plus a realpath containment check, so neither
 project root.
 """
 import errno
+import fcntl
 import hashlib
 import os
 import stat as stat_mod
@@ -332,6 +333,31 @@ def read_text(root: str, rel_path: str) -> dict:
     }
 
 
+@contextmanager
+def _write_lock(root: str):
+    """Serialize write_text's compare-and-publish across processes.
+
+    An exclusive flock on the project root directory: the base_revision
+    comparison and the os.replace that publishes the new content must be
+    one atomic unit, or a writer landing between them (the Flask editor
+    and a spawned MCP tool process are genuinely concurrent) would be
+    silently overwritten despite the revision guard. flock contends
+    between separate opens even within one process, so two threads of the
+    same server are covered too. Per-project granularity is coarse but
+    contention is a single user's editor vs. their chat turn — never a
+    throughput concern.
+    """
+    fd = os.open(root, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        # Closing the fd releases the lock; the explicit unlock just makes
+        # the intent visible.
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def write_text(root: str, rel_path: str, content: str,
                base_revision: str = None, create_only: bool = False) -> dict:
     """Write UTF-8 text to a file (create or overwrite), atomically via a
@@ -369,46 +395,50 @@ def write_text(root: str, rel_path: str, content: str,
     abs_dir = os.path.dirname(abs_path)
     if not os.path.isdir(abs_dir):
         raise ProjectFilesError("parent directory not found", status=404)
-    # mkstemp stages at 0600; without this an edit would silently strip the
-    # target's permission bits (e.g. a 0755 script losing its exec bit).
-    publish_mode = 0o644
-    if os.path.lexists(abs_path):
-        if create_only:
-            raise ProjectFilesError("file already exists", status=409, code="already_exists")
-        st = os.lstat(abs_path)
-        if not stat_mod.S_ISREG(st.st_mode):
-            raise ProjectFilesError("not a regular file", status=409)
-        publish_mode = stat_mod.S_IMODE(st.st_mode)
-        if base_revision is not None:
-            # A file too large for read_text can't be what the client
-            # loaded — it definitely changed. Otherwise compare content.
-            if st.st_size > MAX_TEXT_EDIT_BYTES:
-                raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
-            with open(abs_path, "rb") as f:
-                current = f.read()
-            if _content_revision(current) != base_revision:
-                raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
-    elif base_revision is not None:
-        # Client edited a file that has since been deleted/renamed.
-        raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
-
-    with _fs_errors():
-        fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
-        try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(encoded)
-            os.chmod(tmp_path, publish_mode)
+    # The precondition checks and the publication are one critical
+    # section: without the lock a concurrent writer could land between
+    # the base_revision comparison and os.replace and be silently lost.
+    with _write_lock(root):
+        # mkstemp stages at 0600; without this an edit would silently strip the
+        # target's permission bits (e.g. a 0755 script losing its exec bit).
+        publish_mode = 0o644
+        if os.path.lexists(abs_path):
             if create_only:
-                # Atomic no-replace publication, same as upload's contract.
-                try:
-                    os.link(tmp_path, abs_path)
-                except FileExistsError:
-                    raise ProjectFilesError("file already exists", status=409, code="already_exists")
-            else:
-                os.replace(tmp_path, abs_path)
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+                raise ProjectFilesError("file already exists", status=409, code="already_exists")
+            st = os.lstat(abs_path)
+            if not stat_mod.S_ISREG(st.st_mode):
+                raise ProjectFilesError("not a regular file", status=409)
+            publish_mode = stat_mod.S_IMODE(st.st_mode)
+            if base_revision is not None:
+                # A file too large for read_text can't be what the client
+                # loaded — it definitely changed. Otherwise compare content.
+                if st.st_size > MAX_TEXT_EDIT_BYTES:
+                    raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
+                with open(abs_path, "rb") as f:
+                    current = f.read()
+                if _content_revision(current) != base_revision:
+                    raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
+        elif base_revision is not None:
+            # Client edited a file that has since been deleted/renamed.
+            raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
+
+        with _fs_errors():
+            fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(encoded)
+                os.chmod(tmp_path, publish_mode)
+                if create_only:
+                    # Atomic no-replace publication, same as upload's contract.
+                    try:
+                        os.link(tmp_path, abs_path)
+                    except FileExistsError:
+                        raise ProjectFilesError("file already exists", status=409, code="already_exists")
+                else:
+                    os.replace(tmp_path, abs_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
     node = _node(abs_path, "/".join(parts))
     node["revision"] = _content_revision(encoded)
     return node
