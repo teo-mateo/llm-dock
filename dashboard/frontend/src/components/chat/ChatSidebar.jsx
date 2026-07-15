@@ -588,11 +588,15 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
         {projects.map(project => {
           const roots = grouped.byProject.get(project.id) || []
           const collapsed = collapsedProjects.has(project.id)
+          // The server-side count is authoritative — if it disagrees with
+          // the loaded rows (e.g. a page was dropped), never claim the
+          // project is empty.
+          const count = Math.max(project.conversation_count ?? 0, roots.length)
           return (
             <div key={project.id}>
               <ProjectHeader
                 project={project}
-                count={roots.length}
+                count={count}
                 collapsed={collapsed}
                 onToggleCollapse={toggleCollapse}
                 onCreateInProject={onCreateInProject}
@@ -604,9 +608,14 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
                 onRenameProjectConfirm={handleRenameProjectConfirm}
               />
               {!collapsed && roots.map(conv => renderConv(conv, 1))}
-              {!collapsed && roots.length === 0 && (
+              {!collapsed && roots.length === 0 && count === 0 && (
                 <div className="py-2 pl-8 pr-3 text-[11px] text-fg-faint border-b border-border-subtle">
                   Empty project
+                </div>
+              )}
+              {!collapsed && roots.length === 0 && count > 0 && (
+                <div className="py-2 pl-8 pr-3 text-[11px] text-fg-faint border-b border-border-subtle">
+                  {count} conversation{count === 1 ? '' : 's'} not loaded
                 </div>
               )}
             </div>

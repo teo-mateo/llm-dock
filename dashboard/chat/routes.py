@@ -228,6 +228,10 @@ def update_project(project_id):
     if db.get_project(project_id) is None:
         return jsonify({"error": "Project not found"}), 404
     project = db.update_project(project_id, **updates)
+    if project is None:
+        # The project was deleted between the existence check and the
+        # update (two-tab rename/delete race) — a 404, not a 500.
+        return jsonify({"error": "Project not found"}), 404
     return jsonify(project.to_dict())
 
 

@@ -128,6 +128,25 @@ def test_update_missing_project_404(client):
     assert r.status_code == 404
 
 
+def test_update_project_deleted_between_check_and_write_404(client, monkeypatch):
+    """Two-tab rename/delete race: the route's existence check passes but
+    the row vanishes before the update — must be a JSON 404, not a 500."""
+    from chat.db import ChatDB
+    p = _create_project(client)
+    real_update = ChatDB.update_project
+
+    def racing_update(self, project_id, **kwargs):
+        # The concurrent delete wins just before the update runs.
+        self.delete_project(project_id)
+        return real_update(self, project_id, **kwargs)
+
+    monkeypatch.setattr(ChatDB, "update_project", racing_update)
+    r = client.put(f"{PROJECTS_PATH}/{p['id']}", json={"name": "renamed"},
+                   headers=_auth())
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "Project not found"
+
+
 def test_get_missing_project_404(client):
     assert client.get(f"{PROJECTS_PATH}/nope", headers=_auth()).status_code == 404
 

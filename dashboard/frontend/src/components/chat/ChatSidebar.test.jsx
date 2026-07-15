@@ -202,6 +202,26 @@ describe('ChatSidebar project grouping', () => {
     expect(screen.getByText('Empty project')).toBeTruthy()
   })
 
+  it('a project whose conversations are not loaded is never claimed empty', () => {
+    // Server says 3 conversations, but none made it into the loaded list —
+    // show a "not loaded" placeholder (and the authoritative count), not
+    // "Empty project".
+    render(
+      <ChatSidebar
+        conversations={[]}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+        projects={[{ id: 'p9', name: 'Ghost', conversation_count: 3 }]}
+      />
+    )
+    expect(screen.queryByText('Empty project')).toBeNull()
+    expect(screen.getByText('3 conversations not loaded')).toBeTruthy()
+    expect(within(screen.getByTestId('project-header-p9')).getByText('3')).toBeTruthy()
+  })
+
   it('collapsing a project hides its conversations', () => {
     renderWithProjects()
     fireEvent.click(screen.getByTestId('project-header-p1'))
