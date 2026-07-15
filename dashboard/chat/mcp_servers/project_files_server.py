@@ -30,6 +30,7 @@ MAX_MATCH_LINE_CHARS = 200
 # context-blowing (or 30s-timeout-hitting) response.
 MAX_LIST_ENTRIES = 500
 MAX_SEARCH_SCAN_BYTES = 64 * 1024 * 1024
+MAX_READ_CHARS = 64 * 1024
 
 NO_PROJECT_ERROR = (
     "Error: this conversation is not part of a project, so there are no "
@@ -89,10 +90,12 @@ def list_files(path: str = "") -> str:
 
 
 @mcp.tool()
-def read_file(path: str) -> str:
+def read_file(path: str, offset: int = 0) -> str:
     """Read a text file from the project (UTF-8, up to 2 MB).
 
-    path is relative to the project root, e.g. 'docs/plan.md'. Binary
+    path is relative to the project root, e.g. 'docs/plan.md'. At most
+    ~64k characters are returned per call; a longer file ends with a
+    notice giving the offset to pass to read the next chunk. Binary
     files and files over the size cap are rejected — use list_files to
     check sizes first.
     """
@@ -101,10 +104,22 @@ def read_file(path: str) -> str:
         return NO_PROJECT_ERROR
     if not os.path.isdir(root):
         return "Error: file not found (the project has no files yet)"
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        return "Error: offset must be a non-negative integer"
     try:
-        return pf.read_text(root, path)["content"]
+        content = pf.read_text(root, path)["content"]
     except pf.ProjectFilesError as e:
         return f"Error: {e}"
+    if offset > 0 and offset >= len(content):
+        return f"Error: offset {offset} is past the end of the file ({len(content)} characters)"
+    chunk = content[offset:offset + MAX_READ_CHARS]
+    end = offset + len(chunk)
+    if end < len(content):
+        chunk += (
+            f"\n(truncated: showing characters {offset}–{end} of {len(content)} — "
+            f"call read_file again with offset={end} to continue)"
+        )
+    return chunk
 
 
 @mcp.tool()

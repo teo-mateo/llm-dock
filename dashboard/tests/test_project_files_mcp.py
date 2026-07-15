@@ -134,6 +134,34 @@ class TestReadFile:
         monkeypatch.setenv(PROJECT_ROOT_ENV, str(tmp_path / "never-created"))
         assert srv.read_file("x.txt").startswith("Error:")
 
+    def test_long_file_is_chunked_with_continuation_offset(self, proj_root, monkeypatch):
+        # regression: codex 2.1 — a near-2MB file must not enter the model
+        # context in one tool response
+        monkeypatch.setattr(srv, "MAX_READ_CHARS", 10)
+        (proj_root / "long.txt").write_text("abcdefghijKLMNO")
+        first = srv.read_file("long.txt")
+        assert first.startswith("abcdefghij")
+        assert "offset=10" in first
+        assert "KLMNO" not in first.split("\n(truncated")[0]
+        second = srv.read_file("long.txt", offset=10)
+        assert second == "KLMNO"  # final chunk: no notice
+
+    def test_near_cap_file_response_is_bounded(self, proj_root):
+        big = "x" * (pf.MAX_TEXT_EDIT_BYTES - 100)
+        (proj_root / "big.txt").write_text(big)
+        out = srv.read_file("big.txt")
+        assert len(out) <= srv.MAX_READ_CHARS + 200  # chunk + notice, never the whole file
+        assert "call read_file again with offset=" in out
+
+    def test_offset_validation(self, proj_root):
+        assert srv.read_file("notes.md", offset=-1).startswith("Error:")
+        assert srv.read_file("notes.md", offset=True).startswith("Error:")
+        assert "past the end" in srv.read_file("notes.md", offset=10_000)
+
+    def test_zero_offset_on_empty_file_is_fine(self, proj_root):
+        (proj_root / "empty.txt").write_text("")
+        assert srv.read_file("empty.txt") == ""
+
 
 class TestSearchFiles:
     def test_content_match_case_insensitive_with_line_numbers(self, proj_root):
