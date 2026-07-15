@@ -141,7 +141,13 @@ def project_files_write_content(project_id):
     base = data.get("base_revision")
     if base is not None and not isinstance(base, str):
         return jsonify({"error": "base_revision must be a string"}), 400
-    node = pf.write_text(root, data.get("path"), data.get("content"), base_revision=base)
+    create_only = data.get("create_only", False)
+    if not isinstance(create_only, bool):
+        return jsonify({"error": "create_only must be a boolean"}), 400
+    if create_only and base is not None:
+        return jsonify({"error": "create_only and base_revision are mutually exclusive"}), 400
+    node = pf.write_text(root, data.get("path"), data.get("content"),
+                         base_revision=base, create_only=create_only)
     stale = _revalidate_or_cleanup(project_id)
     if stale:
         return stale

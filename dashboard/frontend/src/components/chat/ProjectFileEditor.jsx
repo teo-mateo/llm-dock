@@ -12,16 +12,27 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(isNew)
   const [error, setError] = useState(null)
-  const [conflict, setConflict] = useState(false)
+  const [conflict, setConflict] = useState(null) // conflict message | null
   const textareaRef = useRef(null)
+  // Latest textarea content, for comparing against the snapshot a save
+  // actually submitted — the user may keep typing while a save is in
+  // flight, and that newer content must stay marked dirty.
+  const contentRef = useRef('')
+  // Whether the next save should carry the create-only precondition.
+  // Starts from isNew, and drops permanently once the file demonstrably
+  // exists — after any successful save OR after loading it from disk
+  // (the reload path of an already-exists conflict).
+  const createModeRef = useRef(isNew)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    setConflict(false)
+    setConflict(null)
     try {
       const doc = await getProjectFileContent(projectId, path)
       setContent(doc.content)
+      contentRef.current = doc.content
+      createModeRef.current = false
       setBaseRevision(doc.revision)
       setDirty(false)
     } catch (err) {
@@ -36,20 +47,32 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
   }, [load, isNew])
 
   const save = useCallback(async ({ force = false } = {}) => {
+    // `content` is the snapshot this save submits. The user can keep
+    // typing while the request is in flight — only clear dirty if the
+    // textarea still holds exactly what was saved.
+    const submitted = content
     setSaving(true)
     setError(null)
-    setConflict(false)
+    setConflict(null)
     try {
       const node = await saveProjectFileContent(
-        projectId, path, content,
+        projectId, path, submitted,
         force ? null : baseRevision,
+        // New-file precondition: the tree snapshot said this path is free,
+        // but the filesystem is the source of truth — create-only turns a
+        // stale snapshot into a 409 instead of a silent overwrite. A
+        // forced save is the explicit overwrite escape hatch.
+        createModeRef.current && !force,
       )
+      createModeRef.current = false
       setBaseRevision(node.revision)
-      setDirty(false)
+      setDirty(contentRef.current !== submitted)
       onSaved?.()
     } catch (err) {
-      if (err.message.includes('changed on disk')) {
-        setConflict(true)
+      if (err.message.includes('changed on disk') || err.message.includes('already exists')) {
+        setConflict(err.message.includes('already exists')
+          ? 'A file with this name already exists on disk.'
+          : 'The file changed on disk since it was loaded.')
       } else {
         setError(err.message)
       }
@@ -100,7 +123,7 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
 
       {conflict && (
         <div className="mx-6 mt-3 px-3 py-2 bg-warning-subtle text-warning-fg rounded text-xs flex items-center gap-3">
-          <span>The file changed on disk since it was loaded.</span>
+          <span>{conflict}</span>
           <button onClick={load} className="underline">Reload (discard my changes)</button>
           <button onClick={() => save({ force: true })} className="underline">Overwrite anyway</button>
         </div>
@@ -119,7 +142,7 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
         <textarea
           ref={textareaRef}
           value={content}
-          onChange={e => { setContent(e.target.value); setDirty(true) }}
+          onChange={e => { setContent(e.target.value); contentRef.current = e.target.value; setDirty(true) }}
           onKeyDown={handleKeyDown}
           spellCheck={false}
           className="flex-1 w-full resize-none bg-app text-fg font-mono text-sm leading-relaxed p-6 focus:outline-none"

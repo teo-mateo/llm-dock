@@ -183,7 +183,7 @@ describe('ProjectPage editor integration', () => {
     const ta = await screen.findByTestId('editor-textarea')
     fireEvent.change(ta, { target: { value: 'body' } })
     fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'fresh.md', 'body', null))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'fresh.md', 'body', null, true))
     await waitFor(() => expect(mockTree).toHaveBeenCalledTimes(2))
   })
 })

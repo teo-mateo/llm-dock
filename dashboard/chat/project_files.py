@@ -317,7 +317,7 @@ def read_text(root: str, rel_path: str) -> dict:
 
 
 def write_text(root: str, rel_path: str, content: str,
-               base_revision: str = None) -> dict:
+               base_revision: str = None, create_only: bool = False) -> dict:
     """Write UTF-8 text to a file (create or overwrite), atomically via a
     temp file in the same directory. The target's parent must exist and
     the target itself must be absent or a regular file — symlinks and
@@ -327,6 +327,11 @@ def write_text(root: str, rel_path: str, content: str,
     (read_text's ``revision``, a content hash): if the file's bytes
     changed on disk since, the save is rejected with 409 so an edit from
     another tab/editor isn't silently overwritten.
+
+    create_only=True is the new-file precondition: the save is rejected
+    with 409 if the path already exists (the client believed it was
+    creating a file, but its tree snapshot was stale). Publication is an
+    atomic no-replace link, mirroring save_stream's upload contract.
     """
     parts = split_rel_path(rel_path)
     if not parts:
@@ -345,6 +350,8 @@ def write_text(root: str, rel_path: str, content: str,
     if not os.path.isdir(abs_dir):
         raise ProjectFilesError("parent directory not found", status=404)
     if os.path.lexists(abs_path):
+        if create_only:
+            raise ProjectFilesError("file already exists", status=409)
         st = os.lstat(abs_path)
         if not stat_mod.S_ISREG(st.st_mode):
             raise ProjectFilesError("not a regular file", status=409)
@@ -366,7 +373,14 @@ def write_text(root: str, rel_path: str, content: str,
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(encoded)
-            os.replace(tmp_path, abs_path)
+            if create_only:
+                # Atomic no-replace publication, same as upload's contract.
+                try:
+                    os.link(tmp_path, abs_path)
+                except FileExistsError:
+                    raise ProjectFilesError("file already exists", status=409)
+            else:
+                os.replace(tmp_path, abs_path)
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)

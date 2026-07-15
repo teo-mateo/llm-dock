@@ -265,6 +265,22 @@ class TestOps:
         assert e.value.status == 409
         assert pf.read_text(made_root, "f.txt")["content"] == "other tab"
 
+    def test_write_text_create_only(self, made_root):
+        """Regression (PR #79 codex 2.2): a new-file save carries a
+        create-only precondition, so a stale tree snapshot can't silently
+        overwrite a file that appeared on disk since."""
+        node = pf.write_text(made_root, "f.txt", "created", create_only=True)
+        assert node["path"] == "f.txt"
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "stale create", create_only=True)
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "created"
+        # Dangling symlinks occupy their name for create-only too.
+        os.symlink("gone", os.path.join(made_root, "link"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "link", "x", create_only=True)
+        assert e.value.status == 409
+
     def test_write_text_conflict_when_file_deleted(self, made_root):
         node = pf.write_text(made_root, "f.txt", "one")
         pf.delete(made_root, "f.txt")
@@ -634,6 +650,31 @@ def test_content_traversal_and_bad_bodies_400(client):
                    json={"path": "f.txt", "content": "c", "base_revision": 12345},
                    headers=_auth())
     assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "create_only": "yes"},
+                   headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "create_only": True,
+                         "base_revision": "abc"},
+                   headers=_auth())
+    assert r.status_code == 400
+
+
+def test_content_create_only_http(client):
+    """Stale-tree case end to end: creating over an existing file is a
+    409, not a silent overwrite."""
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "original", "create_only": True},
+                   headers=_auth())
+    assert r.status_code == 200
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "stale", "create_only": True},
+                   headers=_auth())
+    assert r.status_code == 409
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=f.txt", headers=_auth())
+    assert r.get_json()["content"] == "original"
 
 
 def test_content_requires_auth(client):

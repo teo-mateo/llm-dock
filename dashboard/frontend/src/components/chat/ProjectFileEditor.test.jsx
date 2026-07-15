@@ -45,7 +45,7 @@ describe('ProjectFileEditor', () => {
     expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
 
     fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'hello world', 'r100'))
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'hello world', 'r100', false))
     await waitFor(() => expect(screen.queryByTestId('dirty-indicator')).toBeNull())
     expect(onSaved).toHaveBeenCalled()
   })
@@ -73,7 +73,7 @@ describe('ProjectFileEditor', () => {
     await screen.findByText(/changed on disk/)
 
     fireEvent.click(screen.getByText('Overwrite anyway'))
-    await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'mine', null))
+    await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'mine', null, false))
     await waitFor(() => expect(screen.queryByText(/changed on disk/)).toBeNull())
   })
 
@@ -110,8 +110,63 @@ describe('ProjectFileEditor', () => {
 
     fireEvent.change(ta, { target: { value: 'fresh' } })
     fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'fresh', null))
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'fresh', null, true))
     expect(onSaved).toHaveBeenCalled()
+  })
+
+  it('typing during an in-flight save keeps the editor dirty (regression: codex 2.1)', async () => {
+    let resolveSave
+    mockSave.mockImplementation(() => new Promise(res => { resolveSave = res }))
+    await renderEditor()
+    const ta = screen.getByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'content A' } })
+    fireEvent.click(screen.getByText('Save'))                 // save A, pending
+    fireEvent.change(ta, { target: { value: 'content B' } })  // keep typing
+
+    resolveSave({ path: 'notes.md', revision: 'rA' })
+    await waitFor(() => expect(screen.getByText('Save').disabled).toBe(false))
+    // B is newer than the saved snapshot: still dirty, still saveable.
+    expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
+    mockSave.mockResolvedValue({ path: 'notes.md', revision: 'rB' })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'content B', 'rA', false))
+    await waitFor(() => expect(screen.queryByTestId('dirty-indicator')).toBeNull())
+  })
+
+  it('new-file saves carry the create-only precondition (regression: codex 2.2)', async () => {
+    await renderEditor({ isNew: true })
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'fresh' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'fresh', null, true))
+  })
+
+  it('a create-only 409 shows the already-exists conflict; Reload opens the on-disk file and drops create mode', async () => {
+    mockSave.mockRejectedValueOnce(new Error('file already exists'))
+    await renderEditor({ isNew: true })
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
+    fireEvent.click(screen.getByText('Save'))
+    await screen.findByText(/already exists/)
+
+    mockGet.mockResolvedValue({ path: 'notes.md', content: 'on disk', revision: 'rd' })
+    fireEvent.click(screen.getByText('Reload (discard my changes)'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea').value).toBe('on disk'))
+    // Editing and saving again is a normal guarded save now, not create-only.
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+    mockSave.mockResolvedValue({ path: 'notes.md', revision: 're' })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'edited', 'rd', false))
+  })
+
+  it('a create-only 409 Overwrite anyway forces a plain save', async () => {
+    mockSave
+      .mockRejectedValueOnce(new Error('file already exists'))
+      .mockResolvedValueOnce({ path: 'notes.md', revision: 'rf' })
+    await renderEditor({ isNew: true })
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
+    fireEvent.click(screen.getByText('Save'))
+    await screen.findByText(/already exists/)
+    fireEvent.click(screen.getByText('Overwrite anyway'))
+    await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('p1', 'notes.md', 'mine', null, false))
   })
 
   it('shows a load error for binary files', async () => {
