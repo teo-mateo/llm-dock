@@ -422,6 +422,20 @@ def test_total_path_over_path_max_400(client):
     assert r.status_code == 400
 
 
+def test_lone_surrogate_path_400(client):
+    """JSON delivers escaped lone surrogates that are not UTF-8-encodable;
+    validation must 400, not UnicodeEncodeError → 500."""
+    pid = _mkproject(client)
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir",
+                    data='{"path": "\\ud800"}', headers=_auth(),
+                    content_type="application/json")
+    assert r.status_code == 400
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/move",
+                    data='{"path": "\\ud800", "new_path": "x"}', headers=_auth(),
+                    content_type="application/json")
+    assert r.status_code == 400
+
+
 def test_mkdir_through_regular_file_400(client):
     """mkdir with an intermediate component that is a regular file is
     ordinary bad input: 400, not NotADirectoryError → 500."""

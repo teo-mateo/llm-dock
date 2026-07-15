@@ -140,6 +140,33 @@ describe('ProjectPage file tree', () => {
   })
 })
 
+describe('ProjectPage stale-response guard', () => {
+  it('a slow tree response for the previous project never commits after switching', async () => {
+    // Project A's fetch is slow; the user switches to B; A resolves LAST.
+    // Without the generation guard, A's rows would render under B and row
+    // actions (closing over B's id) would target the wrong project.
+    let resolveA
+    const treeA = [{ name: 'a-only.txt', path: 'a-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    const treeB = [{ name: 'b-only.txt', path: 'b-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    mockTree.mockImplementation((pid) => {
+      if (pid === 'pa') return new Promise(res => { resolveA = res })
+      return Promise.resolve({ tree: treeB })
+    })
+
+    const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
+    await waitFor(() => expect(mockTree).toHaveBeenCalledWith('pa'))
+
+    rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
+    await screen.findByText('b-only.txt')
+
+    resolveA({ tree: treeA })
+    // Give the late resolution a tick to (incorrectly) commit.
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByText('a-only.txt')).toBeNull()
+    expect(screen.getByText('b-only.txt')).toBeTruthy()
+  })
+})
+
 describe('ProjectPage upload row visibility', () => {
   it('expands the target dir after uploading into it', async () => {
     await renderPage()

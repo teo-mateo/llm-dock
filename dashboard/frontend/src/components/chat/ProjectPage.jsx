@@ -96,14 +96,22 @@ export default function ProjectPage({ project }) {
   const fileInputRef = useRef(null)
   // Directory the next file-picker selection uploads into.
   const uploadDirRef = useRef('')
+  // Monotonic request generation. A tree fetch only commits if it is still
+  // the latest — otherwise a slow response for project A, resolving after
+  // the user switched to project B, would install A's rows under B and
+  // route row actions (which close over B's id) at the wrong project.
+  const genRef = useRef(0)
 
   const refresh = useCallback(async () => {
     if (!project?.id) return
+    const gen = ++genRef.current
     try {
       const data = await getProjectFilesTree(project.id)
+      if (genRef.current !== gen) return
       setTree(data.tree || [])
       setError(null)
     } catch (err) {
+      if (genRef.current !== gen) return
       setError(err.message)
     }
   }, [project?.id])

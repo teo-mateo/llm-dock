@@ -125,7 +125,13 @@ def _validate_component(name: str):
         raise ProjectFilesError("invalid character in path component")
     # Filesystems cap components at 255 BYTES, not characters — a name of
     # 100 emoji passes a character check and still fails at the syscall.
-    if len(name.encode("utf-8")) > MAX_NAME_LENGTH:
+    # JSON happily delivers lone surrogates ("\ud800"), which are not
+    # UTF-8-encodable at all — that's bad input, not a server fault.
+    try:
+        encoded = name.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ProjectFilesError("path component is not valid unicode")
+    if len(encoded) > MAX_NAME_LENGTH:
         raise ProjectFilesError("path component too long")
 
 
