@@ -40,6 +40,14 @@ def init_chat(app, db_path: str = None):
     # Background-run infrastructure (#58): an event bus for live observers and
     # a manager owning the worker pool. Runs from a previous process that died
     # mid-flight are marked failed so they don't linger as stuck active runs.
+    # Cap request bodies so Werkzeug rejects an oversized upload DURING
+    # multipart parsing (before it is fully spooled to disk) — covers
+    # chunked bodies that carry no Content-Length. Slightly above the
+    # per-file cap to leave room for multipart framing; an explicit
+    # deployment override is preserved.
+    from .project_files import configure_max_content_length
+    configure_max_content_length(app)
+
     bus = EventBus()
     run_manager = ChatRunManager(db, bus)
     run_manager.recover_interrupted_runs()
@@ -239,8 +247,26 @@ def update_project(project_id):
 @require_auth
 def delete_project(project_id):
     """Delete a project. Its conversations are detached (become unfiled),
-    not deleted."""
-    if _get_db().delete_project(project_id):
+    not deleted; its files directory IS removed.
+
+    Files are removed BEFORE the DB row, strictly: if cleanup fails
+    (permissions, IO), the row survives and the delete stays retryable —
+    otherwise the data would be orphaned with no API path back to it. The
+    post-delete sweep is best-effort and only mops up a directory that a
+    concurrent file write recreated in the window.
+    """
+    from . import project_files as pf
+    db = _get_db()
+    if db.get_project(project_id) is None:
+        return jsonify({"error": "Project not found"}), 404
+    storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
+    try:
+        pf.delete_project_root(storage_root, project_id, strict=True)
+    except OSError as e:
+        logger.error("project %s: files cleanup failed, aborting delete: %s", project_id, e)
+        return jsonify({"error": f"failed to remove project files: {e}"}), 500
+    if db.delete_project(project_id):
+        pf.delete_project_root(storage_root, project_id)  # sweep, best-effort
         return jsonify({"ok": True})
     return jsonify({"error": "Project not found"}), 404
 
@@ -663,3 +689,4 @@ def spinoff():
 # the blueprint 'chat'". This bottom-of-file import runs while chat.routes
 # is being imported by app.py — before the blueprint is registered.
 from . import mcp_admin_routes  # noqa: E402,F401
+from . import project_files_routes  # noqa: E402,F401

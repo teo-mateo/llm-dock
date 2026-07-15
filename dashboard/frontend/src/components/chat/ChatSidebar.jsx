@@ -187,7 +187,7 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
   )
 }
 
-function ProjectHeader({ project, collapsed, onToggleCollapse, onCreateInProject, confirmDeleteProject, setConfirmDeleteProject, onDeleteProject, renamingProject, onRenameProjectStart, onRenameProjectConfirm, count }) {
+function ProjectHeader({ project, collapsed, active, onToggleCollapse, onOpenProject, onCreateInProject, confirmDeleteProject, setConfirmDeleteProject, onDeleteProject, renamingProject, onRenameProjectStart, onRenameProjectConfirm, count }) {
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -221,7 +221,9 @@ function ProjectHeader({ project, collapsed, onToggleCollapse, onCreateInProject
   return (
     <div
       onClick={() => onToggleCollapse(project.id)}
-      className="group flex items-center gap-2 py-2 px-3 cursor-pointer border-b border-border-subtle bg-surface-muted/50 text-fg-muted hover:bg-surface-muted"
+      className={`group flex items-center gap-2 py-2 px-3 cursor-pointer border-b border-border-subtle ${
+        active ? 'bg-surface text-fg' : 'bg-surface-muted/50 text-fg-muted hover:bg-surface-muted'
+      }`}
       data-testid={`project-header-${project.id}`}
     >
       <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'down'} text-[9px] w-3 flex-shrink-0 text-fg-faint`}></i>
@@ -261,6 +263,16 @@ function ProjectHeader({ project, collapsed, onToggleCollapse, onCreateInProject
         </div>
       ) : renamingProject === project.id ? null : (
         <>
+          {onOpenProject && (
+            <button
+              onClick={e => { e.stopPropagation(); onOpenProject(project.id) }}
+              className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+              title="Open project files"
+              aria-label="Open project files"
+            >
+              <i className="fa-solid fa-folder-open text-xs"></i>
+            </button>
+          )}
           <button
             onClick={e => { e.stopPropagation(); onCreateInProject(project.id) }}
             className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
@@ -291,7 +303,7 @@ function ProjectHeader({ project, collapsed, onToggleCollapse, onCreateInProject
   )
 }
 
-export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
+export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], activeProjectId = null, onOpenProject, onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null)
@@ -598,7 +610,9 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
                 project={project}
                 count={count}
                 collapsed={collapsed}
+                active={activeProjectId === project.id}
                 onToggleCollapse={toggleCollapse}
+                onOpenProject={onOpenProject}
                 onCreateInProject={onCreateInProject}
                 confirmDeleteProject={confirmDeleteProject}
                 setConfirmDeleteProject={setConfirmDeleteProject}

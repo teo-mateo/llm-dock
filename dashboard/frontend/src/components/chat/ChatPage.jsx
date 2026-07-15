@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
+import ProjectPage from './ProjectPage'
 import useConversations from '../../hooks/useConversations'
 import useProjects from '../../hooks/useProjects'
 import useChat from '../../hooks/useChat'
@@ -12,7 +13,7 @@ import { serviceNameForModel, formatModelLabel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
 
 export default function ChatPage() {
-  const { conversationId } = useParams()
+  const { conversationId, projectId } = useParams()
   const convId = conversationId || null
   const navigate = useNavigate()
 
@@ -142,7 +143,9 @@ export default function ChatPage() {
     // list so they reappear as unfiled.
     await removeProject(id)
     await refresh()
-  }, [removeProject, refresh])
+    // Don't leave the URL pointing at the project page we just deleted.
+    if (projectId === id) navigate('/chat')
+  }, [removeProject, refresh, projectId, navigate])
 
   const handleMoveMany = useCallback(async (ids, projectId) => {
     await Promise.all(ids.map(id => updateConversation(id, { project_id: projectId })))
@@ -163,6 +166,10 @@ export default function ChatPage() {
 
   const handleSelect = useCallback((id) => {
     navigate(`/chat/${id}`)
+  }, [navigate])
+
+  const handleOpenProject = useCallback((id) => {
+    navigate(`/chat/project/${id}`)
   }, [navigate])
 
   // Deletes cascade to descendant spinoffs server-side. If the active
@@ -211,12 +218,17 @@ export default function ChatPage() {
         onDeleteMany={handleDeleteMany}
         onRename={handleRename}
         projects={projects}
+        activeProjectId={projectId || null}
+        onOpenProject={handleOpenProject}
         onCreateProject={handleCreateProject}
         onRenameProject={renameProject}
         onDeleteProject={handleDeleteProject}
         onCreateInProject={handleCreateInProject}
         onMoveMany={handleMoveMany}
       />
+      {projectId ? (
+        <ProjectPage project={projects.find(p => p.id === projectId) || null} />
+      ) : (
       <ChatArea
         conversation={conversation}
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
@@ -243,6 +255,7 @@ export default function ChatPage() {
         onReloadConversation={loadConversation}
         onRefreshConversations={refresh}
       />
+      )}
     </div>
   )
 }
