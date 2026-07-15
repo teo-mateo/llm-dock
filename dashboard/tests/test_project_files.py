@@ -220,6 +220,74 @@ class TestOps:
             pf.delete(made_root, "nope")
         assert e.value.status == 404
 
+    def test_read_write_text_roundtrip(self, made_root):
+        pf.mkdir(made_root, "notes")
+        node = pf.write_text(made_root, "notes/todo.md", "# hello\n")
+        assert node["path"] == "notes/todo.md"
+        doc = pf.read_text(made_root, "notes/todo.md")
+        assert doc["content"] == "# hello\n"
+        assert doc["modified_at"] == node["modified_at"]
+
+    def test_write_text_requires_parent_dir(self, made_root):
+        # notes/ doesn't exist and write_text does NOT create parents
+        # implicitly for a nested path whose parent is missing.
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "nope/deep/f.txt", "x")
+        assert e.value.status == 404
+
+    def test_write_text_conflict_detection(self, made_root):
+        node = pf.write_text(made_root, "f.txt", "one")
+        # Same base → accepted.
+        node2 = pf.write_text(made_root, "f.txt", "two", base_modified_at=node["modified_at"])
+        assert pf.read_text(made_root, "f.txt")["content"] == "two"
+        # Stale base → 409, content untouched.
+        stale = node2["modified_at"] - 10
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "three", base_modified_at=stale)
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "two"
+
+    def test_write_text_conflict_when_file_deleted(self, made_root):
+        node = pf.write_text(made_root, "f.txt", "one")
+        pf.delete(made_root, "f.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "two", base_modified_at=node["modified_at"])
+        assert e.value.status == 409
+
+    def test_write_text_never_replaces_special_entries(self, made_root):
+        os.symlink("anywhere", os.path.join(made_root, "link"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "link", "x")
+        assert e.value.status == 409
+        assert os.path.islink(os.path.join(made_root, "link"))
+
+    def test_read_text_rejects_binary_and_oversized(self, made_root, monkeypatch):
+        with open(os.path.join(made_root, "bin.dat"), "wb") as f:
+            f.write(b"ab\x00cd")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "bin.dat")
+        assert e.value.status == 400
+
+        with open(os.path.join(made_root, "latin1.txt"), "wb") as f:
+            f.write("café".encode("latin-1"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "latin1.txt")
+        assert e.value.status == 400
+
+        monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 4)
+        with open(os.path.join(made_root, "big.txt"), "w") as f:
+            f.write("12345")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "big.txt")
+        assert e.value.status == 413
+
+    def test_write_text_size_cap(self, made_root, monkeypatch):
+        monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 4)
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "12345")
+        assert e.value.status == 413
+        assert os.listdir(made_root) == []
+
     def test_dangling_symlink_is_a_first_class_entry(self, made_root):
         """A broken symlink is an ordinary tree entry: renamable, occupying
         its name for mkdir and as a move destination (exists() would follow
@@ -500,6 +568,57 @@ def test_mkdir_through_regular_file_400(client):
     # Upload into the file-as-dir path gets the same treatment.
     r = _upload(client, pid, "f.txt", b"x", dir="parent")
     assert r.status_code == 404  # save_stream's isdir pre-check
+
+
+def test_content_http_roundtrip(client):
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "# hi"}, headers=_auth())
+    assert r.status_code == 200
+    base = r.get_json()["modified_at"]
+
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=notes.md", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["content"] == "# hi"
+
+    # Conflict via HTTP: stale base → 409.
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "x", "base_modified_at": base - 5},
+                   headers=_auth())
+    assert r.status_code == 409
+
+
+def test_content_read_fresh_project_404(client):
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=missing.md", headers=_auth())
+    assert r.status_code == 404
+
+
+def test_content_traversal_and_bad_bodies_400(client):
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=../../etc/passwd",
+                   headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "../x", "content": "c"}, headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json=["nope"], headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": 42}, headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "base_modified_at": True},
+                   headers=_auth())
+    assert r.status_code == 400
+
+
+def test_content_requires_auth(client):
+    pid = _mkproject(client)
+    assert client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=x").status_code == 401
+    assert client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                      json={"path": "x", "content": ""}).status_code == 401
 
 
 def test_project_delete_aborts_when_files_cleanup_fails(client, tmp_path, monkeypatch):

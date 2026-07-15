@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import ProjectPage from './ProjectPage'
 
-const { mockTree, mockUpload, mockMkdir, mockMove, mockDelete } = vi.hoisted(() => ({
+const { mockTree, mockUpload, mockMkdir, mockMove, mockDelete, mockGetContent, mockSaveContent } = vi.hoisted(() => ({
   mockTree: vi.fn(),
   mockUpload: vi.fn(),
   mockMkdir: vi.fn(),
   mockMove: vi.fn(),
   mockDelete: vi.fn(),
+  mockGetContent: vi.fn(),
+  mockSaveContent: vi.fn(),
 }))
 vi.mock('../../services/chat', () => ({
   getProjectFilesTree: (...a) => mockTree(...a),
@@ -16,6 +18,8 @@ vi.mock('../../services/chat', () => ({
   moveProjectPath: (...a) => mockMove(...a),
   deleteProjectPath: (...a) => mockDelete(...a),
   downloadProjectFile: vi.fn(),
+  getProjectFileContent: (...a) => mockGetContent(...a),
+  saveProjectFileContent: (...a) => mockSaveContent(...a),
 }))
 
 const project = { id: 'p1', name: 'Research', description: 'notes & data' }
@@ -35,6 +39,8 @@ beforeEach(() => {
   mockMkdir.mockReset().mockResolvedValue({})
   mockMove.mockReset().mockResolvedValue({})
   mockDelete.mockReset().mockResolvedValue({ ok: true })
+  mockGetContent.mockReset().mockResolvedValue({ path: 'readme.md', content: 'doc', modified_at: 1 })
+  mockSaveContent.mockReset().mockResolvedValue({ path: 'readme.md', modified_at: 2 })
 })
 
 afterEach(() => {
@@ -137,6 +143,48 @@ describe('ProjectPage file tree', () => {
     mockTree.mockResolvedValue({ tree: [] })
     render(<ProjectPage project={project} />)
     expect(await screen.findByText(/No files yet/)).toBeTruthy()
+  })
+})
+
+describe('ProjectPage editor integration', () => {
+  it('clicking a file row opens the editor with its content; closing returns to the tree', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+    expect((await screen.findByTestId('editor-textarea')).value).toBe('doc')
+
+    fireEvent.click(screen.getByLabelText('Close editor'))
+    expect(screen.queryByTestId('file-editor')).toBeNull()
+    expect(screen.getByText('readme.md')).toBeTruthy()
+  })
+
+  it('New file prompts for a name and opens an empty new-file editor', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+    // New file: no content fetch, editor starts dirty for first save.
+    expect(mockGetContent).not.toHaveBeenCalled()
+    expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
+  })
+
+  it('New file with an existing name opens that file instead of a blank editor', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('readme.md')
+    fireEvent.click(screen.getByText('New file'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
+  })
+
+  it('saving a new file refreshes the tree', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'body' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'fresh.md', 'body', null))
+    await waitFor(() => expect(mockTree).toHaveBeenCalledTimes(2))
   })
 })
 

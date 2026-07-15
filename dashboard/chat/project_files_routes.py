@@ -114,6 +114,41 @@ def project_files_download(project_id):
     return send_file(abs_path, as_attachment=True)
 
 
+@chat_bp.route("/api/chat/projects/<project_id>/files/content", methods=["GET"])
+@require_auth
+def project_files_read_content(project_id):
+    root, err = _project_root_or_404(project_id)
+    if err:
+        return err
+    rel_path = request.args.get("path", "")
+    # Same shape as download: validate first (traversal stays 400), then a
+    # not-yet-created root means the file is simply absent.
+    pf.split_rel_path(rel_path)
+    if not os.path.isdir(root):
+        return jsonify({"error": "file not found"}), 404
+    return jsonify(pf.read_text(root, rel_path))
+
+
+@chat_bp.route("/api/chat/projects/<project_id>/files/content", methods=["PUT"])
+@require_auth
+def project_files_write_content(project_id):
+    root, err = _project_root_or_404(project_id, create=True)
+    if err:
+        return err
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be {path, content, base_modified_at?}"}), 400
+    base = data.get("base_modified_at")
+    # bool is an int subclass in Python — reject it explicitly.
+    if base is not None and (isinstance(base, bool) or not isinstance(base, int)):
+        return jsonify({"error": "base_modified_at must be an integer"}), 400
+    node = pf.write_text(root, data.get("path"), data.get("content"), base_modified_at=base)
+    stale = _revalidate_or_cleanup(project_id)
+    if stale:
+        return stale
+    return jsonify(node)
+
+
 @chat_bp.route("/api/chat/projects/<project_id>/files/mkdir", methods=["POST"])
 @require_auth
 def project_files_mkdir(project_id):

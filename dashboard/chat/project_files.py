@@ -13,6 +13,7 @@ project root.
 """
 import errno
 import os
+import stat as stat_mod
 import shutil
 import logging
 import tempfile
@@ -27,6 +28,9 @@ MAX_NAME_LENGTH = 255
 # Path depth cap: keeps recursive tree walks and rmtree far away from
 # Python's recursion limit no matter what gets created through the API.
 MAX_PATH_DEPTH = 32
+# Editor cap — the in-browser editor is for notes/configs/snippets, not
+# for logs; a textarea with more than this is unusable anyway.
+MAX_TEXT_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
 def configure_max_content_length(app):
@@ -218,7 +222,6 @@ def stat_file(root: str, rel_path: str) -> str:
     FIFOs/sockets/devices are rejected rather than handed to send_file —
     opening a FIFO would block the worker indefinitely). Returns the
     absolute path (for send_file)."""
-    import stat as stat_mod
     abs_path = resolve(root, rel_path)
     try:
         st = os.lstat(abs_path)
@@ -277,6 +280,79 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
     return _node(abs_target, rel_target)
+
+
+def read_text(root: str, rel_path: str) -> dict:
+    """Read a regular file as UTF-8 text for the editor. Rejects
+    non-regular files (via stat_file), oversized files, and binary
+    content (NUL byte or invalid UTF-8)."""
+    abs_path = stat_file(root, rel_path)
+    st = os.lstat(abs_path)
+    if st.st_size > MAX_TEXT_EDIT_BYTES:
+        raise ProjectFilesError("file too large to edit", status=413)
+    with open(abs_path, "rb") as f:
+        data = f.read()
+    if b"\x00" in data:
+        raise ProjectFilesError("not a text file", status=400)
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ProjectFilesError("not a text file (not valid UTF-8)", status=400)
+    return {
+        "path": "/".join(split_rel_path(rel_path)),
+        "content": content,
+        "size": st.st_size,
+        "modified_at": int(st.st_mtime),
+    }
+
+
+def write_text(root: str, rel_path: str, content: str,
+               base_modified_at: int = None) -> dict:
+    """Write UTF-8 text to a file (create or overwrite), atomically via a
+    temp file in the same directory. The target's parent must exist and
+    the target itself must be absent or a regular file — symlinks and
+    special files are never written through or replaced.
+
+    base_modified_at (optional) is the mtime the client loaded: if the
+    file changed on disk since, the save is rejected with 409 so an edit
+    from another tab/editor isn't silently overwritten.
+    """
+    parts = split_rel_path(rel_path)
+    if not parts:
+        raise ProjectFilesError("path is required")
+    if not isinstance(content, str):
+        raise ProjectFilesError("content must be a string")
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ProjectFilesError("content is not valid unicode")
+    if len(encoded) > MAX_TEXT_EDIT_BYTES:
+        raise ProjectFilesError("content too large", status=413)
+
+    abs_path = resolve(root, rel_path)
+    abs_dir = os.path.dirname(abs_path)
+    if not os.path.isdir(abs_dir):
+        raise ProjectFilesError("parent directory not found", status=404)
+    if os.path.lexists(abs_path):
+        st = os.lstat(abs_path)
+        if not stat_mod.S_ISREG(st.st_mode):
+            raise ProjectFilesError("not a regular file", status=409)
+        if base_modified_at is not None and int(st.st_mtime) != int(base_modified_at):
+            raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+    elif base_modified_at is not None:
+        # Client edited a file that has since been deleted/renamed.
+        raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+
+    with _fs_errors():
+        fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(encoded)
+            os.replace(tmp_path, abs_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+    return _node(abs_path, "/".join(parts))
 
 
 def mkdir(root: str, rel_path: str) -> dict:

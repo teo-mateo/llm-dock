@@ -3,6 +3,18 @@ import {
   getProjectFilesTree, uploadProjectFile, mkdirProjectPath,
   moveProjectPath, deleteProjectPath, downloadProjectFile,
 } from '../../services/chat'
+import ProjectFileEditor from './ProjectFileEditor'
+
+function findNode(nodes, path) {
+  for (const n of nodes) {
+    if (n.path === path) return n
+    if (n.type === 'dir' && n.children) {
+      const hit = findNode(n.children, path)
+      if (hit) return hit
+    }
+  }
+  return null
+}
 
 function formatSize(bytes) {
   if (bytes == null) return ''
@@ -11,14 +23,14 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, onRename, onDelete, onDownload }) {
+function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, onNewFile, onRename, onDelete, onDownload, onOpenFile }) {
   const isDir = node.type === 'dir'
   return (
     <>
       <div
-        onClick={isDir ? () => onToggle(node.path) : undefined}
-        className={`group flex items-center gap-2 py-1.5 pr-3 border-b border-border-subtle text-sm ${
-          isDir ? 'cursor-pointer text-fg' : 'text-fg-muted'
+        onClick={isDir ? () => onToggle(node.path) : () => onOpenFile(node)}
+        className={`group flex items-center gap-2 py-1.5 pr-3 border-b border-border-subtle text-sm cursor-pointer ${
+          isDir ? 'text-fg' : 'text-fg-muted'
         } hover:bg-surface-muted`}
         style={{ paddingLeft: `${12 + depth * 18}px` }}
         data-testid={`file-row-${node.path}`}
@@ -44,6 +56,11 @@ function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, o
                 className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
                 title="Upload into folder" aria-label={`Upload into ${node.path}`}
               ><i className="fa-solid fa-file-arrow-up text-xs"></i></button>
+              <button
+                onClick={e => { e.stopPropagation(); onNewFile(node.path) }}
+                className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
+                title="New file" aria-label={`New file in ${node.path}`}
+              ><i className="fa-solid fa-file-circle-plus text-xs"></i></button>
               <button
                 onClick={e => { e.stopPropagation(); onNewFolder(node.path) }}
                 className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
@@ -79,9 +96,11 @@ function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, o
           onToggle={onToggle}
           onUploadInto={onUploadInto}
           onNewFolder={onNewFolder}
+          onNewFile={onNewFile}
           onRename={onRename}
           onDelete={onDelete}
           onDownload={onDownload}
+          onOpenFile={onOpenFile}
         />
       ))}
     </>
@@ -93,6 +112,8 @@ export default function ProjectPage({ project }) {
   const [expanded, setExpanded] = useState(() => new Set())
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // {path, isNew} when the editor is open; replaces the tree area.
+  const [editing, setEditing] = useState(null)
   const fileInputRef = useRef(null)
   // Directory the next file-picker selection uploads into.
   const uploadDirRef = useRef('')
@@ -134,6 +155,7 @@ export default function ProjectPage({ project }) {
     setExpanded(new Set())
     setError(null)
     setBusy(false)
+    setEditing(null)
     refresh()
   }, [refresh])
 
@@ -210,6 +232,19 @@ export default function ProjectPage({ project }) {
     await run(() => deleteProjectPath(project.id, node.path))
   }, [project?.id, run])
 
+  const handleOpenFile = useCallback((node) => {
+    setEditing({ path: node.path, isNew: false })
+  }, [])
+
+  const handleNewFile = useCallback((parentDir) => {
+    const name = window.prompt('File name')
+    if (!name || !name.trim()) return
+    const path = parentDir ? `${parentDir}/${name.trim()}` : name.trim()
+    // If it already exists, open it instead of silently overwriting on save.
+    const existing = findNode(tree, path)
+    setEditing({ path, isNew: !existing })
+  }, [tree])
+
   const handleDownload = useCallback(async (node) => {
     try {
       const url = await downloadProjectFile(project.id, node.path)
@@ -265,6 +300,14 @@ export default function ProjectPage({ project }) {
           Upload files
         </button>
         <button
+          onClick={() => handleNewFile('')}
+          disabled={busy}
+          className="px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
+        >
+          <i className="fa-solid fa-file-circle-plus"></i>
+          New file
+        </button>
+        <button
           onClick={() => handleNewFolder('')}
           disabled={busy}
           className="px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
@@ -288,7 +331,22 @@ export default function ProjectPage({ project }) {
         </div>
       )}
 
-      {/* Tree */}
+      {/* Editor takes over the content area while a file is open */}
+      {editing ? (
+        <ProjectFileEditor
+          key={`${project.id}:${editing.path}`}
+          projectId={project.id}
+          path={editing.path}
+          isNew={editing.isNew}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            // A saved new file now exists on disk; drop the isNew flag so
+            // later saves carry the conflict guard, and refresh the tree.
+            setEditing(prev => (prev ? { ...prev, isNew: false } : prev))
+            refresh()
+          }}
+        />
+      ) : (
       <div className="flex-1 overflow-auto py-1">
         {tree.length === 0 && !error && (
           <div className="p-8 text-center text-xs text-fg-subtle">
@@ -304,12 +362,15 @@ export default function ProjectPage({ project }) {
             onToggle={toggle}
             onUploadInto={pickUpload}
             onNewFolder={handleNewFolder}
+            onNewFile={handleNewFile}
             onRename={handleRename}
             onDelete={handleDelete}
             onDownload={handleDownload}
+            onOpenFile={handleOpenFile}
           />
         ))}
       </div>
+      )}
     </div>
   )
 }
