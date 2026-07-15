@@ -1,9 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   getProjectFilesTree, uploadProjectFile, mkdirProjectPath,
-  moveProjectPath, deleteProjectPath, downloadProjectFile,
+  moveProjectPath, copyProjectPath, deleteProjectPath, downloadProjectFile,
 } from '../../services/chat'
 import ProjectFileEditor from './ProjectFileEditor'
+import ContextMenu from './ContextMenu'
+
+// The DataTransfer type carrying the dragged entry's project-relative
+// path. A custom type keeps foreign drags (text, files from the OS) from
+// being mistaken for an internal move.
+const DND_TYPE = 'application/x-llmdock-path'
 
 function findNode(nodes, path) {
   for (const n of nodes) {
@@ -16,6 +22,51 @@ function findNode(nodes, path) {
   return null
 }
 
+// Children of a directory path ('' = project root).
+function listDir(tree, dirPath) {
+  if (!dirPath) return tree
+  const node = findNode(tree, dirPath)
+  return node && node.type === 'dir' ? (node.children || []) : null
+}
+
+function parentDir(path) {
+  const i = path.lastIndexOf('/')
+  return i === -1 ? '' : path.slice(0, i)
+}
+
+function baseName(path) {
+  return path.split('/').pop()
+}
+
+function isSelfOrDescendant(dirPath, ofPath) {
+  return dirPath === ofPath || dirPath.startsWith(ofPath + '/')
+}
+
+// All ancestor dir paths of a path, root ('') excluded:
+// 'a/b/c' -> ['a', 'a/b'].
+function ancestorsOf(path) {
+  const out = []
+  const parts = path.split('/')
+  for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join('/'))
+  return out
+}
+
+// First name that doesn't collide inside dirPath: "a.txt" -> "a (copy).txt"
+// -> "a (copy 2).txt". Works off the client tree snapshot; a stale snapshot
+// just means the backend's already_exists 409 surfaces as an error.
+function uniqueChildName(tree, dirPath, name) {
+  const siblings = new Set((listDir(tree, dirPath) || []).map(n => n.name))
+  if (!siblings.has(name)) return name
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  for (let i = 1; i < 100; i++) {
+    const candidate = i === 1 ? `${stem} (copy)${ext}` : `${stem} (copy ${i})${ext}`
+    if (!siblings.has(candidate)) return candidate
+  }
+  return name // give up; the backend 409 will surface
+}
+
 function formatSize(bytes) {
   if (bytes == null) return ''
   if (bytes < 1024) return `${bytes} B`
@@ -23,84 +74,56 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, onNewFile, onRename, onDelete, onDownload, onOpenFile }) {
-  const isDir = node.type === 'dir'
+// One folder row in the left tree pane (recursive over subdirectories).
+function TreeDir({ node, depth, expanded, selectedDir, dropTarget, cutPath,
+                   onToggle, onSelect, onMenu, onDragStart, onDragOver, onDragLeave, onDrop }) {
+  const subdirs = (node.children || []).filter(c => c.type === 'dir')
+  const isExpanded = expanded.has(node.path)
   return (
     <>
       <div
-        onClick={isDir ? () => onToggle(node.path) : () => onOpenFile(node)}
-        className={`group flex items-center gap-2 py-1.5 pr-3 border-b border-border-subtle text-sm cursor-pointer ${
-          isDir ? 'text-fg' : 'text-fg-muted'
-        } hover:bg-surface-muted`}
-        style={{ paddingLeft: `${12 + depth * 18}px` }}
-        data-testid={`file-row-${node.path}`}
+        draggable
+        onClick={() => onSelect(node.path)}
+        onContextMenu={e => onMenu(e, node)}
+        onDragStart={e => onDragStart(e, node)}
+        onDragOver={e => onDragOver(e, node.path)}
+        onDragLeave={() => onDragLeave(node.path)}
+        onDrop={e => onDrop(e, node.path)}
+        className={`flex items-center gap-1.5 py-1 pr-2 text-sm cursor-pointer rounded ${
+          selectedDir === node.path ? 'bg-accent-subtle text-fg' : 'text-fg-muted hover:bg-surface-muted'
+        } ${dropTarget === node.path ? 'ring-1 ring-accent-strong bg-accent-subtle' : ''} ${
+          cutPath && isSelfOrDescendant(node.path, cutPath) ? 'opacity-50' : ''
+        }`}
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+        data-testid={`tree-node-${node.path}`}
       >
-        {isDir ? (
-          <>
-            <i className={`fa-solid fa-chevron-${expanded.has(node.path) ? 'down' : 'right'} text-[9px] w-3 text-fg-faint flex-shrink-0`}></i>
-            <i className="fa-solid fa-folder text-xs text-amber-500/80 flex-shrink-0"></i>
-          </>
-        ) : (
-          <>
-            <span className="w-3 flex-shrink-0"></span>
-            <i className="fa-regular fa-file text-xs text-fg-faint flex-shrink-0"></i>
-          </>
-        )}
+        <button
+          onClick={e => { e.stopPropagation(); onToggle(node.path) }}
+          className={`w-4 flex-shrink-0 text-fg-faint cursor-pointer ${subdirs.length ? '' : 'invisible'}`}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.path}`}
+          tabIndex={-1}
+        >
+          <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-[9px]`}></i>
+        </button>
+        <i className={`fa-solid fa-folder${selectedDir === node.path ? '-open' : ''} text-xs text-amber-500/80 flex-shrink-0`}></i>
         <span className="flex-1 min-w-0 truncate">{node.name}</span>
-        {!isDir && <span className="text-[10px] text-fg-faint flex-shrink-0">{formatSize(node.size)}</span>}
-        <span className="flex items-center gap-0.5 flex-shrink-0">
-          {isDir && (
-            <>
-              <button
-                onClick={e => { e.stopPropagation(); onUploadInto(node.path) }}
-                className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
-                title="Upload into folder" aria-label={`Upload into ${node.path}`}
-              ><i className="fa-solid fa-file-arrow-up text-xs"></i></button>
-              <button
-                onClick={e => { e.stopPropagation(); onNewFile(node.path) }}
-                className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
-                title="New file" aria-label={`New file in ${node.path}`}
-              ><i className="fa-solid fa-file-circle-plus text-xs"></i></button>
-              <button
-                onClick={e => { e.stopPropagation(); onNewFolder(node.path) }}
-                className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
-                title="New subfolder" aria-label={`New subfolder in ${node.path}`}
-              ><i className="fa-solid fa-folder-plus text-xs"></i></button>
-            </>
-          )}
-          {!isDir && (
-            <button
-              onClick={e => { e.stopPropagation(); onDownload(node) }}
-              className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
-              title="Download" aria-label={`Download ${node.path}`}
-            ><i className="fa-solid fa-download text-xs"></i></button>
-          )}
-          <button
-            onClick={e => { e.stopPropagation(); onRename(node) }}
-            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
-            title="Rename / move" aria-label={`Rename ${node.path}`}
-          ><i className="fa-solid fa-pen text-xs"></i></button>
-          <button
-            onClick={e => { e.stopPropagation(); onDelete(node) }}
-            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg p-1 cursor-pointer"
-            title="Delete" aria-label={`Delete ${node.path}`}
-          ><i className="fa-solid fa-trash text-xs"></i></button>
-        </span>
       </div>
-      {isDir && expanded.has(node.path) && (node.children || []).map(child => (
-        <NodeRow
+      {isExpanded && subdirs.map(child => (
+        <TreeDir
           key={child.path}
           node={child}
           depth={depth + 1}
           expanded={expanded}
+          selectedDir={selectedDir}
+          dropTarget={dropTarget}
+          cutPath={cutPath}
           onToggle={onToggle}
-          onUploadInto={onUploadInto}
-          onNewFolder={onNewFolder}
-          onNewFile={onNewFile}
-          onRename={onRename}
-          onDelete={onDelete}
-          onDownload={onDownload}
-          onOpenFile={onOpenFile}
+          onSelect={onSelect}
+          onMenu={onMenu}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
         />
       ))}
     </>
@@ -109,10 +132,19 @@ function NodeRow({ node, depth, expanded, onToggle, onUploadInto, onNewFolder, o
 
 export default function ProjectPage({ project, onEditorDirtyChange }) {
   const [tree, setTree] = useState([])
+  // Tree-pane expansion state (dir paths). Root is always rendered.
   const [expanded, setExpanded] = useState(() => new Set())
+  // Directory whose contents fill the right pane ('' = project root).
+  const [selectedDir, setSelectedDir] = useState('')
+  // {op: 'copy'|'cut', path, name} — armed by the context menu.
+  const [clipboard, setClipboard] = useState(null)
+  // {x, y, node} — node null means the right pane's background.
+  const [menu, setMenu] = useState(null)
+  // Dir path currently highlighted as a drag-and-drop target.
+  const [dropTarget, setDropTarget] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
-  // {path, isNew} when the editor is open; replaces the tree area.
+  // {path, isNew} when the editor is open; replaces the right pane.
   const [editing, setEditing] = useState(null)
   // Local mirror of the editor's dirty state: the toolbar stays visible
   // while the editor is open, and starting another New file would remount
@@ -166,12 +198,32 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   useEffect(() => {
     setTree([])
     setExpanded(new Set())
+    setSelectedDir('')
+    setClipboard(null)
+    setMenu(null)
+    setDropTarget(null)
     setError(null)
     setBusy(false)
     setEditing(null)
     refresh()
   }, [refresh])
 
+  // If the selected directory vanished (deleted, renamed, moved away),
+  // fall back to its nearest surviving ancestor.
+  useEffect(() => {
+    if (!selectedDir) return
+    let p = selectedDir
+    while (p) {
+      const node = findNode(tree, p)
+      if (node && node.type === 'dir') break
+      p = parentDir(p)
+    }
+    if (p !== selectedDir) setSelectedDir(p)
+  }, [tree, selectedDir])
+
+  // Returns true when the mutation succeeded — callers use it to gate
+  // follow-up state changes (selection remaps, clipboard clears) that
+  // must not happen when the backend rejected the operation.
   const run = useCallback(async (fn) => {
     // Same binding as refresh: a slow mutation for the previous project
     // must not flip busy/error state on the project now displayed (its
@@ -182,8 +234,10 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     try {
       await fn()
       await refresh()
+      return true
     } catch (err) {
       if (projectIdRef.current === pid) setError(err.message)
+      return false
     } finally {
       if (projectIdRef.current === pid) setBusy(false)
     }
@@ -197,6 +251,25 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       return next
     })
   }, [])
+
+  const expandTo = useCallback((dirPath) => {
+    if (!dirPath) return
+    setExpanded(prev => {
+      const next = new Set(prev)
+      for (const a of ancestorsOf(dirPath)) next.add(a)
+      next.add(dirPath)
+      return next
+    })
+  }, [])
+
+  const selectDir = useCallback((dirPath) => {
+    if (editing) {
+      if (!confirmDiscardEdits()) return
+      setEditing(null)
+    }
+    setSelectedDir(dirPath)
+    expandTo(dirPath)
+  }, [editing, confirmDiscardEdits, expandTo])
 
   const pickUpload = useCallback((dir) => {
     uploadDirRef.current = dir
@@ -222,38 +295,40 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
         }
       }
     })
-    if (dir) setExpanded(prev => new Set(prev).add(dir))
   }, [project?.id, run])
 
-  const handleNewFolder = useCallback(async (parentDir) => {
+  const handleNewFolder = useCallback(async (parentPath) => {
     const name = window.prompt('Folder name')
     if (!name || !name.trim()) return
-    const path = parentDir ? `${parentDir}/${name.trim()}` : name.trim()
+    const path = parentPath ? `${parentPath}/${name.trim()}` : name.trim()
     await run(() => mkdirProjectPath(project.id, path))
-    if (parentDir) setExpanded(prev => new Set(prev).add(parentDir))
-  }, [project?.id, run])
+    expandTo(parentPath)
+  }, [project?.id, run, expandTo])
 
   const handleRename = useCallback(async (node) => {
     const newPath = window.prompt('New path (relative to project root)', node.path)
     if (!newPath || !newPath.trim() || newPath.trim() === node.path) return
-    await run(() => moveProjectPath(project.id, node.path, newPath.trim()))
+    const ok = await run(() => moveProjectPath(project.id, node.path, newPath.trim()))
+    if (ok) setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
   }, [project?.id, run])
 
   const handleDelete = useCallback(async (node) => {
     const label = node.type === 'dir' ? `folder "${node.path}" and everything in it` : `"${node.path}"`
     if (!window.confirm(`Delete ${label}?`)) return
-    await run(() => deleteProjectPath(project.id, node.path))
+    const ok = await run(() => deleteProjectPath(project.id, node.path))
+    if (ok) setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
   }, [project?.id, run])
 
   const handleOpenFile = useCallback((node) => {
+    if (!confirmDiscardEdits()) return
     setEditing({ path: node.path, isNew: false })
-  }, [])
+  }, [confirmDiscardEdits])
 
-  const handleNewFile = useCallback((parentDir) => {
+  const handleNewFile = useCallback((parentPath) => {
     if (!confirmDiscardEdits()) return
     const name = window.prompt('File name')
     if (!name || !name.trim()) return
-    const path = parentDir ? `${parentDir}/${name.trim()}` : name.trim()
+    const path = parentPath ? `${parentPath}/${name.trim()}` : name.trim()
     // If it already exists, open it instead of silently overwriting on save.
     const existing = findNode(tree, path)
     setEditing({ path, isNew: !existing })
@@ -273,6 +348,126 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       setError(err.message)
     }
   }, [project?.id])
+
+  // -- Move (drag-and-drop and cut-paste share this) --
+
+  const moveInto = useCallback(async (srcPath, dstDir) => {
+    if (parentDir(srcPath) === dstDir) return // already there
+    if (isSelfOrDescendant(dstDir, srcPath)) {
+      setError('cannot move a folder into itself')
+      return
+    }
+    const dstPath = dstDir ? `${dstDir}/${baseName(srcPath)}` : baseName(srcPath)
+    const ok = await run(() => moveProjectPath(project.id, srcPath, dstPath))
+    if (!ok) return
+    // Keep the selection meaningful when the selected dir itself moved.
+    setSelectedDir(prev => {
+      if (prev && isSelfOrDescendant(prev, srcPath)) {
+        return dstPath + prev.slice(srcPath.length)
+      }
+      return prev
+    })
+    setClipboard(prev => (prev && isSelfOrDescendant(prev.path, srcPath) ? null : prev))
+    expandTo(dstDir)
+  }, [project?.id, run, expandTo])
+
+  // -- Clipboard --
+
+  const armClipboard = useCallback((op, node) => {
+    setClipboard({ op, path: node.path, name: node.name })
+  }, [])
+
+  const handlePaste = useCallback(async (dstDir) => {
+    if (!clipboard) return
+    const { op, path, name } = clipboard
+    if (op === 'cut') {
+      await moveInto(path, dstDir)
+    } else {
+      const dstName = uniqueChildName(tree, dstDir, name)
+      const dstPath = dstDir ? `${dstDir}/${dstName}` : dstName
+      if (isSelfOrDescendant(dstDir, path)) {
+        setError('cannot copy a folder into itself')
+        return
+      }
+      const ok = await run(() => copyProjectPath(project.id, path, dstPath))
+      if (ok) expandTo(dstDir)
+    }
+  }, [clipboard, tree, moveInto, run, project?.id, expandTo])
+
+  // -- Drag and drop --
+
+  const handleDragStart = useCallback((e, node) => {
+    e.dataTransfer.setData(DND_TYPE, node.path)
+    e.dataTransfer.effectAllowed = 'move'
+  }, [])
+
+  const handleDragOver = useCallback((e, dirPath) => {
+    if (!e.dataTransfer.types.includes(DND_TYPE)) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    setDropTarget(dirPath)
+  }, [])
+
+  const handleDragLeave = useCallback((dirPath) => {
+    setDropTarget(prev => (prev === dirPath ? null : prev))
+  }, [])
+
+  const handleDrop = useCallback((e, dirPath) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropTarget(null)
+    const srcPath = e.dataTransfer.getData(DND_TYPE)
+    if (srcPath) moveInto(srcPath, dirPath)
+  }, [moveInto])
+
+  // -- Context menu --
+
+  const openMenu = useCallback((e, node) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({ x: e.clientX, y: e.clientY, node })
+  }, [])
+
+  const closeMenu = useCallback(() => setMenu(null), [])
+
+  const menuItems = useMemo(() => {
+    if (!menu) return []
+    const node = menu.node
+    if (!node || node.isRoot) {
+      // Background of the right pane acts on the selected directory; the
+      // root tree node acts on the project root.
+      const dir = node?.isRoot ? '' : selectedDir
+      return [
+        { label: 'New file', icon: 'fa-file-circle-plus', onClick: () => handleNewFile(dir) },
+        { label: 'New folder', icon: 'fa-folder-plus', onClick: () => handleNewFolder(dir) },
+        { label: 'Upload files', icon: 'fa-file-arrow-up', onClick: () => pickUpload(dir) },
+        'sep',
+        { label: 'Paste', icon: 'fa-paste', disabled: !clipboard, onClick: () => handlePaste(dir) },
+      ]
+    }
+    const isDir = node.type === 'dir'
+    const items = []
+    if (isDir) {
+      items.push({ label: 'Open', icon: 'fa-folder-open', onClick: () => selectDir(node.path) })
+      items.push({ label: 'Paste into', icon: 'fa-paste', disabled: !clipboard, onClick: () => handlePaste(node.path) })
+    } else {
+      items.push({ label: 'Open', icon: 'fa-pen-to-square', onClick: () => handleOpenFile(node) })
+      items.push({ label: 'Download', icon: 'fa-download', onClick: () => handleDownload(node) })
+    }
+    items.push('sep')
+    items.push({ label: 'Cut', icon: 'fa-scissors', onClick: () => armClipboard('cut', node) })
+    items.push({ label: 'Copy', icon: 'fa-copy', onClick: () => armClipboard('copy', node) })
+    items.push({ label: 'Rename', icon: 'fa-pen', onClick: () => handleRename(node) })
+    items.push('sep')
+    items.push({ label: 'Delete', icon: 'fa-trash', danger: true, onClick: () => handleDelete(node) })
+    return items
+  }, [menu, clipboard, selectedDir, handleNewFile, handleNewFolder, pickUpload, handlePaste,
+      selectDir, handleOpenFile, handleDownload, armClipboard, handleRename, handleDelete])
+
+  const entries = listDir(tree, selectedDir) || []
+  const crumbs = selectedDir ? selectedDir.split('/') : []
+  const cutPath = clipboard?.op === 'cut' ? clipboard.path : null
 
   if (!project) {
     return (
@@ -306,7 +501,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       {/* Toolbar */}
       <div className="px-6 py-2 border-b border-border flex items-center gap-2">
         <button
-          onClick={() => pickUpload('')}
+          onClick={() => pickUpload(selectedDir)}
           disabled={busy}
           className="px-3 py-1.5 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
         >
@@ -314,7 +509,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
           Upload files
         </button>
         <button
-          onClick={() => handleNewFile('')}
+          onClick={() => handleNewFile(selectedDir)}
           disabled={busy}
           className="px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
         >
@@ -322,13 +517,24 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
           New file
         </button>
         <button
-          onClick={() => handleNewFolder('')}
+          onClick={() => handleNewFolder(selectedDir)}
           disabled={busy}
           className="px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
         >
           <i className="fa-solid fa-folder-plus"></i>
           New folder
         </button>
+        {clipboard && (
+          <span className="flex items-center gap-1.5 px-2 py-1 bg-surface border border-border rounded-lg text-[11px] text-fg-subtle" data-testid="clipboard-chip">
+            <i className={`fa-solid ${clipboard.op === 'cut' ? 'fa-scissors' : 'fa-copy'} text-[10px]`}></i>
+            <span className="max-w-[160px] truncate">{clipboard.name}</span>
+            <button
+              onClick={() => setClipboard(null)}
+              className="text-fg-faint hover:text-fg cursor-pointer"
+              aria-label="Clear clipboard"
+            ><i className="fa-solid fa-xmark text-[10px]"></i></button>
+          </span>
+        )}
         <button
           onClick={refresh}
           disabled={busy}
@@ -345,47 +551,146 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
         </div>
       )}
 
-      {/* Editor takes over the content area while a file is open */}
-      {editing ? (
-        <ProjectFileEditor
-          key={`${project.id}:${editing.path}`}
-          projectId={project.id}
-          path={editing.path}
-          isNew={editing.isNew}
-          onDirtyChange={handleEditorDirtyChange}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            // A saved new file now exists on disk; drop the isNew flag so
-            // later saves carry the conflict guard, and refresh the tree.
-            setEditing(prev => (prev ? { ...prev, isNew: false } : prev))
-            refresh()
-          }}
-        />
-      ) : (
-      <div className="flex-1 overflow-auto py-1">
-        {tree.length === 0 && !error && (
-          <div className="p-8 text-center text-xs text-fg-subtle">
-            No files yet. Upload files or create a folder to get started.
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: folder tree */}
+        <div className="w-56 flex-shrink-0 border-r border-border overflow-y-auto py-2 px-1.5 select-none">
+          <div
+            onClick={() => selectDir('')}
+            onContextMenu={e => openMenu(e, { isRoot: true })}
+            onDragOver={e => handleDragOver(e, '')}
+            onDragLeave={() => handleDragLeave('')}
+            onDrop={e => handleDrop(e, '')}
+            className={`flex items-center gap-1.5 py-1 pl-2 pr-2 text-sm cursor-pointer rounded ${
+              selectedDir === '' ? 'bg-accent-subtle text-fg' : 'text-fg-muted hover:bg-surface-muted'
+            } ${dropTarget === '' ? 'ring-1 ring-accent-strong bg-accent-subtle' : ''}`}
+            data-testid="tree-node-root"
+          >
+            <i className="fa-solid fa-house text-xs text-fg-subtle flex-shrink-0"></i>
+            <span className="flex-1 min-w-0 truncate font-medium">{project.name}</span>
           </div>
-        )}
-        {tree.map(node => (
-          <NodeRow
-            key={node.path}
-            node={node}
-            depth={0}
-            expanded={expanded}
-            onToggle={toggle}
-            onUploadInto={pickUpload}
-            onNewFolder={handleNewFolder}
-            onNewFile={handleNewFile}
-            onRename={handleRename}
-            onDelete={handleDelete}
-            onDownload={handleDownload}
-            onOpenFile={handleOpenFile}
+          {tree.filter(n => n.type === 'dir').map(node => (
+            <TreeDir
+              key={node.path}
+              node={node}
+              depth={1}
+              expanded={expanded}
+              selectedDir={selectedDir}
+              dropTarget={dropTarget}
+              cutPath={cutPath}
+              onToggle={toggle}
+              onSelect={selectDir}
+              onMenu={openMenu}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            />
+          ))}
+        </div>
+
+        {/* Right: editor, or the selected directory's contents */}
+        {editing ? (
+          <ProjectFileEditor
+            key={`${project.id}:${editing.path}`}
+            projectId={project.id}
+            path={editing.path}
+            isNew={editing.isNew}
+            onDirtyChange={handleEditorDirtyChange}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              // A saved new file now exists on disk; drop the isNew flag so
+              // later saves carry the conflict guard, and refresh the tree.
+              setEditing(prev => (prev ? { ...prev, isNew: false } : prev))
+              refresh()
+            }}
           />
-        ))}
+        ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Breadcrumb */}
+          <div className="px-4 py-1.5 border-b border-border-subtle flex items-center gap-1 text-xs text-fg-subtle flex-wrap">
+            <button
+              onClick={() => selectDir('')}
+              className="hover:text-fg cursor-pointer"
+              aria-label="Go to project root"
+            ><i className="fa-solid fa-house"></i></button>
+            {crumbs.map((seg, i) => {
+              const path = crumbs.slice(0, i + 1).join('/')
+              return (
+                <span key={path} className="flex items-center gap-1">
+                  <i className="fa-solid fa-chevron-right text-[8px] text-fg-faint"></i>
+                  <button
+                    onClick={() => selectDir(path)}
+                    className={`hover:text-fg cursor-pointer ${i === crumbs.length - 1 ? 'text-fg font-medium' : ''}`}
+                    data-testid={`crumb-${path}`}
+                  >{seg}</button>
+                </span>
+              )
+            })}
+          </div>
+
+          <div
+            className={`flex-1 overflow-auto py-1 ${dropTarget === `bg:${selectedDir}` ? 'ring-1 ring-inset ring-accent-strong' : ''}`}
+            onContextMenu={e => openMenu(e, null)}
+            onDragOver={e => handleDragOver(e, `bg:${selectedDir}`)}
+            onDragLeave={() => handleDragLeave(`bg:${selectedDir}`)}
+            onDrop={e => handleDrop(e, selectedDir)}
+            data-testid="dir-contents"
+          >
+            {entries.length === 0 && !error && (
+              <div className="p-8 text-center text-xs text-fg-subtle">
+                {selectedDir ? 'This folder is empty.' : 'No files yet. Upload files or create a folder to get started.'}
+              </div>
+            )}
+            {entries.map(node => {
+              const isDir = node.type === 'dir'
+              return (
+                <div
+                  key={node.path}
+                  draggable
+                  onClick={isDir ? () => selectDir(node.path) : () => handleOpenFile(node)}
+                  onContextMenu={e => openMenu(e, node)}
+                  onDragStart={e => handleDragStart(e, node)}
+                  onDragOver={isDir ? e => handleDragOver(e, node.path) : undefined}
+                  onDragLeave={isDir ? () => handleDragLeave(node.path) : undefined}
+                  onDrop={isDir ? e => handleDrop(e, node.path) : undefined}
+                  className={`group flex items-center gap-2 py-1.5 px-4 border-b border-border-subtle text-sm cursor-pointer ${
+                    isDir ? 'text-fg' : 'text-fg-muted'
+                  } hover:bg-surface-muted ${dropTarget === node.path ? 'ring-1 ring-accent-strong bg-accent-subtle' : ''} ${
+                    cutPath && isSelfOrDescendant(node.path, cutPath) ? 'opacity-50' : ''
+                  }`}
+                  data-testid={`file-row-${node.path}`}
+                >
+                  <i className={`${isDir ? 'fa-solid fa-folder text-amber-500/80' : 'fa-regular fa-file text-fg-faint'} text-xs flex-shrink-0 w-4`}></i>
+                  <span className="flex-1 min-w-0 truncate">{node.name}</span>
+                  {!isDir && <span className="text-[10px] text-fg-faint flex-shrink-0">{formatSize(node.size)}</span>}
+                  <span className="flex items-center gap-0.5 flex-shrink-0">
+                    {!isDir && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDownload(node) }}
+                        className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
+                        title="Download" aria-label={`Download ${node.path}`}
+                      ><i className="fa-solid fa-download text-xs"></i></button>
+                    )}
+                    <button
+                      onClick={e => { e.stopPropagation(); handleRename(node) }}
+                      className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg p-1 cursor-pointer"
+                      title="Rename / move" aria-label={`Rename ${node.path}`}
+                    ><i className="fa-solid fa-pen text-xs"></i></button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDelete(node) }}
+                      className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg p-1 cursor-pointer"
+                      title="Delete" aria-label={`Delete ${node.path}`}
+                    ><i className="fa-solid fa-trash text-xs"></i></button>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        )}
       </div>
-      )}
+
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
     </div>
   )
 }

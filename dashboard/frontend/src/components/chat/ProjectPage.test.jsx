@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import ProjectPage from './ProjectPage'
 
-const { mockTree, mockUpload, mockMkdir, mockMove, mockDelete, mockGetContent, mockSaveContent } = vi.hoisted(() => ({
+const { mockTree, mockUpload, mockMkdir, mockMove, mockCopy, mockDelete, mockGetContent, mockSaveContent } = vi.hoisted(() => ({
   mockTree: vi.fn(),
   mockUpload: vi.fn(),
   mockMkdir: vi.fn(),
   mockMove: vi.fn(),
+  mockCopy: vi.fn(),
   mockDelete: vi.fn(),
   mockGetContent: vi.fn(),
   mockSaveContent: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../../services/chat', () => ({
   uploadProjectFile: (...a) => mockUpload(...a),
   mkdirProjectPath: (...a) => mockMkdir(...a),
   moveProjectPath: (...a) => mockMove(...a),
+  copyProjectPath: (...a) => mockCopy(...a),
   deleteProjectPath: (...a) => mockDelete(...a),
   downloadProjectFile: vi.fn(),
   getProjectFileContent: (...a) => mockGetContent(...a),
@@ -27,6 +29,7 @@ const project = { id: 'p1', name: 'Research', description: 'notes & data' }
 const TREE = [
   {
     name: 'docs', path: 'docs', type: 'dir', modified_at: 1, children: [
+      { name: 'inner', path: 'docs/inner', type: 'dir', modified_at: 1, children: [] },
       { name: 'a.txt', path: 'docs/a.txt', type: 'file', size: 5, modified_at: 1 },
     ],
   },
@@ -38,6 +41,7 @@ beforeEach(() => {
   mockUpload.mockReset().mockResolvedValue({})
   mockMkdir.mockReset().mockResolvedValue({})
   mockMove.mockReset().mockResolvedValue({})
+  mockCopy.mockReset().mockResolvedValue({})
   mockDelete.mockReset().mockResolvedValue({ ok: true })
   mockGetContent.mockReset().mockResolvedValue({ path: 'readme.md', content: 'doc', revision: 'r1' })
   mockSaveContent.mockReset().mockResolvedValue({ path: 'readme.md', revision: 'r2' })
@@ -51,25 +55,88 @@ afterEach(() => {
 async function renderPage() {
   render(<ProjectPage project={project} />)
   await waitFor(() => expect(mockTree).toHaveBeenCalledWith('p1'))
-  await screen.findByText('readme.md')
+  await screen.findByTestId('file-row-readme.md')
 }
 
-describe('ProjectPage file tree', () => {
-  it('renders header, root entries, and dir contents after expand', async () => {
+// Minimal DataTransfer stand-in — jsdom has no native one.
+function makeDataTransfer() {
+  return {
+    store: {},
+    types: [],
+    effectAllowed: '',
+    dropEffect: '',
+    setData(type, val) {
+      this.store[type] = val
+      if (!this.types.includes(type)) this.types.push(type)
+    },
+    getData(type) { return this.store[type] || '' },
+  }
+}
+
+function dragAndDrop(srcEl, dstEl) {
+  const dataTransfer = makeDataTransfer()
+  fireEvent.dragStart(srcEl, { dataTransfer })
+  fireEvent.dragOver(dstEl, { dataTransfer })
+  fireEvent.drop(dstEl, { dataTransfer })
+}
+
+describe('ProjectPage explorer layout', () => {
+  it('renders header, folder tree, and root contents', async () => {
     await renderPage()
-    expect(screen.getByText('Research')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Research' })).toBeTruthy()
     expect(screen.getByText('notes & data')).toBeTruthy()
-    expect(screen.getByText('docs')).toBeTruthy()
-    // Children hidden until the dir is expanded.
-    expect(screen.queryByText('a.txt')).toBeNull()
+    // Tree pane: root node + dirs only.
+    expect(screen.getByTestId('tree-node-root')).toBeTruthy()
+    expect(screen.getByTestId('tree-node-docs')).toBeTruthy()
+    expect(screen.queryByTestId('tree-node-readme.md')).toBeNull()
+    // Right pane: root entries; children hidden until docs is selected.
+    expect(screen.getByTestId('file-row-docs')).toBeTruthy()
+    expect(screen.queryByTestId('file-row-docs/a.txt')).toBeNull()
+  })
+
+  it('selecting a folder in the tree shows its contents in the right pane', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    expect(screen.getByTestId('file-row-docs/a.txt')).toBeTruthy()
+    expect(screen.getByTestId('file-row-docs/inner')).toBeTruthy()
+    expect(screen.queryByTestId('file-row-readme.md')).toBeNull()
+  })
+
+  it('clicking a folder row in the right pane navigates into it', async () => {
+    await renderPage()
     fireEvent.click(screen.getByTestId('file-row-docs'))
-    expect(screen.getByText('a.txt')).toBeTruthy()
+    expect(screen.getByTestId('file-row-docs/a.txt')).toBeTruthy()
+  })
+
+  it('breadcrumb navigates back to the root', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-docs'))
+    expect(screen.getByTestId('crumb-docs')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Go to project root'))
+    expect(screen.getByTestId('file-row-readme.md')).toBeTruthy()
+  })
+
+  it('tree chevron expands subfolders without changing the selection', async () => {
+    await renderPage()
+    expect(screen.queryByTestId('tree-node-docs/inner')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    expect(screen.getByTestId('tree-node-docs/inner')).toBeTruthy()
+    // Selection unchanged: right pane still shows the root.
+    expect(screen.getByTestId('file-row-readme.md')).toBeTruthy()
   })
 
   it('renders a "Project not found" state without a project', () => {
     render(<ProjectPage project={null} />)
     expect(screen.getByText('Project not found')).toBeTruthy()
     expect(mockTree).not.toHaveBeenCalled()
+  })
+
+  it('toolbar actions target the selected folder', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    vi.spyOn(window, 'prompt').mockReturnValue('sub')
+    fireEvent.click(screen.getByText('New folder'))
+    await waitFor(() => expect(mockMkdir).toHaveBeenCalledWith('p1', 'docs/sub'))
   })
 
   it('creates a folder at root via prompt and refreshes', async () => {
@@ -80,20 +147,13 @@ describe('ProjectPage file tree', () => {
     expect(mockTree).toHaveBeenCalledTimes(2)
   })
 
-  it('creates a subfolder inside a dir from its hover action', async () => {
+  it('uploads picked files into the selected directory', async () => {
     await renderPage()
-    vi.spyOn(window, 'prompt').mockReturnValue('sub')
-    fireEvent.click(screen.getByLabelText('New subfolder in docs'))
-    await waitFor(() => expect(mockMkdir).toHaveBeenCalledWith('p1', 'docs/sub'))
-  })
-
-  it('uploads picked files into the chosen directory', async () => {
-    await renderPage()
-    fireEvent.click(screen.getByLabelText('Upload into docs'))
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    fireEvent.click(screen.getByText('Upload files'))
     const file = new File(['hello'], 'up.txt', { type: 'text/plain' })
     fireEvent.change(screen.getByTestId('file-input'), { target: { files: [file] } })
     await waitFor(() => expect(mockUpload).toHaveBeenCalledWith('p1', file, { dir: 'docs' }))
-    expect(mockTree).toHaveBeenCalledTimes(2)
   })
 
   it('offers overwrite when the upload conflicts', async () => {
@@ -144,10 +204,185 @@ describe('ProjectPage file tree', () => {
     render(<ProjectPage project={project} />)
     expect(await screen.findByText(/No files yet/)).toBeTruthy()
   })
+
+  it('deleting the selected folder falls back to its parent', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    expect(screen.getByTestId('file-row-docs/a.txt')).toBeTruthy()
+    mockTree.mockResolvedValue({ tree: [TREE[1]] }) // docs gone after refresh
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Delete'))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('p1', 'docs'))
+    // Selection fell back to root, which still has readme.md.
+    expect(await screen.findByTestId('file-row-readme.md')).toBeTruthy()
+  })
+})
+
+describe('ProjectPage context menu', () => {
+  it('right-clicking a file offers Open/Download/Cut/Copy/Rename/Delete', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    const menu = screen.getByTestId('context-menu')
+    for (const label of ['Open', 'Download', 'Cut', 'Copy', 'Rename', 'Delete']) {
+      expect(within(menu).getByText(label)).toBeTruthy()
+    }
+  })
+
+  it('closes on Escape without acting', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('context-menu')).toBeNull()
+    expect(mockMove).not.toHaveBeenCalled()
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('cut then paste into a folder moves it and clears the clipboard', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    expect(screen.getByTestId('clipboard-chip')).toBeTruthy()
+    // Cut source is dimmed while on the clipboard.
+    expect(screen.getByTestId('file-row-readme.md').className).toContain('opacity-50')
+
+    fireEvent.contextMenu(screen.getByTestId('file-row-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Paste into'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'readme.md', 'docs/readme.md'))
+    await waitFor(() => expect(screen.queryByTestId('clipboard-chip')).toBeNull())
+  })
+
+  it('copy then paste keeps the clipboard and copies with a non-colliding name', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Copy'))
+
+    // Paste into the SAME folder → "(copy)" suffix before the extension.
+    fireEvent.contextMenu(screen.getByTestId('dir-contents'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Paste'))
+    await waitFor(() => expect(mockCopy).toHaveBeenCalledWith('p1', 'readme.md', 'readme (copy).md'))
+    // Copy stays on the clipboard for repeated pastes.
+    expect(screen.getByTestId('clipboard-chip')).toBeTruthy()
+  })
+
+  it('pasting a copied file into a folder without a collision keeps its name', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Copy'))
+    fireEvent.contextMenu(screen.getByTestId('file-row-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Paste into'))
+    await waitFor(() => expect(mockCopy).toHaveBeenCalledWith('p1', 'readme.md', 'docs/readme.md'))
+  })
+
+  it('Paste is disabled while the clipboard is empty', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('dir-contents'), { clientX: 5, clientY: 5 })
+    expect(within(screen.getByTestId('context-menu')).getByText('Paste').closest('button').disabled).toBe(true)
+  })
+
+  it('the clipboard chip can be cleared manually', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    fireEvent.click(screen.getByLabelText('Clear clipboard'))
+    expect(screen.queryByTestId('clipboard-chip')).toBeNull()
+  })
+
+  it('deleting the cut source clears the clipboard', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(screen.getByLabelText('Delete readme.md'))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByTestId('clipboard-chip')).toBeNull())
+  })
+
+  it('the root tree node menu pastes into the root', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs')) // selection elsewhere
+    fireEvent.contextMenu(screen.getByTestId('file-row-docs/a.txt'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    fireEvent.contextMenu(screen.getByTestId('tree-node-root'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Paste'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs/a.txt', 'a.txt'))
+  })
+
+  it('Open on a folder navigates into it', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('file-row-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Open'))
+    expect(screen.getByTestId('file-row-docs/a.txt')).toBeTruthy()
+  })
+})
+
+describe('ProjectPage drag and drop', () => {
+  it('dropping a file onto a tree folder moves it there', async () => {
+    await renderPage()
+    dragAndDrop(screen.getByTestId('file-row-readme.md'), screen.getByTestId('tree-node-docs'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'readme.md', 'docs/readme.md'))
+  })
+
+  it('dropping a file onto a folder row moves it there', async () => {
+    await renderPage()
+    dragAndDrop(screen.getByTestId('file-row-readme.md'), screen.getByTestId('file-row-docs'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'readme.md', 'docs/readme.md'))
+  })
+
+  it('dropping onto the root tree node moves to the root', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    dragAndDrop(screen.getByTestId('file-row-docs/a.txt'), screen.getByTestId('tree-node-root'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs/a.txt', 'a.txt'))
+  })
+
+  it('dropping into the item\'s own parent is a no-op', async () => {
+    await renderPage()
+    dragAndDrop(screen.getByTestId('file-row-readme.md'), screen.getByTestId('tree-node-root'))
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockMove).not.toHaveBeenCalled()
+  })
+
+  it('dropping a folder into its own subtree is rejected client-side', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-docs/inner'))
+    expect(await screen.findByText('cannot move a folder into itself')).toBeTruthy()
+    expect(mockMove).not.toHaveBeenCalled()
+  })
+
+  it('foreign drags without the internal payload type are ignored', async () => {
+    await renderPage()
+    const dataTransfer = makeDataTransfer()
+    dataTransfer.setData('text/plain', 'whatever')
+    fireEvent.dragOver(screen.getByTestId('tree-node-docs'), { dataTransfer })
+    fireEvent.drop(screen.getByTestId('tree-node-docs'), { dataTransfer })
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockMove).not.toHaveBeenCalled()
+  })
+
+  it('moving the selected folder keeps the selection on its new path', async () => {
+    await renderPage()
+    // Select docs/inner, then move it into the root.
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    fireEvent.click(screen.getByTestId('tree-node-docs/inner'))
+    const movedTree = [
+      { name: 'docs', path: 'docs', type: 'dir', modified_at: 1, children: [
+        { name: 'a.txt', path: 'docs/a.txt', type: 'file', size: 5, modified_at: 1 },
+      ] },
+      { name: 'inner', path: 'inner', type: 'dir', modified_at: 1, children: [] },
+      { name: 'readme.md', path: 'readme.md', type: 'file', size: 12, modified_at: 1 },
+    ]
+    mockTree.mockResolvedValue({ tree: movedTree })
+    dragAndDrop(screen.getByTestId('tree-node-docs/inner'), screen.getByTestId('tree-node-root'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs/inner', 'inner'))
+    // Right pane follows the moved folder (still selected, at its new path).
+    await waitFor(() => expect(screen.getByTestId('crumb-inner')).toBeTruthy())
+  })
 })
 
 describe('ProjectPage editor integration', () => {
-  it('clicking a file row opens the editor with its content; closing returns to the tree', async () => {
+  it('clicking a file row opens the editor with its content; closing returns to the listing', async () => {
     await renderPage()
     fireEvent.click(screen.getByTestId('file-row-readme.md'))
     await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
@@ -156,7 +391,7 @@ describe('ProjectPage editor integration', () => {
 
     fireEvent.click(screen.getByLabelText('Close editor'))
     expect(screen.queryByTestId('file-editor')).toBeNull()
-    expect(screen.getByText('readme.md')).toBeTruthy()
+    expect(screen.getByTestId('file-row-readme.md')).toBeTruthy()
   })
 
   it('New file prompts for a name and opens an empty new-file editor', async () => {
@@ -176,6 +411,17 @@ describe('ProjectPage editor integration', () => {
     await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
   })
 
+  it('New file in a selected folder creates under that folder', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    vi.spyOn(window, 'prompt').mockReturnValue('notes.md')
+    fireEvent.click(screen.getByText('New file'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'x' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'docs/notes.md', 'x', null, true))
+  })
+
   it('saving a new file refreshes the tree', async () => {
     await renderPage()
     vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
@@ -185,6 +431,17 @@ describe('ProjectPage editor integration', () => {
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'fresh.md', 'body', null, true))
     await waitFor(() => expect(mockTree).toHaveBeenCalledTimes(2))
+  })
+
+  it('navigating the tree while the editor is dirty asks first; cancel keeps the editor', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
   })
 })
 
@@ -350,17 +607,5 @@ describe('ProjectPage stale-refresh generation theft', () => {
     resolveB({ tree: treeB })                                // B resolves LAST
     expect(await screen.findByText('b-only.txt')).toBeTruthy()
     expect(screen.queryByText('a-only.txt')).toBeNull()
-  })
-})
-
-describe('ProjectPage upload row visibility', () => {
-  it('expands the target dir after uploading into it', async () => {
-    await renderPage()
-    fireEvent.click(within(screen.getByTestId('file-row-docs')).getByLabelText('Upload into docs'))
-    const file = new File(['hello'], 'up.txt', { type: 'text/plain' })
-    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [file] } })
-    await waitFor(() => expect(mockUpload).toHaveBeenCalled())
-    // docs auto-expanded → its child is visible.
-    expect(await screen.findByText('a.txt')).toBeTruthy()
   })
 })

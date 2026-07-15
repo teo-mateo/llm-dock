@@ -457,6 +457,86 @@ def move(root: str, rel_src: str, rel_dst: str) -> dict:
     return _node(abs_dst, "/".join(dst_parts))
 
 
+def _precheck_copy_tree(abs_src: str, dst_depth: int):
+    """Pre-scan a directory before copytree: reject special files (opening
+    a FIFO to copy it would block the worker forever) and enforce the path
+    depth cap at the DESTINATION — the source obeys it relative to its own
+    location, but copying deep subtree into an already-deep folder could
+    mint paths build_tree/rmtree would then have to recurse past."""
+    for dirpath, dirnames, filenames in os.walk(abs_src):
+        rel_depth = 0 if dirpath == abs_src else len(os.path.relpath(dirpath, abs_src).split(os.sep))
+        child_depth = dst_depth + rel_depth + 1
+        if child_depth > MAX_PATH_DEPTH and (dirnames or filenames):
+            raise ProjectFilesError("copy would exceed maximum path depth")
+        for name in filenames:
+            st = os.lstat(os.path.join(dirpath, name))
+            if not (stat_mod.S_ISREG(st.st_mode) or stat_mod.S_ISLNK(st.st_mode)):
+                raise ProjectFilesError("directory contains a special file that cannot be copied")
+
+
+def copy_path(root: str, rel_src: str, rel_dst: str) -> dict:
+    """Copy a file, symlink, or directory tree to a new relative path.
+    Same contract as move: the destination's parent must exist and the
+    destination itself must not. Symlinks are copied as links, never
+    followed (matching the tree/delete contract — a link pointing outside
+    the root must not smuggle its target's content into the project)."""
+    src_parts = split_rel_path(rel_src)
+    dst_parts = split_rel_path(rel_dst)
+    if not src_parts:
+        raise ProjectFilesError("cannot copy project root")
+    if not dst_parts:
+        raise ProjectFilesError("destination is required")
+    abs_src = resolve(root, rel_src)
+    abs_dst = resolve(root, rel_dst)
+    if not os.path.lexists(abs_src):
+        raise ProjectFilesError("source not found", status=404)
+    if os.path.lexists(abs_dst):
+        raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+    if dst_parts[:len(src_parts)] == src_parts:
+        raise ProjectFilesError("cannot copy a directory into itself")
+    abs_dst_dir = os.path.dirname(abs_dst)
+    if not os.path.isdir(abs_dst_dir):
+        raise ProjectFilesError("destination directory not found", status=404)
+
+    src_st = os.lstat(abs_src)
+    with _fs_errors():
+        if stat_mod.S_ISDIR(src_st.st_mode):
+            _precheck_copy_tree(abs_src, len(dst_parts))
+            try:
+                shutil.copytree(abs_src, abs_dst, symlinks=True)
+            except FileExistsError:
+                raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+            except Exception:
+                # A partial tree is worse than no tree: the client will
+                # retry the whole copy, and a half-populated destination
+                # would then 409 as already_exists.
+                shutil.rmtree(abs_dst, ignore_errors=True)
+                raise
+        elif stat_mod.S_ISLNK(src_st.st_mode):
+            try:
+                os.symlink(os.readlink(abs_src), abs_dst)
+            except FileExistsError:
+                raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+        elif stat_mod.S_ISREG(src_st.st_mode):
+            # Stage in the destination directory, then publish with an
+            # atomic no-replace link — same 409 contract as save_stream
+            # even against a concurrent claim of the destination name.
+            fd, tmp_path = tempfile.mkstemp(prefix=".copy-", suffix=".tmp", dir=abs_dst_dir)
+            try:
+                os.close(fd)
+                shutil.copy2(abs_src, tmp_path)  # preserves mode
+                try:
+                    os.link(tmp_path, abs_dst)
+                except FileExistsError:
+                    raise ProjectFilesError("destination already exists", status=409, code="already_exists")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        else:
+            raise ProjectFilesError("not a copyable file type")
+    return _node(abs_dst, "/".join(dst_parts))
+
+
 def delete(root: str, rel_path: str):
     parts = split_rel_path(rel_path)
     if not parts:

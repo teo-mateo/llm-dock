@@ -110,6 +110,13 @@ export async function moveProjectPath(projectId, path, newPath) {
   })
 }
 
+export async function copyProjectPath(projectId, path, newPath) {
+  return fetchAPI(`/chat/projects/${projectId}/files/copy`, {
+    method: 'POST',
+    body: JSON.stringify({ path, new_path: newPath }),
+  })
+}
+
 export async function deleteProjectPath(projectId, path) {
   return fetchAPI(`/chat/projects/${projectId}/files?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',

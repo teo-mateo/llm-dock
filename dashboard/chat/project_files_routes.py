@@ -189,6 +189,22 @@ def project_files_move(project_id):
     return jsonify(node)
 
 
+@chat_bp.route("/api/chat/projects/<project_id>/files/copy", methods=["POST"])
+@require_auth
+def project_files_copy(project_id):
+    root, err = _project_root_or_404(project_id, create=True)
+    if err:
+        return err
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be {path, new_path}"}), 400
+    node = pf.copy_path(root, data.get("path"), data.get("new_path"))
+    stale = _revalidate_or_cleanup(project_id)
+    if stale:
+        return stale
+    return jsonify(node), 201
+
+
 @chat_bp.route("/api/chat/projects/<project_id>/files", methods=["DELETE"])
 @require_auth
 def project_files_delete(project_id):
