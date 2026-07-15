@@ -196,9 +196,23 @@ describe('ProjectFileEditor', () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(false)
   })
 
-  it('shows a load error for binary files', async () => {
+  it('a failed load shows the error WITHOUT a writable textarea (regression: codex 6.1)', async () => {
+    // A blank editable buffer over an unread file would save as an
+    // unconditional overwrite of content the user never saw.
     mockGet.mockRejectedValue(new Error('not a text file'))
     render(<ProjectFileEditor projectId="p1" path="img.png" onClose={() => {}} />)
     expect(await screen.findByText('not a text file')).toBeTruthy()
+    expect(screen.queryByTestId('editor-textarea')).toBeNull()
+    expect(screen.getByText('Save').disabled).toBe(true)
+  })
+
+  it('Retry after a transient load failure opens the editor normally', async () => {
+    mockGet
+      .mockRejectedValueOnce(new Error('HTTP 500'))
+      .mockResolvedValueOnce({ path: 'notes.md', content: 'recovered', revision: 'rr' })
+    render(<ProjectFileEditor projectId="p1" path="notes.md" onClose={() => {}} />)
+    await screen.findByText('HTTP 500')
+    fireEvent.click(screen.getByLabelText('Retry loading file'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea').value).toBe('recovered'))
   })
 })

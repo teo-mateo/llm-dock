@@ -13,6 +13,11 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
   const [dirty, setDirty] = useState(isNew)
   const [error, setError] = useState(null)
   const [conflict, setConflict] = useState(null) // conflict message | null
+  // True when the INITIAL content load failed (binary, oversized,
+  // transient error). The textarea must not render in that state: a blank
+  // editable buffer over an unread file would save as an unconditional
+  // overwrite of content the user never saw.
+  const [loadFailed, setLoadFailed] = useState(false)
   const textareaRef = useRef(null)
   // Latest textarea content, for comparing against the snapshot a save
   // actually submitted — the user may keep typing while a save is in
@@ -35,8 +40,10 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
       createModeRef.current = false
       setBaseRevision(doc.revision)
       setDirty(false)
+      setLoadFailed(false)
     } catch (err) {
       setError(err.message)
+      setLoadFailed(true)
     } finally {
       setLoading(false)
     }
@@ -164,6 +171,11 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-fg-subtle text-sm">
           Loading…
+        </div>
+      ) : loadFailed ? (
+        <div className="flex-1 flex items-center justify-center gap-3 text-fg-subtle text-sm">
+          <span>Could not open this file.</span>
+          <button onClick={load} className="underline" aria-label="Retry loading file">Retry</button>
         </div>
       ) : (
         <textarea
