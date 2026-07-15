@@ -599,9 +599,13 @@ class TestSnapshotThreading:
 class TestRoutesHelper:
     @pytest.fixture
     def app(self, tmp_path):
+        from chat.db import ChatDB
         app = Flask(__name__)
         app.config["MCP_MANAGER"] = FakeManager()
         app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+        # _mcp_for_conversation builds the deleted-project revalidation
+        # closure over the DB.
+        app.config["CHAT_DB"] = ChatDB(":memory:")
         return app
 
     def test_none_without_servers_or_project(self, app):
@@ -629,6 +633,97 @@ class TestRoutesHelper:
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
+
+
+class TestDeletedProjectSweep:
+    """Regression: codex PR84 3.1 — a write-tool call landing after the
+    user deletes the project must not leave an orphan project directory.
+    The scoped manager revalidates at its commit point (after every
+    project-files call, success or failure) and sweeps the directory when
+    the project row is gone — the same whoever-acts-last-cleans-up
+    contract as the HTTP mutation routes."""
+
+    @pytest.fixture
+    def app(self, tmp_path):
+        from chat.db import ChatDB
+        app = Flask(__name__)
+        app.config["MCP_MANAGER"] = FakeManager()
+        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+        app.config["CHAT_DB"] = ChatDB(":memory:")
+        return app
+
+    def _make_project(self, app):
+        from chat.models import Project
+        import uuid
+        return app.config["CHAT_DB"].create_project(
+            Project(id=str(uuid.uuid4()), name="P")).id
+
+    def _scoped_manager(self, app, pid):
+        from chat.routes import _mcp_for_conversation
+        with app.app_context():
+            return _mcp_for_conversation(_conv(project_id=pid), [], pid)
+
+    class _WritingInner:
+        """Stands in for the real subprocess spawn: the call itself
+        recreates the project root, exactly like a late create_file."""
+
+        def __init__(self, root, raise_after_write=False):
+            self.root = root
+            self.raise_after_write = raise_after_write
+
+        def call_tool(self, server_id, tool_name, arguments, extra_env=None):
+            os.makedirs(self.root, exist_ok=True)
+            with open(os.path.join(self.root, "late.md"), "w") as fh:
+                fh.write("resurrected")
+            if self.raise_after_write:
+                raise RuntimeError("tool call timed out")
+            return ("Created late.md (11 bytes)", [])
+
+    def test_late_write_after_project_delete_is_swept(self, app, tmp_path):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root)
+
+        # The user deletes the project: directory pass + row + sweep,
+        # like the delete route.
+        pf.delete_project_root(str(tmp_path / "storage"), pid)
+        app.config["CHAT_DB"].delete_project(pid)
+        pf.delete_project_root(str(tmp_path / "storage"), pid)
+
+        text, _ = mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert text.startswith("Created")  # the tool itself succeeded...
+        assert not os.path.exists(root)    # ...but no orphan survives
+
+    def test_live_project_write_is_kept(self, app, tmp_path):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root)
+        mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert os.path.exists(os.path.join(root, "late.md"))
+
+    def test_sweep_runs_even_when_the_call_raises(self, app, tmp_path):
+        # A timed-out subprocess may have written before dying — the
+        # revalidation is in a finally, not only on success.
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        root = str(tmp_path / "storage" / pid)
+        mgr._inner = self._WritingInner(root, raise_after_write=True)
+        app.config["CHAT_DB"].delete_project(pid)
+        with pytest.raises(RuntimeError):
+            mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
+        assert not os.path.exists(root)
+
+    def test_other_servers_do_not_revalidate(self, app):
+        pid = self._make_project(app)
+        mgr = self._scoped_manager(app, pid)
+        calls = []
+        mgr._revalidate = lambda: calls.append(1)
+        mgr.call_tool("sympy-math", "solve", {})
+        assert calls == []
+        mgr.call_tool(SERVER_ID, "list_files", {})
+        assert calls == [1]
 
 
 class TestSpinoffInheritance:

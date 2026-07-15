@@ -102,7 +102,20 @@ def _mcp_for_conversation(conv, enabled_servers, project_id):
     manager = _get_mcp()
     if project_id:
         storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
-        manager = ProjectScopedMCPManager(manager, pf.project_root(storage_root, project_id))
+        db = _get_db()
+
+        def _revalidate():
+            # Commit point for MCP writes, mirroring _revalidate_or_cleanup:
+            # the run snapshotted its project at start, so a write tool can
+            # land after the user deletes the project — its directory would
+            # be recreated as an orphan the UI can never show. Runs on the
+            # runner thread after every project-files call (values captured
+            # here; no app context there).
+            if db.get_project(project_id) is None:
+                pf.delete_project_root(storage_root, project_id)
+
+        manager = ProjectScopedMCPManager(
+            manager, pf.project_root(storage_root, project_id), revalidate=_revalidate)
     return manager
 
 

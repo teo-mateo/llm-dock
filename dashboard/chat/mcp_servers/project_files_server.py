@@ -68,7 +68,15 @@ def list_files(path: str = "") -> str:
     Optionally pass a directory path (relative to the project root) to
     list only that subtree. Returns one entry per line: directories end
     with '/', files show their size. Use the printed paths verbatim with
-    read_file / search_files.
+    the other project-files tools.
+
+    Examples:
+    - list_files() → the whole tree:
+        docs/
+        docs/plan.md (1204 bytes)
+        notes.md (88 bytes)
+    - list_files(path="docs") → only the entries under docs/
+    - list_files(path="docs/notes") → a nested subfolder
     """
     root = _project_root()
     if root is None:
@@ -101,11 +109,18 @@ def list_files(path: str = "") -> str:
 def read_file(path: str, offset: int = 0) -> str:
     """Read a text file from the project (UTF-8, up to 2 MB).
 
-    path is relative to the project root, e.g. 'docs/plan.md'. At most
-    ~64k characters are returned per call; a longer file ends with a
-    notice giving the offset to pass to read the next chunk. Binary
-    files and files over the size cap are rejected — use list_files to
-    check sizes first.
+    path is relative to the project root. At most ~64k characters are
+    returned per call; a longer file ends with a notice giving the
+    offset to pass to read the next chunk. Binary files and files over
+    the size cap are rejected — use list_files to check sizes first.
+
+    Examples:
+    - read_file(path="docs/plan.md") → the file's full text
+    - read_file(path="notes.md") → "hello project\\n..."
+    - A long file ends with:
+        (truncated: showing characters 0–65536 of 180000 — call
+        read_file again with offset=65536 to continue)
+      then read_file(path="logs/big.txt", offset=65536) → the next chunk
     """
     root = _project_root()
     if root is None:
@@ -138,6 +153,15 @@ def search_files(query: str, path: str = "") -> str:
     oversized files are skipped). Optionally restrict the search to a
     subdirectory via path. Content matches are returned as
     'path:line_number: line text'.
+
+    Examples:
+    - search_files(query="deadline") →
+        docs/plan.md:12: the deadline is Friday
+        notes.md:3: moved the DEADLINE to next week
+    - search_files(query="config") → also matches file NAMES:
+        src/config.yaml (name match)
+    - search_files(query="TODO", path="src") → content/name matches
+      under src/ only
     """
     root = _project_root()
     if root is None:
@@ -228,10 +252,20 @@ def _ensure_parent(root: str, path: str):
 def create_file(path: str, content: str = "") -> str:
     """Create a new text file in the project (UTF-8, up to 2 MB).
 
-    path is relative to the project root, e.g. 'docs/plan.md'; missing
-    parent folders are created automatically. Fails if the file already
-    exists — use write_file to replace an existing file's content, or
-    edit_file / insert_text for targeted changes.
+    path is relative to the project root; missing parent folders are
+    created automatically. Fails if the file already exists — use
+    write_file to replace an existing file's content, or edit_file /
+    insert_text for targeted changes.
+
+    Examples:
+    - create_file(path="notes/todo.md", content="- buy milk\\n")
+      → "Created notes/todo.md (11 bytes)" (the notes/ folder is
+      created automatically if missing)
+    - create_file(path="empty.txt") → creates an empty file
+    - create_file(path="report.md", content="# Report\\n\\n## Findings\\n")
+      → a new multi-line markdown file
+    - create_file on a path that already exists
+      → "Error: file already exists" — switch to write_file or edit_file
     """
     root = _project_root()
     if root is None:
@@ -256,6 +290,14 @@ def write_file(path: str, content: str) -> str:
     Fails if the file does not exist — use create_file for new files.
     For small changes prefer edit_file or insert_text, which modify only
     part of the file and guard against concurrent edits.
+
+    Examples:
+    - write_file(path="config.yaml", content="port: 8080\\nlog: info\\n")
+      → "Wrote config.yaml (20 bytes)" — the previous content is gone
+    - write_file(path="docs/summary.md", content="# Summary\\n...full new text...")
+      → full rewrite of an existing document
+    - write_file(path="does-not-exist.md", content="x")
+      → "Error: file not found" — use create_file instead
     """
     root = _project_root()
     if root is None:
@@ -283,6 +325,23 @@ def edit_file(path: str, old_text: str, new_text: str, replace_all: bool = False
     verbatim. Unless replace_all is true, old_text must occur exactly
     once; include a few surrounding lines to make it unique. new_text
     may be empty to delete the snippet.
+
+    Examples:
+    - edit_file(path="todo.md", old_text="- buy milk",
+                new_text="- buy milk (done)")
+      → "Replaced 1 occurrence in todo.md (64 bytes)"
+    - Delete a line (include its newline):
+      edit_file(path="todo.md", old_text="- obsolete task\\n", new_text="")
+    - Multi-line replacement:
+      edit_file(path="plan.md",
+                old_text="## Phase 2\\nTBD\\n",
+                new_text="## Phase 2\\nShip the explorer.\\n")
+    - If old_text is ambiguous you get
+      "Error: old_text occurs 3 times" — either add surrounding lines,
+      e.g. old_text="## Shopping\\n- buy milk", or pass replace_all=true
+      to change every occurrence:
+      edit_file(path="report.md", old_text="colour", new_text="color",
+                replace_all=true) → "Replaced 3 occurrences in report.md"
     """
     root = _project_root()
     if root is None:
@@ -320,6 +379,19 @@ def insert_text(path: str, line: int, text: str) -> str:
     pass 0 to insert at the very top of the file. text is inserted as
     whole lines (a trailing newline is added if missing). Use read_file
     to find the right line number first.
+
+    Examples (file todo.md contains "# TODO\\n- first\\n- second\\n"):
+    - insert_text(path="todo.md", line=0, text="<!-- draft -->")
+      → new first line, everything else shifts down
+    - insert_text(path="todo.md", line=1, text="- urgent")
+      → inserted between "# TODO" and "- first"
+    - insert_text(path="todo.md", line=3, text="- third")
+      → appended after the last line
+    - Multi-line insert:
+      insert_text(path="todo.md", line=1, text="- a\\n- b")
+      → two new lines after line 1
+    - insert_text(path="todo.md", line=99, text="x")
+      → "Error: line 99 is past the end of the file (3 lines)"
     """
     root = _project_root()
     if root is None:
