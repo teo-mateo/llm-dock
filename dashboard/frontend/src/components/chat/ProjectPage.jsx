@@ -254,9 +254,11 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     if (p !== selectedDir) setSelectedDir(p)
   }, [tree, selectedDir])
 
-  // Returns true when the mutation succeeded — callers use it to gate
-  // follow-up state changes (selection remaps, clipboard clears) that
-  // must not happen when the backend rejected the operation.
+  // Returns true only when the mutation succeeded AND the component still
+  // shows the project it ran against — callers use it to gate follow-up
+  // state changes (selection/editor/expansion remaps, clipboard clears)
+  // that must not happen when the backend rejected the operation, nor be
+  // applied to a DIFFERENT project the user switched to mid-flight.
   const run = useCallback(async (fn) => {
     // Same binding as refresh: a slow mutation for the previous project
     // must not flip busy/error state on the project now displayed (its
@@ -267,7 +269,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     try {
       await fn()
       await refresh()
-      return true
+      return projectIdRef.current === pid
     } catch (err) {
       if (projectIdRef.current === pid) setError(err.message)
       return false
@@ -334,8 +336,8 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     const name = window.prompt('Folder name')
     if (!name || !name.trim()) return
     const path = parentPath ? `${parentPath}/${name.trim()}` : name.trim()
-    await run(() => mkdirProjectPath(project.id, path))
-    expandTo(parentPath)
+    const ok = await run(() => mkdirProjectPath(project.id, path))
+    if (ok) expandTo(parentPath)
   }, [project?.id, run, expandTo])
 
   const handleRename = useCallback(async (node) => {

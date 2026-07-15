@@ -907,6 +907,28 @@ class TestCopy:
         with pytest.raises(pf.ProjectFilesError):
             pf.copy_path(made_root, "d", "d/inner")
 
+    def test_copy_into_self_via_symlink_alias_rejected(self, made_root):
+        # The client-path prefix check can't see that "alias/copy" is
+        # physically d/copy when alias -> d; the physical-path comparison
+        # must catch it (regression: codex PR83 4.1).
+        pf.mkdir(made_root, "d")
+        self._write(made_root, "d/x.txt")
+        os.symlink(os.path.join(made_root, "d"), os.path.join(made_root, "alias"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.copy_path(made_root, "d", "alias/copy")
+        assert "into itself" in str(e.value)
+        assert not os.path.exists(os.path.join(made_root, "d", "copy"))
+
+    def test_copy_through_symlink_alias_to_elsewhere_still_works(self, made_root):
+        # An alias that does NOT land inside the source stays usable.
+        pf.mkdir(made_root, "d")
+        pf.mkdir(made_root, "other")
+        self._write(made_root, "d/x.txt")
+        os.symlink(os.path.join(made_root, "other"), os.path.join(made_root, "alias"))
+        node = pf.copy_path(made_root, "d", "alias/d")
+        assert node["type"] == "dir"
+        assert os.path.exists(os.path.join(made_root, "other", "d", "x.txt"))
+
     def test_copy_root_rejected(self, made_root):
         with pytest.raises(pf.ProjectFilesError):
             pf.copy_path(made_root, "", "x")

@@ -501,6 +501,16 @@ def copy_path(root: str, rel_src: str, rel_dst: str) -> dict:
     src_st = os.lstat(abs_src)
     with _fs_errors():
         if stat_mod.S_ISDIR(src_st.st_mode):
+            # The component-prefix check above only sees CLIENT paths; an
+            # in-root symlink alias (alias -> d) would let "d" ->
+            # "alias/copy" physically target d/copy and send copytree
+            # into its own output. Compare physical paths: the real
+            # destination is its existing parent's realpath plus the
+            # final component.
+            real_src = os.path.realpath(abs_src)
+            real_dst = os.path.join(os.path.realpath(abs_dst_dir), os.path.basename(abs_dst))
+            if real_dst == real_src or real_dst.startswith(real_src + os.sep):
+                raise ProjectFilesError("cannot copy a directory into itself")
             _precheck_copy_tree(abs_src, len(dst_parts))
             try:
                 shutil.copytree(abs_src, abs_dst, symlinks=True)

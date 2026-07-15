@@ -724,6 +724,43 @@ describe('ProjectPage stale-mutation guard', () => {
   })
 })
 
+describe('ProjectPage stale-mutation success remap guard (regression: codex 4.2)', () => {
+  it('a move finishing after a project switch cannot remap the new project\'s selection', async () => {
+    // Start moving docs → archive in project A, switch to project B (which
+    // has its own docs/inner), select B's docs/inner, THEN let A's move
+    // resolve. run()'s success must be project-bound, or the stale
+    // handler's remap would drag B's selection to A's destination.
+    const treeB = [
+      { name: 'docs', path: 'docs', type: 'dir', modified_at: 1, children: [
+        { name: 'inner', path: 'docs/inner', type: 'dir', modified_at: 1, children: [] },
+      ] },
+    ]
+    mockTree.mockImplementation((pid) =>
+      Promise.resolve({ tree: pid === 'pb' ? treeB : TREE }))
+    let resolveMove
+    mockMove.mockImplementation(() => new Promise(res => { resolveMove = res }))
+
+    const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
+    await screen.findByTestId('file-row-readme.md')
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('pa', 'docs', 'archive/docs'))
+
+    rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
+    await screen.findByTestId('tree-node-docs')
+    fireEvent.click(screen.getByLabelText('Expand docs'))
+    fireEvent.click(screen.getByTestId('tree-node-docs/inner'))
+    expect(screen.getByTestId('crumb-docs/inner')).toBeTruthy()
+
+    resolveMove({}) // A's moveInto resumes against B's rendered state
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    // B's selection is untouched — not remapped to A's destination, not
+    // knocked back to the root by the missing-path fallback.
+    expect(screen.getByTestId('crumb-docs/inner')).toBeTruthy()
+    expect(screen.queryByTestId('crumb-archive/docs/inner')).toBeNull()
+  })
+})
+
 describe('ProjectPage stale-refresh generation theft', () => {
   it('a stale mutation follow-up cannot invalidate the pending fetch of the current project', async () => {
     // Ordering: A's mutation pending → switch to B (B's tree fetch stays
