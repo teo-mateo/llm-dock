@@ -197,6 +197,40 @@ describe('ProjectPage stale-mutation guard', () => {
   })
 })
 
+describe('ProjectPage stale-refresh generation theft', () => {
+  it('a stale mutation follow-up cannot invalidate the pending fetch of the current project', async () => {
+    // Ordering: A's mutation pending → switch to B (B's tree fetch stays
+    // pending) → A's mutation resolves and its follow-up refresh runs →
+    // THEN B's fetch resolves. The stale refresh must not claim a newer
+    // generation, or B's own result would be rejected and the page would
+    // strand on the empty state.
+    const treeA = [{ name: 'a-only.txt', path: 'a-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    const treeB = [{ name: 'b-only.txt', path: 'b-only.txt', type: 'file', size: 1, modified_at: 1 }]
+    let resolveB
+    mockTree.mockImplementation((pid) => {
+      if (pid === 'pb') return new Promise(res => { resolveB = res })
+      return Promise.resolve({ tree: treeA })
+    })
+    let resolveMkdir
+    mockMkdir.mockImplementation(() => new Promise(res => { resolveMkdir = res }))
+    vi.spyOn(window, 'prompt').mockReturnValue('slow-dir')
+
+    const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
+    await screen.findByText('a-only.txt')
+    fireEvent.click(screen.getByText('New folder'))          // A's mutation, pending
+    await waitFor(() => expect(mockMkdir).toHaveBeenCalled())
+
+    rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
+    await waitFor(() => expect(resolveB).toBeTruthy())       // B's fetch in flight
+
+    resolveMkdir({})                                         // stale A follow-up refresh runs first
+    await new Promise(r => setTimeout(r, 0))
+    resolveB({ tree: treeB })                                // B resolves LAST
+    expect(await screen.findByText('b-only.txt')).toBeTruthy()
+    expect(screen.queryByText('a-only.txt')).toBeNull()
+  })
+})
+
 describe('ProjectPage upload row visibility', () => {
   it('expands the target dir after uploading into it', async () => {
     await renderPage()

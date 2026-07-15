@@ -213,13 +213,21 @@ def build_tree(root: str, rel_path: str = "") -> list:
 
 
 def stat_file(root: str, rel_path: str) -> str:
-    """Resolve rel_path and require it to be an existing regular file.
-    Returns the absolute path (for send_file)."""
+    """Resolve rel_path and require it to be an existing REGULAR file
+    (lstat: symlinks are never followed, matching the tree contract, and
+    FIFOs/sockets/devices are rejected rather than handed to send_file —
+    opening a FIFO would block the worker indefinitely). Returns the
+    absolute path (for send_file)."""
+    import stat as stat_mod
     abs_path = resolve(root, rel_path)
-    if not os.path.exists(abs_path):
+    try:
+        st = os.lstat(abs_path)
+    except FileNotFoundError:
         raise ProjectFilesError("file not found", status=404)
-    if os.path.isdir(abs_path):
+    if stat_mod.S_ISDIR(st.st_mode):
         raise ProjectFilesError("path is a directory", status=400)
+    if not stat_mod.S_ISREG(st.st_mode):
+        raise ProjectFilesError("not a regular file", status=400)
     return abs_path
 
 

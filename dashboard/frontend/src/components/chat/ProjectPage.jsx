@@ -112,6 +112,10 @@ export default function ProjectPage({ project }) {
   const refresh = useCallback(async () => {
     const pid = project?.id
     if (!pid) return
+    // A stale closure (a previous project's mutation follow-up) must not
+    // claim a generation at all — it would invalidate the CURRENT
+    // project's in-flight fetch and strand the page empty.
+    if (projectIdRef.current !== pid) return
     const gen = ++genRef.current
     const stillCurrent = () => genRef.current === gen && projectIdRef.current === pid
     try {

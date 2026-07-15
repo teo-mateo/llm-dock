@@ -242,6 +242,26 @@ class TestOps:
         assert node["path"] == "renamed-link"
         assert os.path.islink(os.path.join(made_root, "renamed-link"))
 
+    def test_download_rejects_non_regular_files(self, made_root, tmp_path):
+        """stat_file only serves regular files: symlinks are never followed
+        (even in-root ones) and FIFOs would block the worker forever."""
+        (tmp_path / "target.txt").write_text("outside")
+        os.symlink(str(tmp_path / "target.txt"), os.path.join(made_root, "link.txt"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.stat_file(made_root, "link.txt")
+        assert e.value.status == 400
+
+        os.mkfifo(os.path.join(made_root, "pipe"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.stat_file(made_root, "pipe")
+        assert e.value.status == 400
+
+        # Dangling symlink: still 400 (an entry, but not a regular file).
+        os.symlink("gone", os.path.join(made_root, "broken"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.stat_file(made_root, "broken")
+        assert e.value.status == 400
+
     def test_symlink_listed_as_file_never_followed(self, made_root, tmp_path):
         outside = tmp_path / "out"
         outside.mkdir()
