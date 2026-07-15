@@ -79,12 +79,17 @@ def _mcp_for_conversation(conv, enabled_servers):
     from . import project_files as pf
     from .project_files_mcp import ProjectScopedMCPManager
 
-    if not (enabled_servers or conv.project_id):
+    # Membership is root-only: a spin-off keeps project_id NULL and follows
+    # its root ancestor, so scoping must use the resolved project.
+    project_id = conv.project_id
+    if project_id is None and conv.parent_conversation_id:
+        project_id = _get_db().resolve_project_id(conv.id)
+    if not (enabled_servers or project_id):
         return None
     manager = _get_mcp()
-    if conv.project_id:
+    if project_id:
         storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
-        manager = ProjectScopedMCPManager(manager, pf.project_root(storage_root, conv.project_id))
+        manager = ProjectScopedMCPManager(manager, pf.project_root(storage_root, project_id))
     return manager
 
 

@@ -312,6 +312,10 @@ def _conv(**kw):
     return Conversation(id="c1", title="t", main_service="svc", **kw)
 
 
+def _conv2(conv_id, **kw):
+    return Conversation(id=conv_id, title="t", main_service="svc", **kw)
+
+
 class FakePersistence:
     def load_messages(self, conv):
         return []
@@ -376,6 +380,72 @@ class TestRoutesHelper:
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
+
+
+class TestSpinoffInheritance:
+    """Membership is root-only: spin-offs keep project_id NULL and follow
+    their root ancestor. Tool scoping must resolve through the chain
+    (regression: codex 3.1)."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        from chat.db import ChatDB
+        from chat.models import Project
+        db = ChatDB(str(tmp_path / "chat.db"))
+        db.create_project(Project(id="p1", name="P"))
+        db.create_conversation(_conv2("root", project_id="p1"))
+        db.create_conversation(_conv2("child", parent_conversation_id="root"))
+        db.create_conversation(_conv2("grand", parent_conversation_id="child"))
+        db.create_conversation(_conv2("loner"))
+        return db
+
+    def test_resolve_project_id(self, db):
+        assert db.resolve_project_id("root") == "p1"
+        assert db.resolve_project_id("child") == "p1"
+        assert db.resolve_project_id("grand") == "p1"
+        assert db.resolve_project_id("loner") is None
+        assert db.resolve_project_id("missing") is None
+
+    def test_resolve_survives_a_parent_cycle(self, db):
+        # Impossible through the API; the walk must still terminate on
+        # corrupt data instead of hanging the request.
+        conn = db._get_conn()
+        try:
+            conn.execute(
+                "UPDATE conversations SET parent_conversation_id = 'grand' WHERE id = 'child'"
+            )
+            conn.commit()
+        finally:
+            db._close_conn(conn)
+        assert db.resolve_project_id("child") is None
+
+    def test_routes_scope_spinoff_to_root_project(self, db, tmp_path):
+        from chat.routes import _mcp_for_conversation
+        app = Flask(__name__)
+        app.config["MCP_MANAGER"] = FakeManager()
+        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+        app.config["CHAT_DB"] = db
+        child = db.get_conversation("child")
+        assert child.project_id is None  # root-only membership held
+        with app.app_context():
+            mgr = _mcp_for_conversation(child, [])
+        assert mgr is not None
+        mgr.call_tool(SERVER_ID, "list_files", {})
+        call = app.config["MCP_MANAGER"].calls[-1]
+        assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
+
+    def test_runtime_auto_enables_for_spinoff(self, db):
+        runner = ChatRunner(db=db, persistence=FakePersistence())
+        mgr = FakeManager()
+        runner._build_stream(db.get_conversation("grand"), mgr)
+        assert ("get_all_tools", [SERVER_ID]) in mgr.calls
+
+    def test_runtime_without_db_still_works_for_direct_membership(self, db):
+        # Ghost-chat shape: no db wired. Direct project_id still enables.
+        runner = ChatRunner(db=None, persistence=FakePersistence())
+        mgr = FakeManager()
+        runner._build_stream(db.get_conversation("root"), mgr)
+        assert ("get_all_tools", [SERVER_ID]) in mgr.calls
 
 
 class TestRunAsyncTimeout:

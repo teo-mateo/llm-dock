@@ -125,10 +125,15 @@ class ChatRunner:
     def _build_stream(self, conv: Conversation, mcp_manager):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-        if conv.project_id:
-            # Project conversations always get the project-files tools —
-            # membership in a project IS the toggle. This also pulls the
-            # server's tool_hint into the system prompt below.
+        # Project conversations always get the project-files tools —
+        # membership in a project IS the toggle. This also pulls the
+        # server's tool_hint into the system prompt below. Membership is
+        # root-only, so spin-offs (project_id NULL) resolve through their
+        # root ancestor.
+        project_id = conv.project_id
+        if project_id is None and conv.parent_conversation_id and self.db is not None:
+            project_id = self.db.resolve_project_id(conv.id)
+        if project_id:
             enabled_servers = with_project_files(enabled_servers)
         messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
         tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
