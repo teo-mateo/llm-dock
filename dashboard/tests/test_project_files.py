@@ -226,7 +226,7 @@ class TestOps:
         assert node["path"] == "notes/todo.md"
         doc = pf.read_text(made_root, "notes/todo.md")
         assert doc["content"] == "# hello\n"
-        assert doc["modified_at"] == node["modified_at"]
+        assert doc["revision"] == node["revision"]
 
     def test_write_text_requires_parent_dir(self, made_root):
         # notes/ doesn't exist and write_text does NOT create parents
@@ -238,20 +238,38 @@ class TestOps:
     def test_write_text_conflict_detection(self, made_root):
         node = pf.write_text(made_root, "f.txt", "one")
         # Same base → accepted.
-        node2 = pf.write_text(made_root, "f.txt", "two", base_modified_at=node["modified_at"])
+        pf.write_text(made_root, "f.txt", "two", base_revision=node["revision"])
         assert pf.read_text(made_root, "f.txt")["content"] == "two"
         # Stale base → 409, content untouched.
-        stale = node2["modified_at"] - 10
         with pytest.raises(pf.ProjectFilesError) as e:
-            pf.write_text(made_root, "f.txt", "three", base_modified_at=stale)
+            pf.write_text(made_root, "f.txt", "three", base_revision=node["revision"])
         assert e.value.status == 409
         assert pf.read_text(made_root, "f.txt")["content"] == "two"
+
+    def test_write_text_conflict_even_with_identical_mtime(self, made_root):
+        """Regression (PR #79 codex 1.1): the revision must not be
+        timestamp-based at ANY precision — Linux stamps writes within one
+        kernel timer tick identically, so even mtime_ns collides for quick
+        successive saves. Force the worst case: content changed while the
+        mtime (seconds AND nanoseconds) is byte-for-byte identical. The
+        content-hash revision must still detect the change."""
+        node = pf.write_text(made_root, "f.txt", "one")
+        abs_path = os.path.join(made_root, "f.txt")
+        st = os.lstat(abs_path)
+        with open(abs_path, "w") as f:
+            f.write("other tab")
+        os.utime(abs_path, ns=(st.st_atime_ns, st.st_mtime_ns))
+        assert os.lstat(abs_path).st_mtime_ns == st.st_mtime_ns
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "stale save", base_revision=node["revision"])
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "other tab"
 
     def test_write_text_conflict_when_file_deleted(self, made_root):
         node = pf.write_text(made_root, "f.txt", "one")
         pf.delete(made_root, "f.txt")
         with pytest.raises(pf.ProjectFilesError) as e:
-            pf.write_text(made_root, "f.txt", "two", base_modified_at=node["modified_at"])
+            pf.write_text(made_root, "f.txt", "two", base_revision=node["revision"])
         assert e.value.status == 409
 
     def test_write_text_never_replaces_special_entries(self, made_root):
@@ -575,15 +593,19 @@ def test_content_http_roundtrip(client):
     r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
                    json={"path": "notes.md", "content": "# hi"}, headers=_auth())
     assert r.status_code == 200
-    base = r.get_json()["modified_at"]
+    base = r.get_json()["revision"]
 
     r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=notes.md", headers=_auth())
     assert r.status_code == 200
     assert r.get_json()["content"] == "# hi"
 
-    # Conflict via HTTP: stale base → 409.
+    # Save with the current revision → accepted; reusing it → 409.
     r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
-                   json={"path": "notes.md", "content": "x", "base_modified_at": base - 5},
+                   json={"path": "notes.md", "content": "x", "base_revision": base},
+                   headers=_auth())
+    assert r.status_code == 200
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "y", "base_revision": base},
                    headers=_auth())
     assert r.status_code == 409
 
@@ -609,7 +631,7 @@ def test_content_traversal_and_bad_bodies_400(client):
                    json={"path": "f.txt", "content": 42}, headers=_auth())
     assert r.status_code == 400
     r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
-                   json={"path": "f.txt", "content": "c", "base_modified_at": True},
+                   json={"path": "f.txt", "content": "c", "base_revision": 12345},
                    headers=_auth())
     assert r.status_code == 400
 

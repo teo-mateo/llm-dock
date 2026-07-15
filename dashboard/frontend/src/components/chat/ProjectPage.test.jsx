@@ -39,8 +39,8 @@ beforeEach(() => {
   mockMkdir.mockReset().mockResolvedValue({})
   mockMove.mockReset().mockResolvedValue({})
   mockDelete.mockReset().mockResolvedValue({ ok: true })
-  mockGetContent.mockReset().mockResolvedValue({ path: 'readme.md', content: 'doc', modified_at: 1 })
-  mockSaveContent.mockReset().mockResolvedValue({ path: 'readme.md', modified_at: 2 })
+  mockGetContent.mockReset().mockResolvedValue({ path: 'readme.md', content: 'doc', revision: 'r1' })
+  mockSaveContent.mockReset().mockResolvedValue({ path: 'readme.md', revision: 'r2' })
 })
 
 afterEach(() => {

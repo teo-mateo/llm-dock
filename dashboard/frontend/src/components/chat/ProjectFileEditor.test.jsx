@@ -12,8 +12,8 @@ vi.mock('../../services/chat', () => ({
 }))
 
 beforeEach(() => {
-  mockGet.mockReset().mockResolvedValue({ path: 'notes.md', content: 'hello', modified_at: 100 })
-  mockSave.mockReset().mockResolvedValue({ path: 'notes.md', modified_at: 101 })
+  mockGet.mockReset().mockResolvedValue({ path: 'notes.md', content: 'hello', revision: 'r100' })
+  mockSave.mockReset().mockResolvedValue({ path: 'notes.md', revision: 'r101' })
 })
 
 afterEach(() => {
@@ -35,7 +35,7 @@ async function renderEditor(props = {}) {
 }
 
 describe('ProjectFileEditor', () => {
-  it('loads content and saves with the loaded mtime as conflict base', async () => {
+  it('loads content and saves with the loaded revision as conflict base', async () => {
     const { onSaved } = await renderEditor()
     const ta = screen.getByTestId('editor-textarea')
     expect(ta.value).toBe('hello')
@@ -45,7 +45,7 @@ describe('ProjectFileEditor', () => {
     expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
 
     fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'hello world', 100))
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('p1', 'notes.md', 'hello world', 'r100'))
     await waitFor(() => expect(screen.queryByTestId('dirty-indicator')).toBeNull())
     expect(onSaved).toHaveBeenCalled()
   })
@@ -66,7 +66,7 @@ describe('ProjectFileEditor', () => {
   it('a 409 shows the conflict bar; Overwrite anyway retries without a base', async () => {
     mockSave
       .mockRejectedValueOnce(new Error('file changed on disk since it was loaded'))
-      .mockResolvedValueOnce({ path: 'notes.md', modified_at: 102 })
+      .mockResolvedValueOnce({ path: 'notes.md', revision: 'r102' })
     await renderEditor()
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
     fireEvent.click(screen.getByText('Save'))
@@ -84,7 +84,7 @@ describe('ProjectFileEditor', () => {
     fireEvent.click(screen.getByText('Save'))
     await screen.findByText(/changed on disk/)
 
-    mockGet.mockResolvedValue({ path: 'notes.md', content: 'theirs', modified_at: 200 })
+    mockGet.mockResolvedValue({ path: 'notes.md', content: 'theirs', revision: 'r200' })
     fireEvent.click(screen.getByText('Reload (discard my changes)'))
     await waitFor(() => expect(screen.getByTestId('editor-textarea').value).toBe('theirs'))
     expect(screen.queryByTestId('dirty-indicator')).toBeNull()

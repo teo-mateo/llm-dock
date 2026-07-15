@@ -3,11 +3,11 @@ import { getProjectFileContent, saveProjectFileContent } from '../../services/ch
 
 // Lightweight text editor for a single project file: plain textarea,
 // dirty tracking, Ctrl/Cmd+S, and optimistic-concurrency saves (the
-// loaded mtime is sent as base_modified_at; a 409 means the file changed
+// loaded revision is sent as base_revision; a 409 means the file changed
 // on disk and the user chooses to reload or overwrite).
 export default function ProjectFileEditor({ projectId, path, isNew = false, onClose, onSaved }) {
   const [content, setContent] = useState('')
-  const [baseModifiedAt, setBaseModifiedAt] = useState(null)
+  const [baseRevision, setBaseRevision] = useState(null)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(isNew)
@@ -22,7 +22,7 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
     try {
       const doc = await getProjectFileContent(projectId, path)
       setContent(doc.content)
-      setBaseModifiedAt(doc.modified_at)
+      setBaseRevision(doc.revision)
       setDirty(false)
     } catch (err) {
       setError(err.message)
@@ -42,9 +42,9 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
     try {
       const node = await saveProjectFileContent(
         projectId, path, content,
-        force ? null : baseModifiedAt,
+        force ? null : baseRevision,
       )
-      setBaseModifiedAt(node.modified_at)
+      setBaseRevision(node.revision)
       setDirty(false)
       onSaved?.()
     } catch (err) {
@@ -56,7 +56,7 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
     } finally {
       setSaving(false)
     }
-  }, [projectId, path, content, baseModifiedAt, onSaved])
+  }, [projectId, path, content, baseRevision, onSaved])
 
   const handleKeyDown = useCallback((e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {

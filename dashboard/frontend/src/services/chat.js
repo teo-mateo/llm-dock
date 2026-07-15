@@ -113,9 +113,9 @@ export async function getProjectFileContent(projectId, path) {
   return fetchAPI(`/chat/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`)
 }
 
-export async function saveProjectFileContent(projectId, path, content, baseModifiedAt = null) {
+export async function saveProjectFileContent(projectId, path, content, baseRevision = null) {
   const body = { path, content }
-  if (baseModifiedAt != null) body.base_modified_at = baseModifiedAt
+  if (baseRevision != null) body.base_revision = baseRevision
   return fetchAPI(`/chat/projects/${projectId}/files/content`, {
     method: 'PUT',
     body: JSON.stringify(body),

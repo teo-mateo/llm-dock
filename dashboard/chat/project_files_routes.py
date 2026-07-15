@@ -137,12 +137,11 @@ def project_files_write_content(project_id):
         return err
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return jsonify({"error": "body must be {path, content, base_modified_at?}"}), 400
-    base = data.get("base_modified_at")
-    # bool is an int subclass in Python — reject it explicitly.
-    if base is not None and (isinstance(base, bool) or not isinstance(base, int)):
-        return jsonify({"error": "base_modified_at must be an integer"}), 400
-    node = pf.write_text(root, data.get("path"), data.get("content"), base_modified_at=base)
+        return jsonify({"error": "body must be {path, content, base_revision?}"}), 400
+    base = data.get("base_revision")
+    if base is not None and not isinstance(base, str):
+        return jsonify({"error": "base_revision must be a string"}), 400
+    node = pf.write_text(root, data.get("path"), data.get("content"), base_revision=base)
     stale = _revalidate_or_cleanup(project_id)
     if stale:
         return stale
