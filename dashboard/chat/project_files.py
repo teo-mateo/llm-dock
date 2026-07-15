@@ -11,10 +11,12 @@ component validation plus a realpath containment check, so neither
 ``..`` traversal nor a symlink planted inside the tree can escape the
 project root.
 """
+import errno
 import os
 import shutil
 import logging
 import tempfile
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +74,46 @@ def ensure_project_root(storage_root: str, project_id: str) -> str:
     return root
 
 
-def delete_project_root(storage_root: str, project_id: str):
-    """Remove a project's entire files directory (project deletion)."""
+def delete_project_root(storage_root: str, project_id: str, strict: bool = False):
+    """Remove a project's entire files directory (project deletion).
+
+    strict=True propagates cleanup failures (used BEFORE the DB row is
+    deleted, so a permissions/IO error surfaces as a retryable 500
+    instead of silently orphaning data). The default best-effort mode is
+    for post-delete sweeps where the row is already gone — failures are
+    logged, never raised.
+    """
     root = project_root(storage_root, project_id)
-    shutil.rmtree(root, ignore_errors=True)
+    if strict:
+        try:
+            shutil.rmtree(root)
+        except FileNotFoundError:
+            pass
+        return
+    try:
+        shutil.rmtree(root)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.exception("best-effort cleanup of project files failed: %s", root)
+
+
+@contextmanager
+def _fs_errors():
+    """Translate filesystem rejections of otherwise-validated paths into
+    client errors. A component can pass the 255-CHARACTER check yet exceed
+    the filesystem's 255-BYTE limit (multibyte names → ENAMETOOLONG), the
+    total path can exceed PATH_MAX, or an intermediate component can turn
+    out to be a regular file (ENOTDIR). All are bad input, not server
+    faults."""
+    try:
+        yield
+    except OSError as e:
+        if e.errno == errno.ENAMETOOLONG:
+            raise ProjectFilesError("name or path too long for the filesystem")
+        if e.errno == errno.ENOTDIR:
+            raise ProjectFilesError("a path component is not a directory")
+        raise
 
 
 def _validate_component(name: str):
@@ -85,7 +123,9 @@ def _validate_component(name: str):
         raise ProjectFilesError("invalid path component")
     if "/" in name or "\\" in name or "\x00" in name:
         raise ProjectFilesError("invalid character in path component")
-    if len(name) > MAX_NAME_LENGTH:
+    # Filesystems cap components at 255 BYTES, not characters — a name of
+    # 100 emoji passes a character check and still fails at the syscall.
+    if len(name.encode("utf-8")) > MAX_NAME_LENGTH:
         raise ProjectFilesError("path component too long")
 
 
@@ -197,30 +237,31 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
     # "<target>.uploading" name would collide with a legitimate user file
     # of that name and with a concurrent upload of the same target.
     written = 0
-    fd, tmp_path = tempfile.mkstemp(prefix=".upload-", suffix=".tmp", dir=abs_dir)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            while True:
-                chunk = stream.read(1024 * 1024)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > MAX_UPLOAD_BYTES:
-                    raise ProjectFilesError("file too large", status=413)
-                f.write(chunk)
-        if overwrite:
-            os.replace(tmp_path, abs_target)
-        else:
-            # Atomic no-replace publication: link() fails with EEXIST if the
-            # target appeared since the pre-check, upholding the 409 contract
-            # even against a concurrent upload of the same name.
-            try:
-                os.link(tmp_path, abs_target)
-            except FileExistsError:
-                raise ProjectFilesError("file already exists", status=409)
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    with _fs_errors():
+        fd, tmp_path = tempfile.mkstemp(prefix=".upload-", suffix=".tmp", dir=abs_dir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > MAX_UPLOAD_BYTES:
+                        raise ProjectFilesError("file too large", status=413)
+                    f.write(chunk)
+            if overwrite:
+                os.replace(tmp_path, abs_target)
+            else:
+                # Atomic no-replace publication: link() fails with EEXIST if the
+                # target appeared since the pre-check, upholding the 409 contract
+                # even against a concurrent upload of the same name.
+                try:
+                    os.link(tmp_path, abs_target)
+                except FileExistsError:
+                    raise ProjectFilesError("file already exists", status=409)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
     return _node(abs_target, rel_target)
 
 
@@ -231,7 +272,8 @@ def mkdir(root: str, rel_path: str) -> dict:
     abs_path = resolve(root, rel_path)
     if os.path.exists(abs_path):
         raise ProjectFilesError("path already exists", status=409)
-    os.makedirs(abs_path)
+    with _fs_errors():
+        os.makedirs(abs_path)
     rel = "/".join(parts)
     return _node(abs_path, rel)
 
@@ -255,7 +297,8 @@ def move(root: str, rel_src: str, rel_dst: str) -> dict:
         raise ProjectFilesError("cannot move a directory into itself")
     if not os.path.isdir(os.path.dirname(abs_dst)):
         raise ProjectFilesError("destination directory not found", status=404)
-    shutil.move(abs_src, abs_dst)
+    with _fs_errors():
+        shutil.move(abs_src, abs_dst)
     return _node(abs_dst, "/".join(dst_parts))
 
 

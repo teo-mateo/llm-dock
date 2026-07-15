@@ -247,11 +247,26 @@ def update_project(project_id):
 @require_auth
 def delete_project(project_id):
     """Delete a project. Its conversations are detached (become unfiled),
-    not deleted; its files directory IS removed."""
-    if _get_db().delete_project(project_id):
-        from . import project_files as pf
-        storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
-        pf.delete_project_root(storage_root, project_id)
+    not deleted; its files directory IS removed.
+
+    Files are removed BEFORE the DB row, strictly: if cleanup fails
+    (permissions, IO), the row survives and the delete stays retryable —
+    otherwise the data would be orphaned with no API path back to it. The
+    post-delete sweep is best-effort and only mops up a directory that a
+    concurrent file write recreated in the window.
+    """
+    from . import project_files as pf
+    db = _get_db()
+    if db.get_project(project_id) is None:
+        return jsonify({"error": "Project not found"}), 404
+    storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
+    try:
+        pf.delete_project_root(storage_root, project_id, strict=True)
+    except OSError as e:
+        logger.error("project %s: files cleanup failed, aborting delete: %s", project_id, e)
+        return jsonify({"error": f"failed to remove project files: {e}"}), 500
+    if db.delete_project(project_id):
+        pf.delete_project_root(storage_root, project_id)  # sweep, best-effort
         return jsonify({"ok": True})
     return jsonify({"error": "Project not found"}), 404
 

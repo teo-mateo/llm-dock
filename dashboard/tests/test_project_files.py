@@ -403,6 +403,60 @@ def test_mutating_op_racing_project_delete_cleans_up(client, tmp_path, monkeypat
     assert not files_dir.exists()
 
 
+def test_upload_multibyte_name_over_255_bytes_400(client):
+    """255 characters of emoji is ~4x the filesystem's 255-BYTE component
+    cap — must be a validation 400, not an ENAMETOOLONG 500."""
+    pid = _mkproject(client)
+    name = "😀" * 100  # 100 chars, 400 UTF-8 bytes
+    r = _upload(client, pid, name, b"x")
+    assert r.status_code == 400
+
+
+def test_total_path_over_path_max_400(client):
+    """Within the depth cap, components can still sum past PATH_MAX —
+    the ENAMETOOLONG from the syscall maps to a 400."""
+    pid = _mkproject(client)
+    deep = "/".join(["x" * 250] * 17)  # ~4.2 KB > PATH_MAX (4096)
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir", json={"path": deep},
+                    headers=_auth())
+    assert r.status_code == 400
+
+
+def test_mkdir_through_regular_file_400(client):
+    """mkdir with an intermediate component that is a regular file is
+    ordinary bad input: 400, not NotADirectoryError → 500."""
+    pid = _mkproject(client)
+    assert _upload(client, pid, "parent", b"x").status_code == 201
+    r = client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir",
+                    json={"path": "parent/child"}, headers=_auth())
+    assert r.status_code == 400
+    # Upload into the file-as-dir path gets the same treatment.
+    r = _upload(client, pid, "f.txt", b"x", dir="parent")
+    assert r.status_code == 404  # save_stream's isdir pre-check
+
+
+def test_project_delete_aborts_when_files_cleanup_fails(client, tmp_path, monkeypatch):
+    """A failed files cleanup must not claim success: the DB row survives
+    so the delete can be retried once the filesystem problem is fixed."""
+    import shutil as _shutil
+
+    pid = _mkproject(client)
+    _upload(client, pid, "a.txt")
+
+    def failing_rmtree(path, *a, **kw):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(_shutil, "rmtree", failing_rmtree)
+    r = client.delete(f"{PROJECTS_PATH}/{pid}", headers=_auth())
+    assert r.status_code == 500
+    monkeypatch.undo()
+
+    # Row survived → retry succeeds and removes everything.
+    r = client.delete(f"{PROJECTS_PATH}/{pid}", headers=_auth())
+    assert r.status_code == 200
+    assert not (tmp_path / "storage" / pid).exists()
+
+
 def test_project_delete_removes_files_dir(client, tmp_path):
     pid = _mkproject(client)
     _upload(client, pid, "a.txt")
