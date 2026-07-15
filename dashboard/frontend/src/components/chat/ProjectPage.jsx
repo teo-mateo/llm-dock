@@ -159,6 +159,24 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     if (!editing || !editorDirtyRef.current) return true
     return window.confirm('Discard unsaved changes?')
   }, [editing])
+  // Mutations that touch the OPEN file or one of its ancestors (the tree
+  // stays actionable while the editor is mounted) must not proceed behind
+  // a dirty buffer's back: ask first, and let cancel abort the mutation.
+  const editingUnder = useCallback((path) =>
+    editing != null && isSelfOrDescendant(editing.path, path), [editing])
+  const guardEditedPath = useCallback((srcPath) => {
+    if (!editingUnder(srcPath)) return true
+    if (!editorDirtyRef.current) return true
+    return window.confirm('Discard unsaved changes?')
+  }, [editingUnder])
+  // After a successful rename/move of the open file or an ancestor, carry
+  // the editor to the new path (the keyed remount reloads from there — a
+  // dirty buffer was already discard-confirmed by guardEditedPath).
+  const remapEditing = useCallback((srcPath, dstPath) => {
+    setEditing(prev => (prev && isSelfOrDescendant(prev.path, srcPath)
+      ? { ...prev, path: dstPath + prev.path.slice(srcPath.length) }
+      : prev))
+  }, [])
   const fileInputRef = useRef(null)
   // Directory the next file-picker selection uploads into.
   const uploadDirRef = useRef('')
@@ -312,8 +330,10 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     // selection remap below works with the path the tree will report.
     const dst = input.trim().replace(/^\/+|\/+$/g, '')
     if (!dst || dst === node.path) return
+    if (!guardEditedPath(node.path)) return
     const ok = await run(() => moveProjectPath(project.id, node.path, dst))
     if (!ok) return
+    remapEditing(node.path, dst)
     // Same remap as moveInto: a rename of the selected dir or one of its
     // ancestors must carry the selection to the new path, not strand it
     // on a path the refreshed tree no longer contains.
@@ -321,14 +341,17 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       ? dst + prev.slice(node.path.length)
       : prev))
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
-  }, [project?.id, run])
+  }, [project?.id, run, guardEditedPath, remapEditing])
 
   const handleDelete = useCallback(async (node) => {
+    if (!guardEditedPath(node.path)) return
     const label = node.type === 'dir' ? `folder "${node.path}" and everything in it` : `"${node.path}"`
     if (!window.confirm(`Delete ${label}?`)) return
     const ok = await run(() => deleteProjectPath(project.id, node.path))
-    if (ok) setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
-  }, [project?.id, run])
+    if (!ok) return
+    setEditing(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
+    setClipboard(prev => (prev && isSelfOrDescendant(prev.path, node.path) ? null : prev))
+  }, [project?.id, run, guardEditedPath])
 
   const handleOpenFile = useCallback((node) => {
     if (!confirmDiscardEdits()) return
@@ -369,8 +392,10 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       return
     }
     const dstPath = dstDir ? `${dstDir}/${baseName(srcPath)}` : baseName(srcPath)
+    if (!guardEditedPath(srcPath)) return
     const ok = await run(() => moveProjectPath(project.id, srcPath, dstPath))
     if (!ok) return
+    remapEditing(srcPath, dstPath)
     // Keep the selection meaningful when the selected dir itself moved.
     setSelectedDir(prev => {
       if (prev && isSelfOrDescendant(prev, srcPath)) {
@@ -380,7 +405,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
     })
     setClipboard(prev => (prev && isSelfOrDescendant(prev.path, srcPath) ? null : prev))
     expandTo(dstDir)
-  }, [project?.id, run, expandTo])
+  }, [project?.id, run, expandTo, guardEditedPath, remapEditing])
 
   // -- Clipboard --
 

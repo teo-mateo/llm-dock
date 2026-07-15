@@ -27,6 +27,7 @@ vi.mock('../../services/chat', () => ({
 const project = { id: 'p1', name: 'Research', description: 'notes & data' }
 
 const TREE = [
+  { name: 'archive', path: 'archive', type: 'dir', modified_at: 1, children: [] },
   {
     name: 'docs', path: 'docs', type: 'dir', modified_at: 1, children: [
       { name: 'inner', path: 'docs/inner', type: 'dir', modified_at: 1, children: [] },
@@ -209,7 +210,7 @@ describe('ProjectPage explorer layout', () => {
     await renderPage()
     fireEvent.click(screen.getByTestId('tree-node-docs'))
     expect(screen.getByTestId('file-row-docs/a.txt')).toBeTruthy()
-    mockTree.mockResolvedValue({ tree: [TREE[1]] }) // docs gone after refresh
+    mockTree.mockResolvedValue({ tree: TREE.filter(n => n.path !== 'docs') }) // docs gone after refresh
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
     fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Delete'))
@@ -378,6 +379,80 @@ describe('ProjectPage drag and drop', () => {
     await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs/inner', 'inner'))
     // Right pane follows the moved folder (still selected, at its new path).
     await waitFor(() => expect(screen.getByTestId('crumb-inner')).toBeTruthy())
+  })
+})
+
+describe('ProjectPage open-editor mutation guard (regression: codex 2.1)', () => {
+  // The tree stays actionable while the editor is mounted, so mutating
+  // the open file's folder must consult the dirty buffer first, and a
+  // successful rename/move must carry the editor to the new path.
+  async function openDocsFile({ dirty }) {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    fireEvent.click(screen.getByTestId('file-row-docs/a.txt'))
+    const ta = await screen.findByTestId('editor-textarea')
+    if (dirty) fireEvent.change(ta, { target: { value: 'unsaved work' } })
+    return ta
+  }
+
+  it('dragging the open file\'s folder with a dirty buffer asks; cancel aborts the move', async () => {
+    await openDocsFile({ dirty: true })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    expect(confirmSpy).toHaveBeenCalled()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockMove).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+  })
+
+  it('confirming the discard moves the folder and remaps the editor path', async () => {
+    await openDocsFile({ dirty: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'archive/docs'))
+    // The keyed remount reloads the buffer from the file's new location.
+    await waitFor(() => expect(mockGetContent).toHaveBeenLastCalledWith('p1', 'archive/docs/a.txt'))
+    expect(screen.getByTestId('file-editor')).toBeTruthy()
+  })
+
+  it('renaming the open file\'s folder with a clean buffer remaps without asking', async () => {
+    await openDocsFile({ dirty: false })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('notes')
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Rename'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'notes'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(mockGetContent).toHaveBeenLastCalledWith('p1', 'notes/a.txt'))
+  })
+
+  it('deleting the open file\'s folder closes the editor', async () => {
+    await openDocsFile({ dirty: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true) // discard + delete confirms
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Delete'))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('p1', 'docs'))
+    await waitFor(() => expect(screen.queryByTestId('file-editor')).toBeNull())
+  })
+
+  it('cancelling the discard aborts the delete entirely', async () => {
+    await openDocsFile({ dirty: true })
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(false) // discard prompt
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Delete'))
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+  })
+
+  it('cut-pasting the open file itself carries the editor to the destination', async () => {
+    await openDocsFile({ dirty: false })
+    fireEvent.contextMenu(screen.getByTestId('tree-node-docs'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    fireEvent.contextMenu(screen.getByTestId('tree-node-archive'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Paste into'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'archive/docs'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenLastCalledWith('p1', 'archive/docs/a.txt'))
   })
 })
 
