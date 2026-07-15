@@ -106,6 +106,12 @@ class ChatTurnRequest:
     than read from Flask globals."""
     conversation: Conversation
     mcp_manager: object = None
+    # The conversation's resolved project (root-only membership means a
+    # spin-off's own project_id is NULL), snapshotted when the run was
+    # created — see routes._effective_project_id, the single owner of that
+    # resolution. The runner consumes it verbatim so manager scoping and
+    # tool auto-enable can never disagree about the effective project.
+    effective_project_id: Optional[str] = None
 
 
 class ChatRunner:
@@ -122,18 +128,15 @@ class ChatRunner:
         if self.event_bus is not None:
             self.event_bus.publish(run_id, ChatRuntimeEvent(type, data or {}))
 
-    def _build_stream(self, conv: Conversation, mcp_manager):
+    def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
         # Project conversations always get the project-files tools —
         # membership in a project IS the toggle. This also pulls the
-        # server's tool_hint into the system prompt below. Membership is
-        # root-only, so spin-offs (project_id NULL) resolve through their
-        # root ancestor.
-        project_id = conv.project_id
-        if project_id is None and conv.parent_conversation_id and self.db is not None:
-            project_id = self.db.resolve_project_id(conv.id)
-        if project_id:
+        # server's tool_hint into the system prompt below. The project was
+        # resolved ONCE at run creation (see ChatTurnRequest) — do not
+        # re-resolve here, or scoping and auto-enable could diverge.
+        if effective_project_id:
             enabled_servers = with_project_files(enabled_servers)
         messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
         tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
@@ -190,7 +193,7 @@ class ChatRunner:
         last_parse_warning = None
 
         try:
-            stream = self._build_stream(conv, mcp_manager)
+            stream = self._build_stream(conv, mcp_manager, request.effective_project_id)
             for event_type, data in stream:
                 if cancel_check is not None and cancel_check():
                     # Stop the model/tool loop promptly: closing the generator

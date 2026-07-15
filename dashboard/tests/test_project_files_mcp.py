@@ -322,17 +322,21 @@ class FakePersistence:
 
 
 class TestRuntimeAutoEnable:
+    """_build_stream consumes the effective project snapshotted at run
+    creation (ChatTurnRequest.effective_project_id) — it never re-resolves,
+    so the runner is exercised with the id passed explicitly."""
+
     def test_project_conversation_gets_project_files_tools_and_hint(self):
         runner = ChatRunner(persistence=FakePersistence())
         mgr = FakeManager()
         conv = _conv(project_id="p1", mcp_servers_json=json.dumps(["sympy-math"]))
-        runner._build_stream(conv, mgr)
+        runner._build_stream(conv, mgr, "p1")
         assert ("get_all_tools", ["sympy-math", SERVER_ID]) in mgr.calls
 
     def test_project_conversation_with_no_toggles_still_gets_tools(self):
         runner = ChatRunner(persistence=FakePersistence())
         mgr = FakeManager()
-        runner._build_stream(_conv(project_id="p1"), mgr)
+        runner._build_stream(_conv(project_id="p1"), mgr, "p1")
         assert ("get_all_tools", [SERVER_ID]) in mgr.calls
 
     def test_hint_lands_in_system_prompt(self):
@@ -346,6 +350,22 @@ class TestRuntimeAutoEnable:
         runner._build_stream(_conv(), mgr)
         assert mgr.calls == []  # no enabled servers -> no tool discovery
 
+    def test_runner_does_not_resolve_on_its_own(self):
+        # The row carries a project, but no snapshot was passed: the runner
+        # must NOT fall back to conv.project_id — resolution has exactly one
+        # owner (routes._effective_project_id at run creation).
+        runner = ChatRunner(persistence=FakePersistence())
+        mgr = FakeManager()
+        runner._build_stream(_conv(project_id="p1"), mgr)
+        assert mgr.calls == []
+
+    def test_run_passes_the_snapshot_through(self):
+        # ChatTurnRequest.effective_project_id is what reaches _build_stream.
+        from chat.runtime import ChatTurnRequest
+        req = ChatTurnRequest(conversation=_conv(), mcp_manager=FakeManager(),
+                              effective_project_id="p9")
+        assert req.effective_project_id == "p9"
+
 
 class TestRoutesHelper:
     @pytest.fixture
@@ -358,12 +378,12 @@ class TestRoutesHelper:
     def test_none_without_servers_or_project(self, app):
         from chat.routes import _mcp_for_conversation
         with app.app_context():
-            assert _mcp_for_conversation(_conv(), []) is None
+            assert _mcp_for_conversation(_conv(), [], None) is None
 
     def test_plain_manager_for_toggled_non_project_conversation(self, app):
         from chat.routes import _mcp_for_conversation
         with app.app_context():
-            mgr = _mcp_for_conversation(_conv(), ["sympy-math"])
+            mgr = _mcp_for_conversation(_conv(), ["sympy-math"], None)
         assert mgr is app.config["MCP_MANAGER"]
 
     def test_scoped_manager_for_project_conversation(self, app, tmp_path):
@@ -375,7 +395,7 @@ class TestRoutesHelper:
         from chat.routes import _mcp_for_conversation
         from chat.project_files_mcp import ProjectScopedMCPManager as CurrentScoped
         with app.app_context():
-            mgr = _mcp_for_conversation(_conv(project_id="p1"), [])
+            mgr = _mcp_for_conversation(_conv(project_id="p1"), [], "p1")
         assert isinstance(mgr, CurrentScoped)
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
@@ -419,8 +439,18 @@ class TestSpinoffInheritance:
             db._close_conn(conn)
         assert db.resolve_project_id("child") is None
 
+    def test_effective_project_id_resolves_through_the_chain(self, db):
+        from chat.routes import _effective_project_id
+        app = Flask(__name__)
+        app.config["CHAT_DB"] = db
+        with app.app_context():
+            assert _effective_project_id(db.get_conversation("root")) == "p1"
+            assert _effective_project_id(db.get_conversation("child")) == "p1"
+            assert _effective_project_id(db.get_conversation("grand")) == "p1"
+            assert _effective_project_id(db.get_conversation("loner")) is None
+
     def test_routes_scope_spinoff_to_root_project(self, db, tmp_path):
-        from chat.routes import _mcp_for_conversation
+        from chat.routes import _effective_project_id, _mcp_for_conversation
         app = Flask(__name__)
         app.config["MCP_MANAGER"] = FakeManager()
         app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
@@ -428,24 +458,48 @@ class TestSpinoffInheritance:
         child = db.get_conversation("child")
         assert child.project_id is None  # root-only membership held
         with app.app_context():
-            mgr = _mcp_for_conversation(child, [])
+            project_id = _effective_project_id(child)
+            mgr = _mcp_for_conversation(child, [], project_id)
         assert mgr is not None
         mgr.call_tool(SERVER_ID, "list_files", {})
         call = app.config["MCP_MANAGER"].calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
 
-    def test_runtime_auto_enables_for_spinoff(self, db):
+    def test_runtime_auto_enables_for_spinoff_snapshot(self, db):
+        # The runner gets the resolved project as a snapshot, the same value
+        # routes bound the manager with — spin-off rows carry NULL themselves.
         runner = ChatRunner(db=db, persistence=FakePersistence())
         mgr = FakeManager()
-        runner._build_stream(db.get_conversation("grand"), mgr)
+        grand = db.get_conversation("grand")
+        assert grand.project_id is None
+        runner._build_stream(grand, mgr, db.resolve_project_id("grand"))
         assert ("get_all_tools", [SERVER_ID]) in mgr.calls
 
-    def test_runtime_without_db_still_works_for_direct_membership(self, db):
-        # Ghost-chat shape: no db wired. Direct project_id still enables.
-        runner = ChatRunner(db=None, persistence=FakePersistence())
-        mgr = FakeManager()
-        runner._build_stream(db.get_conversation("root"), mgr)
-        assert ("get_all_tools", [SERVER_ID]) in mgr.calls
+    def test_spinoff_cannot_carry_project_directly(self, db):
+        # DB-level enforcement of root-only membership (codex arch rec 2):
+        # neither inserting a spin-off with a project nor attaching a
+        # project to an existing spin-off can slip past the triggers.
+        import sqlite3
+        with pytest.raises(sqlite3.IntegrityError):
+            db.create_conversation(
+                _conv2("bad", parent_conversation_id="root", project_id="p1"))
+        conn = db._get_conn()
+        try:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "UPDATE conversations SET project_id = 'p1' WHERE id = 'child'")
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "UPDATE conversations SET parent_conversation_id = 'loner' WHERE id = 'root'")
+        finally:
+            db._close_conn(conn)
+        # detach-on-delete stays allowed: setting NULL never trips the trigger
+        conn = db._get_conn()
+        try:
+            conn.execute("UPDATE conversations SET project_id = NULL WHERE id = 'root'")
+            conn.commit()
+        finally:
+            db._close_conn(conn)
 
 
 class TestRunAsyncTimeout:

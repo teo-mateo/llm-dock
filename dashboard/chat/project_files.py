@@ -48,11 +48,18 @@ def configure_max_content_length(app):
 
 
 class ProjectFilesError(Exception):
-    """Client-facing error with an HTTP status."""
+    """Client-facing error with an HTTP status.
 
-    def __init__(self, message: str, status: int = 400):
+    `code` is a stable machine-readable identifier for conditions the
+    frontend must branch on (conflict bars, overwrite prompts) — clients
+    match on it, never on the human-readable message, so wording can
+    change freely. Only conditions with a UI behavior get a code.
+    """
+
+    def __init__(self, message: str, status: int = 400, code: str = None):
         super().__init__(message)
         self.status = status
+        self.code = code
 
 
 def default_storage_root() -> str:
@@ -248,7 +255,7 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
     if os.path.isdir(abs_target):
         raise ProjectFilesError("a directory with that name exists", status=409)
     if os.path.exists(abs_target) and not overwrite:
-        raise ProjectFilesError("file already exists", status=409)
+        raise ProjectFilesError("file already exists", status=409, code="already_exists")
     # Same permission fidelity as write_text: mkstemp stages at 0600, so an
     # overwriting upload must keep the target's mode and a fresh one gets
     # a normal default instead of 0600.
@@ -285,7 +292,7 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
                 try:
                     os.link(tmp_path, abs_target)
                 except FileExistsError:
-                    raise ProjectFilesError("file already exists", status=409)
+                    raise ProjectFilesError("file already exists", status=409, code="already_exists")
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -367,7 +374,7 @@ def write_text(root: str, rel_path: str, content: str,
     publish_mode = 0o644
     if os.path.lexists(abs_path):
         if create_only:
-            raise ProjectFilesError("file already exists", status=409)
+            raise ProjectFilesError("file already exists", status=409, code="already_exists")
         st = os.lstat(abs_path)
         if not stat_mod.S_ISREG(st.st_mode):
             raise ProjectFilesError("not a regular file", status=409)
@@ -376,14 +383,14 @@ def write_text(root: str, rel_path: str, content: str,
             # A file too large for read_text can't be what the client
             # loaded — it definitely changed. Otherwise compare content.
             if st.st_size > MAX_TEXT_EDIT_BYTES:
-                raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+                raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
             with open(abs_path, "rb") as f:
                 current = f.read()
             if _content_revision(current) != base_revision:
-                raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+                raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
     elif base_revision is not None:
         # Client edited a file that has since been deleted/renamed.
-        raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+        raise ProjectFilesError("file changed on disk since it was loaded", status=409, code="revision_conflict")
 
     with _fs_errors():
         fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
@@ -396,7 +403,7 @@ def write_text(root: str, rel_path: str, content: str,
                 try:
                     os.link(tmp_path, abs_path)
                 except FileExistsError:
-                    raise ProjectFilesError("file already exists", status=409)
+                    raise ProjectFilesError("file already exists", status=409, code="already_exists")
             else:
                 os.replace(tmp_path, abs_path)
         finally:
@@ -416,7 +423,7 @@ def mkdir(root: str, rel_path: str) -> dict:
     # by build_tree) and must count as occupying its name — exists() would
     # follow the link and report the slot free.
     if os.path.lexists(abs_path):
-        raise ProjectFilesError("path already exists", status=409)
+        raise ProjectFilesError("path already exists", status=409, code="already_exists")
     with _fs_errors():
         os.makedirs(abs_path)
     rel = "/".join(parts)
@@ -440,7 +447,7 @@ def move(root: str, rel_src: str, rel_dst: str) -> dict:
     if not os.path.lexists(abs_src):
         raise ProjectFilesError("source not found", status=404)
     if os.path.lexists(abs_dst):
-        raise ProjectFilesError("destination already exists", status=409)
+        raise ProjectFilesError("destination already exists", status=409, code="already_exists")
     if dst_parts[:len(src_parts)] == src_parts:
         raise ProjectFilesError("cannot move a directory into itself")
     if not os.path.isdir(os.path.dirname(abs_dst)):

@@ -746,3 +746,66 @@ def test_project_delete_removes_files_dir(client, tmp_path):
     r = client.delete(f"{PROJECTS_PATH}/{pid}", headers=_auth())
     assert r.status_code == 200
     assert not files_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# Stable error codes (codex arch review rec 4)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorCodes:
+    """Conditions the frontend branches on carry a stable machine-readable
+    `code` in the error body — clients match on it, never on the message
+    wording, so messages can change freely."""
+
+    def _put(self, client, pid, **body):
+        return client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                          json=body, headers=_auth())
+
+    def test_revision_conflict(self, client):
+        pid = _mkproject(client)
+        r = self._put(client, pid, path="n.md", content="one", create_only=True)
+        assert r.status_code == 200
+        r = self._put(client, pid, path="n.md", content="two", base_revision="0" * 16)
+        assert r.status_code == 409
+        assert r.get_json()["code"] == "revision_conflict"
+
+    def test_create_only_conflict(self, client):
+        pid = _mkproject(client)
+        assert self._put(client, pid, path="n.md", content="one",
+                         create_only=True).status_code == 200
+        r = self._put(client, pid, path="n.md", content="two", create_only=True)
+        assert r.status_code == 409
+        assert r.get_json()["code"] == "already_exists"
+
+    def test_upload_conflict(self, client):
+        pid = _mkproject(client)
+        assert _upload(client, pid, "a.txt").status_code == 201
+        r = _upload(client, pid, "a.txt")
+        assert r.status_code == 409
+        assert r.get_json()["code"] == "already_exists"
+
+    def test_mkdir_conflict(self, client):
+        pid = _mkproject(client)
+        mk = lambda: client.post(f"{PROJECTS_PATH}/{pid}/files/mkdir",
+                                 json={"path": "d"}, headers=_auth())
+        assert mk().status_code == 201
+        r = mk()
+        assert r.status_code == 409
+        assert r.get_json()["code"] == "already_exists"
+
+    def test_move_conflict(self, client):
+        pid = _mkproject(client)
+        _upload(client, pid, "a.txt")
+        _upload(client, pid, "b.txt")
+        r = client.post(f"{PROJECTS_PATH}/{pid}/files/move",
+                        json={"path": "a.txt", "new_path": "b.txt"}, headers=_auth())
+        assert r.status_code == 409
+        assert r.get_json()["code"] == "already_exists"
+
+    def test_uncoded_errors_have_no_code_key(self, client):
+        pid = _mkproject(client)
+        r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=../x",
+                       headers=_auth())
+        assert r.status_code == 400
+        assert "code" not in r.get_json()

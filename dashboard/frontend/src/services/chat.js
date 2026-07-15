@@ -83,8 +83,15 @@ export async function uploadProjectFile(projectId, file, { dir = '', overwrite =
   })
   if (!response.ok) {
     let msg = `HTTP ${response.status}`
-    try { msg = (await response.json()).error || msg } catch { /* not JSON */ }
-    throw new Error(msg)
+    let code = null
+    try {
+      const data = await response.json()
+      msg = data.error || msg
+      if (typeof data.code === 'string') code = data.code
+    } catch { /* not JSON */ }
+    const err = new Error(msg)
+    if (code) err.code = code
+    throw err
   }
   return response.json()
 }

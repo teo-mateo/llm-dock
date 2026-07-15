@@ -82,8 +82,9 @@ export default function ProjectFileEditor({ projectId, path, isNew = false, onCl
       setDirty(contentRef.current !== submitted)
       onSaved?.()
     } catch (err) {
-      if (err.message.includes('changed on disk') || err.message.includes('already exists')) {
-        setConflict(err.message.includes('already exists')
+      // Branch on the API's stable error code, not the message wording.
+      if (err.code === 'revision_conflict' || err.code === 'already_exists') {
+        setConflict(err.code === 'already_exists'
           ? 'A file with this name already exists on disk.'
           : 'The file changed on disk since it was loaded.')
       } else {

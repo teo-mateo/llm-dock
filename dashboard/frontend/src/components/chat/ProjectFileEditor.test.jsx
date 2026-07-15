@@ -21,6 +21,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// The real API attaches a stable `code` to conflict errors (see api.js);
+// the editor branches on it, so mocked rejections must carry it too.
+const apiError = (msg, code) => Object.assign(new Error(msg), { code })
+
 async function renderEditor(props = {}) {
   const onClose = vi.fn()
   const onSaved = vi.fn()
@@ -65,7 +69,7 @@ describe('ProjectFileEditor', () => {
 
   it('a 409 shows the conflict bar; Overwrite anyway retries without a base', async () => {
     mockSave
-      .mockRejectedValueOnce(new Error('file changed on disk since it was loaded'))
+      .mockRejectedValueOnce(apiError('file changed on disk since it was loaded', 'revision_conflict'))
       .mockResolvedValueOnce({ path: 'notes.md', revision: 'r102' })
     await renderEditor()
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
@@ -78,7 +82,7 @@ describe('ProjectFileEditor', () => {
   })
 
   it('conflict Reload discards local edits and refetches', async () => {
-    mockSave.mockRejectedValueOnce(new Error('file changed on disk since it was loaded'))
+    mockSave.mockRejectedValueOnce(apiError('file changed on disk since it was loaded', 'revision_conflict'))
     await renderEditor()
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
     fireEvent.click(screen.getByText('Save'))
@@ -141,7 +145,7 @@ describe('ProjectFileEditor', () => {
   })
 
   it('a create-only 409 shows the already-exists conflict; Reload opens the on-disk file and drops create mode', async () => {
-    mockSave.mockRejectedValueOnce(new Error('file already exists'))
+    mockSave.mockRejectedValueOnce(apiError('file already exists', 'already_exists'))
     await renderEditor({ isNew: true })
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
     fireEvent.click(screen.getByText('Save'))
@@ -159,7 +163,7 @@ describe('ProjectFileEditor', () => {
 
   it('a create-only 409 Overwrite anyway forces a plain save', async () => {
     mockSave
-      .mockRejectedValueOnce(new Error('file already exists'))
+      .mockRejectedValueOnce(apiError('file already exists', 'already_exists'))
       .mockResolvedValueOnce({ path: 'notes.md', revision: 'rf' })
     await renderEditor({ isNew: true })
     fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'mine' } })
