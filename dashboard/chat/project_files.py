@@ -12,7 +12,9 @@ component validation plus a realpath containment check, so neither
 project root.
 """
 import errno
+import hashlib
 import os
+import stat as stat_mod
 import shutil
 import logging
 import tempfile
@@ -27,6 +29,9 @@ MAX_NAME_LENGTH = 255
 # Path depth cap: keeps recursive tree walks and rmtree far away from
 # Python's recursion limit no matter what gets created through the API.
 MAX_PATH_DEPTH = 32
+# Editor cap — the in-browser editor is for notes/configs/snippets, not
+# for logs; a textarea with more than this is unusable anyway.
+MAX_TEXT_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
 def configure_max_content_length(app):
@@ -218,7 +223,6 @@ def stat_file(root: str, rel_path: str) -> str:
     FIFOs/sockets/devices are rejected rather than handed to send_file —
     opening a FIFO would block the worker indefinitely). Returns the
     absolute path (for send_file)."""
-    import stat as stat_mod
     abs_path = resolve(root, rel_path)
     try:
         st = os.lstat(abs_path)
@@ -245,6 +249,14 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
         raise ProjectFilesError("a directory with that name exists", status=409)
     if os.path.exists(abs_target) and not overwrite:
         raise ProjectFilesError("file already exists", status=409)
+    # Same permission fidelity as write_text: mkstemp stages at 0600, so an
+    # overwriting upload must keep the target's mode and a fresh one gets
+    # a normal default instead of 0600.
+    publish_mode = 0o644
+    if overwrite and os.path.lexists(abs_target):
+        target_st = os.lstat(abs_target)
+        if stat_mod.S_ISREG(target_st.st_mode):
+            publish_mode = stat_mod.S_IMODE(target_st.st_mode)
 
     # Stage in a UNIQUE, exclusively-created temp file in the destination
     # directory (same filesystem → atomic publication). A deterministic
@@ -263,6 +275,7 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
                     if written > MAX_UPLOAD_BYTES:
                         raise ProjectFilesError("file too large", status=413)
                     f.write(chunk)
+            os.chmod(tmp_path, publish_mode)
             if overwrite:
                 os.replace(tmp_path, abs_target)
             else:
@@ -277,6 +290,121 @@ def save_stream(root: str, dir_rel: str, filename: str, stream, overwrite: bool 
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
     return _node(abs_target, rel_target)
+
+
+def _content_revision(data: bytes) -> str:
+    """Opaque optimistic-concurrency token for the editor. Content-based:
+    mtime — even at nanosecond precision — is unreliable, because Linux
+    timestamps consecutive writes within one kernel timer tick
+    identically. A hash only matches when the bytes actually match."""
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
+def read_text(root: str, rel_path: str) -> dict:
+    """Read a regular file as UTF-8 text for the editor. Rejects
+    non-regular files (via stat_file), oversized files, and binary
+    content (NUL byte or invalid UTF-8)."""
+    abs_path = stat_file(root, rel_path)
+    st = os.lstat(abs_path)
+    if st.st_size > MAX_TEXT_EDIT_BYTES:
+        raise ProjectFilesError("file too large to edit", status=413)
+    with open(abs_path, "rb") as f:
+        data = f.read()
+    if b"\x00" in data:
+        raise ProjectFilesError("not a text file", status=400)
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ProjectFilesError("not a text file (not valid UTF-8)", status=400)
+    return {
+        "path": "/".join(split_rel_path(rel_path)),
+        "content": content,
+        "size": st.st_size,
+        "modified_at": int(st.st_mtime),
+        "revision": _content_revision(data),
+    }
+
+
+def write_text(root: str, rel_path: str, content: str,
+               base_revision: str = None, create_only: bool = False) -> dict:
+    """Write UTF-8 text to a file (create or overwrite), atomically via a
+    temp file in the same directory. The target's parent must exist and
+    the target itself must be absent or a regular file — symlinks and
+    special files are never written through or replaced.
+
+    base_revision (optional) is the opaque revision the client loaded
+    (read_text's ``revision``, a content hash): if the file's bytes
+    changed on disk since, the save is rejected with 409 so an edit from
+    another tab/editor isn't silently overwritten.
+
+    create_only=True is the new-file precondition: the save is rejected
+    with 409 if the path already exists (the client believed it was
+    creating a file, but its tree snapshot was stale). Publication is an
+    atomic no-replace link, mirroring save_stream's upload contract.
+    """
+    parts = split_rel_path(rel_path)
+    if not parts:
+        raise ProjectFilesError("path is required")
+    if not isinstance(content, str):
+        raise ProjectFilesError("content must be a string")
+    if "\x00" in content:
+        # read_text treats NUL as binary; accepting it here would create a
+        # file this editor then refuses to reopen.
+        raise ProjectFilesError("content must not contain NUL bytes")
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ProjectFilesError("content is not valid unicode")
+    if len(encoded) > MAX_TEXT_EDIT_BYTES:
+        raise ProjectFilesError("content too large", status=413)
+
+    abs_path = resolve(root, rel_path)
+    abs_dir = os.path.dirname(abs_path)
+    if not os.path.isdir(abs_dir):
+        raise ProjectFilesError("parent directory not found", status=404)
+    # mkstemp stages at 0600; without this an edit would silently strip the
+    # target's permission bits (e.g. a 0755 script losing its exec bit).
+    publish_mode = 0o644
+    if os.path.lexists(abs_path):
+        if create_only:
+            raise ProjectFilesError("file already exists", status=409)
+        st = os.lstat(abs_path)
+        if not stat_mod.S_ISREG(st.st_mode):
+            raise ProjectFilesError("not a regular file", status=409)
+        publish_mode = stat_mod.S_IMODE(st.st_mode)
+        if base_revision is not None:
+            # A file too large for read_text can't be what the client
+            # loaded — it definitely changed. Otherwise compare content.
+            if st.st_size > MAX_TEXT_EDIT_BYTES:
+                raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+            with open(abs_path, "rb") as f:
+                current = f.read()
+            if _content_revision(current) != base_revision:
+                raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+    elif base_revision is not None:
+        # Client edited a file that has since been deleted/renamed.
+        raise ProjectFilesError("file changed on disk since it was loaded", status=409)
+
+    with _fs_errors():
+        fd, tmp_path = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=abs_dir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(encoded)
+            os.chmod(tmp_path, publish_mode)
+            if create_only:
+                # Atomic no-replace publication, same as upload's contract.
+                try:
+                    os.link(tmp_path, abs_path)
+                except FileExistsError:
+                    raise ProjectFilesError("file already exists", status=409)
+            else:
+                os.replace(tmp_path, abs_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+    node = _node(abs_path, "/".join(parts))
+    node["revision"] = _content_revision(encoded)
+    return node
 
 
 def mkdir(root: str, rel_path: str) -> dict:

@@ -114,6 +114,46 @@ def project_files_download(project_id):
     return send_file(abs_path, as_attachment=True)
 
 
+@chat_bp.route("/api/chat/projects/<project_id>/files/content", methods=["GET"])
+@require_auth
+def project_files_read_content(project_id):
+    root, err = _project_root_or_404(project_id)
+    if err:
+        return err
+    rel_path = request.args.get("path", "")
+    # Same shape as download: validate first (traversal stays 400), then a
+    # not-yet-created root means the file is simply absent.
+    pf.split_rel_path(rel_path)
+    if not os.path.isdir(root):
+        return jsonify({"error": "file not found"}), 404
+    return jsonify(pf.read_text(root, rel_path))
+
+
+@chat_bp.route("/api/chat/projects/<project_id>/files/content", methods=["PUT"])
+@require_auth
+def project_files_write_content(project_id):
+    root, err = _project_root_or_404(project_id, create=True)
+    if err:
+        return err
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be {path, content, base_revision?}"}), 400
+    base = data.get("base_revision")
+    if base is not None and not isinstance(base, str):
+        return jsonify({"error": "base_revision must be a string"}), 400
+    create_only = data.get("create_only", False)
+    if not isinstance(create_only, bool):
+        return jsonify({"error": "create_only must be a boolean"}), 400
+    if create_only and base is not None:
+        return jsonify({"error": "create_only and base_revision are mutually exclusive"}), 400
+    node = pf.write_text(root, data.get("path"), data.get("content"),
+                         base_revision=base, create_only=create_only)
+    stale = _revalidate_or_cleanup(project_id)
+    if stale:
+        return stale
+    return jsonify(node)
+
+
 @chat_bp.route("/api/chat/projects/<project_id>/files/mkdir", methods=["POST"])
 @require_auth
 def project_files_mkdir(project_id):

@@ -109,6 +109,20 @@ export async function deleteProjectPath(projectId, path) {
   })
 }
 
+export async function getProjectFileContent(projectId, path) {
+  return fetchAPI(`/chat/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`)
+}
+
+export async function saveProjectFileContent(projectId, path, content, baseRevision = null, createOnly = false) {
+  const body = { path, content }
+  if (baseRevision != null) body.base_revision = baseRevision
+  if (createOnly) body.create_only = true
+  return fetchAPI(`/chat/projects/${projectId}/files/content`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
 // Fetches the file with auth and hands back a blob URL the caller must
 // revoke after use (a plain <a href> can't carry the bearer token).
 export async function downloadProjectFile(projectId, path) {

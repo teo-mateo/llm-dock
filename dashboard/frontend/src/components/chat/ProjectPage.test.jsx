@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import ProjectPage from './ProjectPage'
 
-const { mockTree, mockUpload, mockMkdir, mockMove, mockDelete } = vi.hoisted(() => ({
+const { mockTree, mockUpload, mockMkdir, mockMove, mockDelete, mockGetContent, mockSaveContent } = vi.hoisted(() => ({
   mockTree: vi.fn(),
   mockUpload: vi.fn(),
   mockMkdir: vi.fn(),
   mockMove: vi.fn(),
   mockDelete: vi.fn(),
+  mockGetContent: vi.fn(),
+  mockSaveContent: vi.fn(),
 }))
 vi.mock('../../services/chat', () => ({
   getProjectFilesTree: (...a) => mockTree(...a),
@@ -16,6 +18,8 @@ vi.mock('../../services/chat', () => ({
   moveProjectPath: (...a) => mockMove(...a),
   deleteProjectPath: (...a) => mockDelete(...a),
   downloadProjectFile: vi.fn(),
+  getProjectFileContent: (...a) => mockGetContent(...a),
+  saveProjectFileContent: (...a) => mockSaveContent(...a),
 }))
 
 const project = { id: 'p1', name: 'Research', description: 'notes & data' }
@@ -35,6 +39,8 @@ beforeEach(() => {
   mockMkdir.mockReset().mockResolvedValue({})
   mockMove.mockReset().mockResolvedValue({})
   mockDelete.mockReset().mockResolvedValue({ ok: true })
+  mockGetContent.mockReset().mockResolvedValue({ path: 'readme.md', content: 'doc', revision: 'r1' })
+  mockSaveContent.mockReset().mockResolvedValue({ path: 'readme.md', revision: 'r2' })
 })
 
 afterEach(() => {
@@ -137,6 +143,122 @@ describe('ProjectPage file tree', () => {
     mockTree.mockResolvedValue({ tree: [] })
     render(<ProjectPage project={project} />)
     expect(await screen.findByText(/No files yet/)).toBeTruthy()
+  })
+})
+
+describe('ProjectPage editor integration', () => {
+  it('clicking a file row opens the editor with its content; closing returns to the tree', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+    expect((await screen.findByTestId('editor-textarea')).value).toBe('doc')
+
+    fireEvent.click(screen.getByLabelText('Close editor'))
+    expect(screen.queryByTestId('file-editor')).toBeNull()
+    expect(screen.getByText('readme.md')).toBeTruthy()
+  })
+
+  it('New file prompts for a name and opens an empty new-file editor', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+    // New file: no content fetch, editor starts dirty for first save.
+    expect(mockGetContent).not.toHaveBeenCalled()
+    expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
+  })
+
+  it('New file with an existing name opens that file instead of a blank editor', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('readme.md')
+    fireEvent.click(screen.getByText('New file'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
+  })
+
+  it('saving a new file refreshes the tree', async () => {
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'body' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenCalledWith('p1', 'fresh.md', 'body', null, true))
+    await waitFor(() => expect(mockTree).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('ProjectPage in-page editor replacement guard (regression: codex 5.1)', () => {
+  it('New file over a dirty editor asks first; cancel keeps path and text', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(confirmSpy).toHaveBeenCalled()
+    // Cancelled: same editor, text intact, no name prompt shown.
+    expect(promptSpy).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+    expect(screen.getByText('readme.md')).toBeTruthy()
+  })
+
+  it('confirming the discard opens the new file editor', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea').value).toBe(''))
+    expect(screen.getByText('b.md')).toBeTruthy()
+  })
+
+  it('New file with a clean editor does not ask', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('file-row-readme.md'))
+    await screen.findByTestId('editor-textarea')
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('b.md')
+    fireEvent.click(screen.getByText('New file'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProjectPage new-file first-save race (regression: codex 3.1)', () => {
+  it('typing during the first save of a new file survives the isNew flip', async () => {
+    // First save of a new file resolves while the user has already typed
+    // newer content. onSaved flips isNew on the editor prop — that flip
+    // must NOT trigger a reload of the just-saved snapshot, which would
+    // clobber the newer text and mark it clean.
+    await renderPage()
+    vi.spyOn(window, 'prompt').mockReturnValue('fresh.md')
+    fireEvent.click(screen.getByText('New file'))
+    const ta = await screen.findByTestId('editor-textarea')
+
+    let resolveSave
+    mockSaveContent.mockImplementation(() => new Promise(res => { resolveSave = res }))
+    fireEvent.change(ta, { target: { value: 'content A' } })
+    fireEvent.click(screen.getByText('Save'))                 // create A, pending
+    fireEvent.change(ta, { target: { value: 'content B' } })  // keep typing
+
+    mockGetContent.mockResolvedValue({ path: 'fresh.md', content: 'content A', revision: 'rA' })
+    resolveSave({ path: 'fresh.md', revision: 'rA' })
+    await waitFor(() => expect(screen.getByText('Save').disabled).toBe(false))
+
+    // B intact, still dirty, and no reload happened.
+    expect(screen.getByTestId('editor-textarea').value).toBe('content B')
+    expect(screen.getByTestId('dirty-indicator')).toBeTruthy()
+    expect(mockGetContent).not.toHaveBeenCalled()
+
+    // And B saves as a normal guarded (non-create) write.
+    mockSaveContent.mockResolvedValue({ path: 'fresh.md', revision: 'rB' })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockSaveContent).toHaveBeenLastCalledWith('p1', 'fresh.md', 'content B', 'rA', false))
   })
 })
 

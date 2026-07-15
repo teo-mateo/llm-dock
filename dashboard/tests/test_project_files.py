@@ -4,6 +4,7 @@ properties here — every route funnels through project_files.resolve().
 """
 import io
 import os
+import stat as stat_mod
 import sys
 
 import pytest
@@ -219,6 +220,132 @@ class TestOps:
         with pytest.raises(pf.ProjectFilesError) as e:
             pf.delete(made_root, "nope")
         assert e.value.status == 404
+
+    def test_read_write_text_roundtrip(self, made_root):
+        pf.mkdir(made_root, "notes")
+        node = pf.write_text(made_root, "notes/todo.md", "# hello\n")
+        assert node["path"] == "notes/todo.md"
+        doc = pf.read_text(made_root, "notes/todo.md")
+        assert doc["content"] == "# hello\n"
+        assert doc["revision"] == node["revision"]
+
+    def test_write_text_requires_parent_dir(self, made_root):
+        # notes/ doesn't exist and write_text does NOT create parents
+        # implicitly for a nested path whose parent is missing.
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "nope/deep/f.txt", "x")
+        assert e.value.status == 404
+
+    def test_write_text_conflict_detection(self, made_root):
+        node = pf.write_text(made_root, "f.txt", "one")
+        # Same base → accepted.
+        pf.write_text(made_root, "f.txt", "two", base_revision=node["revision"])
+        assert pf.read_text(made_root, "f.txt")["content"] == "two"
+        # Stale base → 409, content untouched.
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "three", base_revision=node["revision"])
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "two"
+
+    def test_write_text_conflict_even_with_identical_mtime(self, made_root):
+        """Regression (PR #79 codex 1.1): the revision must not be
+        timestamp-based at ANY precision — Linux stamps writes within one
+        kernel timer tick identically, so even mtime_ns collides for quick
+        successive saves. Force the worst case: content changed while the
+        mtime (seconds AND nanoseconds) is byte-for-byte identical. The
+        content-hash revision must still detect the change."""
+        node = pf.write_text(made_root, "f.txt", "one")
+        abs_path = os.path.join(made_root, "f.txt")
+        st = os.lstat(abs_path)
+        with open(abs_path, "w") as f:
+            f.write("other tab")
+        os.utime(abs_path, ns=(st.st_atime_ns, st.st_mtime_ns))
+        assert os.lstat(abs_path).st_mtime_ns == st.st_mtime_ns
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "stale save", base_revision=node["revision"])
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "other tab"
+
+    def test_write_text_create_only(self, made_root):
+        """Regression (PR #79 codex 2.2): a new-file save carries a
+        create-only precondition, so a stale tree snapshot can't silently
+        overwrite a file that appeared on disk since."""
+        node = pf.write_text(made_root, "f.txt", "created", create_only=True)
+        assert node["path"] == "f.txt"
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "stale create", create_only=True)
+        assert e.value.status == 409
+        assert pf.read_text(made_root, "f.txt")["content"] == "created"
+        # Dangling symlinks occupy their name for create-only too.
+        os.symlink("gone", os.path.join(made_root, "link"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "link", "x", create_only=True)
+        assert e.value.status == 409
+
+    def test_writes_preserve_permission_bits(self, made_root):
+        """Regression (PR #79 codex 3.2): mkstemp stages at 0600 — an edit
+        or overwriting upload must not strip the target's mode (e.g. a
+        0755 script's exec bit), and fresh files get 0644, not 0600."""
+        node = pf.write_text(made_root, "run.sh", "#!/bin/sh\n")
+        abs_path = os.path.join(made_root, "run.sh")
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o644  # new-file default
+        os.chmod(abs_path, 0o755)
+        pf.write_text(made_root, "run.sh", "#!/bin/sh\necho hi\n")
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o755  # edit preserves
+
+        pf.save_stream(made_root, "", "run.sh", io.BytesIO(b"#!/bin/sh\n"), overwrite=True)
+        assert stat_mod.S_IMODE(os.lstat(abs_path).st_mode) == 0o755  # overwrite upload preserves
+        pf.save_stream(made_root, "", "fresh.bin", io.BytesIO(b"x"))
+        assert stat_mod.S_IMODE(os.lstat(os.path.join(made_root, "fresh.bin")).st_mode) == 0o644
+
+    def test_write_text_conflict_when_file_deleted(self, made_root):
+        node = pf.write_text(made_root, "f.txt", "one")
+        pf.delete(made_root, "f.txt")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "two", base_revision=node["revision"])
+        assert e.value.status == 409
+
+    def test_write_text_never_replaces_special_entries(self, made_root):
+        os.symlink("anywhere", os.path.join(made_root, "link"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "link", "x")
+        assert e.value.status == 409
+        assert os.path.islink(os.path.join(made_root, "link"))
+
+    def test_read_text_rejects_binary_and_oversized(self, made_root, monkeypatch):
+        with open(os.path.join(made_root, "bin.dat"), "wb") as f:
+            f.write(b"ab\x00cd")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "bin.dat")
+        assert e.value.status == 400
+
+        with open(os.path.join(made_root, "latin1.txt"), "wb") as f:
+            f.write("café".encode("latin-1"))
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "latin1.txt")
+        assert e.value.status == 400
+
+        monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 4)
+        with open(os.path.join(made_root, "big.txt"), "w") as f:
+            f.write("12345")
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.read_text(made_root, "big.txt")
+        assert e.value.status == 413
+
+    def test_write_text_rejects_nul_content(self, made_root):
+        """Regression (PR #79 codex 4.2): read_text calls NUL binary, so
+        accepting it on write would create a file the editor can't reopen."""
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "before\x00after")
+        assert e.value.status == 400
+        assert os.listdir(made_root) == []
+
+    def test_write_text_size_cap(self, made_root, monkeypatch):
+        monkeypatch.setattr(pf, "MAX_TEXT_EDIT_BYTES", 4)
+        with pytest.raises(pf.ProjectFilesError) as e:
+            pf.write_text(made_root, "f.txt", "12345")
+        assert e.value.status == 413
+        assert os.listdir(made_root) == []
 
     def test_dangling_symlink_is_a_first_class_entry(self, made_root):
         """A broken symlink is an ordinary tree entry: renamable, occupying
@@ -500,6 +627,93 @@ def test_mkdir_through_regular_file_400(client):
     # Upload into the file-as-dir path gets the same treatment.
     r = _upload(client, pid, "f.txt", b"x", dir="parent")
     assert r.status_code == 404  # save_stream's isdir pre-check
+
+
+def test_content_http_roundtrip(client):
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "# hi"}, headers=_auth())
+    assert r.status_code == 200
+    base = r.get_json()["revision"]
+
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=notes.md", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["content"] == "# hi"
+
+    # Save with the current revision → accepted; reusing it → 409.
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "x", "base_revision": base},
+                   headers=_auth())
+    assert r.status_code == 200
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "notes.md", "content": "y", "base_revision": base},
+                   headers=_auth())
+    assert r.status_code == 409
+
+
+def test_content_read_fresh_project_404(client):
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=missing.md", headers=_auth())
+    assert r.status_code == 404
+
+
+def test_content_traversal_and_bad_bodies_400(client):
+    pid = _mkproject(client)
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=../../etc/passwd",
+                   headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "../x", "content": "c"}, headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json=["nope"], headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": 42}, headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "base_revision": 12345},
+                   headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "create_only": "yes"},
+                   headers=_auth())
+    assert r.status_code == 400
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "c", "create_only": True,
+                         "base_revision": "abc"},
+                   headers=_auth())
+    assert r.status_code == 400
+
+
+def test_content_nul_rejected_http(client):
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "a\x00b"}, headers=_auth())
+    assert r.status_code == 400
+
+
+def test_content_create_only_http(client):
+    """Stale-tree case end to end: creating over an existing file is a
+    409, not a silent overwrite."""
+    pid = _mkproject(client)
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "original", "create_only": True},
+                   headers=_auth())
+    assert r.status_code == 200
+    r = client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                   json={"path": "f.txt", "content": "stale", "create_only": True},
+                   headers=_auth())
+    assert r.status_code == 409
+    r = client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=f.txt", headers=_auth())
+    assert r.get_json()["content"] == "original"
+
+
+def test_content_requires_auth(client):
+    pid = _mkproject(client)
+    assert client.get(f"{PROJECTS_PATH}/{pid}/files/content?path=x").status_code == 401
+    assert client.put(f"{PROJECTS_PATH}/{pid}/files/content",
+                      json={"path": "x", "content": ""}).status_code == 401
 
 
 def test_project_delete_aborts_when_files_cleanup_fails(client, tmp_path, monkeypatch):
