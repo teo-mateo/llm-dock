@@ -359,12 +359,62 @@ class TestRuntimeAutoEnable:
         runner._build_stream(_conv(project_id="p1"), mgr)
         assert mgr.calls == []
 
-    def test_run_passes_the_snapshot_through(self):
-        # ChatTurnRequest.effective_project_id is what reaches _build_stream.
+class TestSnapshotThreading:
+    """The snapshot must actually travel start() → executor → _execute →
+    ChatTurnRequest → run() → _build_stream, not merely exist as a field
+    (regression: codex #82 1.2)."""
+
+    def test_run_manager_threads_snapshot_into_the_request(self):
+        import threading as _threading
+        from types import SimpleNamespace
+        from chat.db import ChatDB
+        from chat.event_bus import EventBus
+        from chat.run_manager import ChatRunManager
+
+        manager = ChatRunManager(ChatDB(":memory:"), EventBus())
+        captured = {}
+        done = _threading.Event()
+
+        class SpyRunner:
+            def run(self, run, request, cancel_check=None):
+                captured["request"] = request
+                done.set()
+                return None
+
+        manager.runner = SpyRunner()
+        conv = _conv(project_id="p1")
+        try:
+            manager.start(conv, SimpleNamespace(id="r1"), mcp_manager=None,
+                          effective_project_id="p9")
+            assert done.wait(timeout=5)
+        finally:
+            manager.shutdown()
+        assert captured["request"].effective_project_id == "p9"
+        assert captured["request"].conversation is conv
+
+    def test_dbless_run_consumes_the_snapshot(self):
+        # The ephemeral-caller contract (the Ghost Chat #57 shape): no db
+        # wired, the run-creation site passes the snapshot explicitly, and
+        # it reaches _build_stream through run() itself — resolution stays
+        # with the caller, never the runner (codex #82 1.1).
+        from types import SimpleNamespace
+        from chat.persistence import NullPersistencePolicy
         from chat.runtime import ChatTurnRequest
-        req = ChatTurnRequest(conversation=_conv(), mcp_manager=FakeManager(),
-                              effective_project_id="p9")
-        assert req.effective_project_id == "p9"
+
+        captured = {}
+
+        class CapturingRunner(ChatRunner):
+            def _build_stream(self, conv, mcp_manager, effective_project_id=None):
+                captured["project_id"] = effective_project_id
+                yield ("done", {"content": "ok", "reasoning_content": None})
+
+        runner = CapturingRunner(db=None, persistence=NullPersistencePolicy())
+        conv = _conv(project_id="p1")
+        msg = runner.run(SimpleNamespace(id="r1"),
+                         ChatTurnRequest(conversation=conv, mcp_manager=None,
+                                         effective_project_id="p1"))
+        assert captured["project_id"] == "p1"
+        assert msg is not None and msg.content == "ok"
 
 
 class TestRoutesHelper:
