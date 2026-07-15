@@ -43,10 +43,10 @@ def init_chat(app, db_path: str = None):
     # Cap request bodies so Werkzeug rejects an oversized upload DURING
     # multipart parsing (before it is fully spooled to disk) — covers
     # chunked bodies that carry no Content-Length. Slightly above the
-    # per-file cap to leave room for multipart framing. setdefault so a
-    # deployment can still override it in app config.
-    from .project_files import MAX_UPLOAD_BYTES
-    app.config.setdefault("MAX_CONTENT_LENGTH", int(MAX_UPLOAD_BYTES * 1.05))
+    # per-file cap to leave room for multipart framing; an explicit
+    # deployment override is preserved.
+    from .project_files import configure_max_content_length
+    configure_max_content_length(app)
 
     bus = EventBus()
     run_manager = ChatRunManager(db, bus)

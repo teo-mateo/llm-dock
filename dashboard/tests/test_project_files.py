@@ -79,6 +79,31 @@ class TestResolve:
         with pytest.raises(pf.ProjectFilesError):
             pf.resolve(made_root, "x" * 256)
 
+    def test_path_depth_cap(self, made_root):
+        ok = "/".join(["d"] * pf.MAX_PATH_DEPTH)
+        assert pf.resolve(made_root, ok)
+        too_deep = "/".join(["d"] * (pf.MAX_PATH_DEPTH + 1))
+        with pytest.raises(pf.ProjectFilesError):
+            pf.resolve(made_root, too_deep)
+        # mkdir creates missing parents, so it must respect the same cap.
+        with pytest.raises(pf.ProjectFilesError):
+            pf.mkdir(made_root, too_deep)
+
+
+def test_configure_max_content_length():
+    """Flask pre-seeds MAX_CONTENT_LENGTH=None, so a setdefault would be a
+    no-op — the helper must assign over None but preserve an explicit
+    deployment override."""
+    app = Flask(__name__)
+    assert app.config["MAX_CONTENT_LENGTH"] is None  # Flask default
+    pf.configure_max_content_length(app)
+    assert app.config["MAX_CONTENT_LENGTH"] == int(pf.MAX_UPLOAD_BYTES * 1.05)
+
+    app2 = Flask(__name__)
+    app2.config["MAX_CONTENT_LENGTH"] = 12345
+    pf.configure_max_content_length(app2)
+    assert app2.config["MAX_CONTENT_LENGTH"] == 12345
+
 
 class TestOps:
     def test_mkdir_and_tree(self, made_root):

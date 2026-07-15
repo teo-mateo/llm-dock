@@ -22,6 +22,22 @@ logger = logging.getLogger(__name__)
 # context material for chat, not bulk storage.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 MAX_NAME_LENGTH = 255
+# Path depth cap: keeps recursive tree walks and rmtree far away from
+# Python's recursion limit no matter what gets created through the API.
+MAX_PATH_DEPTH = 32
+
+
+def configure_max_content_length(app):
+    """Give the Flask app a request-body cap keyed to the upload limit.
+
+    Flask pre-seeds MAX_CONTENT_LENGTH with None in every app's default
+    config, so setdefault() would be a no-op — assign only when it is
+    still None, preserving an explicit deployment override. Werkzeug then
+    enforces the cap DURING multipart parsing, covering chunked bodies
+    that carry no Content-Length.
+    """
+    if app.config.get("MAX_CONTENT_LENGTH") is None:
+        app.config["MAX_CONTENT_LENGTH"] = int(MAX_UPLOAD_BYTES * 1.05)
 
 
 class ProjectFilesError(Exception):
@@ -86,6 +102,8 @@ def split_rel_path(rel_path: str) -> list:
     if rel_path == "":
         return []
     parts = rel_path.split("/")
+    if len(parts) > MAX_PATH_DEPTH:
+        raise ProjectFilesError("path too deep")
     for part in parts:
         _validate_component(part)
     return parts
