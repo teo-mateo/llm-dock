@@ -35,6 +35,32 @@ export async function deleteConversations(ids) {
   })
 }
 
+// -- Projects --
+
+export async function listProjects() {
+  return fetchAPI('/chat/projects')
+}
+
+export async function createProject(data) {
+  return fetchAPI('/chat/projects', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateProject(id, data) {
+  return fetchAPI(`/chat/projects/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteProject(id) {
+  return fetchAPI(`/chat/projects/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function requestCritique(messageId, { contextWindow = 10, extraInstructions = '' } = {}) {
   return fetchAPI(`/chat/messages/${messageId}/critique`, {
     method: 'POST',

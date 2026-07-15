@@ -137,6 +137,27 @@ class ChatRun:
 
 
 @dataclass
+class Project:
+    id: str
+    name: str
+    description: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    # Populated by the DB layer (not a stored column).
+    conversation_count: int = 0
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "conversation_count": self.conversation_count,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+@dataclass
 class Conversation:
     id: str
     title: str
@@ -147,6 +168,7 @@ class Conversation:
     parent_conversation_id: Optional[str] = None
     selected_text: Optional[str] = None
     mcp_servers_json: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     messages: List[Message] = field(default_factory=list)
@@ -169,6 +191,7 @@ class Conversation:
             "sidekick_system_prompt": self.sidekick_system_prompt,
             "parent_conversation_id": self.parent_conversation_id,
             "selected_text": self.selected_text,
+            "project_id": self.project_id,
             "mcp_servers": json.loads(self.mcp_servers_json) if self.mcp_servers_json else [],
             "active_run": self.active_run,
             "last_run": self.last_run,

@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request, current_app, Response, stream_wit
 
 from auth import require_auth
 from .db import ChatDB
-from .models import Conversation, Message, Critique, ChatRun
+from .models import Conversation, Message, Critique, ChatRun, Project
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
 from .llm_proxy import stream_chat_completion
 from .critique import build_critique_context, request_critique, validate_annotations
@@ -165,6 +165,81 @@ def delete_openrouter_models_setting():
     return jsonify(_openrouter_settings_payload())
 
 
+# -- Projects CRUD --
+
+def _validate_project_name(name):
+    """Returns (cleaned_name, error). A name is required and non-blank."""
+    if not isinstance(name, str) or not name.strip():
+        return None, "name is required"
+    return name.strip(), None
+
+
+@chat_bp.route("/api/chat/projects", methods=["POST"])
+@require_auth
+def create_project():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    name, err = _validate_project_name(data.get("name"))
+    if err:
+        return jsonify({"error": err}), 400
+    description = data.get("description", "")
+    if not isinstance(description, str):
+        return jsonify({"error": "description must be a string"}), 400
+    project = Project(id=str(uuid.uuid4()), name=name, description=description)
+    project = _get_db().create_project(project)
+    return jsonify(project.to_dict()), 201
+
+
+@chat_bp.route("/api/chat/projects", methods=["GET"])
+@require_auth
+def list_projects():
+    projects = _get_db().list_projects()
+    return jsonify({"projects": [p.to_dict() for p in projects]})
+
+
+@chat_bp.route("/api/chat/projects/<project_id>", methods=["GET"])
+@require_auth
+def get_project(project_id):
+    project = _get_db().get_project(project_id)
+    if project is None:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify(project.to_dict())
+
+
+@chat_bp.route("/api/chat/projects/<project_id>", methods=["PUT"])
+@require_auth
+def update_project(project_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    updates = {}
+    if "name" in data:
+        name, err = _validate_project_name(data.get("name"))
+        if err:
+            return jsonify({"error": err}), 400
+        updates["name"] = name
+    if "description" in data:
+        if not isinstance(data["description"], str):
+            return jsonify({"error": "description must be a string"}), 400
+        updates["description"] = data["description"]
+    db = _get_db()
+    if db.get_project(project_id) is None:
+        return jsonify({"error": "Project not found"}), 404
+    project = db.update_project(project_id, **updates)
+    return jsonify(project.to_dict())
+
+
+@chat_bp.route("/api/chat/projects/<project_id>", methods=["DELETE"])
+@require_auth
+def delete_project(project_id):
+    """Delete a project. Its conversations are detached (become unfiled),
+    not deleted."""
+    if _get_db().delete_project(project_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Project not found"}), 404
+
+
 # -- Conversations CRUD --
 
 @chat_bp.route("/api/chat/conversations", methods=["POST"])
@@ -174,6 +249,10 @@ def create_conversation():
     main_service = data.get("main_service")
     if not main_service:
         return jsonify({"error": "main_service is required"}), 400
+
+    project_id = data.get("project_id")
+    if project_id is not None and _get_db().get_project(project_id) is None:
+        return jsonify({"error": "Project not found"}), 400
 
     # Honor an explicit prompt from the client (a fork or programmatic
     # caller may want one), otherwise fall back to whatever the user has
@@ -193,6 +272,7 @@ def create_conversation():
         sidekick_system_prompt=data.get("sidekick_system_prompt", DEFAULT_SIDEKICK_SYSTEM_PROMPT),
         parent_conversation_id=data.get("parent_conversation_id"),
         selected_text=data.get("selected_text"),
+        project_id=project_id,
     )
     conv = _get_db().create_conversation(conv)
     return jsonify(conv.to_dict(include_messages=True)), 201
@@ -231,6 +311,11 @@ def get_conversation(conv_id):
 def update_conversation(conv_id):
     data = request.get_json() or {}
     db = _get_db()
+    # project_id: null detaches (back to unfiled); a non-null value must
+    # name an existing project.
+    if "project_id" in data and data["project_id"] is not None:
+        if db.get_project(data["project_id"]) is None:
+            return jsonify({"error": "Project not found"}), 400
     conv = db.update_conversation(conv_id, **data)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404

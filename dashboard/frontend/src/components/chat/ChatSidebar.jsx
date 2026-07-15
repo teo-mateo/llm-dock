@@ -187,9 +187,116 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
   )
 }
 
-export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename }) {
+function ProjectHeader({ project, collapsed, onToggleCollapse, onCreateInProject, confirmDeleteProject, setConfirmDeleteProject, onDeleteProject, renamingProject, onRenameProjectStart, onRenameProjectConfirm, count }) {
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (renamingProject === project.id) {
+      inputRef.current?.focus()
+    }
+  }, [renamingProject, project.id])
+
+  const handleRenameSubmit = (e) => {
+    e.preventDefault()
+    const val = inputRef.current?.value?.trim()
+    if (val && val !== project.name) {
+      onRenameProjectConfirm(project.id, val)
+    } else {
+      onRenameProjectConfirm(project.id, null)
+    }
+  }
+
+  const handleRenameBlur = () => {
+    requestAnimationFrame(() => {
+      if (document.activeElement === inputRef.current) return
+      const val = inputRef.current?.value?.trim()
+      if (val && val !== project.name) {
+        onRenameProjectConfirm(project.id, val)
+      } else {
+        onRenameProjectConfirm(project.id, null)
+      }
+    })
+  }
+
+  return (
+    <div
+      onClick={() => onToggleCollapse(project.id)}
+      className="group flex items-center gap-2 py-2 px-3 cursor-pointer border-b border-border-subtle bg-surface-muted/50 text-fg-muted hover:bg-surface-muted"
+      data-testid={`project-header-${project.id}`}
+    >
+      <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'down'} text-[9px] w-3 flex-shrink-0 text-fg-faint`}></i>
+      <i className="fa-solid fa-folder text-xs flex-shrink-0 text-amber-500/80"></i>
+      <div className="flex-1 min-w-0">
+        {renamingProject === project.id ? (
+          <form onSubmit={handleRenameSubmit} onClick={e => e.stopPropagation()} className="flex items-center gap-1.5">
+            <input
+              ref={inputRef}
+              type="text"
+              defaultValue={project.name}
+              onBlur={handleRenameBlur}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); handleRenameSubmit(e) }
+                if (e.key === 'Escape') onRenameProjectConfirm(project.id, null)
+              }}
+              className="flex-1 min-w-0 bg-surface-strong border border-border-strong rounded px-2 py-0.5 text-sm text-fg focus:outline-none focus:border-accent"
+            />
+          </form>
+        ) : (
+          <span className="text-sm font-medium truncate flex items-center gap-1.5">
+            <span className="truncate">{project.name}</span>
+            <span className="text-[10px] text-fg-faint flex-shrink-0">{count}</span>
+          </span>
+        )}
+      </div>
+      {confirmDeleteProject === project.id ? (
+        <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => { onDeleteProject(project.id); setConfirmDeleteProject(null) }}
+            className="text-[10px] px-1.5 py-0.5 bg-danger rounded text-white"
+          >Yes</button>
+          <button
+            onClick={() => setConfirmDeleteProject(null)}
+            className="text-[10px] px-1.5 py-0.5 bg-surface-strong rounded text-fg"
+          >No</button>
+        </div>
+      ) : renamingProject === project.id ? null : (
+        <>
+          <button
+            onClick={e => { e.stopPropagation(); onCreateInProject(project.id) }}
+            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="New conversation in project"
+            aria-label="New conversation in project"
+          >
+            <i className="fa-solid fa-plus text-xs"></i>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onRenameProjectStart(project.id) }}
+            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="Rename project"
+            aria-label="Rename project"
+          >
+            <i className="fa-solid fa-pen text-xs"></i>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDeleteProject(project.id) }}
+            className="opacity-0 group-hover:opacity-100 text-fg-subtle hover:text-danger-fg flex-shrink-0 p-1.5 -m-1.5 cursor-pointer"
+            title="Delete project (conversations are kept)"
+            aria-label="Delete project"
+          >
+            <i className="fa-solid fa-trash text-xs"></i>
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [renaming, setRenaming] = useState(null)
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(null)
+  const [renamingProject, setRenamingProject] = useState(null)
+  const [collapsedProjects, setCollapsedProjects] = useState(() => new Set())
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [confirmBulk, setConfirmBulk] = useState(false)
   // Anchor for shift-click range selection. Holds the id of the last
@@ -210,18 +317,42 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     return { roots, childrenMap }
   }, [conversations])
 
-  // Flat list of conversation ids in render order (root, then its
-  // descendants depth-first, then next root, …). Used to resolve the
-  // [anchor, clicked] span for shift-click range selection.
+  // Group ROOT conversations by project. Spinoffs always render under
+  // their parent (via childrenMap) regardless of their own project_id, so
+  // only roots are bucketed. Roots pointing at an unknown project (e.g.
+  // deleted in another tab) fall back to unfiled rather than vanishing.
+  const grouped = useMemo(() => {
+    const knownIds = new Set(projects.map(p => p.id))
+    const byProject = new Map(projects.map(p => [p.id, []]))
+    const unfiled = []
+    for (const c of tree.roots) {
+      if (c.project_id && knownIds.has(c.project_id)) {
+        byProject.get(c.project_id).push(c)
+      } else {
+        unfiled.push(c)
+      }
+    }
+    return { byProject, unfiled }
+  }, [tree, projects])
+
+  // Flat list of VISIBLE conversation ids in render order (projects first,
+  // each root followed by its descendants depth-first, then unfiled roots).
+  // Collapsed projects contribute nothing — a shift-click range must never
+  // select rows the user can't see. Used to resolve the [anchor, clicked]
+  // span for shift-click range selection.
   const flatOrder = useMemo(() => {
     const out = []
     const walk = (id) => {
       out.push(id)
       for (const child of tree.childrenMap[id] || []) walk(child.id)
     }
-    for (const root of tree.roots) walk(root.id)
+    for (const p of projects) {
+      if (collapsedProjects.has(p.id)) continue
+      for (const root of grouped.byProject.get(p.id) || []) walk(root.id)
+    }
+    for (const root of grouped.unfiled) walk(root.id)
     return out
-  }, [tree])
+  }, [tree, projects, grouped, collapsedProjects])
 
   const toggleSelect = (id, shiftKey) => {
     const anchor = anchorIdRef.current
@@ -269,6 +400,26 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   const handleRenameConfirm = async (id, newTitle) => {
     setRenaming(null)
     if (newTitle && onRename) await onRename(id, newTitle)
+  }
+
+  const handleRenameProjectConfirm = async (id, newName) => {
+    setRenamingProject(null)
+    if (newName && onRenameProject) await onRenameProject(id, newName)
+  }
+
+  const toggleCollapse = (projectId) => {
+    setCollapsedProjects(prev => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }
+
+  const handleBulkMove = async (targetProjectId) => {
+    const ids = Array.from(selectedIds)
+    clearSelection()
+    if (onMoveMany) await onMoveMany(ids, targetProjectId)
   }
 
   const selectionCount = selectedIds.size
@@ -325,6 +476,15 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           <i className="fa-solid fa-plus"></i>
           New Conversation
         </button>
+        {onCreateProject && (
+          <button
+            onClick={onCreateProject}
+            className="w-full mt-2 px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg-muted transition-colors flex items-center justify-center gap-2"
+          >
+            <i className="fa-solid fa-folder-plus"></i>
+            New Project
+          </button>
+        )}
       </div>
 
       {/* Always-visible header row: shows count + select-all in browse mode,
@@ -367,6 +527,26 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
                 </>
               ) : (
                 <>
+                  {onMoveMany && projects.length > 0 && (
+                    <select
+                      value=""
+                      onChange={e => {
+                        const v = e.target.value
+                        if (!v) return
+                        handleBulkMove(v === '__none__' ? null : v)
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      className="max-w-24 bg-surface border border-border rounded px-1 py-0.5 text-[11px] text-fg-muted cursor-pointer"
+                      title="Move selected to project"
+                      aria-label="Move selected to project"
+                    >
+                      <option value="" disabled>Move to…</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                      <option value="__none__">No project</option>
+                    </select>
+                  )}
                   <button
                     onClick={() => setConfirmBulk(true)}
                     className="px-2 py-1 text-danger-fg hover:text-danger-fg hover:bg-danger-subtle rounded"
@@ -386,14 +566,41 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
         )}
       </div>
 
-      {/* Conversation tree */}
+      {/* Conversation tree: project sections first, then unfiled chats */}
       <div className="flex-1 overflow-auto">
-        {conversations.length === 0 && (
+        {conversations.length === 0 && projects.length === 0 && (
           <div className="p-4 text-center text-xs text-fg-subtle">
             No conversations yet
           </div>
         )}
-        {tree.roots.map(conv => renderConv(conv, 0))}
+        {projects.map(project => {
+          const roots = grouped.byProject.get(project.id) || []
+          const collapsed = collapsedProjects.has(project.id)
+          return (
+            <div key={project.id}>
+              <ProjectHeader
+                project={project}
+                count={roots.length}
+                collapsed={collapsed}
+                onToggleCollapse={toggleCollapse}
+                onCreateInProject={onCreateInProject}
+                confirmDeleteProject={confirmDeleteProject}
+                setConfirmDeleteProject={setConfirmDeleteProject}
+                onDeleteProject={onDeleteProject}
+                renamingProject={renamingProject}
+                onRenameProjectStart={setRenamingProject}
+                onRenameProjectConfirm={handleRenameProjectConfirm}
+              />
+              {!collapsed && roots.map(conv => renderConv(conv, 1))}
+              {!collapsed && roots.length === 0 && (
+                <div className="py-2 pl-8 pr-3 text-[11px] text-fg-faint border-b border-border-subtle">
+                  Empty project
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {grouped.unfiled.map(conv => renderConv(conv, 0))}
       </div>
     </div>
   )
