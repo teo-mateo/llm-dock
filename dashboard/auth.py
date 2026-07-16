@@ -8,39 +8,8 @@ from flask import current_app, jsonify, make_response, request
 import pyotp
 
 import config
-from flask import Blueprint, request, jsonify, make_response
 
 logger = logging.getLogger(__name__)
-
-auth_bp = Blueprint("auth", __name__)
-
-
-@auth_bp.route("/api/auth/login", methods=["POST"])
-def login_with_totp():
-    """Unauthenticated TOTP login endpoint.
-
-    Accepts X-TOTP-Code header, verifies against configured secret,
-    and returns a short-lived convenience token for subsequent requests.
-    """
-    totp_code = request.headers.get("X-TOTP-Code")
-    if not totp_code:
-        return jsonify({"error": "Missing X-TOTP-Code header"}), 400
-
-    if not config.TOTP_SECRET:
-        return jsonify({"error": "TOTP is not configured"}), 400
-
-    if not verify_totp_code(totp_code):
-        return jsonify({"error": "Invalid TOTP code"}), 401
-
-    # Issue short-lived token for convenience
-    short_token = f"totp-{secrets.token_urlsafe(16)}"
-    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
-    _totp_sessions[short_token] = expiry
-    logger.info("TOTP login successful")
-    return jsonify({
-        "token": short_token,
-        "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
-    })
 
 # Session store for short-lived TOTP tokens: token -> expiry_timestamp
 _totp_sessions: dict[str, datetime] = {}
