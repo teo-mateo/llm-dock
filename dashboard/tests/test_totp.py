@@ -18,6 +18,12 @@ def clear_totp_sessions():
     _totp_sessions.clear()
 
 
+@pytest.fixture(autouse=True)
+def mock_dotenv_writes(monkeypatch):
+    """Prevent tests from writing to the real .env file."""
+    monkeypatch.setattr(config, "set_key", lambda *a, **kw: None)
+
+
 @pytest.fixture
 def app_with_token(monkeypatch):
     """Create a test app with mock credentials set at module level."""
@@ -198,3 +204,82 @@ class TestTOTPAuthentication:
             "/api/system/info", headers={"Authorization": f"Bearer {short_token}"}
         )
         assert resp2.status_code == 200
+
+    def test_bearer_totp_token_has_sliding_expiry(self, client):
+        # Enable TOTP
+        test_secret = pyotp.random_base32()
+        config.set_totp_secret(test_secret)
+
+        totp = pyotp.TOTP(test_secret)
+
+        # Get an initial short-lived token via TOTP code
+        resp1 = client.get("/api/system/info", headers=self._totp_header(totp.now()))
+        initial_token = resp1.headers.get("X-TOTP-Token")
+        assert initial_token is not None
+
+        # Use it as a bearer token — should work (sliding expiry)
+        resp2 = client.get(
+            "/api/system/info", headers={"Authorization": f"Bearer {initial_token}"}
+        )
+        assert resp2.status_code == 200
+
+        # Same token should still work for concurrent requests
+        resp3 = client.get(
+            "/api/system/info", headers={"Authorization": f"Bearer {initial_token}"}
+        )
+        assert resp3.status_code == 200
+
+
+class TestTOTPLoginEndpoint:
+    """Test the unauthenticated POST /api/auth/login endpoint."""
+
+    @pytest.fixture
+    def client(self, app_with_token):
+        app = create_app()
+        app.testing = True
+        app.config["DASHBOARD_TOKEN"] = "test_bearer_token"
+        return app.test_client()
+
+    def test_login_rejects_missing_header(self, client):
+        resp = client.post("/api/auth/login")
+        assert resp.status_code == 400
+        assert "Missing X-TOTP-Code header" in resp.get_json()["error"]
+
+    def test_login_rejects_when_totp_not_configured(self, client):
+        config.set_totp_secret("")
+        resp = client.post("/api/auth/login", headers={"X-TOTP-Code": "123456"})
+        assert resp.status_code == 400
+        assert "TOTP is not configured" in resp.get_json()["error"]
+
+    def test_login_rejects_invalid_code(self, client):
+        config.set_totp_secret(pyotp.random_base32())
+        resp = client.post("/api/auth/login", headers={"X-TOTP-Code": "000000"})
+        assert resp.status_code == 401
+        assert "Invalid TOTP code" in resp.get_json()["error"]
+
+    def test_login_returns_token_on_valid_code(self, client):
+        test_secret = pyotp.random_base32()
+        config.set_totp_secret(test_secret)
+
+        totp = pyotp.TOTP(test_secret)
+        resp = client.post("/api/auth/login", headers={"X-TOTP-Code": totp.now()})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "token" in data
+        assert data["token"].startswith("totp-")
+        assert data["expires_in"] == 300
+
+    def test_login_token_can_authenticate(self, client):
+        test_secret = pyotp.random_base32()
+        config.set_totp_secret(test_secret)
+
+        totp = pyotp.TOTP(test_secret)
+        login_resp = client.post("/api/auth/login", headers={"X-TOTP-Code": totp.now()})
+        short_token = login_resp.get_json()["token"]
+
+        # Use returned token to authenticate a protected endpoint
+        resp = client.get(
+            "/api/system/info",
+            headers={"Authorization": f"Bearer {short_token}"},
+        )
+        assert resp.status_code == 200

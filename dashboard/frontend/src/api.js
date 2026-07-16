@@ -21,6 +21,11 @@ export async function fetchAPI(endpoint, options = {}) {
     }
   })
 
+  const newToken = response.headers.get('X-TOTP-Token')
+  if (newToken) {
+    localStorage.setItem(TOKEN_KEY, newToken)
+  }
+
   if (response.status === 401) {
     localStorage.removeItem(TOKEN_KEY)
     throw new Error('Authentication failed')

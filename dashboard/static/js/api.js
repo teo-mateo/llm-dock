@@ -34,6 +34,12 @@ async function fetchAPI(endpoint, options = {}) {
         }
     });
 
+    // Auto-extract X-TOTP-Token from response headers for token refresh
+    const newToken = response.headers.get('X-TOTP-Token');
+    if (newToken) {
+        setToken(newToken);
+    }
+
     if (response.status === 401) {
         clearToken();
         showLoginModal();
@@ -134,4 +140,77 @@ function logout() {
     stopServicesStream();
     clearToken();
     showLoginModal();
+}
+
+function switchLoginTab(tab) {
+    const passwordTab = document.getElementById('login-tab-password');
+    const totpTab = document.getElementById('login-tab-totp');
+    const passwordPanel = document.getElementById('login-password-panel');
+    const totpPanel = document.getElementById('login-totp-panel');
+    const errorEl = document.getElementById('login-error');
+
+    // Reset error message when switching tabs
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+
+    if (tab === 'password') {
+        passwordTab.className = 'flex-1 pb-2 text-sm font-medium text-white border-b-2 border-blue-500';
+        totpTab.className = 'flex-1 pb-2 text-sm font-medium text-gray-400 border-b-2 border-transparent';
+        passwordPanel.classList.remove('hidden');
+        totpPanel.classList.add('hidden');
+    } else {
+        totpTab.className = 'flex-1 pb-2 text-sm font-medium text-white border-b-2 border-blue-500';
+        passwordTab.className = 'flex-1 pb-2 text-sm font-medium text-gray-400 border-b-2 border-transparent';
+        totpPanel.classList.remove('hidden');
+        passwordPanel.classList.add('hidden');
+    }
+}
+
+async function handleTOTPLogin() {
+    const totpInput = document.getElementById('totp-input');
+    const errorEl = document.getElementById('login-error');
+    const code = totpInput ? totpInput.value.trim() : '';
+
+    if (!code || code.length !== 6) {
+        if (errorEl) {
+            errorEl.textContent = 'Please enter a 6-digit code';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    try {
+        if (errorEl) errorEl.classList.add('hidden');
+        const response = await fetch(`${API_BASE}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'X-TOTP-Code': code,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Authentication failed');
+        }
+
+        const data = await response.json();
+        if (data.token) {
+            setToken(data.token);
+            totpInput.value = '';
+            hideLoginModal();
+            loadServices().catch(() => {});
+            startServicesStream();
+            startGPUStream();
+            loadSystemInfo();
+            loadImageMetadata();
+        }
+    } catch (error) {
+        if (errorEl) {
+            errorEl.textContent = `Login failed: ${error.message}`;
+            errorEl.classList.remove('hidden');
+        }
+    }
 }

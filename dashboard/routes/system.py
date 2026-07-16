@@ -1,8 +1,12 @@
 import logging
-from datetime import datetime
-from flask import Blueprint, jsonify
+import secrets
+from datetime import datetime, timedelta, timezone
+from flask import Blueprint, jsonify, request
 
-from auth import require_auth
+import config as config_module
+import pyotp
+
+from auth import require_auth, _totp_sessions, TOTP_TOKEN_EXPIRY_SECONDS
 from docker_utils import check_docker, check_nvidia_smi, get_image_build_metadata
 from model_discovery import discover_all_models, get_disk_usage
 
@@ -23,6 +27,35 @@ def health():
             "nvidia_available": check_nvidia_smi(),
         }
     )
+
+
+@system_bp.route("/api/auth/login", methods=["POST"])
+def login_with_totp():
+    """Unauthenticated TOTP login endpoint.
+
+    Accepts X-TOTP-Code header, verifies against configured secret,
+    and returns a short-lived convenience token for subsequent requests.
+    """
+    totp_code = request.headers.get("X-TOTP-Code")
+    if not totp_code:
+        return jsonify({"error": "Missing X-TOTP-Code header"}), 400
+
+    if not config_module.TOTP_SECRET:
+        return jsonify({"error": "TOTP is not configured"}), 400
+
+    totp = pyotp.TOTP(config_module.TOTP_SECRET)
+    if not totp.verify(totp_code):
+        return jsonify({"error": "Invalid TOTP code"}), 401
+
+    # Issue short-lived token for convenience
+    short_token = f"totp-{secrets.token_urlsafe(16)}"
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
+    _totp_sessions[short_token] = expiry
+    logger.info("TOTP login successful")
+    return jsonify({
+        "token": short_token,
+        "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
+    })
 
 
 @system_bp.route("/api/auth/verify", methods=["POST"])

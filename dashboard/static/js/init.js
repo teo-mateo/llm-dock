@@ -31,7 +31,21 @@ async function init() {
     if (toggleBtn) {
         toggleBtn.addEventListener('click', togglePasswordVisibility);
     }
-	
+
+    // Attach TOTP numeric-only input filter
+    const totpInput = document.getElementById('totp-input');
+    if (totpInput) {
+        totpInput.addEventListener('input', () => {
+            totpInput.value = totpInput.value.replace(/\D/g, '').slice(0, 6);
+        });
+        totpInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleTOTPLogin();
+            }
+        });
+    }
+
     const token = getToken();
 
     if (token) {
