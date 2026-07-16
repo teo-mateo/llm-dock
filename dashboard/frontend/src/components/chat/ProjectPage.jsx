@@ -423,9 +423,13 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   }, [project?.id, run, guardEditedPath, editingUnder, editing])
 
   const handleOpenFile = useCallback((node) => {
+    // Already open (e.g. clicking the highlighted tree row): a no-op.
+    // Prompting would be misleading — confirming installs the same
+    // editor key, so nothing is actually discarded.
+    if (editing?.path === node.path) return
     if (!confirmDiscardEdits()) return
     setEditing({ path: node.path, isNew: false })
-  }, [confirmDiscardEdits])
+  }, [editing?.path, confirmDiscardEdits])
 
   const handleNewFile = useCallback((parentPath) => {
     if (!confirmDiscardEdits()) return

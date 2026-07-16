@@ -413,6 +413,18 @@ describe('ProjectPage tree file rows', () => {
     expect(mockGetContent).toHaveBeenCalledTimes(1) // no second load
   })
 
+  it('clicking the tree row of the already-open file is a no-op — no discard prompt, buffer intact (regression: codex 1.1)', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+    expect(mockGetContent).toHaveBeenCalledTimes(1) // no reload
+  })
+
   it('right-clicking a tree file offers the file menu and Delete works', async () => {
     await renderPage()
     fireEvent.contextMenu(screen.getByTestId('tree-node-readme.md'), { clientX: 5, clientY: 5 })
