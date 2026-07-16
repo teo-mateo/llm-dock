@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import secrets
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import current_app, jsonify, make_response, request
@@ -12,9 +13,20 @@ import config
 logger = logging.getLogger(__name__)
 
 # Session store for short-lived TOTP tokens: token -> expiry_timestamp
-_totp_sessions: dict[str, datetime] = {}
+_totp_sessions: OrderedDict[str, datetime] = OrderedDict()
+MAX_SESSIONS = 1000
 
-TOTP_TOKEN_EXPIRY_SECONDS = 300  # 5 minutes
+TOTP_TOKEN_EXPIRY_SECONDS = 28800  # 8 hours
+
+
+def _cleanup_sessions():
+    """Remove expired entries and evict oldest if over capacity."""
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _totp_sessions.items() if v <= now]
+    for k in expired:
+        del _totp_sessions[k]
+    while len(_totp_sessions) > MAX_SESSIONS:
+        _totp_sessions.popitem(last=False)
 
 
 def verify_totp_code(code: str) -> bool:
@@ -30,6 +42,8 @@ def require_auth(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        _cleanup_sessions()
+
         # Try bearer token first
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
@@ -45,6 +59,7 @@ def require_auth(f):
                     _totp_sessions[token] = (
                         datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
                     )
+                    logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                     return f(*args, **kwargs)
                 else:
                     _totp_sessions.pop(token, None)
@@ -53,6 +68,7 @@ def require_auth(f):
             # Check against configured credentials
             dashboard_token = current_app.config["DASHBOARD_TOKEN"]
             if secrets.compare_digest(token, dashboard_token):
+                logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                 return f(*args, **kwargs)
 
         # Try TOTP code via X-TOTP-Code header
@@ -64,6 +80,7 @@ def require_auth(f):
                 _totp_sessions[short_token] = (
                     datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
                 )
+                logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, short_token[:8])
                 response = make_response(f(*args, **kwargs))
                 response.headers["X-TOTP-Token"] = short_token
                 return response

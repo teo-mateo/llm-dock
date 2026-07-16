@@ -108,8 +108,8 @@ async function handleLogin(event) {
 
     try {
         errorEl.classList.add('hidden');
-        // Verify token by calling auth endpoint
-        const response = await fetch(`${API_BASE}/auth/verify`, {
+        // Exchange static token for short-lived session token
+        const response = await fetch(`${API_BASE}/auth/session`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -121,8 +121,9 @@ async function handleLogin(event) {
             throw new Error('Invalid password');
         }
 
-        // Token is valid, save it
-        setToken(token);
+        const data = await response.json();
+        // Store the short-lived session token, not the raw password
+        setToken(data.token);
         document.getElementById('token-input').value = '';
         hideLoginModal();
         startServicesStream();

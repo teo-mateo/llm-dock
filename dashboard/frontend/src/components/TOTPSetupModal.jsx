@@ -116,7 +116,7 @@ function TOTPSetupModal({ onClose }) {
               <button
                 onClick={handleSetup}
                 disabled={busy}
-                className="rounded-md bg-accent-strong px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-50"
+                className="rounded-md bg-accent-strong px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {busy ? 'Generating...' : 'Set Up Authenticator'}
               </button>
@@ -152,7 +152,7 @@ function TOTPSetupModal({ onClose }) {
                 <button
                   type="submit"
                   disabled={busy || code.length !== 6}
-                  className="rounded-md bg-accent-strong px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-50"
+                  className="rounded-md bg-accent-strong px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                 >
                   {busy ? 'Verifying...' : 'Verify'}
                 </button>
