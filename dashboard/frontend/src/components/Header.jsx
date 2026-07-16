@@ -1,8 +1,17 @@
 import ThemeSwitcher from './ThemeSwitcher'
 
-function Header() {
+function Header({ onSettingsClick }) {
   return (
     <header className="h-16 bg-app/80 border-b border-border-subtle px-4 hidden md:flex items-center justify-end gap-3">
+      {onSettingsClick && (
+        <button
+          onClick={onSettingsClick}
+          className="text-fg-subtle hover:text-fg-muted transition-colors"
+          title="Settings"
+        >
+          <i className="fa-solid fa-gear"></i>
+        </button>
+      )}
       <ThemeSwitcher />
       <a
         href="/"

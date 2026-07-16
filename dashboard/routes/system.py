@@ -1,8 +1,12 @@
 import logging
-from datetime import datetime
-from flask import Blueprint, jsonify
+import secrets
+from datetime import datetime, timedelta, timezone
+from flask import Blueprint, current_app, jsonify, request
 
-from auth import require_auth
+import config as config_module
+import pyotp
+
+from auth import require_auth, _totp_sessions, TOTP_TOKEN_EXPIRY_SECONDS, _cleanup_sessions
 from docker_utils import check_docker, check_nvidia_smi, get_image_build_metadata
 from model_discovery import discover_all_models, get_disk_usage
 
@@ -25,11 +29,66 @@ def health():
     )
 
 
+@system_bp.route("/api/auth/login", methods=["POST"])
+def login_with_totp():
+    """Unauthenticated TOTP login endpoint.
+
+    Accepts X-TOTP-Code header, verifies against configured secret,
+    and returns a short-lived convenience token for subsequent requests.
+    """
+    totp_code = request.headers.get("X-TOTP-Code")
+    if not totp_code:
+        return jsonify({"error": "Missing X-TOTP-Code header"}), 400
+
+    if not config_module.TOTP_SECRET:
+        return jsonify({"error": "TOTP is not configured"}), 400
+
+    totp = pyotp.TOTP(config_module.TOTP_SECRET)
+    if not totp.verify(totp_code):
+        return jsonify({"error": "Invalid TOTP code"}), 401
+
+    # Issue short-lived token for convenience
+    short_token = f"totp-{secrets.token_urlsafe(16)}"
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
+    _totp_sessions[short_token] = expiry
+    logger.info("TOTP login successful")
+    return jsonify({
+        "token": short_token,
+        "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
+    })
+
+
 @system_bp.route("/api/auth/verify", methods=["POST"])
 @require_auth
 def verify_token():
     """Verify if the provided token is valid"""
     return jsonify({"valid": True, "message": "Token is valid"})
+
+
+@system_bp.route("/api/auth/session", methods=["POST"])
+def exchange_for_session():
+    """Exchange the static DASHBOARD_TOKEN for a short-lived session token.
+
+    Accepts Authorization: Bearer header with the static token.
+    Returns a totp- style token that expires after TOTP_TOKEN_EXPIRY_SECONDS.
+    """
+    _cleanup_sessions()
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing Authorization header"}), 400
+
+    token = auth_header[7:]
+    if not secrets.compare_digest(token, current_app.config["DASHBOARD_TOKEN"]):
+        return jsonify({"error": "Invalid token"}), 401
+
+    short_token = f"totp-{secrets.token_urlsafe(16)}"
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
+    _totp_sessions[short_token] = expiry
+    logger.info("Static token exchanged for session token")
+    return jsonify({
+        "token": short_token,
+        "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
+    })
 
 
 @system_bp.route("/api/images/metadata", methods=["GET"])

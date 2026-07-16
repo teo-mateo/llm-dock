@@ -6,7 +6,7 @@ from flask import Flask, send_from_directory, abort
 from flask_cors import CORS
 
 from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
-from routes import gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp
+from routes import gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp
 from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
 from services import event_manager
@@ -35,6 +35,7 @@ def create_app(config=None):
     app.register_blueprint(benchmarks_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(metrics_bp)
+    app.register_blueprint(totp_bp)
 
     # Start Docker event manager for SSE streaming
     event_manager.start()
