@@ -16,6 +16,9 @@ GLOBAL_API_KEY = os.getenv("LLM_DOCK_API_KEY")
 # Optional. When set, OpenRouter-hosted models become selectable in the chat
 # model pickers. Read via ``config.OPENROUTER_API_KEY`` (attribute access).
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+# Optional. When set, TOTP (time-based one-time password) authentication is
+# enabled alongside the bearer-token method. Read via ``config.TOTP_SECRET``.
+TOTP_SECRET = os.getenv("TOTP_SECRET")
 
 
 def set_global_api_key(new_key: str, dotenv_path: str = DOTENV_PATH):
@@ -29,6 +32,19 @@ def set_global_api_key(new_key: str, dotenv_path: str = DOTENV_PATH):
     set_key(dotenv_path, "LLM_DOCK_API_KEY", new_key)
     GLOBAL_API_KEY = new_key
     return new_key
+
+
+def set_totp_secret(new_secret: str, dotenv_path: str = DOTENV_PATH):
+    """Persist a new TOTP secret to .env and update the in-process value.
+
+    Other modules must reference ``config.TOTP_SECRET`` (not a name imported
+    via ``from config import TOTP_SECRET``) to observe the rotated value
+    without a process restart.
+    """
+    global TOTP_SECRET
+    set_key(dotenv_path, "TOTP_SECRET", new_secret)
+    TOTP_SECRET = new_secret
+    return new_secret
 
 
 _config_initialized = False

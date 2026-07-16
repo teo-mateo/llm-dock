@@ -3,5 +3,6 @@ from .services import services_bp
 from .system import system_bp
 from .openwebui import openwebui_bp
 from .metrics import metrics_bp
+from .totp import totp_bp
 
-__all__ = ["gpu_bp", "services_bp", "system_bp", "openwebui_bp", "metrics_bp"]
+__all__ = ["gpu_bp", "services_bp", "system_bp", "openwebui_bp", "metrics_bp", "totp_bp"]
