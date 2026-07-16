@@ -86,10 +86,12 @@ describe('ProjectPage explorer layout', () => {
     await renderPage()
     expect(screen.getByRole('heading', { name: 'Research' })).toBeTruthy()
     expect(screen.getByText('notes & data')).toBeTruthy()
-    // Tree pane: root node + dirs only.
+    // Tree pane: root node, dirs, and root-level files.
     expect(screen.getByTestId('tree-node-root')).toBeTruthy()
     expect(screen.getByTestId('tree-node-docs')).toBeTruthy()
-    expect(screen.queryByTestId('tree-node-readme.md')).toBeNull()
+    expect(screen.getByTestId('tree-node-readme.md')).toBeTruthy()
+    // Files inside collapsed folders stay hidden until expanded.
+    expect(screen.queryByTestId('tree-node-docs/a.txt')).toBeNull()
     // Right pane: root entries; children hidden until docs is selected.
     expect(screen.getByTestId('file-row-docs')).toBeTruthy()
     expect(screen.queryByTestId('file-row-docs/a.txt')).toBeNull()
@@ -117,11 +119,12 @@ describe('ProjectPage explorer layout', () => {
     expect(screen.getByTestId('file-row-readme.md')).toBeTruthy()
   })
 
-  it('tree chevron expands subfolders without changing the selection', async () => {
+  it('tree chevron expands subfolders and files without changing the selection', async () => {
     await renderPage()
     expect(screen.queryByTestId('tree-node-docs/inner')).toBeNull()
     fireEvent.click(screen.getByLabelText('Expand docs'))
     expect(screen.getByTestId('tree-node-docs/inner')).toBeTruthy()
+    expect(screen.getByTestId('tree-node-docs/a.txt')).toBeTruthy()
     // Selection unchanged: right pane still shows the root.
     expect(screen.getByTestId('file-row-readme.md')).toBeTruthy()
   })
@@ -379,6 +382,72 @@ describe('ProjectPage drag and drop', () => {
     await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs/inner', 'inner'))
     // Right pane follows the moved folder (still selected, at its new path).
     await waitFor(() => expect(screen.getByTestId('crumb-inner')).toBeTruthy())
+  })
+})
+
+describe('ProjectPage tree file rows', () => {
+  it('clicking a file in the tree opens it in the editor', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('p1', 'readme.md'))
+    expect(await screen.findByTestId('file-editor')).toBeTruthy()
+  })
+
+  it('the file open in the editor is highlighted in the tree', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    await screen.findByTestId('file-editor')
+    expect(screen.getByTestId('tree-node-readme.md').className).toContain('bg-accent-subtle')
+  })
+
+  it('clicking a tree file with a dirty editor asks first; cancel keeps the buffer', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-docs'))
+    fireEvent.click(screen.getByTestId('file-row-docs/a.txt'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+    expect(mockGetContent).toHaveBeenCalledTimes(1) // no second load
+  })
+
+  it('clicking the tree row of the already-open file is a no-op — no discard prompt, buffer intact (regression: codex 1.1)', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    const ta = await screen.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved work' } })
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    fireEvent.click(screen.getByTestId('tree-node-readme.md'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
+    expect(mockGetContent).toHaveBeenCalledTimes(1) // no reload
+  })
+
+  it('right-clicking a tree file offers the file menu and Delete works', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('tree-node-readme.md'), { clientX: 5, clientY: 5 })
+    const menu = screen.getByTestId('context-menu')
+    for (const label of ['Open', 'Download', 'Cut', 'Copy', 'Rename', 'Delete']) {
+      expect(within(menu).getByText(label)).toBeTruthy()
+    }
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(within(menu).getByText('Delete'))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('p1', 'readme.md'))
+  })
+
+  it('dragging a tree file onto a tree folder moves it there', async () => {
+    await renderPage()
+    dragAndDrop(screen.getByTestId('tree-node-readme.md'), screen.getByTestId('tree-node-docs'))
+    await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'readme.md', 'docs/readme.md'))
+  })
+
+  it('a cut tree file is dimmed while on the clipboard', async () => {
+    await renderPage()
+    fireEvent.contextMenu(screen.getByTestId('tree-node-readme.md'), { clientX: 5, clientY: 5 })
+    fireEvent.click(within(screen.getByTestId('context-menu')).getByText('Cut'))
+    expect(screen.getByTestId('tree-node-readme.md').className).toContain('opacity-50')
   })
 })
 
@@ -647,7 +716,8 @@ describe('ProjectPage in-page editor replacement guard (regression: codex 5.1)',
     // Cancelled: same editor, text intact, no name prompt shown.
     expect(promptSpy).not.toHaveBeenCalled()
     expect(screen.getByTestId('editor-textarea').value).toBe('unsaved work')
-    expect(screen.getByText('readme.md')).toBeTruthy()
+    // Scoped to the editor: the tree also shows a readme.md row now.
+    expect(within(screen.getByTestId('file-editor')).getByText('readme.md')).toBeTruthy()
   })
 
   it('confirming the discard opens the new file editor', async () => {
@@ -724,13 +794,13 @@ describe('ProjectPage stale-response guard', () => {
     await waitFor(() => expect(mockTree).toHaveBeenCalledWith('pa'))
 
     rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
-    await screen.findByText('b-only.txt')
+    await screen.findByTestId('file-row-b-only.txt')
 
     resolveA({ tree: treeA })
     // Give the late resolution a tick to (incorrectly) commit.
     await new Promise(r => setTimeout(r, 0))
-    expect(screen.queryByText('a-only.txt')).toBeNull()
-    expect(screen.getByText('b-only.txt')).toBeTruthy()
+    expect(screen.queryByTestId('file-row-a-only.txt')).toBeNull()
+    expect(screen.getByTestId('file-row-b-only.txt')).toBeTruthy()
   })
 })
 
@@ -749,18 +819,18 @@ describe('ProjectPage stale-mutation guard', () => {
     vi.spyOn(window, 'prompt').mockReturnValue('slow-dir')
 
     const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
-    await screen.findByText('a-only.txt')
+    await screen.findByTestId('file-row-a-only.txt')
     fireEvent.click(screen.getByText('New folder'))         // A's mutation, pending
     await waitFor(() => expect(mockMkdir).toHaveBeenCalled())
 
     rerender(<ProjectPage project={{ id: 'pb', name: 'B' }} />)
-    await screen.findByText('b-only.txt')
+    await screen.findByTestId('file-row-b-only.txt')
 
     resolveMkdir({})                                        // A's run() resumes: refresh('pa')
     await new Promise(r => setTimeout(r, 0))
     await new Promise(r => setTimeout(r, 0))
-    expect(screen.queryByText('a-only.txt')).toBeNull()
-    expect(screen.getByText('b-only.txt')).toBeTruthy()
+    expect(screen.queryByTestId('file-row-a-only.txt')).toBeNull()
+    expect(screen.getByTestId('file-row-b-only.txt')).toBeTruthy()
   })
 })
 
@@ -820,7 +890,7 @@ describe('ProjectPage stale-refresh generation theft', () => {
     vi.spyOn(window, 'prompt').mockReturnValue('slow-dir')
 
     const { rerender } = render(<ProjectPage project={{ id: 'pa', name: 'A' }} />)
-    await screen.findByText('a-only.txt')
+    await screen.findByTestId('file-row-a-only.txt')
     fireEvent.click(screen.getByText('New folder'))          // A's mutation, pending
     await waitFor(() => expect(mockMkdir).toHaveBeenCalled())
 
@@ -830,7 +900,7 @@ describe('ProjectPage stale-refresh generation theft', () => {
     resolveMkdir({})                                         // stale A follow-up refresh runs first
     await new Promise(r => setTimeout(r, 0))
     resolveB({ tree: treeB })                                // B resolves LAST
-    expect(await screen.findByText('b-only.txt')).toBeTruthy()
-    expect(screen.queryByText('a-only.txt')).toBeNull()
+    expect(await screen.findByTestId('file-row-b-only.txt')).toBeTruthy()
+    expect(screen.queryByTestId('file-row-a-only.txt')).toBeNull()
   })
 })

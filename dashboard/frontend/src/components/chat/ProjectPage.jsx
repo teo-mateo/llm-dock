@@ -74,10 +74,33 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// One folder row in the left tree pane (recursive over subdirectories).
-function TreeDir({ node, depth, expanded, selectedDir, dropTarget, cutPath,
-                   onToggle, onSelect, onMenu, onDragStart, onDragOver, onDragLeave, onDrop }) {
-  const subdirs = (node.children || []).filter(c => c.type === 'dir')
+// One file row in the left tree pane. Files aren't drop targets (drops go
+// to folders), but they are drag sources and carry the full context menu.
+function TreeFile({ node, depth, editingPath, cutPath, onOpen, onMenu, onDragStart }) {
+  return (
+    <div
+      draggable
+      onClick={() => onOpen(node)}
+      onContextMenu={e => onMenu(e, node)}
+      onDragStart={e => onDragStart(e, node)}
+      className={`flex items-center gap-1.5 py-1 pr-2 text-sm cursor-pointer rounded ${
+        editingPath === node.path ? 'bg-accent-subtle text-fg' : 'text-fg-muted hover:bg-surface-muted'
+      } ${cutPath && isSelfOrDescendant(node.path, cutPath) ? 'opacity-50' : ''}`}
+      style={{ paddingLeft: `${8 + depth * 14}px` }}
+      data-testid={`tree-node-${node.path}`}
+    >
+      <span className="w-4 flex-shrink-0"></span>
+      <i className="fa-regular fa-file text-xs text-fg-faint flex-shrink-0"></i>
+      <span className="flex-1 min-w-0 truncate">{node.name}</span>
+    </div>
+  )
+}
+
+// One folder row in the left tree pane (recursive over children; the
+// backend sorts dirs before files, so children render in tree order).
+function TreeDir({ node, depth, expanded, selectedDir, editingPath, dropTarget, cutPath,
+                   onToggle, onSelect, onOpenFile, onMenu, onDragStart, onDragOver, onDragLeave, onDrop }) {
+  const children = node.children || []
   const isExpanded = expanded.has(node.path)
   return (
     <>
@@ -99,7 +122,7 @@ function TreeDir({ node, depth, expanded, selectedDir, dropTarget, cutPath,
       >
         <button
           onClick={e => { e.stopPropagation(); onToggle(node.path) }}
-          className={`w-4 flex-shrink-0 text-fg-faint cursor-pointer ${subdirs.length ? '' : 'invisible'}`}
+          className={`w-4 flex-shrink-0 text-fg-faint cursor-pointer ${children.length ? '' : 'invisible'}`}
           aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.path}`}
           tabIndex={-1}
         >
@@ -108,23 +131,38 @@ function TreeDir({ node, depth, expanded, selectedDir, dropTarget, cutPath,
         <i className={`fa-solid fa-folder${selectedDir === node.path ? '-open' : ''} text-xs text-amber-500/80 flex-shrink-0`}></i>
         <span className="flex-1 min-w-0 truncate">{node.name}</span>
       </div>
-      {isExpanded && subdirs.map(child => (
-        <TreeDir
-          key={child.path}
-          node={child}
-          depth={depth + 1}
-          expanded={expanded}
-          selectedDir={selectedDir}
-          dropTarget={dropTarget}
-          cutPath={cutPath}
-          onToggle={onToggle}
-          onSelect={onSelect}
-          onMenu={onMenu}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        />
+      {isExpanded && children.map(child => (
+        child.type === 'dir' ? (
+          <TreeDir
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            expanded={expanded}
+            selectedDir={selectedDir}
+            editingPath={editingPath}
+            dropTarget={dropTarget}
+            cutPath={cutPath}
+            onToggle={onToggle}
+            onSelect={onSelect}
+            onOpenFile={onOpenFile}
+            onMenu={onMenu}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          />
+        ) : (
+          <TreeFile
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            editingPath={editingPath}
+            cutPath={cutPath}
+            onOpen={onOpenFile}
+            onMenu={onMenu}
+            onDragStart={onDragStart}
+          />
+        )
       ))}
     </>
   )
@@ -385,9 +423,13 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
   }, [project?.id, run, guardEditedPath, editingUnder, editing])
 
   const handleOpenFile = useCallback((node) => {
+    // Already open (e.g. clicking the highlighted tree row): a no-op.
+    // Prompting would be misleading — confirming installs the same
+    // editor key, so nothing is actually discarded.
+    if (editing?.path === node.path) return
     if (!confirmDiscardEdits()) return
     setEditing({ path: node.path, isNew: false })
-  }, [confirmDiscardEdits])
+  }, [editing?.path, confirmDiscardEdits])
 
   const handleNewFile = useCallback((parentPath) => {
     if (!confirmDiscardEdits()) return
@@ -644,23 +686,38 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
             <i className="fa-solid fa-house text-xs text-fg-subtle flex-shrink-0"></i>
             <span className="flex-1 min-w-0 truncate font-medium">{project.name}</span>
           </div>
-          {tree.filter(n => n.type === 'dir').map(node => (
-            <TreeDir
-              key={node.path}
-              node={node}
-              depth={1}
-              expanded={expanded}
-              selectedDir={selectedDir}
-              dropTarget={dropTarget}
-              cutPath={cutPath}
-              onToggle={toggle}
-              onSelect={selectDir}
-              onMenu={openMenu}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            />
+          {tree.map(node => (
+            node.type === 'dir' ? (
+              <TreeDir
+                key={node.path}
+                node={node}
+                depth={1}
+                expanded={expanded}
+                selectedDir={selectedDir}
+                editingPath={editing?.path}
+                dropTarget={dropTarget}
+                cutPath={cutPath}
+                onToggle={toggle}
+                onSelect={selectDir}
+                onOpenFile={handleOpenFile}
+                onMenu={openMenu}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              />
+            ) : (
+              <TreeFile
+                key={node.path}
+                node={node}
+                depth={1}
+                editingPath={editing?.path}
+                cutPath={cutPath}
+                onOpen={handleOpenFile}
+                onMenu={openMenu}
+                onDragStart={handleDragStart}
+              />
+            )
           ))}
         </div>
 
