@@ -199,3 +199,54 @@ describe('ChatPage delete → project count refresh', () => {
     expect(mockListProjects).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('ChatPage project conversation split view', () => {
+  afterEach(() => localStorage.clear())
+
+  function renderConversationRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('shows the file-explorer strip when the conversation belongs to a project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    renderConversationRoute()
+    await waitFor(() => expect(s.getByTestId('project-chat-split')).toBeInTheDocument())
+    await waitFor(() => expect(mockFilesTree).toHaveBeenCalledWith('p1'))
+    expect(s.getByTestId('explorer-strip')).toBeInTheDocument()
+  })
+
+  it('renders no strip for a conversation without a project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    renderConversationRoute()
+    await waitFor(() => expect(mockGetConversation).toHaveBeenCalled())
+    // Give the split a chance to (incorrectly) appear before asserting.
+    await new Promise(r => setTimeout(r, 0))
+    expect(s.queryByTestId('project-chat-split')).toBeNull()
+    expect(mockFilesTree).not.toHaveBeenCalled()
+  })
+
+  it('renders no strip when the conversation points at an unknown project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'ghost',
+      messages: [], active_run: null, last_run: null,
+    })
+    renderConversationRoute()
+    await waitFor(() => expect(mockGetConversation).toHaveBeenCalled())
+    await new Promise(r => setTimeout(r, 0))
+    expect(s.queryByTestId('project-chat-split')).toBeNull()
+  })
+})

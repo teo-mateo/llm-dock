@@ -1,0 +1,166 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import ProjectChatSplit from './ProjectChatSplit'
+
+const { mockFilesTree, mockGetFileContent, mockSaveFileContent } = vi.hoisted(() => ({
+  mockFilesTree: vi.fn(),
+  mockGetFileContent: vi.fn(),
+  mockSaveFileContent: vi.fn(),
+}))
+vi.mock('../../services/chat', () => ({
+  getProjectFilesTree: (...a) => mockFilesTree(...a),
+  uploadProjectFile: vi.fn(),
+  getProjectFileContent: (...a) => mockGetFileContent(...a),
+  saveProjectFileContent: (...a) => mockSaveFileContent(...a),
+}))
+
+const project = { id: 'p1', name: 'Fancy Project' }
+
+beforeEach(() => {
+  localStorage.clear()
+  mockFilesTree.mockReset().mockResolvedValue({
+    tree: [{ name: 'a.md', path: 'a.md', type: 'file', size: 3 }],
+  })
+  mockGetFileContent.mockReset().mockResolvedValue({ path: 'a.md', content: 'hello', revision: 'r1' })
+  mockSaveFileContent.mockReset().mockResolvedValue({ name: 'a.md', path: 'a.md', type: 'file' })
+})
+
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
+
+describe('ProjectChatSplit', () => {
+  it('renders only the chat when the conversation has no project', () => {
+    render(
+      <ProjectChatSplit project={null} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    expect(screen.getByTestId('the-chat')).toBeInTheDocument()
+    expect(screen.queryByTestId('project-chat-split')).toBeNull()
+  })
+
+  it('shows the explorer strip at the 20% default next to the chat for a project conversation', async () => {
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    expect(screen.getByTestId('the-chat')).toBeInTheDocument()
+    const strip = screen.getByTestId('explorer-strip')
+    expect(strip.style.width).toBe('20%')
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+  })
+
+  it('collapses to a rail and expands back, persisting the choice', async () => {
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Hide file explorer'))
+    expect(screen.queryByTestId('explorer-strip')).toBeNull()
+    expect(localStorage.getItem('llmdock.chatExplorer.collapsed')).toBe('true')
+    // Chat stays visible while collapsed.
+    expect(screen.getByTestId('the-chat')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Show file explorer'))
+    expect(screen.getByTestId('explorer-strip')).toBeInTheDocument()
+    expect(localStorage.getItem('llmdock.chatExplorer.collapsed')).toBe('false')
+  })
+
+  it('drag on the divider resizes the strip within bounds and persists the width', async () => {
+    const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON: () => {},
+    })
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+
+    fireEvent.mouseDown(screen.getByTestId('explorer-divider'))
+    fireEvent.mouseMove(window, { clientX: 300 })
+    expect(screen.getByTestId('explorer-strip').style.width).toBe('300px')
+
+    // Clamped to 45% of the container (450px of 1000px)…
+    fireEvent.mouseMove(window, { clientX: 900 })
+    expect(screen.getByTestId('explorer-strip').style.width).toBe('450px')
+    // …and to the minimum on the other side.
+    fireEvent.mouseMove(window, { clientX: 10 })
+    expect(screen.getByTestId('explorer-strip').style.width).toBe('160px')
+
+    fireEvent.mouseUp(window)
+    expect(localStorage.getItem('llmdock.chatExplorer.width')).toBe('160')
+    rectSpy.mockRestore()
+  })
+
+  it('opening a file overlays the editor on the chat; closing removes it', async () => {
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(screen.getByTestId('editor-overlay')).toBeInTheDocument())
+    expect(mockGetFileContent).toHaveBeenCalledWith('p1', 'a.md')
+    // Chat stays mounted underneath.
+    expect(screen.getByTestId('the-chat')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Close editor'))
+    expect(screen.queryByTestId('editor-overlay')).toBeNull()
+  })
+
+  it('switching conversation closes the editor overlay', async () => {
+    const { rerender } = render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(screen.getByTestId('editor-overlay')).toBeInTheDocument())
+
+    rerender(
+      <ProjectChatSplit project={project} conversationId="c2">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    expect(screen.queryByTestId('editor-overlay')).toBeNull()
+  })
+
+  it('a dirty editor asks before opening another file', async () => {
+    mockFilesTree.mockResolvedValue({
+      tree: [
+        { name: 'a.md', path: 'a.md', type: 'file', size: 3 },
+        { name: 'b.md', path: 'b.md', type: 'file', size: 3 },
+      ],
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+    fireEvent.click(screen.getByTestId('tree-node-b.md'))
+    expect(confirmSpy).toHaveBeenCalled()
+    // Declined: still editing a.md.
+    expect(screen.getByTestId('editor-textarea').value).toBe('edited')
+
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(screen.getByTestId('tree-node-b.md'))
+    await waitFor(() => expect(mockGetFileContent).toHaveBeenCalledWith('p1', 'b.md'))
+    confirmSpy.mockRestore()
+  })
+})

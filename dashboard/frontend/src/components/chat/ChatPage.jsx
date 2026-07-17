@@ -1,8 +1,9 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
 import ProjectPage from './ProjectPage'
+import ProjectChatSplit from './ProjectChatSplit'
 import useConversations from '../../hooks/useConversations'
 import useProjects from '../../hooks/useProjects'
 import useChat from '../../hooks/useChat'
@@ -16,6 +17,11 @@ export default function ChatPage() {
   const { conversationId, projectId } = useParams()
   const convId = conversationId || null
   const navigate = useNavigate()
+
+  // Bumped when a chat run completes — the run may have written project
+  // files via the project-files tools, so the explorer strip re-reads
+  // the tree.
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0)
 
   const { conversations, refresh, create, remove, removeMany, rename, patchConversation } = useConversations()
   const { projects, refresh: refreshProjects, create: createProject, rename: renameProject, remove: removeProject } = useProjects()
@@ -78,10 +84,13 @@ export default function ChatPage() {
     }
   }, [convId, conversation, streaming, sendMessage])
 
-  // Refresh conversation list when streaming completes (for auto-title)
+  // Refresh conversation list when streaming completes (for auto-title),
+  // and re-read the project file tree — the run may have created or
+  // edited files.
   useEffect(() => {
     if (!streaming && conversation) {
       refresh()
+      setFilesRefreshKey(k => k + 1)
     }
   }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,6 +101,15 @@ export default function ChatPage() {
       refresh()
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Project of the ACTIVE conversation — drives the file-explorer strip
+  // next to the chat. Gated on the loaded conversation matching the route
+  // so a stale `conversation` (mid-switch) can't show the previous chat's
+  // project files; unknown project ids (deleted elsewhere) drop the strip.
+  const conversationProject =
+    convId && conversation && conversation.id === convId && conversation.project_id
+      ? projects.find(p => p.id === conversation.project_id) || null
+      : null
 
   const handleRename = useCallback(async (id, title) => {
     await rename(id, title)
@@ -248,6 +266,12 @@ export default function ChatPage() {
           onEditorDirtyChange={(d) => { editorDirtyRef.current = d }}
         />
       ) : (
+      <ProjectChatSplit
+        project={conversationProject}
+        conversationId={convId}
+        refreshKey={filesRefreshKey}
+        onEditorDirtyChange={(d) => { editorDirtyRef.current = d }}
+      >
       <ChatArea
         conversation={conversation}
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
@@ -274,6 +298,7 @@ export default function ChatPage() {
         onReloadConversation={loadConversation}
         onRefreshConversations={refresh}
       />
+      </ProjectChatSplit>
       )}
     </div>
   )
