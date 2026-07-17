@@ -261,6 +261,10 @@ This keeps diffs reviewable — a bug fix should read as a bug fix, not as a bug
 
 If you believe the codebase genuinely needs a formatter pass, say so and ask before doing it.
 
+## Branching
+
+Whenever working on a new feature, create a new branch from a fresh `main`. Do not continue work on an existing branch or branch from another feature branch.
+
 ## Key Files Reference
 
 | File | Purpose |
