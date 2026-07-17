@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import ThemeSwitcher from '../ThemeSwitcher'
 
 const COLLAPSED_KEY = 'llmdock.chatSidebar.collapsed'
 
@@ -555,7 +554,6 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
           >
             <i className="fa-solid fa-angles-left text-xs"></i>
           </button>
-          <ThemeSwitcher />
         </div>
         <button
           onClick={onCreate}

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS } from './navItems'
-import ThemeSwitcher from './ThemeSwitcher'
 
 // md:hidden mobile chrome (issue #39): the desktop Sidebar is `hidden
 // md:flex`, so on phones there was no navigation at all. This is a top
@@ -35,7 +34,6 @@ export default function MobileNav() {
           </div>
           <span className="font-bold truncate text-fg">LLM-Dock</span>
         </div>
-        <ThemeSwitcher />
       </header>
 
       {open && (
