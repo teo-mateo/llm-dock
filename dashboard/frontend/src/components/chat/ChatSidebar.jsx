@@ -508,28 +508,35 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
   }, [collapsed])
 
   if (collapsed) {
+    // The collapsed rail mirrors the main Sidebar's geometry (h-16
+    // bordered header, w-8 h-8 toggle, text-sm icon) so the expander
+    // chevrons of all collapsed panels sit on one line.
     return (
       <div
-        className="w-10 border-r border-border flex flex-col items-center bg-app flex-shrink-0 py-2 gap-1"
+        className="w-10 border-r border-border flex flex-col items-center bg-app flex-shrink-0"
         data-testid="chat-sidebar-collapsed"
       >
-        <button
-          onClick={() => setCollapsed(false)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
-          title="Show conversations"
-          aria-label="Show conversations"
-          aria-expanded={false}
-        >
-          <i className="fa-solid fa-angles-right text-xs"></i>
-        </button>
-        <button
-          onClick={onCreate}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
-          title="New conversation"
-          aria-label="New conversation"
-        >
-          <i className="fa-solid fa-plus text-xs"></i>
-        </button>
+        <div className="h-16 w-full border-b border-border-subtle flex items-center justify-center flex-shrink-0">
+          <button
+            onClick={() => setCollapsed(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors cursor-pointer"
+            title="Show conversations"
+            aria-label="Show conversations"
+            aria-expanded={false}
+          >
+            <i className="fa-solid fa-angles-right text-sm"></i>
+          </button>
+        </div>
+        <div className="py-4">
+          <button
+            onClick={onCreate}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors cursor-pointer"
+            title="New conversation"
+            aria-label="New conversation"
+          >
+            <i className="fa-solid fa-plus text-sm"></i>
+          </button>
+        </div>
       </div>
     )
   }
