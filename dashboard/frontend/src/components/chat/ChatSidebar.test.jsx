@@ -380,3 +380,45 @@ describe('ChatSidebar active-run indicator', () => {
     expect(indicatorFor('C')).toBeNull()
   })
 })
+
+describe('ChatSidebar collapse', () => {
+  afterEach(() => localStorage.removeItem('llmdock.chatSidebar.collapsed'))
+
+  it('collapses to a thin rail and expands back, persisting the choice', () => {
+    renderSidebar()
+    expect(screen.getByText('New Conversation')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Hide conversations'))
+    expect(screen.getByTestId('chat-sidebar-collapsed')).toBeInTheDocument()
+    expect(screen.queryByText('New Conversation')).toBeNull()
+    expect(localStorage.getItem('llmdock.chatSidebar.collapsed')).toBe('true')
+
+    fireEvent.click(screen.getByLabelText('Show conversations'))
+    expect(screen.queryByTestId('chat-sidebar-collapsed')).toBeNull()
+    expect(screen.getByText('New Conversation')).toBeInTheDocument()
+    expect(localStorage.getItem('llmdock.chatSidebar.collapsed')).toBe('false')
+  })
+
+  it('starts collapsed when the stored preference says so', () => {
+    localStorage.setItem('llmdock.chatSidebar.collapsed', 'true')
+    renderSidebar()
+    expect(screen.getByTestId('chat-sidebar-collapsed')).toBeInTheDocument()
+  })
+
+  it('the collapsed rail still offers New Conversation', () => {
+    localStorage.setItem('llmdock.chatSidebar.collapsed', 'true')
+    const onCreate = vi.fn()
+    render(
+      <ChatSidebar
+        conversations={conversations}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={onCreate}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('New conversation'))
+    expect(onCreate).toHaveBeenCalled()
+  })
+})

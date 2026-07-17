@@ -1,6 +1,16 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import ThemeSwitcher from '../ThemeSwitcher'
 
+const COLLAPSED_KEY = 'llmdock.chatSidebar.collapsed'
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete, renaming, onRenameStart, onRenameConfirm }) {
   const isSpinoff = !!conv.parent_conversation_id
   const inputRef = useRef(null)
@@ -304,6 +314,7 @@ function ProjectHeader({ project, collapsed, active, onToggleCollapse, onOpenPro
 }
 
 export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], activeProjectId = null, onOpenProject, onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null)
@@ -488,11 +499,57 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     )
   }
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(collapsed))
+    } catch {
+      /* localStorage unavailable — keep in-memory state only */
+    }
+  }, [collapsed])
+
+  if (collapsed) {
+    return (
+      <div
+        className="w-10 border-r border-border flex flex-col items-center bg-app flex-shrink-0 py-2 gap-1"
+        data-testid="chat-sidebar-collapsed"
+      >
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
+          title="Show conversations"
+          aria-label="Show conversations"
+          aria-expanded={false}
+        >
+          <i className="fa-solid fa-angles-right text-xs"></i>
+        </button>
+        <button
+          onClick={onCreate}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
+          title="New conversation"
+          aria-label="New conversation"
+        >
+          <i className="fa-solid fa-plus text-xs"></i>
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="w-72 border-r border-border flex flex-col bg-app flex-shrink-0">
       {/* Header */}
       <div className="p-3 border-b border-border">
-        <div className="flex justify-end mb-2"><ThemeSwitcher /></div>
+        <div className="flex justify-between items-center mb-2">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
+            title="Hide conversations"
+            aria-label="Hide conversations"
+            aria-expanded={true}
+          >
+            <i className="fa-solid fa-angles-left text-xs"></i>
+          </button>
+          <ThemeSwitcher />
+        </div>
         <button
           onClick={onCreate}
           className="w-full px-3 py-2 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"

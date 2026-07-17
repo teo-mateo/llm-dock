@@ -1,8 +1,9 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
 import ProjectPage from './ProjectPage'
+import ProjectChatSplit from './ProjectChatSplit'
 import useConversations from '../../hooks/useConversations'
 import useProjects from '../../hooks/useProjects'
 import useChat from '../../hooks/useChat'
@@ -16,6 +17,11 @@ export default function ChatPage() {
   const { conversationId, projectId } = useParams()
   const convId = conversationId || null
   const navigate = useNavigate()
+
+  // Bumped when a chat run completes — the run may have written project
+  // files via the project-files tools, so the explorer strip re-reads
+  // the tree.
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0)
 
   const { conversations, refresh, create, remove, removeMany, rename, patchConversation } = useConversations()
   const { projects, refresh: refreshProjects, create: createProject, rename: renameProject, remove: removeProject } = useProjects()
@@ -78,10 +84,13 @@ export default function ChatPage() {
     }
   }, [convId, conversation, streaming, sendMessage])
 
-  // Refresh conversation list when streaming completes (for auto-title)
+  // Refresh conversation list when streaming completes (for auto-title),
+  // and re-read the project file tree — the run may have created or
+  // edited files.
   useEffect(() => {
     if (!streaming && conversation) {
       refresh()
+      setFilesRefreshKey(k => k + 1)
     }
   }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,6 +101,38 @@ export default function ChatPage() {
       refresh()
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Effective project of the ACTIVE conversation — drives the file-explorer
+  // strip next to the chat. Spin-offs store project_id = NULL and inherit
+  // membership from their root (the DB triggers enforce this and the server
+  // resolves the chain the same way), so walk up through the loaded list;
+  // the list is also refreshed after moves, so a moved active conversation
+  // switches strips without a conversation reload. Falls back to the loaded
+  // conversation's own field when the list row isn't present (fresh chat not
+  // yet in the paginated list) — gated on the id matching the route so a
+  // stale mid-switch `conversation` can't show the previous chat's files.
+  // Unknown project ids (deleted elsewhere) drop the strip.
+  const { activeRootId, effectiveProjectId } = useMemo(() => {
+    if (!convId) return { activeRootId: null, effectiveProjectId: null }
+    const byId = new Map(conversations.map(c => [c.id, c]))
+    let row = byId.get(convId)
+    if (row) {
+      const seen = new Set()
+      while (row.parent_conversation_id && byId.has(row.parent_conversation_id) && !seen.has(row.id)) {
+        seen.add(row.id)
+        row = byId.get(row.parent_conversation_id)
+      }
+      return { activeRootId: row.id, effectiveProjectId: row.project_id || null }
+    }
+    return {
+      activeRootId: convId,
+      effectiveProjectId:
+        conversation && conversation.id === convId ? (conversation.project_id || null) : null,
+    }
+  }, [convId, conversations, conversation])
+  const conversationProject = effectiveProjectId
+    ? projects.find(p => p.id === effectiveProjectId) || null
+    : null
 
   const handleRename = useCallback(async (id, title) => {
     await rename(id, title)
@@ -112,12 +153,16 @@ export default function ChatPage() {
   // navigation unmounts the editor without its own close handler, so the
   // navigation entry points below confirm before discarding. (Browser
   // close/reload is guarded by the editor's beforeunload handler.)
+  //
+  // The ref is NOT cleared here: some guarded actions await a mutation
+  // that can fail, leaving the editor mounted with its dirty buffer — a
+  // pre-cleared ref would let the next navigation discard those edits
+  // without asking (codex iteration 3, P2). The editor resets the flag
+  // itself when it actually unmounts or its dirty state changes.
   const editorDirtyRef = useRef(false)
   const confirmDiscardEdits = useCallback(() => {
     if (!editorDirtyRef.current) return true
-    if (!window.confirm('Discard unsaved changes?')) return false
-    editorDirtyRef.current = false
-    return true
+    return window.confirm('Discard unsaved changes?')
   }, [])
 
   const handleCreate = useCallback(async () => {
@@ -153,18 +198,28 @@ export default function ChatPage() {
   }, [createProject])
 
   const handleDeleteProject = useCallback(async (id) => {
+    // Deleting the project backing the active conversation's explorer
+    // strip — or the project page currently open (route projectId) —
+    // unmounts a possibly-dirty file editor (and removes the files
+    // behind it) — run the discard guard first, cancel aborts.
+    if ((id === effectiveProjectId || id === projectId) && !confirmDiscardEdits()) return
     // Conversations are detached server-side, not deleted — refresh the
     // list so they reappear as unfiled.
     await removeProject(id)
     await refresh()
     // Don't leave the URL pointing at the project page we just deleted.
     if (projectId === id) navigate('/chat')
-  }, [removeProject, refresh, projectId, navigate])
+  }, [removeProject, refresh, projectId, navigate, effectiveProjectId, confirmDiscardEdits])
 
   const handleMoveMany = useCallback(async (ids, projectId) => {
+    // Moving the active conversation's root changes its effective
+    // project; the strip then swaps (or disappears) and the split's
+    // reset effect closes the editor — same silent-loss path as above.
+    // ids are already root-resolved by the sidebar.
+    if (ids.includes(activeRootId) && !confirmDiscardEdits()) return
     await Promise.all(ids.map(id => updateConversation(id, { project_id: projectId })))
     await Promise.all([refresh(), refreshProjects()])
-  }, [refresh, refreshProjects])
+  }, [refresh, refreshProjects, activeRootId, confirmDiscardEdits])
 
   // Empty-state composer: create a conversation, then queue the typed
   // message so it sends as soon as the new conversation loads.
@@ -207,21 +262,27 @@ export default function ChatPage() {
 
   const handleDelete = useCallback(async (id) => {
     const shouldNavigate = activeWillBeDeleted([id])
+    // Deleting the active conversation (or an ancestor whose cascade
+    // includes it) unmounts a possibly-dirty file editor via the
+    // navigation below — run the same discard guard as the other
+    // navigation paths, and let cancel abort the deletion.
+    if (shouldNavigate && !confirmDiscardEdits()) return
     await remove(id)
     // Deleted conversations may have belonged to a project — refresh the
     // cached per-project counts so a section can't claim chats it no
     // longer has.
     await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [remove, refreshProjects, activeWillBeDeleted, navigate])
+  }, [remove, refreshProjects, activeWillBeDeleted, navigate, confirmDiscardEdits])
 
   const handleDeleteMany = useCallback(async (ids) => {
     if (!ids || ids.length === 0) return
     const shouldNavigate = activeWillBeDeleted(ids)
+    if (shouldNavigate && !confirmDiscardEdits()) return
     await removeMany(ids)
     await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate])
+  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate, confirmDiscardEdits])
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -248,6 +309,12 @@ export default function ChatPage() {
           onEditorDirtyChange={(d) => { editorDirtyRef.current = d }}
         />
       ) : (
+      <ProjectChatSplit
+        project={conversationProject}
+        conversationId={convId}
+        refreshKey={filesRefreshKey}
+        onEditorDirtyChange={(d) => { editorDirtyRef.current = d }}
+      >
       <ChatArea
         conversation={conversation}
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
@@ -274,6 +341,7 @@ export default function ChatPage() {
         onReloadConversation={loadConversation}
         onRefreshConversations={refresh}
       />
+      </ProjectChatSplit>
       )}
     </div>
   )

@@ -21,7 +21,8 @@ vi.mock('../../hooks/useServicesSSE', () => ({
 
 const { mockGetConversation, mockListConversations, mockCancelActiveRun,
         mockListProjects, mockDeleteConversation, mockDeleteConversations,
-        mockFilesTree, mockGetFileContent } = vi.hoisted(() => ({
+        mockFilesTree, mockGetFileContent, mockUpdateConversation,
+        mockDeleteProject } = vi.hoisted(() => ({
   mockGetConversation: vi.fn(),
   mockListConversations: vi.fn(),
   mockCancelActiveRun: vi.fn(),
@@ -30,6 +31,8 @@ const { mockGetConversation, mockListConversations, mockCancelActiveRun,
   mockDeleteConversations: vi.fn(),
   mockFilesTree: vi.fn(),
   mockGetFileContent: vi.fn(),
+  mockUpdateConversation: vi.fn(),
+  mockDeleteProject: vi.fn(),
 }))
 vi.mock('../../services/chat', async (importActual) => ({
   ...(await importActual()),
@@ -41,6 +44,8 @@ vi.mock('../../services/chat', async (importActual) => ({
   deleteConversations: (...a) => mockDeleteConversations(...a),
   getProjectFilesTree: (...a) => mockFilesTree(...a),
   getProjectFileContent: (...a) => mockGetFileContent(...a),
+  updateConversation: (...a) => mockUpdateConversation(...a),
+  deleteProject: (...a) => mockDeleteProject(...a),
 }))
 
 // streamChat is never expected to fire here (no active run), but stub it to a
@@ -67,6 +72,8 @@ beforeEach(() => {
     tree: [{ name: 'a.md', path: 'a.md', type: 'file', size: 1, modified_at: 1 }],
   })
   mockGetFileContent.mockReset().mockResolvedValue({ path: 'a.md', content: 'body', revision: 'r1' })
+  mockUpdateConversation.mockReset().mockResolvedValue({ ok: true })
+  mockDeleteProject.mockReset().mockResolvedValue({ ok: true })
   mockStreamChat.mockImplementation(() => new Promise(() => {}))
   sidebarProps.current = null
 })
@@ -197,5 +204,288 @@ describe('ChatPage delete → project count refresh', () => {
 
     expect(mockDeleteConversations).toHaveBeenCalledWith(['c1', 'c2'])
     expect(mockListProjects).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('ChatPage project conversation split view', () => {
+  afterEach(() => localStorage.clear())
+
+  function renderConversationRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('shows the file-explorer strip when the conversation belongs to a project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    renderConversationRoute()
+    await waitFor(() => expect(s.getByTestId('project-chat-split')).toBeInTheDocument())
+    await waitFor(() => expect(mockFilesTree).toHaveBeenCalledWith('p1'))
+    expect(s.getByTestId('explorer-strip')).toBeInTheDocument()
+  })
+
+  it('renders no strip for a conversation without a project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    renderConversationRoute()
+    await waitFor(() => expect(mockGetConversation).toHaveBeenCalled())
+    // Give the split a chance to (incorrectly) appear before asserting.
+    await new Promise(r => setTimeout(r, 0))
+    expect(s.queryByTestId('project-chat-split')).toBeNull()
+    expect(mockFilesTree).not.toHaveBeenCalled()
+  })
+
+  it('renders no strip when the conversation points at an unknown project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'ghost',
+      messages: [], active_run: null, last_run: null,
+    })
+    renderConversationRoute()
+    await waitFor(() => expect(mockGetConversation).toHaveBeenCalled())
+    await new Promise(r => setTimeout(r, 0))
+    expect(s.queryByTestId('project-chat-split')).toBeNull()
+  })
+})
+
+describe('ChatPage spin-off project inheritance (regression: PR #87 codex 1.2)', () => {
+  afterEach(() => localStorage.clear())
+
+  it('shows the explorer for a spin-off whose root belongs to a project', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    // Spin-offs store project_id = null (DB triggers enforce it) and
+    // inherit membership from their root conversation.
+    mockGetConversation.mockResolvedValue({
+      id: 'spin', title: 'S', main_service: 'vllm-test',
+      parent_conversation_id: 'root1', project_id: null,
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListConversations.mockResolvedValue({
+      conversations: [
+        { id: 'root1', title: 'R', parent_conversation_id: null, project_id: 'p1', updated_at: '2026-01-01' },
+        { id: 'spin', title: 'S', parent_conversation_id: 'root1', project_id: null, updated_at: '2026-01-01' },
+      ],
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/spin']}>
+        <Routes>
+          <Route path="/chat/:conversationId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(s.getByTestId('project-chat-split')).toBeInTheDocument())
+    await waitFor(() => expect(mockFilesTree).toHaveBeenCalledWith('p1'))
+  })
+})
+
+describe('ChatPage dirty-editor delete guard (regression: PR #87 codex 1.3)', () => {
+  afterEach(() => localStorage.clear())
+
+  async function openAndDirtySplitEditor() {
+    const { screen: s } = await import('@testing-library/react')
+    const { fireEvent } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(s.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(s.getByTestId('editor-textarea')).toBeInTheDocument())
+    fireEvent.change(s.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+  }
+
+  it('cancelling the discard prompt aborts deleting the active conversation', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onDelete('abc') })
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockDeleteConversation).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('confirming the discard prompt lets the deletion proceed', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onDelete('abc') })
+    expect(mockDeleteConversation).toHaveBeenCalledWith('abc')
+    confirmSpy.mockRestore()
+  })
+
+  it('bulk delete honours the same guard', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onDeleteMany(['abc']) })
+    expect(mockDeleteConversations).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onDeleteMany(['abc']) })
+    expect(mockDeleteConversations).toHaveBeenCalledWith(['abc'])
+    confirmSpy.mockRestore()
+  })
+})
+
+describe('ChatPage dirty-editor guards on project mutations (regression: PR #87 codex 2.1)', () => {
+  afterEach(() => localStorage.clear())
+
+  async function openAndDirtySplitEditor() {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(s.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(s.getByTestId('editor-textarea')).toBeInTheDocument())
+    fireEvent.change(s.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+  }
+
+  it('moving the active root prompts; cancel sends no update', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onMoveMany(['abc'], 'p2') })
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onMoveMany(['abc'], 'p2') })
+    expect(mockUpdateConversation).toHaveBeenCalledWith('abc', { project_id: 'p2' })
+    confirmSpy.mockRestore()
+  })
+
+  it('moving other conversations does not prompt', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    await act(async () => { await sidebarProps.current.onMoveMany(['other'], 'p2') })
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(mockUpdateConversation).toHaveBeenCalledWith('other', { project_id: 'p2' })
+    confirmSpy.mockRestore()
+  })
+
+  it('deleting the active project prompts; cancel sends no delete', async () => {
+    await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockDeleteProject).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(mockDeleteProject).toHaveBeenCalledWith('p1')
+    confirmSpy.mockRestore()
+  })
+})
+
+describe('ChatPage failed-mutation dirty guard stays armed (regression: PR #87 codex 3.2)', () => {
+  afterEach(() => localStorage.clear())
+
+  async function openAndDirtySplitEditor() {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(s.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(s.getByTestId('editor-textarea')).toBeInTheDocument())
+    fireEvent.change(s.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+    return s
+  }
+
+  it('a rejected move keeps the dirty guard armed for the next navigation', async () => {
+    const s = await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmSpy.mockClear()
+    mockUpdateConversation.mockRejectedValueOnce(new Error('boom'))
+    await act(async () => {
+      await sidebarProps.current.onMoveMany(['abc'], 'p2').catch(() => {})
+    })
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    // Editor still mounted with its buffer after the failure…
+    expect(s.getByTestId('editor-textarea').value).toBe('edited')
+
+    // …so the NEXT navigation must ask again, not silently discard.
+    confirmSpy.mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onSelect('other') })
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(s.getByTestId('editor-textarea').value).toBe('edited')
+    confirmSpy.mockRestore()
+  })
+})
+
+describe('ChatPage project-page delete guard (regression: PR #87 codex 3.1)', () => {
+  afterEach(() => localStorage.clear())
+
+  it('deleting the project open on the project page prompts while its editor is dirty', async () => {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/project/p1']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+          <Route path="/chat/project/:projectId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const row = await s.findByTestId('file-row-a.md')
+    await act(async () => { row.click() })
+    const ta = await s.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved edits' } })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    confirmSpy.mockClear()
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockDeleteProject).not.toHaveBeenCalled()
+    expect(s.getByTestId('editor-textarea').value).toBe('unsaved edits')
+
+    confirmSpy.mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(mockDeleteProject).toHaveBeenCalledWith('p1')
+    confirmSpy.mockRestore()
   })
 })
