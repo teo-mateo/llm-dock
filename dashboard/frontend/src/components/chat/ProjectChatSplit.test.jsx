@@ -164,3 +164,31 @@ describe('ProjectChatSplit', () => {
     confirmSpy.mockRestore()
   })
 })
+
+describe('ProjectChatSplit parent-rerender stability (regression: PR #87 codex 1.1)', () => {
+  it('keeps a dirty editor open when the parent rerenders with a fresh dirty-callback identity', async () => {
+    // ChatPage passes onEditorDirtyChange as an inline lambda, so its
+    // identity changes every parent render (each streaming delta). That
+    // must not re-fire the editor-reset effect.
+    const { rerender } = render(
+      <ProjectChatSplit project={project} conversationId="c1" onEditorDirtyChange={() => {}}>
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(screen.getByTestId('editor-textarea')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+
+    for (let i = 0; i < 3; i++) {
+      rerender(
+        <ProjectChatSplit project={project} conversationId="c1" onEditorDirtyChange={() => {}}>
+          <div data-testid="the-chat" />
+        </ProjectChatSplit>
+      )
+    }
+
+    expect(screen.getByTestId('editor-overlay')).toBeInTheDocument()
+    expect(screen.getByTestId('editor-textarea').value).toBe('edited')
+  })
+})

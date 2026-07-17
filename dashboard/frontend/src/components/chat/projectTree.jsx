@@ -1,45 +1,7 @@
-// Project file-tree primitives shared by ProjectPage (full explorer) and
-// ProjectExplorerPane (the strip shown next to a project conversation).
-
-export function findNode(nodes, path) {
-  for (const n of nodes) {
-    if (n.path === path) return n
-    if (n.type === 'dir' && n.children) {
-      const hit = findNode(n.children, path)
-      if (hit) return hit
-    }
-  }
-  return null
-}
-
-// Children of a directory path ('' = project root).
-export function listDir(tree, dirPath) {
-  if (!dirPath) return tree
-  const node = findNode(tree, dirPath)
-  return node && node.type === 'dir' ? (node.children || []) : null
-}
-
-export function parentDir(path) {
-  const i = path.lastIndexOf('/')
-  return i === -1 ? '' : path.slice(0, i)
-}
-
-export function baseName(path) {
-  return path.split('/').pop()
-}
-
-export function isSelfOrDescendant(dirPath, ofPath) {
-  return dirPath === ofPath || dirPath.startsWith(ofPath + '/')
-}
-
-// All ancestor dir paths of a path, root ('') excluded:
-// 'a/b/c' -> ['a', 'a/b'].
-export function ancestorsOf(path) {
-  const out = []
-  const parts = path.split('/')
-  for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join('/'))
-  return out
-}
+// Project file-tree row components shared by ProjectPage (full explorer)
+// and ProjectExplorerPane (the strip shown next to a project
+// conversation). Non-component helpers live in projectTreeUtils.js.
+import { isSelfOrDescendant } from './projectTreeUtils'
 
 // One file row in a tree pane. Files aren't drop targets (drops go to
 // folders), but they are drag sources and carry the full context menu.

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getProjectFilesTree, uploadProjectFile } from '../../services/chat'
-import { findNode, TreeFile, TreeDir } from './projectTree'
+import { findNode } from './projectTreeUtils'
+import { TreeFile, TreeDir } from './projectTree'
 
 // File-explorer strip shown to the left of the chat when the conversation
 // belongs to a project. Read-mostly: browse the tree, open a file in the

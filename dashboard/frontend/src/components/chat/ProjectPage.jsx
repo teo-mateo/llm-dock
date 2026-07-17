@@ -7,8 +7,8 @@ import ProjectFileEditor from './ProjectFileEditor'
 import ContextMenu from './ContextMenu'
 import {
   findNode, listDir, parentDir, baseName, isSelfOrDescendant, ancestorsOf,
-  TreeFile, TreeDir,
-} from './projectTree'
+} from './projectTreeUtils'
+import { TreeFile, TreeDir } from './projectTree'
 
 // The DataTransfer type carrying the dragged entry's project-relative
 // path. A custom type keeps foreign drags (text, files from the OS) from

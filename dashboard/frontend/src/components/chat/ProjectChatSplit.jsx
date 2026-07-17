@@ -46,10 +46,17 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
 
   const projectId = project?.id
 
+  // ChatPage passes onEditorDirtyChange as a fresh inline function every
+  // render. Hold it behind a ref so notifyDirty stays identity-stable —
+  // otherwise the editor-reset effect below would re-fire on every parent
+  // rerender (each streaming delta!) and silently unmount a dirty editor
+  // (codex iteration 1, P1).
+  const onDirtyRef = useRef(onEditorDirtyChange)
+  useEffect(() => { onDirtyRef.current = onEditorDirtyChange }, [onEditorDirtyChange])
   const notifyDirty = useCallback((d) => {
     dirtyRef.current = d
-    onEditorDirtyChange?.(d)
-  }, [onEditorDirtyChange])
+    onDirtyRef.current?.(d)
+  }, [])
 
   // Switching conversation (or project) closes the overlay. The dirty
   // guard for that navigation lives in ChatPage (confirmDiscardEdits),

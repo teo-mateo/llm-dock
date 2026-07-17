@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
@@ -102,14 +102,33 @@ export default function ChatPage() {
     }
   }, [runReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Project of the ACTIVE conversation — drives the file-explorer strip
-  // next to the chat. Gated on the loaded conversation matching the route
-  // so a stale `conversation` (mid-switch) can't show the previous chat's
-  // project files; unknown project ids (deleted elsewhere) drop the strip.
-  const conversationProject =
-    convId && conversation && conversation.id === convId && conversation.project_id
-      ? projects.find(p => p.id === conversation.project_id) || null
-      : null
+  // Effective project of the ACTIVE conversation — drives the file-explorer
+  // strip next to the chat. Spin-offs store project_id = NULL and inherit
+  // membership from their root (the DB triggers enforce this and the server
+  // resolves the chain the same way), so walk up through the loaded list;
+  // the list is also refreshed after moves, so a moved active conversation
+  // switches strips without a conversation reload. Falls back to the loaded
+  // conversation's own field when the list row isn't present (fresh chat not
+  // yet in the paginated list) — gated on the id matching the route so a
+  // stale mid-switch `conversation` can't show the previous chat's files.
+  // Unknown project ids (deleted elsewhere) drop the strip.
+  const effectiveProjectId = useMemo(() => {
+    if (!convId) return null
+    const byId = new Map(conversations.map(c => [c.id, c]))
+    let row = byId.get(convId)
+    if (row) {
+      const seen = new Set()
+      while (row.parent_conversation_id && byId.has(row.parent_conversation_id) && !seen.has(row.id)) {
+        seen.add(row.id)
+        row = byId.get(row.parent_conversation_id)
+      }
+      return row.project_id || null
+    }
+    return conversation && conversation.id === convId ? (conversation.project_id || null) : null
+  }, [convId, conversations, conversation])
+  const conversationProject = effectiveProjectId
+    ? projects.find(p => p.id === effectiveProjectId) || null
+    : null
 
   const handleRename = useCallback(async (id, title) => {
     await rename(id, title)
@@ -225,21 +244,27 @@ export default function ChatPage() {
 
   const handleDelete = useCallback(async (id) => {
     const shouldNavigate = activeWillBeDeleted([id])
+    // Deleting the active conversation (or an ancestor whose cascade
+    // includes it) unmounts a possibly-dirty file editor via the
+    // navigation below — run the same discard guard as the other
+    // navigation paths, and let cancel abort the deletion.
+    if (shouldNavigate && !confirmDiscardEdits()) return
     await remove(id)
     // Deleted conversations may have belonged to a project — refresh the
     // cached per-project counts so a section can't claim chats it no
     // longer has.
     await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [remove, refreshProjects, activeWillBeDeleted, navigate])
+  }, [remove, refreshProjects, activeWillBeDeleted, navigate, confirmDiscardEdits])
 
   const handleDeleteMany = useCallback(async (ids) => {
     if (!ids || ids.length === 0) return
     const shouldNavigate = activeWillBeDeleted(ids)
+    if (shouldNavigate && !confirmDiscardEdits()) return
     await removeMany(ids)
     await refreshProjects()
     if (shouldNavigate) navigate('/chat')
-  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate])
+  }, [removeMany, refreshProjects, activeWillBeDeleted, navigate, confirmDiscardEdits])
 
   return (
     <div className="flex-1 flex overflow-hidden">
