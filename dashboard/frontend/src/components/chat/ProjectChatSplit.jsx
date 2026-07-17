@@ -139,16 +139,23 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
   return (
     <div ref={containerRef} className="flex-1 flex overflow-hidden min-w-0" data-testid="project-chat-split">
       {collapsed && (
-        <div className="w-8 flex-shrink-0 border-r border-border bg-app flex flex-col items-center py-2">
-          <button
-            onClick={() => setCollapsed(false)}
-            className="text-fg-subtle hover:text-fg p-1.5 cursor-pointer"
-            title={`Show ${project.name} files`}
-            aria-label="Show file explorer"
-          >
-            <i className="fa-solid fa-angles-right text-xs"></i>
-          </button>
-          <i className="fa-solid fa-folder text-xs text-amber-500/50 mt-2" title={project.name}></i>
+        // Same geometry as the other collapsed rails (main Sidebar,
+        // ChatSidebar): h-16 bordered header, w-8 h-8 toggle, text-sm
+        // icon — the expander chevrons of all collapsed panels line up.
+        <div className="w-10 flex-shrink-0 border-r border-border bg-app flex flex-col items-center">
+          <div className="h-16 w-full border-b border-border-subtle flex items-center justify-center flex-shrink-0">
+            <button
+              onClick={() => setCollapsed(false)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors cursor-pointer"
+              title={`Show ${project.name} files`}
+              aria-label="Show file explorer"
+            >
+              <i className="fa-solid fa-angles-right text-sm"></i>
+            </button>
+          </div>
+          <div className="py-4">
+            <i className="fa-solid fa-folder text-sm text-amber-500/50" title={project.name}></i>
+          </div>
         </div>
       )}
       {/* The pane stays MOUNTED while collapsed (display:none) so an
