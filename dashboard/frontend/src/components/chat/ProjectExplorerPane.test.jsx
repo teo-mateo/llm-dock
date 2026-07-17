@@ -117,3 +117,16 @@ describe('ProjectExplorerPane', () => {
     expect(screen.getByTestId('tree-node-other.md')).toBeInTheDocument()
   })
 })
+
+describe('ProjectExplorerPane mount fetch count (regression: PR #87 codex 2.4)', () => {
+  it('mounting with an already-positive refreshKey issues a single tree read', async () => {
+    const { rerender } = render(<ProjectExplorerPane project={project} refreshKey={3} />)
+    await waitFor(() => expect(screen.getByTestId('tree-node-README.md')).toBeInTheDocument())
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockFilesTree).toHaveBeenCalledTimes(1)
+
+    // A later key CHANGE still refreshes.
+    rerender(<ProjectExplorerPane project={project} refreshKey={4} />)
+    await waitFor(() => expect(mockFilesTree).toHaveBeenCalledTimes(2))
+  })
+})

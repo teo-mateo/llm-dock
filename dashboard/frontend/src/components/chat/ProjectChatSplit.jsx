@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import ProjectExplorerPane from './ProjectExplorerPane'
 import ProjectFileEditor from './ProjectFileEditor'
 
@@ -76,6 +76,31 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
     try { localStorage.setItem(WIDTH_KEY, String(width)) } catch { /* ignore */ }
   }, [width])
 
+  // A stored width is only known to fit the display it was saved on. Track
+  // the container's current 45% bound and clamp at render — otherwise a
+  // width persisted on a wide window swallows the whole split (and the
+  // chat) after the window narrows, until the next drag.
+  const [maxWidth, setMaxWidth] = useState(null)
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => {
+      const w = el.getBoundingClientRect().width
+      if (w > 0) setMaxWidth(Math.max(MIN_WIDTH, Math.floor(w * MAX_FRACTION)))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+    // Re-attach when the split appears: with no project there IS no
+    // container, and the ref is still null on that first pass.
+  }, [projectId])
+  const shownWidth = width != null && maxWidth != null ? Math.min(width, maxWidth) : width
+
   // Divider drag: window-level listeners while dragging, clamped to
   // [MIN_WIDTH, 45% of the split container].
   useEffect(() => {
@@ -129,7 +154,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
         <>
           <div
             className="flex-shrink-0 border-r border-border overflow-hidden"
-            style={{ width: width != null ? `${width}px` : '20%', minWidth: `${MIN_WIDTH}px` }}
+            style={{ width: shownWidth != null ? `${shownWidth}px` : '20%', minWidth: `${MIN_WIDTH}px` }}
             data-testid="explorer-strip"
           >
             <ProjectExplorerPane

@@ -112,8 +112,8 @@ export default function ChatPage() {
   // yet in the paginated list) — gated on the id matching the route so a
   // stale mid-switch `conversation` can't show the previous chat's files.
   // Unknown project ids (deleted elsewhere) drop the strip.
-  const effectiveProjectId = useMemo(() => {
-    if (!convId) return null
+  const { activeRootId, effectiveProjectId } = useMemo(() => {
+    if (!convId) return { activeRootId: null, effectiveProjectId: null }
     const byId = new Map(conversations.map(c => [c.id, c]))
     let row = byId.get(convId)
     if (row) {
@@ -122,9 +122,13 @@ export default function ChatPage() {
         seen.add(row.id)
         row = byId.get(row.parent_conversation_id)
       }
-      return row.project_id || null
+      return { activeRootId: row.id, effectiveProjectId: row.project_id || null }
     }
-    return conversation && conversation.id === convId ? (conversation.project_id || null) : null
+    return {
+      activeRootId: convId,
+      effectiveProjectId:
+        conversation && conversation.id === convId ? (conversation.project_id || null) : null,
+    }
   }, [convId, conversations, conversation])
   const conversationProject = effectiveProjectId
     ? projects.find(p => p.id === effectiveProjectId) || null
@@ -190,18 +194,27 @@ export default function ChatPage() {
   }, [createProject])
 
   const handleDeleteProject = useCallback(async (id) => {
+    // Deleting the project backing the active conversation's explorer
+    // strip unmounts a possibly-dirty file editor (and removes the files
+    // behind it) — run the discard guard first, cancel aborts.
+    if (id === effectiveProjectId && !confirmDiscardEdits()) return
     // Conversations are detached server-side, not deleted — refresh the
     // list so they reappear as unfiled.
     await removeProject(id)
     await refresh()
     // Don't leave the URL pointing at the project page we just deleted.
     if (projectId === id) navigate('/chat')
-  }, [removeProject, refresh, projectId, navigate])
+  }, [removeProject, refresh, projectId, navigate, effectiveProjectId, confirmDiscardEdits])
 
   const handleMoveMany = useCallback(async (ids, projectId) => {
+    // Moving the active conversation's root changes its effective
+    // project; the strip then swaps (or disappears) and the split's
+    // reset effect closes the editor — same silent-loss path as above.
+    // ids are already root-resolved by the sidebar.
+    if (ids.includes(activeRootId) && !confirmDiscardEdits()) return
     await Promise.all(ids.map(id => updateConversation(id, { project_id: projectId })))
     await Promise.all([refresh(), refreshProjects()])
-  }, [refresh, refreshProjects])
+  }, [refresh, refreshProjects, activeRootId, confirmDiscardEdits])
 
   // Empty-state composer: create a conversation, then queue the typed
   // message so it sends as soon as the new conversation loads.

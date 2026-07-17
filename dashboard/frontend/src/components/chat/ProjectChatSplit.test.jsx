@@ -192,3 +192,21 @@ describe('ProjectChatSplit parent-rerender stability (regression: PR #87 codex 1
     expect(screen.getByTestId('editor-textarea').value).toBe('edited')
   })
 })
+
+describe('ProjectChatSplit restored-width clamping (regression: PR #87 codex 2.3)', () => {
+  it('clamps a stored width from a wider display to 45% of the current container', async () => {
+    const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON: () => {},
+    })
+    localStorage.setItem('llmdock.chatExplorer.width', '800')
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    // 800px stored, container 1000px → clamped to 450px at render.
+    expect(screen.getByTestId('explorer-strip').style.width).toBe('450px')
+    rectSpy.mockRestore()
+  })
+})

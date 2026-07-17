@@ -46,9 +46,16 @@ export default function ProjectExplorerPane({ project, refreshKey = 0, editingPa
   }, [refresh])
 
   // External refresh signal (a chat run finished and may have written
-  // files, the editor overlay saved, …).
+  // files, the editor overlay saved, …). Only key CHANGES refresh — the
+  // mount-time value is already covered by the effect above, and the key
+  // stays positive after the first completed run, so re-firing on mount
+  // would double-fetch every time the pane (re)appears.
+  const lastKeyRef = useRef(refreshKey)
   useEffect(() => {
-    if (refreshKey > 0) refresh()
+    if (refreshKey !== lastKeyRef.current) {
+      lastKeyRef.current = refreshKey
+      refresh()
+    }
   }, [refreshKey, refresh])
 
   const toggle = useCallback((path) => {
