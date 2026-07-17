@@ -14,8 +14,8 @@ is obsolete once a run completes in the background):
   - drive the plain model stream or the MCP tool loop
   - accumulate content / reasoning / tool calls / artifacts / parse warning
   - on completion: persist the assistant message + artifacts, mark run completed
-  - on model/tool error: mark run failed with useful error text, persist no
-    completed assistant message
+  - on model/tool error: mark run failed with useful error text, persist
+     partial assistant message with error flag
   - publish runtime events to the in-memory event bus for any live observer
 
 The user message is assumed to be already persisted (the caller creates it and
@@ -267,15 +267,27 @@ class ChatRunner:
                     self._emit(run_id, "run_completed", {"message_id": saved.id, "seq": saved.seq})
                     return saved
                 elif event_type == "error":
-                    return self._fail(run_id, data["message"])
+                    return self._fail(run_id, data["message"], accumulated_content, accumulated_reasoning, conv)
 
             # Stream exhausted without a `done` event.
-            return self._fail(run_id, "Stream ended unexpectedly")
+            return self._fail(run_id, "Stream ended unexpectedly", accumulated_content, accumulated_reasoning, conv)
         except Exception as exc:
             logger.exception("Chat run %s crashed", run_id)
-            return self._fail(run_id, str(exc) or "internal error")
+            return self._fail(run_id, str(exc) or "internal error", accumulated_content, accumulated_reasoning, conv)
 
-    def _fail(self, run_id: str, error: str) -> None:
-        self.persistence.fail(run_id, error)
+    def _fail(self, run_id: str, error: str, accumulated_content: str = "",
+              accumulated_reasoning: str = "", conv=None) -> None:
+        partial_msg = None
+        if accumulated_content or accumulated_reasoning:
+            partial_msg = Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conv.id if conv else "",
+                role="assistant",
+                content=accumulated_content,
+                reasoning_content=accumulated_reasoning or None,
+                model_service=conv.main_service if conv else None,
+                seq=0,
+            )
+        self.persistence.fail(run_id, error, partial_msg)
         self._emit(run_id, "run_failed", {"error": error})
         return None

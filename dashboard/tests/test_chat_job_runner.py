@@ -167,7 +167,7 @@ def test_parse_warning_persisted_on_assistant_message(db, monkeypatch):
 # -- Model error --------------------------------------------------------
 
 
-def test_model_error_marks_run_failed_and_persists_no_assistant(db, monkeypatch):
+def test_model_error_marks_run_failed_and_persists_partial_assistant(db, monkeypatch):
     conv, user_msg, run = _seed(db)
 
     def stub():
@@ -180,8 +180,12 @@ def test_model_error_marks_run_failed_and_persists_no_assistant(db, monkeypatch)
     result = ChatRunner(db, event_bus=bus).run(run, ChatTurnRequest(conversation=conv))
 
     assert result is None
-    # No completed assistant message was written.
-    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    # Partial assistant message with accumulated content was written.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assistant = messages[1]
+    assert assistant.content == "partial answer"
+    assert assistant.error == "model exploded"
 
     failed = db.get_chat_run(run.id)
     assert failed.status == "failed"
@@ -202,7 +206,12 @@ def test_stream_without_done_marks_failed(db, monkeypatch):
     result = ChatRunner(db).run(run, ChatTurnRequest(conversation=conv))
 
     assert result is None
-    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    # Partial assistant message with accumulated content was written.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assistant = messages[1]
+    assert assistant.content == "incomplete"
+    assert "unexpectedly" in assistant.error.lower()
     failed = db.get_chat_run(run.id)
     assert failed.status == "failed"
     assert "unexpectedly" in failed.error.lower()
@@ -219,14 +228,21 @@ def test_exception_in_stream_marks_failed(db, monkeypatch):
     result = ChatRunner(db).run(run, ChatTurnRequest(conversation=conv))
 
     assert result is None
+    # Partial assistant message with accumulated content was written.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assistant = messages[1]
+    assert assistant.content == "boom incoming"
+    assert "kaboom" in assistant.error
     failed = db.get_chat_run(run.id)
     assert failed.status == "failed"
     assert "kaboom" in failed.error
 
 
-def test_persistence_exception_rolls_back_no_assistant(db, monkeypatch):
+def test_persistence_exception_rolls_back_and_persists_partial(db, monkeypatch):
     """If artifact persistence throws after the message insert, the whole
-    completion rolls back: no orphan assistant message on the failed run."""
+    completion rolls back, then _fail() persists the accumulated content as a
+    partial error message."""
     conv, user_msg, run = _seed(db)
 
     def stub():
@@ -246,8 +262,13 @@ def test_persistence_exception_rolls_back_no_assistant(db, monkeypatch):
     result = ChatRunner(db).run(run, ChatTurnRequest(conversation=conv))
 
     assert result is None
-    # The assistant insert was rolled back with the failed artifact.
-    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    # The completed assistant insert was rolled back, but _fail() saved
+    # the accumulated content as a partial error message.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assistant = messages[1]
+    assert assistant.content == "answer"
+    assert "disk full" in assistant.error
     failed = db.get_chat_run(run.id)
     assert failed.status == "failed"
     assert "disk full" in failed.error

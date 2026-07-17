@@ -239,7 +239,7 @@ def test_parse_warning_frame_and_persisted(ctx, monkeypatch):
 # -- Error --------------------------------------------------------------
 
 
-def test_error_frame_and_no_message_saved(ctx, monkeypatch):
+def test_error_frame_persists_partial_assistant(ctx, monkeypatch):
     app, db = ctx[0], ctx[1]
     conv = _conv(db)
 
@@ -254,7 +254,11 @@ def test_error_frame_and_no_message_saved(ctx, monkeypatch):
     assert not any(kind == "json" and v.get("type") == "message_saved" for kind, v in payloads)
     err = next(v for kind, v in payloads if kind == "json" and "error" in v)
     assert err["error"] == "boom"
-    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    # Partial assistant message with accumulated content was saved.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assert messages[1].content == "partial"
+    assert messages[1].error == "boom"
 
 
 # -- First-message conversation_updated tail ----------------------------
