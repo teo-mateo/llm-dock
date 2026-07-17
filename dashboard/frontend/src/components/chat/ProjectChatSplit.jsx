@@ -138,7 +138,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
 
   return (
     <div ref={containerRef} className="flex-1 flex overflow-hidden min-w-0" data-testid="project-chat-split">
-      {collapsed ? (
+      {collapsed && (
         <div className="w-8 flex-shrink-0 border-r border-border bg-app flex flex-col items-center py-2">
           <button
             onClick={() => setCollapsed(false)}
@@ -150,33 +150,40 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
           </button>
           <i className="fa-solid fa-folder text-xs text-amber-500/50 mt-2" title={project.name}></i>
         </div>
-      ) : (
-        <>
-          <div
-            className="flex-shrink-0 border-r border-border overflow-hidden"
-            style={{ width: shownWidth != null ? `${shownWidth}px` : '20%', minWidth: `${MIN_WIDTH}px` }}
-            data-testid="explorer-strip"
-          >
-            <ProjectExplorerPane
-              project={project}
-              refreshKey={refreshKey + savedBump}
-              editingPath={editing?.path ?? null}
-              onOpenFile={handleOpenFile}
-              onCollapse={() => setCollapsed(true)}
-            />
-          </div>
-          <div
-            onMouseDown={(e) => { e.preventDefault(); setDragging(true) }}
-            className={`w-1.5 flex-shrink-0 cursor-col-resize -ml-1 z-10 ${
-              dragging ? 'bg-accent-strong/40' : 'hover:bg-accent-strong/30'
-            }`}
-            title="Drag to resize"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize file explorer"
-            data-testid="explorer-divider"
-          ></div>
-        </>
+      )}
+      {/* The pane stays MOUNTED while collapsed (display:none) so an
+          in-flight upload keeps its state alive and its follow-up
+          refresh lands in the tree the user sees on re-expand (codex
+          iteration 3, P2). */}
+      <div
+        className="flex-shrink-0 border-r border-border overflow-hidden"
+        style={{
+          display: collapsed ? 'none' : undefined,
+          width: shownWidth != null ? `${shownWidth}px` : '20%',
+          minWidth: `${MIN_WIDTH}px`,
+        }}
+        data-testid="explorer-strip"
+      >
+        <ProjectExplorerPane
+          project={project}
+          refreshKey={refreshKey + savedBump}
+          editingPath={editing?.path ?? null}
+          onOpenFile={handleOpenFile}
+          onCollapse={() => setCollapsed(true)}
+        />
+      </div>
+      {!collapsed && (
+        <div
+          onMouseDown={(e) => { e.preventDefault(); setDragging(true) }}
+          className={`w-1.5 flex-shrink-0 cursor-col-resize -ml-1 z-10 ${
+            dragging ? 'bg-accent-strong/40' : 'hover:bg-accent-strong/30'
+          }`}
+          title="Drag to resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file explorer"
+          data-testid="explorer-divider"
+        ></div>
       )}
 
       <div className="flex-1 flex min-w-0 relative">

@@ -2,14 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import ProjectChatSplit from './ProjectChatSplit'
 
-const { mockFilesTree, mockGetFileContent, mockSaveFileContent } = vi.hoisted(() => ({
+const { mockFilesTree, mockGetFileContent, mockSaveFileContent, mockUpload } = vi.hoisted(() => ({
   mockFilesTree: vi.fn(),
   mockGetFileContent: vi.fn(),
   mockSaveFileContent: vi.fn(),
+  mockUpload: vi.fn(),
 }))
 vi.mock('../../services/chat', () => ({
   getProjectFilesTree: (...a) => mockFilesTree(...a),
-  uploadProjectFile: vi.fn(),
+  uploadProjectFile: (...a) => mockUpload(...a),
   getProjectFileContent: (...a) => mockGetFileContent(...a),
   saveProjectFileContent: (...a) => mockSaveFileContent(...a),
 }))
@@ -23,6 +24,7 @@ beforeEach(() => {
   })
   mockGetFileContent.mockReset().mockResolvedValue({ path: 'a.md', content: 'hello', revision: 'r1' })
   mockSaveFileContent.mockReset().mockResolvedValue({ name: 'a.md', path: 'a.md', type: 'file' })
+  mockUpload.mockReset().mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -62,13 +64,15 @@ describe('ProjectChatSplit', () => {
     await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
 
     fireEvent.click(screen.getByLabelText('Hide file explorer'))
-    expect(screen.queryByTestId('explorer-strip')).toBeNull()
+    // The strip stays mounted (in-flight pane work must survive a
+    // collapse) but is hidden.
+    expect(screen.getByTestId('explorer-strip')).not.toBeVisible()
     expect(localStorage.getItem('llmdock.chatExplorer.collapsed')).toBe('true')
     // Chat stays visible while collapsed.
     expect(screen.getByTestId('the-chat')).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Show file explorer'))
-    expect(screen.getByTestId('explorer-strip')).toBeInTheDocument()
+    expect(screen.getByTestId('explorer-strip')).toBeVisible()
     expect(localStorage.getItem('llmdock.chatExplorer.collapsed')).toBe('false')
   })
 
@@ -208,5 +212,36 @@ describe('ProjectChatSplit restored-width clamping (regression: PR #87 codex 2.3
     // 800px stored, container 1000px → clamped to 450px at render.
     expect(screen.getByTestId('explorer-strip').style.width).toBe('450px')
     rectSpy.mockRestore()
+  })
+})
+
+describe('ProjectChatSplit in-flight upload survives collapse (regression: PR #87 codex 3.3)', () => {
+  it('an upload started before collapsing lands in the visible tree after re-expand', async () => {
+    let resolveUpload
+    mockUpload.mockImplementationOnce(() => new Promise(r => { resolveUpload = r }))
+    render(
+      <ProjectChatSplit project={project} conversationId="c1">
+        <div data-testid="the-chat" />
+      </ProjectChatSplit>
+    )
+    await waitFor(() => expect(screen.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    expect(mockFilesTree).toHaveBeenCalledTimes(1)
+
+    // Start an upload, then collapse while it is still in flight.
+    const file = new File(['x'], 'up.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByTestId('explorer-file-input'), { target: { files: [file] } })
+    fireEvent.click(screen.getByLabelText('Hide file explorer'))
+
+    // Re-expand, then let the upload finish: its follow-up refresh must
+    // hit the pane the user sees (the pane stayed mounted throughout).
+    fireEvent.click(screen.getByLabelText('Show file explorer'))
+    mockFilesTree.mockResolvedValueOnce({
+      tree: [
+        { name: 'a.md', path: 'a.md', type: 'file', size: 3 },
+        { name: 'up.txt', path: 'up.txt', type: 'file', size: 1 },
+      ],
+    })
+    resolveUpload({ ok: true })
+    await waitFor(() => expect(screen.getByTestId('tree-node-up.txt')).toBeInTheDocument())
   })
 })

@@ -153,12 +153,16 @@ export default function ChatPage() {
   // navigation unmounts the editor without its own close handler, so the
   // navigation entry points below confirm before discarding. (Browser
   // close/reload is guarded by the editor's beforeunload handler.)
+  //
+  // The ref is NOT cleared here: some guarded actions await a mutation
+  // that can fail, leaving the editor mounted with its dirty buffer — a
+  // pre-cleared ref would let the next navigation discard those edits
+  // without asking (codex iteration 3, P2). The editor resets the flag
+  // itself when it actually unmounts or its dirty state changes.
   const editorDirtyRef = useRef(false)
   const confirmDiscardEdits = useCallback(() => {
     if (!editorDirtyRef.current) return true
-    if (!window.confirm('Discard unsaved changes?')) return false
-    editorDirtyRef.current = false
-    return true
+    return window.confirm('Discard unsaved changes?')
   }, [])
 
   const handleCreate = useCallback(async () => {
@@ -195,9 +199,10 @@ export default function ChatPage() {
 
   const handleDeleteProject = useCallback(async (id) => {
     // Deleting the project backing the active conversation's explorer
-    // strip unmounts a possibly-dirty file editor (and removes the files
+    // strip — or the project page currently open (route projectId) —
+    // unmounts a possibly-dirty file editor (and removes the files
     // behind it) — run the discard guard first, cancel aborts.
-    if (id === effectiveProjectId && !confirmDiscardEdits()) return
+    if ((id === effectiveProjectId || id === projectId) && !confirmDiscardEdits()) return
     // Conversations are detached server-side, not deleted — refresh the
     // list so they reappear as unfiled.
     await removeProject(id)

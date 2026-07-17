@@ -407,3 +407,85 @@ describe('ChatPage dirty-editor guards on project mutations (regression: PR #87 
     confirmSpy.mockRestore()
   })
 })
+
+describe('ChatPage failed-mutation dirty guard stays armed (regression: PR #87 codex 3.2)', () => {
+  afterEach(() => localStorage.clear())
+
+  async function openAndDirtySplitEditor() {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    mockGetConversation.mockResolvedValue({
+      id: 'abc', title: 'T', main_service: 'vllm-test', project_id: 'p1',
+      messages: [], active_run: null, last_run: null,
+    })
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/abc']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
+    fireEvent.click(s.getByTestId('tree-node-a.md'))
+    await waitFor(() => expect(s.getByTestId('editor-textarea')).toBeInTheDocument())
+    fireEvent.change(s.getByTestId('editor-textarea'), { target: { value: 'edited' } })
+    return s
+  }
+
+  it('a rejected move keeps the dirty guard armed for the next navigation', async () => {
+    const s = await openAndDirtySplitEditor()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmSpy.mockClear()
+    mockUpdateConversation.mockRejectedValueOnce(new Error('boom'))
+    await act(async () => {
+      await sidebarProps.current.onMoveMany(['abc'], 'p2').catch(() => {})
+    })
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    // Editor still mounted with its buffer after the failure…
+    expect(s.getByTestId('editor-textarea').value).toBe('edited')
+
+    // …so the NEXT navigation must ask again, not silently discard.
+    confirmSpy.mockReturnValue(false)
+    await act(async () => { await sidebarProps.current.onSelect('other') })
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(s.getByTestId('editor-textarea').value).toBe('edited')
+    confirmSpy.mockRestore()
+  })
+})
+
+describe('ChatPage project-page delete guard (regression: PR #87 codex 3.1)', () => {
+  afterEach(() => localStorage.clear())
+
+  it('deleting the project open on the project page prompts while its editor is dirty', async () => {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat/project/p1']}>
+        <Routes>
+          <Route path="/chat/:conversationId?" element={<ChatPage />} />
+          <Route path="/chat/project/:projectId" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const row = await s.findByTestId('file-row-a.md')
+    await act(async () => { row.click() })
+    const ta = await s.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved edits' } })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    confirmSpy.mockClear()
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockDeleteProject).not.toHaveBeenCalled()
+    expect(s.getByTestId('editor-textarea').value).toBe('unsaved edits')
+
+    confirmSpy.mockReturnValue(true)
+    await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
+    expect(mockDeleteProject).toHaveBeenCalledWith('p1')
+    confirmSpy.mockRestore()
+  })
+})
