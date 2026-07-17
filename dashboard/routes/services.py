@@ -397,6 +397,15 @@ def delete_service(service_name):
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
 
+        from services import event_manager
+        event_manager.emit({
+            "service_name": service_name,
+            "action": "service-deleted",
+            "status": "deleted",
+            "container_id": "",
+            "timestamp": time.time(),
+        })
+
         logger.info(f"Service deleted: {service_name}")
 
         return jsonify(

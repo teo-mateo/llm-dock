@@ -30,23 +30,34 @@ function applyDeltaToState(state, delta) {
   const services = [...state.services]
   const serviceIndex = services.findIndex(s => s.name === delta.service_name)
 
-  if (delta.action === 'remove') {
+  if (delta.action === 'service-deleted') {
     if (serviceIndex !== -1) {
       services.splice(serviceIndex, 1)
     }
-  } else {
-    const updatedService = {
-      ...(serviceIndex !== -1 ? services[serviceIndex] : {}),
-      name: delta.service_name,
-      status: delta.status,
-      container_id: delta.container_id,
+    return {
+      ...state,
+      services,
+      total: services.length,
+      running: services.filter(s => s.status === 'running').length,
+      stopped: services.filter(s => s.status === 'exited' || s.status === 'not-created').length,
     }
+  }
 
-    if (serviceIndex !== -1) {
-      services[serviceIndex] = updatedService
-    } else {
-      services.push(updatedService)
-    }
+  if (serviceIndex === -1 && (delta.status === 'removed' || delta.status === 'deleted')) {
+    return state
+  }
+
+  const updatedService = {
+    ...(serviceIndex !== -1 ? services[serviceIndex] : {}),
+    name: delta.service_name,
+    status: delta.status,
+    container_id: delta.container_id,
+  }
+
+  if (serviceIndex !== -1) {
+    services[serviceIndex] = updatedService
+  } else {
+    services.push(updatedService)
   }
 
   return {

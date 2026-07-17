@@ -130,6 +130,14 @@ class DockerEventManager:
                 cb_name = getattr(cb, "__qualname__", getattr(cb, "__name__", str(cb)))
                 logger.error("Callback error in %s: %s", cb_name, e)
 
+    def emit(self, event: dict):
+        """Broadcast a synthetic event to all registered callbacks.
+
+        Thread-safe. Used by route handlers to push deltas that have no
+        corresponding Docker engine event.
+        """
+        self._dispatch(event)
+
     def get_services_snapshot(self) -> list[dict]:
         """Return the current state of all services from Docker.
 

@@ -18,7 +18,7 @@ ACTION_TO_STATUS = {
     "destroy": "removed",
 }
 
-LIFECYCLE_ACTIONS = {"create", "start", "stop", "die", "restart", "pause", "unpause"}
+LIFECYCLE_ACTIONS = {"create", "start", "stop", "die", "restart", "pause", "unpause", "remove", "destroy"}
 
 
 class DockerEventConsumer:
