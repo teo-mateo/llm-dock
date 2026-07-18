@@ -61,7 +61,7 @@ const SidebarSplit = forwardRef(function SidebarSplit({ children, ...sidebarProp
               <i className="fa-solid fa-angles-right text-sm"></i>
             </button>
           </div>
-          <div className="flex-1 flex items-center justify-center py-4 overflow-hidden">
+          <div className="py-4 overflow-hidden">
             <span className="text-[10px] font-semibold text-fg-subtle uppercase tracking-widest select-none" style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}>
               Conversations
             </span>
