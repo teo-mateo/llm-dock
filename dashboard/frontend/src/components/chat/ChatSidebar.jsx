@@ -1,15 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 
-const COLLAPSED_KEY = 'llmdock.chatSidebar.collapsed'
-
-function readCollapsed() {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete, renaming, onRenameStart, onRenameConfirm }) {
   const isSpinoff = !!conv.parent_conversation_id
   const inputRef = useRef(null)
@@ -312,8 +302,7 @@ function ProjectHeader({ project, collapsed, active, onToggleCollapse, onOpenPro
   )
 }
 
-export default function ChatSidebar({ conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], activeProjectId = null, onOpenProject, onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+export default function ChatSidebar({ onCollapse, conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], activeProjectId = null, onOpenProject, onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null)
@@ -498,55 +487,13 @@ export default function ChatSidebar({ conversations, activeId, onSelect, onCreat
     )
   }
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, String(collapsed))
-    } catch {
-      /* localStorage unavailable — keep in-memory state only */
-    }
-  }, [collapsed])
-
-  if (collapsed) {
-    // The collapsed rail mirrors the main Sidebar's geometry (h-16
-    // bordered header, w-8 h-8 toggle, text-sm icon) so the expander
-    // chevrons of all collapsed panels sit on one line.
-    return (
-      <div
-        className="w-10 border-r border-border flex flex-col items-center bg-app flex-shrink-0"
-        data-testid="chat-sidebar-collapsed"
-      >
-        <div className="h-16 w-full border-b border-border-subtle flex items-center justify-center flex-shrink-0">
-          <button
-            onClick={() => setCollapsed(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors cursor-pointer"
-            title="Show conversations"
-            aria-label="Show conversations"
-            aria-expanded={false}
-          >
-            <i className="fa-solid fa-angles-right text-sm"></i>
-          </button>
-        </div>
-        <div className="py-4">
-          <button
-            onClick={onCreate}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface/60 transition-colors cursor-pointer"
-            title="New conversation"
-            aria-label="New conversation"
-          >
-            <i className="fa-solid fa-plus text-sm"></i>
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="w-72 border-r border-border flex flex-col bg-app flex-shrink-0">
+    <div className="w-full border-r border-border flex flex-col bg-app flex-shrink-0 h-full">
       {/* Header */}
       <div className="p-3 border-b border-border">
         <div className="flex justify-between items-center mb-2">
           <button
-            onClick={() => setCollapsed(true)}
+            onClick={onCollapse}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
             title="Hide conversations"
             aria-label="Hide conversations"

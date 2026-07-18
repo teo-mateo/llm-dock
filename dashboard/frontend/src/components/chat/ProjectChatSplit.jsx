@@ -1,21 +1,12 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ProjectExplorerPane from './ProjectExplorerPane'
 import ProjectFileEditor from './ProjectFileEditor'
+import useResizableWidth from '../../hooks/useResizableWidth'
 
 const WIDTH_KEY = 'llmdock.chatExplorer.width'
 const COLLAPSED_KEY = 'llmdock.chatExplorer.collapsed'
-
 const MIN_WIDTH = 160
 const MAX_FRACTION = 0.45
-
-function readStoredWidth() {
-  try {
-    const v = parseInt(localStorage.getItem(WIDTH_KEY), 10)
-    return Number.isFinite(v) && v >= MIN_WIDTH ? v : null
-  } catch {
-    return null
-  }
-}
 
 function readStoredCollapsed() {
   try {
@@ -32,16 +23,17 @@ function readStoredCollapsed() {
 // the conversation stays loaded underneath.
 export default function ProjectChatSplit({ project, conversationId, refreshKey = 0, onEditorDirtyChange, children }) {
   const [collapsed, setCollapsed] = useState(readStoredCollapsed)
-  // null = never resized: the strip uses the 20% default until the first
-  // drag pins a pixel width.
-  const [width, setWidth] = useState(readStoredWidth)
-  const [dragging, setDragging] = useState(false)
+  const { containerRef, currentWidth, dragging, startDrag } = useResizableWidth({
+    storageKey: WIDTH_KEY,
+    minWidth: MIN_WIDTH,
+    maxFraction: MAX_FRACTION,
+    defaultWidthPx: null,
+  })
   // {path, isNew} when the editor overlay is open.
   const [editing, setEditing] = useState(null)
   // Editor saves bump this so the pane re-reads the tree (a saved new
   // file must appear); combined with the parent's refreshKey.
   const [savedBump, setSavedBump] = useState(0)
-  const containerRef = useRef(null)
   const dirtyRef = useRef(false)
 
   const projectId = project?.id
@@ -71,55 +63,6 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
     try { localStorage.setItem(COLLAPSED_KEY, String(collapsed)) } catch { /* ignore */ }
   }, [collapsed])
 
-  useEffect(() => {
-    if (width == null) return
-    try { localStorage.setItem(WIDTH_KEY, String(width)) } catch { /* ignore */ }
-  }, [width])
-
-  // A stored width is only known to fit the display it was saved on. Track
-  // the container's current 45% bound and clamp at render — otherwise a
-  // width persisted on a wide window swallows the whole split (and the
-  // chat) after the window narrows, until the next drag.
-  const [maxWidth, setMaxWidth] = useState(null)
-  useLayoutEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const measure = () => {
-      const w = el.getBoundingClientRect().width
-      if (w > 0) setMaxWidth(Math.max(MIN_WIDTH, Math.floor(w * MAX_FRACTION)))
-    }
-    measure()
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measure)
-      return () => window.removeEventListener('resize', measure)
-    }
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-    // Re-attach when the split appears: with no project there IS no
-    // container, and the ref is still null on that first pass.
-  }, [projectId])
-  const shownWidth = width != null && maxWidth != null ? Math.min(width, maxWidth) : width
-
-  // Divider drag: window-level listeners while dragging, clamped to
-  // [MIN_WIDTH, 45% of the split container].
-  useEffect(() => {
-    if (!dragging) return
-    const onMove = (e) => {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const max = Math.max(MIN_WIDTH, Math.floor(rect.width * MAX_FRACTION))
-      setWidth(Math.min(Math.max(e.clientX - rect.left, MIN_WIDTH), max))
-    }
-    const onUp = () => setDragging(false)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [dragging])
-
   const handleOpenFile = useCallback((path, isNew) => {
     // Re-clicking the open file is a no-op (nothing would be discarded —
     // confirming just remounts the same editor).
@@ -142,7 +85,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
         // Same geometry as the other collapsed rails (main Sidebar,
         // ChatSidebar): h-16 bordered header, w-8 h-8 toggle, text-sm
         // icon — the expander chevrons of all collapsed panels line up.
-        <div className="w-10 flex-shrink-0 border-r border-border bg-app flex flex-col items-center">
+        <div className="w-10 flex-shrink-0 border-r border-border-subtle flex flex-col items-center bg-app">
           <div className="h-16 w-full border-b border-border-subtle flex items-center justify-center flex-shrink-0">
             <button
               onClick={() => setCollapsed(false)}
@@ -166,7 +109,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
         className="flex-shrink-0 border-r border-border overflow-hidden"
         style={{
           display: collapsed ? 'none' : undefined,
-          width: shownWidth != null ? `${shownWidth}px` : '20%',
+          width: currentWidth != null ? `${currentWidth}px` : '20%',
           minWidth: `${MIN_WIDTH}px`,
         }}
         data-testid="explorer-strip"
@@ -181,7 +124,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
       </div>
       {!collapsed && (
         <div
-          onMouseDown={(e) => { e.preventDefault(); setDragging(true) }}
+          onMouseDown={startDrag}
           className={`w-1.5 flex-shrink-0 cursor-col-resize -ml-1 z-10 ${
             dragging ? 'bg-accent-strong/40' : 'hover:bg-accent-strong/30'
           }`}
