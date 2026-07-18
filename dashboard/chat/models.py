@@ -15,6 +15,7 @@ class Message:
     images_json: Optional[str] = None
     tool_calls_json: Optional[str] = None
     parse_warning_json: Optional[str] = None
+    error: Optional[str] = None
     created_at: Optional[str] = None
 
     def to_dict(self):
@@ -36,6 +37,8 @@ class Message:
             d["tool_calls"] = tool_calls
         if parse_warning:
             d["parse_warning"] = parse_warning
+        if self.error:
+            d["error"] = self.error
         return d
 
 

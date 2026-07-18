@@ -24,7 +24,7 @@ const conversations = [
   { id: 'D',  title: 'D',  parent_conversation_id: null, updated_at: '2026-01-01' },
 ]
 
-function renderSidebar() {
+function renderSidebar(overrides) {
   return render(
     <ChatSidebar
       conversations={conversations}
@@ -33,6 +33,10 @@ function renderSidebar() {
       onCreate={() => {}}
       onDelete={() => {}}
       onDeleteMany={() => {}}
+      collapsed={false}
+      onCollapse={() => {}}
+      onExpand={() => {}}
+      {...overrides}
     />
   )
 }
@@ -177,6 +181,9 @@ describe('ChatSidebar project grouping', () => {
         onDeleteProject={() => {}}
         onCreateInProject={() => {}}
         onMoveMany={() => {}}
+        collapsed={false}
+        onCollapse={() => {}}
+        onExpand={() => {}}
         {...overrides}
       />
     )
@@ -215,6 +222,9 @@ describe('ChatSidebar project grouping', () => {
         onDelete={() => {}}
         onDeleteMany={() => {}}
         projects={[{ id: 'p9', name: 'Ghost', conversation_count: 3 }]}
+        collapsed={false}
+        onCollapse={() => {}}
+        onExpand={() => {}}
       />
     )
     expect(screen.queryByText('Empty project')).toBeNull()
@@ -323,6 +333,9 @@ describe('ChatSidebar project grouping', () => {
         onCreate={() => {}}
         onDelete={() => {}}
         onDeleteMany={() => {}}
+        collapsed={false}
+        onCollapse={() => {}}
+        onExpand={() => {}}
       />
     )
     for (const t of ['A', 'A1', 'B', 'C', 'D']) {
@@ -342,6 +355,9 @@ describe('ChatSidebar active-run indicator', () => {
         onCreate={() => {}}
         onDelete={() => {}}
         onDeleteMany={() => {}}
+        collapsed={false}
+        onCollapse={() => {}}
+        onExpand={() => {}}
       />
     )
   }
@@ -382,43 +398,10 @@ describe('ChatSidebar active-run indicator', () => {
 })
 
 describe('ChatSidebar collapse', () => {
-  afterEach(() => localStorage.removeItem('llmdock.chatSidebar.collapsed'))
-
-  it('collapses to a thin rail and expands back, persisting the choice', () => {
-    renderSidebar()
-    expect(screen.getByText('New Conversation')).toBeInTheDocument()
-
+  it('calls onCollapse when the hide button is clicked', () => {
+    const onCollapse = vi.fn()
+    renderSidebar({ onCollapse })
     fireEvent.click(screen.getByLabelText('Hide conversations'))
-    expect(screen.getByTestId('chat-sidebar-collapsed')).toBeInTheDocument()
-    expect(screen.queryByText('New Conversation')).toBeNull()
-    expect(localStorage.getItem('llmdock.chatSidebar.collapsed')).toBe('true')
-
-    fireEvent.click(screen.getByLabelText('Show conversations'))
-    expect(screen.queryByTestId('chat-sidebar-collapsed')).toBeNull()
-    expect(screen.getByText('New Conversation')).toBeInTheDocument()
-    expect(localStorage.getItem('llmdock.chatSidebar.collapsed')).toBe('false')
-  })
-
-  it('starts collapsed when the stored preference says so', () => {
-    localStorage.setItem('llmdock.chatSidebar.collapsed', 'true')
-    renderSidebar()
-    expect(screen.getByTestId('chat-sidebar-collapsed')).toBeInTheDocument()
-  })
-
-  it('the collapsed rail still offers New Conversation', () => {
-    localStorage.setItem('llmdock.chatSidebar.collapsed', 'true')
-    const onCreate = vi.fn()
-    render(
-      <ChatSidebar
-        conversations={conversations}
-        activeId={null}
-        onSelect={() => {}}
-        onCreate={onCreate}
-        onDelete={() => {}}
-        onDeleteMany={() => {}}
-      />
-    )
-    fireEvent.click(screen.getByLabelText('New conversation'))
-    expect(onCreate).toHaveBeenCalled()
+    expect(onCollapse).toHaveBeenCalled()
   })
 })

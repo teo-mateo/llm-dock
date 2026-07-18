@@ -1,9 +1,9 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import ChatSidebar from './ChatSidebar'
 import ChatArea from './ChatArea'
 import ProjectPage from './ProjectPage'
 import ProjectChatSplit from './ProjectChatSplit'
+import SidebarSplit from './SidebarSplit'
 import useConversations from '../../hooks/useConversations'
 import useProjects from '../../hooks/useProjects'
 import useChat from '../../hooks/useChat'
@@ -284,25 +284,47 @@ export default function ChatPage() {
     if (shouldNavigate) navigate('/chat')
   }, [removeMany, refreshProjects, activeWillBeDeleted, navigate, confirmDiscardEdits])
 
+  const sidebarRef = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const active = document.activeElement
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return
+      if (e.key === '[') {
+        e.preventDefault()
+        sidebarRef.current?.adjustWidth(-20)
+      } else if (e.key === ']') {
+        e.preventDefault()
+        sidebarRef.current?.adjustWidth(20)
+      } else if (e.key === 'b') {
+        e.preventDefault()
+        sidebarRef.current?.toggleCollapse()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   return (
-    <div className="flex-1 flex overflow-hidden">
-      <ChatSidebar
-        conversations={conversations}
-        activeId={convId}
-        onSelect={handleSelect}
-        onCreate={handleCreate}
-        onDelete={handleDelete}
-        onDeleteMany={handleDeleteMany}
-        onRename={handleRename}
-        projects={projects}
-        activeProjectId={projectId || null}
-        onOpenProject={handleOpenProject}
-        onCreateProject={handleCreateProject}
-        onRenameProject={renameProject}
-        onDeleteProject={handleDeleteProject}
-        onCreateInProject={handleCreateInProject}
-        onMoveMany={handleMoveMany}
-      />
+    <SidebarSplit
+      ref={sidebarRef}
+      conversations={conversations}
+      activeId={convId}
+      onSelect={handleSelect}
+      onCreate={handleCreate}
+      onDelete={handleDelete}
+      onDeleteMany={handleDeleteMany}
+      onRename={handleRename}
+      projects={projects}
+      activeProjectId={projectId || null}
+      onOpenProject={handleOpenProject}
+      onCreateProject={handleCreateProject}
+      onRenameProject={renameProject}
+      onDeleteProject={handleDeleteProject}
+      onCreateInProject={handleCreateInProject}
+      onMoveMany={handleMoveMany}
+    >
       {projectId ? (
         <ProjectPage
           project={projects.find(p => p.id === projectId) || null}
@@ -343,6 +365,6 @@ export default function ChatPage() {
       />
       </ProjectChatSplit>
       )}
-    </div>
+    </SidebarSplit>
   )
 }

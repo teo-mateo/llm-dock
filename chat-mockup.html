@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llm-dock — Chat Window Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet">
+<style>
+  /* ========================================
+     DESIGN SYSTEM: "Warm Newspaper"
+     Influences: NZS editorial, IBM Plex, zine marginalia
+     Dominant: #BF3618 (burnt sienna)
+     Accent: #0D9488 (teal)
+     ======================================== */
+
+  :root {
+    --bg: #F7F5F1;
+    --bg-white: #FFFFFF;
+    --surface: #F0EDE8;
+    --surface-dark: #E8E4DE;
+    --ink: #1A1714;
+    --ink-body: #332E28;
+    --ink-secondary: #7A7367;
+    --ink-faint: #AAA49A;
+    --ink-rule: #D4CFC7;
+    --red: #BF3618;
+    --red-light: #D96B4F;
+    --red-bg: rgba(191, 54, 24, 0.06);
+    --red-bg-strong: rgba(191, 54, 24, 0.12);
+    --teal: #0D9488;
+    --teal-bg: rgba(13, 148, 136, 0.08);
+    --amber: #B45309;
+    --amber-bg: rgba(180, 83, 9, 0.06);
+    --green: #15803D;
+    --green-bg: rgba(21, 128, 61, 0.08);
+    --critique-bg: #FEF3C7;
+    --critique-border: #D97706;
+    --critique-text: #92400E;
+    --mono: 'IBM Plex Mono', monospace;
+    --serif: 'Source Serif 4', 'Georgia', serif;
+  }
+
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html { font-size: 15px; }
+
+  body {
+    font-family: var(--serif);
+    color: var(--ink-body);
+    background: var(--bg);
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 248px 1fr;
+    grid-template-rows: 52px 1fr 64px;
+    grid-template-areas:
+      "sidebar header"
+      "sidebar messages"
+      "sidebar input";
+    overflow: hidden;
+    line-height: 1.55;
+  }
+
+  /* ========== HEADER ========== */
+  .header {
+    grid-area: header;
+    background: var(--bg-white);
+    display: flex;
+    align-items: center;
+    padding: 0 1.25rem;
+    border-bottom: 1px solid var(--ink-rule);
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .header-model {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+
+  .header-model-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-secondary);
+  }
+
+  .header-model-name {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .header-sep {
+    width: 1px;
+    height: 1.25rem;
+    background: var(--ink-rule);
+    flex-shrink: 0;
+  }
+
+  .header-param {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--ink-secondary);
+  }
+
+  .header-spacer { flex: 1; }
+
+  .mcp-toggles {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+  }
+
+  .mcp-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 0.25rem;
+  }
+
+  .mcp-toggle {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--ink-rule);
+    background: var(--bg-white);
+    color: var(--ink-secondary);
+    cursor: pointer;
+    transition: all 0.12s;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    line-height: 1;
+  }
+
+  .mcp-toggle.on {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-bg);
+  }
+
+  .mcp-toggle:hover { border-color: var(--ink-secondary); }
+
+  .mcp-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+  }
+
+  .mcp-toggle.on .mcp-dot { background: var(--red); }
+
+  /* ========== SIDEBAR ========== */
+  .sidebar {
+    grid-area: sidebar;
+    background: var(--bg-white);
+    border-right: 1px solid var(--ink-rule);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-logo {
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--ink-rule);
+  }
+
+  .sidebar-logo-mark {
+    width: 14px;
+    height: 14px;
+    background: var(--red);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 8px;
+    font-weight: 700;
+  }
+
+  .sidebar-new {
+    margin: 0.6rem 0.75rem;
+    padding: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    background: var(--ink);
+    color: white;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: background 0.12s;
+  }
+
+  .sidebar-new:hover { background: #333; }
+
+  .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+  }
+
+  .sidebar-group-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 0.5rem 1rem 0.3rem;
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.1s;
+    position: relative;
+  }
+
+  .sidebar-item:hover { background: var(--surface); }
+
+  .sidebar-item.active {
+    background: var(--red-bg);
+    border-left-color: var(--red);
+  }
+
+  .sidebar-item-title {
+    font-family: var(--serif);
+    font-size: 0.82rem;
+    color: var(--ink-body);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-item.active .sidebar-item-title {
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .sidebar-item-meta {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--ink-faint);
+    flex-shrink: 0;
+  }
+
+  .sidebar-branch {
+    color: var(--red-light);
+    font-size: 0.6rem;
+    margin-right: -0.15rem;
+  }
+
+  .sidebar-item.spinoff {
+    padding-left: 2rem;
+  }
+
+  .sidebar-item.spinoff::before {
+    content: '│';
+    position: absolute;
+    left: 1.2rem;
+    color: var(--ink-rule);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+
+  .sidebar-item.spinoff::after {
+    content: '└';
+    position: absolute;
+    left: 1.2rem;
+    color: var(--ink-rule);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+
+  .sidebar-item.spinoff-branch {
+    position: relative;
+  }
+
+  .sidebar-item.spinoff-branch::before {
+    content: '';
+    position: absolute;
+    left: 1.2rem;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--ink-rule);
+  }
+
+  .sidebar-footer {
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--ink-rule);
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    color: var(--ink-faint);
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .sidebar-footer span { cursor: pointer; }
+  .sidebar-footer span:hover { color: var(--ink-secondary); }
+
+  /* ========== MESSAGES ========== */
+  .messages {
+    grid-area: messages;
+    overflow-y: auto;
+    padding: 1rem 1rem 1.25rem 1rem;
+    scroll-behavior: smooth;
+  }
+
+  .messages {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .msg-row {
+    display: grid;
+    grid-template-columns: 40px 1fr 230px;
+    column-gap: 0;
+  }
+
+  .spine {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  .spine-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .spine-dot.user {
+    background: var(--ink-secondary);
+  }
+
+  .spine-dot.assistant {
+    background: var(--red);
+  }
+
+  .spine-dot.streaming {
+    background: var(--red);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.5); }
+  }
+
+  .spine-line {
+    width: 1px;
+    background: var(--ink-rule);
+    flex: 1;
+    min-height: 8px;
+  }
+
+  .spine-branch {
+    flex: 1;
+    min-height: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  .spine-branch-line {
+    width: 1px;
+    flex: 1;
+    background: var(--ink-rule);
+    border-style: dashed;
+  }
+
+  .spine-branch-hook {
+    width: 10px;
+    height: 10px;
+    border-right: 1px dashed var(--red-light);
+    border-bottom: 1px dashed var(--red-light);
+    transform: rotate(-45deg);
+    margin-bottom: 4px;
+  }
+
+  .msg-body {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.2rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .msg-body.user-body {
+    padding-left: 1.5rem;
+  }
+
+  .msg-gutter {
+    padding-left: 0.75rem;
+    padding-right: 0.5rem;
+    padding-top: 0.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* Message header metadata */
+  .msg-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+    flex-wrap: wrap;
+  }
+
+  .msg-role {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .msg-role.user { color: var(--ink-secondary); }
+  .msg-role.assistant { color: var(--red); }
+
+  .msg-meta {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--ink-faint);
+  }
+
+  .msg-meta-sep {
+    color: var(--ink-rule);
+  }
+
+  /* Message content */
+  .msg-content {
+    font-size: 0.92rem;
+    line-height: 1.62;
+    color: var(--ink-body);
+  }
+
+  .msg-content p { margin-bottom: 0.65rem; }
+  .msg-content p:last-child { margin-bottom: 0; }
+  .msg-content strong { font-weight: 600; color: var(--ink); }
+
+  .msg-content code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--surface);
+    padding: 0.1em 0.35em;
+    border: 1px solid var(--ink-rule);
+    color: var(--ink);
+  }
+
+  .msg-content pre {
+    background: var(--ink);
+    color: #E8E4DE;
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 0.65rem 0;
+  }
+
+  .msg-content h4 {
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin: 0.85rem 0 0.35rem;
+    color: var(--ink);
+  }
+
+  .msg-content ul {
+    padding-left: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .msg-content li { margin-bottom: 0.2rem; }
+
+  /* User message styling */
+  .user-body .msg-content {
+    border-left: 2px solid var(--surface-dark);
+    padding-left: 0.85rem;
+  }
+
+  /* ========== TOOL CALL (in gutter) ========== */
+  .tool-call {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    line-height: 1.5;
+    color: var(--ink-secondary);
+    border-left: 2px solid var(--teal);
+    padding-left: 0.55rem;
+    position: relative;
+  }
+
+  .tool-call::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0.6rem;
+    width: 1.25rem;
+    height: 1px;
+    border-top: 1px dashed var(--teal);
+    opacity: 0.4;
+  }
+
+  .tool-name {
+    font-weight: 600;
+    color: var(--teal);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .tool-icon {
+    font-size: 0.6rem;
+    opacity: 0.7;
+  }
+
+  .tool-status {
+    font-size: 0.5rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+
+  .tool-status.done { color: var(--green); }
+  .tool-status.running { color: var(--amber); }
+
+  .tool-args {
+    color: var(--ink-faint);
+    margin: 0.15rem 0;
+  }
+
+  .tool-args dt {
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  .tool-result {
+    margin-top: 0.3rem;
+    padding-top: 0.3rem;
+    border-top: 1px solid var(--ink-rule);
+    color: var(--green);
+    font-size: 0.63rem;
+  }
+
+  .tool-connector {
+    position: absolute;
+    left: -20px;
+    top: 0.55rem;
+    width: 1rem;
+    height: 1px;
+    border-top: 1px dashed var(--teal);
+    opacity: 0.3;
+  }
+
+  /* ========== ARTIFACT ========== */
+  .artifact {
+    border: 1px solid var(--ink-rule);
+    margin: 0.65rem 0;
+    background: var(--bg-white);
+    overflow: hidden;
+  }
+
+  .artifact-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0.6rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--ink-rule);
+    font-family: var(--mono);
+  }
+
+  .artifact-head-left {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-secondary);
+  }
+
+  .artifact-tag {
+    font-size: 0.5rem;
+    font-weight: 600;
+    background: var(--ink);
+    color: white;
+    padding: 0.1rem 0.35rem;
+    letter-spacing: 0.1em;
+  }
+
+  .artifact-title {
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .artifact-body {
+    padding: 1rem;
+    display: flex;
+    justify-content: center;
+    background: white;
+  }
+
+  .artifact-body svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ========== CRITIQUE ANNOTATION ========== */
+  .critique-note {
+    border-left: 2px solid var(--critique-border);
+    background: var(--critique-bg);
+    padding: 0.4rem 0.55rem;
+    font-family: var(--mono);
+    position: relative;
+  }
+
+  .critique-note::after {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0.5rem;
+    width: 4px;
+    height: 4px;
+    background: var(--critique-border);
+  }
+
+  .critique-ref {
+    font-size: 0.52rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--critique-text);
+    margin-bottom: 0.15rem;
+  }
+
+  .critique-span {
+    font-family: var(--serif);
+    font-size: 0.72rem;
+    font-style: italic;
+    color: var(--ink-secondary);
+    border-left: 1px solid var(--critique-border);
+    padding-left: 0.35rem;
+    margin-bottom: 0.2rem;
+    line-height: 1.45;
+  }
+
+  .critique-comment {
+    font-size: 0.68rem;
+    line-height: 1.5;
+    color: var(--ink-body);
+  }
+
+  .critique-severity {
+    display: inline-block;
+    font-size: 0.5rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.08rem 0.3rem;
+    margin-left: 0.3rem;
+  }
+
+  .critique-severity.error {
+    background: rgba(191, 54, 24, 0.15);
+    color: #991B1B;
+  }
+
+  .critique-severity.warning {
+    background: rgba(180, 83, 9, 0.15);
+    color: var(--amber);
+  }
+
+  .critique-severity.info {
+    background: rgba(74, 85, 95, 0.12);
+    color: #4B5563;
+  }
+
+  .critique-spacer {
+    height: 1px;
+  }
+
+  /* ========== STREAMING MESSAGE ========== */
+  .streaming-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 0.9em;
+    margin-left: 1px;
+    background: var(--red);
+    animation: blink-cursor 0.9s step-end infinite;
+    vertical-align: text-bottom;
+  }
+
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .stream-status {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    color: var(--amber);
+  }
+
+  .stream-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--red);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  .stream-idle .stream-dot {
+    background: var(--amber);
+    animation: none;
+  }
+
+  .stream-idle { color: var(--amber); }
+
+  /* ========== FORMAT DRIFT ========== */
+  .drift {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--amber);
+    margin-top: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border-left: 2px solid var(--amber);
+    background: var(--amber-bg);
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+
+  .drift-icon { font-size: 0.65rem; }
+
+  .drift-detail {
+    font-size: 0.58rem;
+    color: var(--ink-secondary);
+    margin-top: 0.25rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--ink-rule);
+  }
+
+  /* ========== THINKING BLOCK ========== */
+  .thinking {
+    margin-top: 0.35rem;
+  }
+
+  .thinking-toggle {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0;
+  }
+
+  .thinking-toggle:hover { color: var(--ink-secondary); }
+
+  .thinking-count {
+    font-size: 0.52rem;
+    color: var(--ink-faint);
+  }
+
+  .thinking-content {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--ink-secondary);
+    font-style: italic;
+    margin-top: 0.25rem;
+    padding: 0.45rem 0.6rem;
+    background: var(--surface);
+    border-left: 2px solid var(--surface-dark);
+  }
+
+  /* ========== SPINOFF INDICATOR ========== */
+  .spinoff-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.65rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px dashed var(--ink-rule);
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--ink-faint);
+  }
+
+  .spinoff-indicator-line {
+    width: 1.25rem;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .spinoff-indicator-line::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1rem;
+    border-left: 1px dashed var(--ink-rule);
+  }
+
+  .spinoff-indicator-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-bottom: 1px dashed var(--red-light);
+    border-right: 1px dashed var(--red-light);
+    transform: rotate(-45deg);
+    transform-origin: bottom left;
+  }
+
+  .spinoff-arrow {
+    color: var(--red-light);
+  }
+
+  /* ========== HEARTBEAT ========== */
+  .heartbeat {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    color: var(--ink-faint);
+    margin-top: 0.35rem;
+  }
+
+  .heartbeat-line {
+    width: 0.75rem;
+    height: 1px;
+    border-top: 1px dashed var(--ink-faint);
+  }
+
+  /* ========== INPUT BAR ========== */
+  .input-bar {
+    grid-area: input;
+    background: var(--bg-white);
+    border-top: 1px solid var(--ink-rule);
+    padding: 0.5rem 1.25rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+  }
+
+  .input-status {
+    position: absolute;
+    top: -1.5rem;
+    left: 1.25rem;
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .input-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .input-textarea {
+    width: 100%;
+    font-family: var(--serif);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    border: 1px solid var(--ink-rule);
+    padding: 0.5rem 0.7rem;
+    resize: none;
+    background: var(--bg);
+    color: var(--ink-body);
+    outline: none;
+    min-height: 36px;
+    max-height: 120px;
+  }
+
+  .input-textarea::placeholder {
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  .input-send {
+    width: 36px;
+    height: 36px;
+    background: var(--red);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+    align-self: flex-end;
+    transition: background 0.12s;
+  }
+
+  .input-send:hover { background: #A03010; }
+
+  .input-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-self: flex-end;
+    padding-bottom: 0.25rem;
+  }
+
+  .input-action {
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    color: var(--ink-faint);
+    background: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 0.15rem 0.3rem;
+    letter-spacing: 0.04em;
+    transition: all 0.1s;
+  }
+
+  .input-action:hover {
+    color: var(--ink-secondary);
+    border-color: var(--ink-rule);
+  }
+
+  /* ========== VERDICT ========== */
+  .verdict {
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid;
+    margin-bottom: 0.4rem;
+  }
+
+  .verdict.minor {
+    color: var(--amber);
+    border-color: rgba(180, 83, 9, 0.3);
+    background: var(--amber-bg);
+  }
+
+  /* ========== TOOLTIP HELPERS ========== */
+  .design-note {
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--ink-rule);
+  }
+
+  .msg-gap {
+    height: 1rem;
+  }
+
+  /* Scrollbar styling */
+  .messages::-webkit-scrollbar,
+  .sidebar-nav::-webkit-scrollbar { width: 5px; }
+  .messages::-webkit-scrollbar-track,
+  .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb,
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--ink-rule); }
+  .messages::-webkit-scrollbar-thumb:hover,
+  .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+  /* ========== DESIGN LABEL ========== */
+  .design-label {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    background: var(--ink);
+    color: white;
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    padding: 0.25rem 0.5rem;
+    letter-spacing: 0.05em;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+  <!-- ==================== HEADER ==================== -->
+  <header class="header">
+    <div class="header-model">
+      <span class="header-model-label">Main</span>
+      <span class="header-model-name">vllm-qwen3-6-27b-bf16</span>
+    </div>
+    <div class="header-sep"></div>
+    <div class="header-model">
+      <span class="header-model-label">Sidekick</span>
+      <span class="header-model-name" style="color: var(--ink-secondary);">llama3.1-8b-instruct</span>
+    </div>
+    <div class="header-sep"></div>
+    <span class="header-param">max-model-len 131072</span>
+    <span class="header-param">ctx 32k</span>
+    <span class="header-spacer"></span>
+    <div class="mcp-toggles">
+      <span class="mcp-label">MCP</span>
+      <button class="mcp-toggle on">
+        <span class="mcp-dot"></span>sympy-math
+      </button>
+      <button class="mcp-toggle on">
+        <span class="mcp-dot"></span>schemdraw
+      </button>
+      <button class="mcp-toggle">
+        <span class="mcp-dot"></span>render-html
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-mark">LD</div>
+      llm-dock
+    </div>
+    <button class="sidebar-new">+ New Conversation</button>
+    <nav class="sidebar-nav">
+      <div class="sidebar-group-label">Today</div>
+      <div class="sidebar-item active">
+        <span class="sidebar-item-title">vLLM GPU sizing for FP8 models</span>
+        <span class="sidebar-item-meta">14:32</span>
+      </div>
+      <div class="sidebar-item spinoff spinoff-branch">
+        <span class="sidebar-branch">&#8629;</span>
+        <span class="sidebar-item-title">Compare with llama.cpp GGUF</span>
+        <span class="sidebar-item-meta">15:01</span>
+      </div>
+      <div class="sidebar-item" style="margin-top: 0.25rem;">
+        <span class="sidebar-item-title">Docker Compose v3 migration</span>
+        <span class="sidebar-item-meta">11:45</span>
+      </div>
+      <div class="sidebar-group-label" style="margin-top: 0.5rem;">Yesterday</div>
+      <div class="sidebar-item">
+        <span class="sidebar-item-title">RTX PRO 6000 benchmark results</span>
+        <span class="sidebar-item-meta">23 Apr</span>
+      </div>
+      <div class="sidebar-item">
+        <span class="sidebar-item-title">Open WebUI embedding config</span>
+        <span class="sidebar-item-meta">23 Apr</span>
+      </div>
+      <div class="sidebar-item">
+        <span class="sidebar-item-title">CUDA 12.8 upgrade notes</span>
+        <span class="sidebar-item-meta">22 Apr</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span>Services &middot; 4 running</span>
+      <span>GPU 67%</span>
+    </div>
+  </aside>
+
+  <!-- ==================== MESSAGES ==================== -->
+  <main class="messages">
+
+    <!-- ---- MSG 1: Assistant (with artifact SVG, tool call in gutter) ---- -->
+    <div class="msg-row" style="grid-row: auto;">
+      <div class="spine">
+        <div class="spine-dot assistant"></div>
+        <div class="spine-line"></div>
+      </div>
+      <div class="msg-body">
+        <div class="msg-head">
+          <span class="msg-role assistant">vllm-qwen3-6-27b</span>
+          <span class="msg-meta">14:28</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <span class="msg-meta">187 tok</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <span class="msg-meta">1.2s</span>
+        </div>
+        <div class="msg-content">
+          <p>The circuit diagram for your full-bridge rectifier is ready. I generated it using <code>schemdraw</code> &mdash; it includes the four diodes, input AC source, and output capacitor.</p>
+          <div class="artifact">
+            <div class="artifact-head">
+              <div class="artifact-head-left">
+                <span class="artifact-tag">SVG</span>
+                <span class="artifact-title">Full-Bridge Rectifier</span>
+              </div>
+              <span style="font-size: 0.55rem; color: var(--ink-faint);">schemdraw &middot; 4.2 KB</span>
+            </div>
+            <div class="artifact-body">
+              <svg width="340" height="160" viewBox="0 0 340 160" xmlns="http://www.w3.org/2000/svg">
+                <g stroke="none" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <!-- Wires -->
+                  <line x1="30" y1="80" x2="100" y2="80" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="240" y1="80" x2="310" y2="80" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="100" y1="80" x2="100" y2="40" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="100" y1="80" x2="100" y2="120" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="240" y1="80" x2="240" y2="40" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="240" y1="80" x2="240" y2="120" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="100" y1="40" x2="240" y2="40" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="100" y1="120" x2="240" y2="120" stroke="#1A1714" stroke-width="1.5"/>
+                  <!-- Diode symbols (D1, D2, D3, D4) -->
+                  <polygon points="97,58 103,72 103,48" fill="#1A1714" stroke="none"/>
+                  <line x1="103" y1="46" x2="103" y2="74" stroke="#1A1714" stroke-width="1.5"/>
+                  <polygon points="237,48 243,72 243,58" fill="#1A1714" stroke="none"/>
+                  <line x1="243" y1="46" x2="243" y2="74" stroke="#1A1714" stroke-width="1.5"/>
+                  <polygon points="237,88 243,112 243,98" fill="#1A1714" stroke="none"/>
+                  <line x1="243" y1="86" x2="243" y2="114" stroke="#1A1714" stroke-width="1.5"/>
+                  <polygon points="97,88 103,112 103,98" fill="#1A1714" stroke="none"/>
+                  <line x1="103" y1="86" x2="103" y2="114" stroke="#1A1714" stroke-width="1.5"/>
+                  <!-- Labels -->
+                  <text x="110" y="52" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">D1</text>
+                  <text x="253" y="52" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">D2</text>
+                  <text x="253" y="104" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">D4</text>
+                  <text x="110" y="104" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">D3</text>
+                  <!-- Terminal caps -->
+                  <circle cx="30" cy="80" r="3" fill="#BF3618"/>
+                  <circle cx="310" cy="80" r="3" fill="#1A1714"/>
+                  <text x="14" y="74" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">AC</text>
+                  <text x="268" y="74" font-family="IBM Plex Mono, monospace" font-size="8" fill="#7A7367">DC</text>
+                  <!-- Output labels -->
+                  <line x1="170" y1="40" x2="170" y2="24" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="250" y1="24" x2="290" y2="24" stroke="#1A1714" stroke-width="1"/>
+                  <text x="250" y="30" font-family="IBM Plex Mono, monospace" font-size="7" fill="#BF3618">+</text>
+                  <line x1="170" y1="120" x2="170" y2="136" stroke="#1A1714" stroke-width="1.5"/>
+                  <line x1="250" y1="136" x2="290" y2="136" stroke="#1A1714" stroke-width="1"/>
+                  <text x="250" y="142" font-family="IBM Plex Mono, monospace" font-size="7" fill="#BF3618">&minus;</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <p>The peak output voltage will be <code>V<sub>out</sub> &asymp; V<sub>peak</sub> &minus; 1.4V</code> accounting for the two-diode forward drop. If you need ripple calculation for a given load &mdash; I can work that out.</p>
+        </div>
+        <!-- Spinoff branch indicator -->
+        <div class="spinoff-indicator">
+          <div class="spinoff-indicator-line"></div>
+          <span class="spinoff-arrow">&#8629;</span>
+          <span>Spinoff: "Compare with llama.cpp GGUF performance"</span>
+        </div>
+      </div>
+      <div class="msg-gutter">
+        <div class="tool-call">
+          <div class="tool-connector"></div>
+          <div class="tool-name">
+            <span class="tool-icon">&#9003;</span>
+            schemdraw-circuits__draw_circuit
+          </div>
+          <dl class="tool-args">
+            <div><dt>diodes</dt>&ensp;<dd>4</dd></div>
+            <div><dt>topology</dt>&ensp;<dd>full-bridge</dd></div>
+            <div><dt>output</dt>&ensp;<dd>svg</dd></div>
+          </dl>
+          <div class="tool-result">
+            &check; 428 bytes &middot; svg &middot; 214ms
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- MSG 2: User follow-up ---- -->
+    <div class="msg-row" style="grid-row: auto;">
+      <div class="spine">
+        <div class="spine-dot user"></div>
+        <div class="spine-line"></div>
+      </div>
+      <div class="msg-body">
+        <div class="msg-head">
+          <span class="msg-role user">You</span>
+          <span class="msg-meta">14:29</span>
+        </div>
+        <div class="msg-content">
+          <p>Can you work out the ripple for a 1000&micro;F capacitor at 50mA? Also calculate what happens when I switch to the <code>llama3.1-8b</code> model &mdash; what's the memory difference between loading this as FP8 vs GGUF q4_k_m on my RTX PRO 6000?</p>
+        </div>
+      </div>
+      <div class="msg-gutter"></div>
+    </div>
+
+    <!-- ---- MSG 3: Assistant with tool call, critique, and format drift ---- -->
+    <div class="msg-row" style="grid-row: auto;">
+      <div class="spine">
+        <div class="spine-dot assistant"></div>
+        <div class="spine-line"></div>
+      </div>
+      <div class="msg-body">
+        <div class="msg-head">
+          <span class="msg-role assistant">vllm-qwen3-6-27b</span>
+          <span class="msg-meta">14:29</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <span class="msg-meta">342 tok</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <span class="msg-meta">2.8s</span>
+        </div>
+
+        <!-- Thinking block -->
+        <div class="thinking">
+          <button class="thinking-toggle">
+            <span>&#9654;</span>
+            <span>Thinking</span>
+            <span class="thinking-count">1,204 chars</span>
+          </button>
+          <div class="thinking-content">
+            For the ripple voltage, I'll use the standard capacitor discharge formula: Vr = I / (f &middot; C), where f is the ripple frequency at 100 Hz for full-wave rectification, C = 1000&micro;F, and I = 50mA. This gives Vr &asymp; 0.5V. For the memory comparison, the llama3.1-8b model is approximately 8 billion parameters. FP8 uses 1 byte per parameter for weights plus activations, roughly 16 GB peak. GGUF q4_k_m compresses weights to ~4.6 bits per parameter on average (not exactly 4 due to quantization overhead), so about 4.4 GB for the file, with peak RAM during loading around 6&ndash;7 GB. On a 96 GB card, both are well within bounds, but q4_k_m leaves far more headroom for context window allocations.
+          </div>
+        </div>
+
+        <div class="msg-content">
+          <h4>Ripple Voltage</h4>
+          <p>Using sympy for the exact calculation:</p>
+          <pre>Vr(pp) = I &divide; (f &middot; C)
+       = 0.05 &divide; (100 &middot; 0.001)
+       = <strong>0.50 V pp</strong></pre>
+          <p>That's manageable for most linear regulator inputs. You'd need roughly 3.5V headroom on the input after accounting for this ripple.</p>
+
+          <h4>Model Memory Comparison &mdash; llama3.1-8b</h4>
+          <p><strong>FP8 (safetensors):</strong> Weights at 8 bits &asymp; 8 GB file size. Activation overhead during inference typically doubles this, so expect <strong>14&ndash;18 GB VRAM</strong> peak depending on context window. With vLLM's PagedAttention, you get efficient KV cache sharing.</p>
+          <p><strong>GGUF q4_k_m:</strong> Compressed weights at ~4.55 bits per parameter average &asymp; <strong>4.4 GB file</strong>. Peak VRAM during inference with llama.cpp: <strong>6&ndash;7 GB</strong> even at full context, since activations stay in a tight buffer.</p>
+          <p>On your RTX PRO 6000 (96 GB), both run easily. The q4_k_m version leaves room to run the sidekick model concurrently. The FP8 version trades ~2 GB of precision for the ability to leverage vLLM's tensor-parallel serving pipeline.</p>
+        </div>
+
+        <!-- Format drift warning -->
+        <div class="drift">
+          <span class="drift-icon">&#9888;</span>
+          <span>Partial JSON in code block (qwen3.6-format-drift)</span>
+        </div>
+        <div class="drift-detail">
+          Model began a JSON table with <code>{"format": "comparison"}</code> then reverted to prose. Content is legible &mdash; this is a known Qwen output-style inconsistency at longer completions.
+        </div>
+      </div>
+      <div class="msg-gutter">
+        <div class="tool-call">
+          <div class="tool-connector"></div>
+          <div class="tool-name">
+            <span class="tool-icon">&#9003;</span>
+            sympy-math__evaluate
+          </div>
+          <dl class="tool-args">
+            <div><dt>expr</dt>&ensp;<dd>0.05 / (100 * 0.001)</dd></div>
+          </dl>
+          <div class="tool-result">
+            &check; 0.5 &middot; 48ms
+          </div>
+        </div>
+
+        <!-- VERDICT + CRITIQUE ANNOTATIONS -->
+        <div style="margin-top: 0.75rem;">
+          <div class="verdict minor">Minor Issues &middot; 2 findings</div>
+          <div class="critique-note" style="margin-bottom: 0.4rem;">
+            <div class="critique-ref">
+              Precision &middot; sidekick: llama3.1-8b
+              <span class="critique-severity warning">warning</span>
+            </div>
+            <div class="critique-span">"14&ndash;18 GB VRAM peak"</div>
+            <div class="critique-comment">The 18 GB upper bound assumes full batch-size activation. With tensor-parallel-size=1 and max-num-seqs=1, vLLM will hold closer to 12&ndash;14 GB. This is fine for a single-user setup but worth noting.</div>
+          </div>
+          <div class="critique-note">
+            <div class="critique-ref">
+              Accuracy
+              <span class="critique-severity info">info</span>
+            </div>
+            <div class="critique-span">"4.55 bits per parameter average"</div>
+            <div class="critique-comment">The q4_k_m scheme uses mixed precision: some layers at Q6_K (6 bits), others at Q4_0 (4 bits). The effective average is closer to 4.52, not 4.55. The difference is negligible in practice. The 4.4 GB file size figure is correct.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- MSG 4: User ---- -->
+    <div class="msg-row" style="grid-row: auto;">
+      <div class="spine">
+        <div class="spine-dot user"></div>
+        <div class="spine-line"></div>
+      </div>
+      <div class="msg-body">
+        <div class="msg-head">
+          <span class="msg-role user">You</span>
+          <span class="msg-meta">14:31</span>
+        </div>
+        <div class="msg-content">
+          <p>Got it. Let's go with q4_k_m then &mdash; I can run both models at once. What does the docker-compose service definition look like for the llama.cpp container with <code>-ngl 99 -fa 1 -c 32768</code> and the GGUF file at <code>/models/llama-3.1-8b.Q4_K_M.gguf</code>?</p>
+        </div>
+      </div>
+      <div class="msg-gutter"></div>
+    </div>
+
+    <!-- ---- MSG 5: Streaming assistant (in progress) ---- -->
+    <div class="msg-row" style="grid-row: auto;">
+      <div class="spine">
+        <div class="spine-dot streaming"></div>
+        <div class="spine-line"></div>
+      </div>
+      <div class="msg-body">
+        <div class="msg-head">
+          <span class="msg-role assistant">vllm-qwen3-6-27b</span>
+          <span class="msg-meta">14:32</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <span class="msg-meta">201 tok</span>
+          <span class="msg-meta-sep">&middot;</span>
+          <div class="stream-status">
+            <span class="stream-dot"></span>
+            67 tok/s
+          </div>
+        </div>
+        <div class="msg-content">
+          <p>Here's the service definition for your <code>services.json</code>:</p>
+          <pre>{
+  "llama-3.1-8b-q4": {
+    "alias": "llama-3.1-8b-q4",
+    "port": 3304,
+    "api_key": "llmd-a1b2c3d4",
+    "model_path": "/models/llama-3.1-8b.Q4_K_M.gguf",
+    "template_type": "llamacpp",
+    "params": {
+      "-ngl": "99",
+      "-fa": "1",
+      "-c": "32768"
+    }
+  }
+}</pre>
+          <p>This maps to a docker-compose service with the following key properties:</p>
+          <ul>
+            <li><strong>Container port</strong>: 8080 &rarr; host port 3304</li>
+            <li><strong>GPU access</strong>: <code>devices: count: all</code> &mdash; shares your RTX PRO 6000 with the vLLM container</li>
+            <li><strong>Flash attention</strong>: enabled via <code>-fa 1</code></li>
+            <li><strong>Full offload</strong>: all 99 layers on GPU via <code>-ngl 99</code></li>
+            <li><strong>Context</strong>: 32k tokens, which at q4_k_m consumes roughly <strong>4&ndash;5 GB VRAM</strong> for KV cache alone</li>
+          </ul>
+          <p>You can add this to <code>services.json</code> and the dashboard will regenerate <code>docker-compose.yml</code> on the next save. The container will register itself with Open WebUI at <code>http://localhost:3304/v1/chat/completions</code><span class="streaming-cursor"></span></p>
+        </div>
+        <div class="heartbeat">
+          <div class="heartbeat-line"></div>
+          <span>idle 0.3s &mdash; tool round gap</span>
+        </div>
+      </div>
+      <div class="msg-gutter">
+        <div class="tool-call" style="opacity: 0.5;">
+          <div class="tool-connector"></div>
+          <div class="tool-name">
+            <span class="tool-icon">&#9003;</span>
+            sympy-math__evaluate
+            <span class="tool-status running">&#9776; running</span>
+          </div>
+          <dl class="tool-args">
+            <div><dt>expr</dt>&ensp;<dd>KV_cache_bytes(32768, ...)</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final spine to close -->
+    <div style="grid-column: 1; grid-row: auto;">
+      <div class="spine">
+        <div style="height: 60px;"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== INPUT BAR ==================== -->
+  <div class="input-bar" style="position: relative;">
+    <div class="input-status">
+      <span class="stream-dot"></span>
+      Streaming active &middot; type to queue
+    </div>
+    <div class="input-actions">
+      <button class="input-action">&#8899; image</button>
+    </div>
+    <div class="input-wrap">
+      <textarea class="input-textarea" placeholder="Reply to this conversation..." rows="1"></textarea>
+    </div>
+    <button class="input-send">&#9654;</button>
+  </div>
+
+  <div class="design-label">Warm Newspaper &middot; Source Serif 4 + IBM Plex Mono &middot; #BF3618 / #0D9488</div>
+</body>
+</html>

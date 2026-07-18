@@ -79,6 +79,14 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
           <ThinkingBlock content={message.reasoning_content} />
         )}
 
+        {/* Error banner — shown when the model errored mid-generation */}
+        {!isUser && message.error && (
+          <div className="mb-2 rounded px-3 py-2 text-xs border border-danger bg-danger-subtle text-danger-fg">
+            <i className="fa-solid fa-triangle-exclamation mr-1.5"></i>
+            Generation failed: {message.error}
+          </div>
+        )}
+
         {/* Format-drift chip — flags Qwen3.6-style failure modes. Prefers
             persisted warning, falls back to client-side detection so older
             messages without parse_warning_json still surface a chip. */}
@@ -122,7 +130,9 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
         )}
 
         {/* Message content — hairline block with a colored left accent
-            spine, not a filled rounded bubble. */}
+            spine, not a filled rounded bubble. Only render if there's
+            content, images, or we're in edit mode. */}
+        {(message.content || messageImages.length > 0 || editing) && (
         <div className={`rounded border border-hairline border-l-2 px-4 py-3 ${
           isUser
             ? 'border-l-accent-strong bg-elevated text-fg'
@@ -171,8 +181,9 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 </ReactMarkdown>
               </div>
             )
-          )}
+           )}
         </div>
+        )}
 
         {/* Action buttons */}
         {!isTemp && (

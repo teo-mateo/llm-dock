@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT NOT NULL DEFAULT '',
     reasoning_content TEXT,
     model_service   TEXT,
+    error           TEXT,
     seq             INTEGER NOT NULL,
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
@@ -178,6 +179,7 @@ class ChatDB:
             ("conversations", "mcp_servers_json", "ALTER TABLE conversations ADD COLUMN mcp_servers_json TEXT"),
             ("messages", "tool_calls_json", "ALTER TABLE messages ADD COLUMN tool_calls_json TEXT"),
             ("messages", "parse_warning_json", "ALTER TABLE messages ADD COLUMN parse_warning_json TEXT"),
+            ("messages", "error", "ALTER TABLE messages ADD COLUMN error TEXT"),
             # No FK here: sqlite's ALTER TABLE can't add one, so project
             # detachment on delete is handled explicitly in delete_project.
             ("conversations", "project_id", "ALTER TABLE conversations ADD COLUMN project_id TEXT"),
@@ -493,6 +495,7 @@ class ChatDB:
             images_json=row["images_json"],
             tool_calls_json=row["tool_calls_json"],
             parse_warning_json=row["parse_warning_json"] if "parse_warning_json" in row.keys() else None,
+            error=row["error"] if "error" in row.keys() else None,
             seq=row["seq"],
             created_at=row["created_at"],
         )
@@ -545,11 +548,11 @@ class ChatDB:
         try:
             conn.execute(
                 """INSERT INTO messages
-                   (id, conversation_id, role, content, reasoning_content, model_service, images_json, tool_calls_json, parse_warning_json, seq)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, conversation_id, role, content, reasoning_content, model_service, images_json, tool_calls_json, parse_warning_json, error, seq)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (msg.id, msg.conversation_id, msg.role, msg.content,
                  msg.reasoning_content, msg.model_service, msg.images_json, msg.tool_calls_json,
-                 msg.parse_warning_json, msg.seq),
+                 msg.parse_warning_json, msg.error, msg.seq),
             )
             if should_close:
                 conn.commit()
@@ -963,6 +966,42 @@ class ChatDB:
 
     def fail_chat_run(self, run_id: str, error: str) -> Optional[ChatRun]:
         return self.update_chat_run_status(run_id, ChatRunStatus.FAILED, error=error)
+
+    def fail_chat_run_with_message(
+        self, run_id: str, error: str, assistant_msg: Message,
+    ) -> Optional[Message]:
+        """Atomically save a partial assistant message and mark the run failed.
+
+        Terminal-guarded: if the run is already terminal (e.g. cancelled), the
+        guarded UPDATE changes 0 rows and the transaction is rolled back.
+        On success returns the persisted message (with seq and error assigned).
+        """
+        now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        terminal_ph = ",".join("?" for _ in TERMINAL_STATUSES)
+        conn = self._get_conn()
+        try:
+            assistant_msg.seq = self.next_seq(assistant_msg.conversation_id, conn=conn)
+            assistant_msg.error = error
+            self.add_message(assistant_msg, conn=conn)
+            cur = conn.execute(
+                f"""UPDATE chat_runs SET status = ?, error = ?, completed_at = {now}
+                    WHERE id = ? AND status NOT IN ({terminal_ph})""",
+                (ChatRunStatus.FAILED, error, run_id, *sorted(TERMINAL_STATUSES)),
+            )
+            if cur.rowcount == 0:
+                conn.rollback()
+                return None
+            conn.execute(
+                f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
+                (assistant_msg.conversation_id,),
+            )
+            conn.commit()
+            return assistant_msg
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._close_conn(conn)
 
     def cancel_chat_run(self, run_id: str) -> Optional[ChatRun]:
         return self.update_chat_run_status(run_id, ChatRunStatus.CANCELLED)

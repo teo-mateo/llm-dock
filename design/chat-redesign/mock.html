@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Drydock — LLM-Dock chat redesign mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;0,16..72,500;1,16..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root{
+    --ink-900:#07090a; --ink-850:#0a0f10; --ink-800:#0c1213;
+    --ink-750:#0e1517; --ink-700:#111a1c; --ink-650:#16201f;
+    --line:rgba(140,170,175,.09); --line-strong:rgba(140,170,175,.17);
+    --text-hi:#eef3f4; --text:#9fb0b3; --text-dim:#67767a; --text-faint:#3f4d4e;
+    --amber:#ff9d00; --amber-soft:#ffc061; --amber-bd:rgba(255,157,0,.34);
+    --cyan:#2fd6c2; --cyan-soft:#67e6d6; --cyan-bd:rgba(47,214,194,.32);
+    --coral:#ff6f5e; --coral-bd:rgba(255,111,94,.34);
+    --green:#57d98a;
+    --f-disp:'Archivo',sans-serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,monospace;
+    --f-read:'Newsreader',Georgia,serif;
+    --r:3px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--ink-900); color:var(--text);
+    font-family:var(--f-mono); font-size:13px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  /* ---- atmosphere ---- */
+  .atmos{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .atmos::before{ /* engineering grid */
+    content:"";position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(140,170,175,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(140,170,175,.035) 1px,transparent 1px);
+    background-size:34px 34px;
+    -webkit-mask-image:radial-gradient(ellipse at 50% 40%,#000 35%,transparent 85%);
+            mask-image:radial-gradient(ellipse at 50% 40%,#000 35%,transparent 85%);
+  }
+  .atmos::after{ /* harbour-light blooms + vignette */
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(620px 420px at 8% -6%,rgba(255,157,0,.10),transparent 60%),
+      radial-gradient(680px 520px at 102% 108%,rgba(47,214,194,.09),transparent 60%),
+      radial-gradient(ellipse at 50% 50%,transparent 55%,rgba(0,0,0,.55) 100%);
+  }
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.035;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>");}
+
+  /* ---- shell ---- */
+  .shell{position:relative;z-index:2;display:grid;
+    grid-template-columns:54px 296px 1fr 372px;height:100vh}
+  .col{min-width:0;min-height:0;display:flex;flex-direction:column}
+  .scroll{overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+  .scroll::-webkit-scrollbar{width:9px;height:9px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px}
+
+  /* ---- shared atoms ---- */
+  .led{display:inline-block;width:7px;height:7px;border-radius:50%;
+    background:var(--c,var(--text-faint));
+    box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 7px var(--c,transparent);flex:none}
+  .led.pulse{animation:led 2.4s ease-in-out infinite}
+  @keyframes led{0%,100%{opacity:1}50%{opacity:.32}}
+  .meta{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--text-dim)}
+  .kbd{font-family:var(--f-mono);font-size:10px;color:var(--text-dim);
+    border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;
+    padding:1px 5px;background:var(--ink-750)}
+  .tick{position:absolute;width:7px;height:7px;border-color:var(--line-strong);pointer-events:none}
+  .tick.tl{top:-1px;left:-1px;border-top:1px solid;border-left:1px solid}
+  .tick.tr{top:-1px;right:-1px;border-top:1px solid;border-right:1px solid}
+  .tick.bl{bottom:-1px;left:-1px;border-bottom:1px solid;border-left:1px solid}
+  .tick.br{bottom:-1px;right:-1px;border-bottom:1px solid;border-right:1px solid}
+
+  .panel{position:relative;background:var(--ink-800)}
+  .hdr{height:52px;display:flex;align-items:center;gap:12px;
+    padding:0 16px;border-bottom:1px solid var(--line);flex:none}
+
+  /* ---- 1. icon rail ---- */
+  .rail{background:var(--ink-850);border-right:1px solid var(--line);
+    align-items:center;padding:14px 0;gap:6px}
+  .mark{width:30px;height:30px;border:1px solid var(--amber-bd);border-radius:6px;
+    display:grid;place-items:center;color:var(--amber-soft);font-size:14px;
+    box-shadow:0 0 14px rgba(255,157,0,.16) inset;margin-bottom:14px}
+  .rail a{width:36px;height:36px;display:grid;place-items:center;color:var(--text-faint);
+    border-radius:7px;font-size:15px;text-decoration:none;transition:.15s}
+  .rail a:hover{color:var(--text);background:var(--ink-700)}
+  .rail a.on{color:var(--amber-soft);background:rgba(255,157,0,.08);
+    box-shadow:inset 0 0 0 1px var(--amber-bd)}
+  .rail .sp{flex:1}
+
+  /* ---- 2. berths rail ---- */
+  .berths{background:var(--ink-850);border-right:1px solid var(--line)}
+  .berths .top{padding:15px 15px 12px;border-bottom:1px solid var(--line)}
+  .wordmark{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+  .wordmark b{font-family:var(--f-disp);font-weight:800;font-size:15px;
+    letter-spacing:.26em;color:var(--text-hi)}
+  .wordmark span{font-family:var(--f-mono);font-size:9px;letter-spacing:.22em;
+    color:var(--text-faint);margin-left:auto}
+  .btn{font-family:var(--f-mono);font-size:11px;letter-spacing:.13em;
+    text-transform:uppercase;cursor:pointer;border-radius:var(--r);
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:9px 12px;transition:.15s;border:1px solid transparent;background:none;color:inherit}
+  .btn-primary{width:100%;color:var(--amber-soft);border-color:var(--amber-bd);
+    background:linear-gradient(180deg,rgba(255,157,0,.10),rgba(255,157,0,.03))}
+  .btn-primary:hover{background:linear-gradient(180deg,rgba(255,157,0,.18),rgba(255,157,0,.06));
+    box-shadow:0 0 18px rgba(255,157,0,.14)}
+  .subbar{height:34px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 15px;border-bottom:1px solid var(--line)}
+  .subbar.sel{background:rgba(47,214,194,.05)}
+  .link{font-size:10.5px;letter-spacing:.08em;color:var(--text-dim);cursor:pointer;background:none;border:0}
+  .link:hover{color:var(--text)}
+  .berth-list{padding:6px 0}
+  .berth{position:relative;display:flex;align-items:flex-start;gap:11px;
+    padding:11px 15px;cursor:pointer;border-left:2px solid transparent}
+  .berth:hover{background:var(--ink-800)}
+  .berth.active{background:var(--ink-800);border-left-color:var(--amber)}
+  .berth.picked{background:rgba(47,214,194,.06);border-left-color:var(--cyan)}
+  .berth .body{flex:1;min-width:0}
+  .berth .ttl{font-family:var(--f-disp);font-weight:600;font-size:13px;
+    color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .berth.active .ttl{color:var(--text-hi)}
+  .berth .m{display:flex;gap:8px;margin-top:4px;font-family:var(--f-mono);
+    font-size:9.5px;color:var(--text-faint);letter-spacing:.04em}
+  .berth .m b{color:var(--text-dim);font-weight:500}
+  .berth .del{opacity:0;color:var(--text-faint);background:none;border:0;cursor:pointer;
+    padding:3px;transition:.15s;font-size:11px}
+  .berth:hover .del{opacity:1}
+  .berth .del:hover{color:var(--coral)}
+  .tender{position:relative;margin-left:15px;padding-left:18px}
+  .tender::before{content:"";position:absolute;left:0;top:-11px;bottom:50%;
+    width:13px;border-left:1px solid var(--line-strong);
+    border-bottom:1px solid var(--line-strong);border-bottom-left-radius:6px}
+  .pick{width:13px;height:13px;border:1px solid var(--line-strong);border-radius:3px;
+    margin-top:2px;flex:none;display:grid;place-items:center;color:var(--cyan);font-size:8px}
+  .pick.on{border-color:var(--cyan-bd);background:rgba(47,214,194,.12)}
+
+  /* ---- 3. console ---- */
+  .console{background:linear-gradient(180deg,var(--ink-800),var(--ink-850))}
+  .strip{flex:none;border-bottom:1px solid var(--line);position:relative;background:var(--ink-800)}
+  .strip-row{display:flex;align-items:center;gap:14px;padding:11px 18px}
+  .crumb{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .crumb .b{font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;color:var(--amber-soft)}
+  .crumb .t{font-family:var(--f-disp);font-weight:700;font-size:15px;color:var(--text-hi);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 0}
+  .group{display:flex;align-items:center;gap:9px}
+  .readout{display:flex;flex-direction:column;gap:2px;padding:5px 11px;border-radius:var(--r);
+    border:1px solid var(--line);background:var(--ink-750);cursor:pointer;transition:.15s}
+  .readout:hover{border-color:var(--line-strong);background:var(--ink-700)}
+  .readout .l{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.18em;color:var(--text-faint)}
+  .readout .v{font-family:var(--f-mono);font-size:11.5px;color:var(--text-hi);display:flex;align-items:center;gap:7px}
+  .readout .v i{color:var(--text-faint);font-size:8px}
+  .readout.main .v{color:var(--amber-soft)} .readout.kick .v{color:var(--cyan-soft)}
+  .switches{display:flex;gap:7px}
+  .sw{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:var(--r);
+    border:1px solid var(--line);background:var(--ink-750);cursor:pointer;font-size:10px;
+    letter-spacing:.06em;color:var(--text-dim);transition:.15s;user-select:none}
+  .sw i.ic{font-size:10px;width:12px;text-align:center}
+  .track{width:24px;height:13px;border-radius:8px;background:var(--ink-650);
+    border:1px solid var(--line-strong);position:relative;transition:.18s}
+  .track::after{content:"";position:absolute;top:1px;left:1px;width:9px;height:9px;
+    border-radius:50%;background:var(--text-faint);transition:.18s}
+  .sw.on{color:var(--green);border-color:rgba(87,217,138,.32);background:rgba(87,217,138,.06)}
+  .sw.on .track{background:rgba(87,217,138,.22);border-color:rgba(87,217,138,.4)}
+  .sw.on .track::after{left:12px;background:var(--green);box-shadow:0 0 7px var(--green)}
+  .telemetry{display:flex;gap:16px;align-items:center;margin-left:auto}
+  .tele{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+  .tele .l{font-family:var(--f-mono);font-size:8px;letter-spacing:.16em;color:var(--text-faint)}
+  .tele .n{font-family:var(--f-mono);font-size:13px;color:var(--text-hi);font-variant-numeric:tabular-nums}
+  .tele .n small{font-size:8.5px;color:var(--text-faint);letter-spacing:.05em}
+  .bar{width:46px;height:3px;border-radius:2px;background:var(--ink-650);overflow:hidden}
+  .bar i{display:block;height:100%}
+  .stop{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:var(--r);
+    font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--coral);border:1px solid var(--coral-bd);background:rgba(255,111,94,.07);cursor:pointer}
+  .stop:hover{background:rgba(255,111,94,.14)}
+  .prompts{display:flex;align-items:center;gap:10px;padding:8px 18px;
+    border-bottom:1px solid var(--line);color:var(--text-dim);font-size:10.5px;
+    letter-spacing:.14em;text-transform:uppercase;cursor:pointer;background:var(--ink-850)}
+  .prompts:hover{color:var(--text)}
+  .prompts .ed{margin-left:auto;font-size:9px;color:var(--text-faint);letter-spacing:.1em}
+  .sweep{position:absolute;left:0;right:0;bottom:-1px;height:2px;overflow:hidden}
+  .sweep::after{content:"";position:absolute;top:0;height:100%;width:42%;
+    background:linear-gradient(90deg,transparent,var(--amber),var(--cyan),transparent);
+    animation:sweep 2.6s linear infinite;filter:blur(.4px)}
+  @keyframes sweep{0%{left:-42%}100%{left:100%}}
+
+  /* ---- transcript ---- */
+  .log{flex:1;padding:26px 0}
+  .log-inner{max-width:900px;margin:0 auto;padding:0 30px;position:relative}
+  .spine{position:absolute;left:14px;top:6px;bottom:30px;width:1px;
+    background:linear-gradient(180deg,transparent,var(--line-strong) 6%,var(--line-strong) 94%,transparent)}
+  .turn{position:relative;padding-left:30px;margin-bottom:30px}
+  .node{position:absolute;left:-16.5px;top:3px;width:9px;height:9px;border-radius:50%;
+    background:var(--ink-850);border:1px solid var(--line-strong)}
+  .turn.op .node{border-color:var(--amber-bd);box-shadow:0 0 8px rgba(255,157,0,.3)}
+  .turn.ai .node{border-color:var(--cyan-bd);box-shadow:0 0 8px rgba(47,214,194,.3)}
+  .turn-meta{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .turn-meta .who{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.2em;
+    text-transform:uppercase}
+  .op .who{color:var(--amber-soft)} .ai .who{color:var(--cyan-soft)}
+  .turn-meta .dot{width:3px;height:3px;border-radius:50%;background:var(--text-faint)}
+  .turn-meta .x{font-family:var(--f-mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.05em}
+  .turn-meta .act{margin-left:auto;display:flex;gap:14px;opacity:0;transition:.15s}
+  .turn:hover .turn-meta .act{opacity:1}
+  .act button{background:none;border:0;color:var(--text-faint);cursor:pointer;
+    font-family:var(--f-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase}
+  .act button:hover{color:var(--text)}
+  .block{border:1px solid var(--line);border-left:2px solid var(--lc,var(--line-strong));
+    border-radius:var(--r);background:var(--ink-800)}
+  .op .block{--lc:var(--amber-bd)} .ai .block{--lc:var(--cyan-bd)}
+  .op-text{padding:14px 16px;font-family:var(--f-mono);font-size:12.5px;color:var(--text-hi);
+    display:flex;gap:12px;align-items:flex-start;line-height:1.65}
+  .op-text .pr{color:var(--amber);flex:none;user-select:none}
+  .thumb{width:78px;height:78px;border:1px solid var(--line-strong);border-radius:3px;
+    object-fit:cover;flex:none}
+  .imgrow{display:flex;gap:9px;padding:0 16px 14px 40px}
+
+  .ai-prose{padding:16px 20px;font-family:var(--f-read);font-size:16px;line-height:1.72;
+    color:#dfe7e7}
+  .ai-prose p{margin:0 0 13px} .ai-prose p:last-child{margin-bottom:0}
+  .ai-prose strong{color:var(--text-hi);font-weight:600}
+  .ai-prose .math{font-style:italic;color:var(--cyan-soft)}
+  .ai-prose code.inl{font-family:var(--f-mono);font-size:13px;background:var(--ink-700);
+    padding:1px 6px;border-radius:3px;color:var(--amber-soft);border:1px solid var(--line)}
+  .codeblk{margin:14px 0;border:1px solid var(--line);border-radius:var(--r);
+    background:var(--ink-900);overflow:hidden}
+  .codeblk .cap{display:flex;align-items:center;gap:8px;padding:7px 12px;
+    border-bottom:1px solid var(--line);background:var(--ink-850)}
+  .codeblk .cap .l{font-family:var(--f-mono);font-size:9px;letter-spacing:.16em;
+    color:var(--text-faint);text-transform:uppercase}
+  .codeblk .cap .cp{margin-left:auto;font-family:var(--f-mono);font-size:9px;
+    color:var(--text-faint);cursor:pointer;letter-spacing:.1em}
+  .codeblk .cap .cp:hover{color:var(--cyan-soft)}
+  .codeblk pre{padding:13px 14px;font-family:var(--f-mono);font-size:12px;color:#cdd8d8;
+    overflow:auto;line-height:1.7}
+  .codeblk .k{color:var(--cyan-soft)} .codeblk .s{color:var(--amber-soft)}
+  .codeblk .c{color:var(--text-faint)}
+
+  .tape{margin-bottom:10px}
+  .tape-btn{display:flex;align-items:center;gap:9px;background:none;border:0;cursor:pointer;
+    color:var(--text-dim);font-family:var(--f-mono);font-size:10px;letter-spacing:.13em;
+    text-transform:uppercase;padding:3px 0}
+  .tape-btn:hover{color:var(--text)}
+  .tape-btn i.cv{font-size:8px;width:8px;transition:.18s}
+  .tape-body{margin-top:8px;border:1px solid var(--line);border-radius:var(--r);
+    padding:13px 15px;font-family:var(--f-mono);font-size:11.5px;color:var(--text-dim);
+    line-height:1.7;max-height:230px;overflow:auto;
+    background:
+      repeating-linear-gradient(180deg,transparent 0 3px,rgba(47,214,194,.022) 3px 4px),
+      var(--ink-850)}
+  .tape-body em{color:var(--cyan-soft);font-style:normal}
+
+  .tool{margin-bottom:10px;border:1px solid var(--line);border-radius:var(--r);
+    background:var(--ink-850);font-family:var(--f-mono)}
+  .tool .h{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--line)}
+  .tool .h .nm{font-size:11.5px;color:var(--amber-soft);letter-spacing:.03em}
+  .tool .h .st{margin-left:auto;font-size:8.5px;letter-spacing:.18em;text-transform:uppercase}
+  .tool .h .st.ok{color:var(--green)}
+  .tool .args{padding:9px 13px 11px;font-size:11px;color:var(--text-dim);line-height:1.85}
+  .tool .args .a{color:var(--text-faint)} .tool .args .v{color:var(--text)}
+  .tool .res{margin:0 13px 13px;border:1px solid var(--line);border-left:2px solid rgba(87,217,138,.4);
+    border-radius:3px;background:var(--ink-900);padding:9px 12px;font-size:11.5px;color:#cdd8d8}
+  .tool .res .rl{font-size:8px;letter-spacing:.2em;color:var(--text-faint);
+    text-transform:uppercase;margin-bottom:5px}
+
+  .chip{display:inline-flex;align-items:center;gap:9px;padding:8px 12px;border-radius:var(--r);
+    font-family:var(--f-mono);font-size:11px;border:1px solid var(--line);
+    background:var(--ink-850);margin-bottom:10px}
+  .chip.art{color:var(--cyan-soft);border-color:var(--cyan-bd);background:rgba(47,214,194,.05)}
+  .chip.art .go{margin-left:6px;color:var(--text-faint);cursor:pointer;letter-spacing:.1em;font-size:9px}
+  .chip.art .go:hover{color:var(--cyan-soft)}
+  .chip.drift{color:var(--coral);border-color:var(--coral-bd);background:rgba(255,111,94,.06);
+    display:flex;width:100%;line-height:1.55}
+  .chip.drift .x{color:var(--text-dim)}
+
+  .stream .block{background:linear-gradient(180deg,rgba(47,214,194,.05),transparent)}
+  .stream{position:relative}
+  .caret{display:inline-block;width:8px;height:17px;background:var(--cyan);
+    vertical-align:-3px;margin-left:3px;box-shadow:0 0 9px var(--cyan);animation:cb .9s steps(1) infinite}
+  @keyframes cb{50%{opacity:0}}
+  .hb{display:flex;align-items:center;gap:9px;margin-top:10px;font-family:var(--f-mono);
+    font-size:10px;letter-spacing:.1em;color:var(--text-dim)}
+
+  /* ---- composer ---- */
+  .composer{flex:none;border-top:1px solid var(--line);background:var(--ink-800);padding:14px 0 16px}
+  .composer-in{max-width:900px;margin:0 auto;padding:0 30px}
+  .flags{display:flex;flex-direction:column;gap:7px;margin-bottom:11px}
+  .flag{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);
+    border:1px solid var(--cyan-bd);background:rgba(47,214,194,.05);font-family:var(--f-mono);font-size:11px}
+  .flag .tag{color:var(--cyan-soft);font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+  .flag .tx{color:var(--text);flex:1;min-width:0}
+  .flag .rm{color:var(--text-faint);cursor:pointer}.flag .rm:hover{color:var(--coral)}
+  .att{display:flex;gap:9px;margin-bottom:11px}
+  .att .t{position:relative;width:54px;height:54px}
+  .att img{width:100%;height:100%;object-fit:cover;border:1px solid var(--line-strong);border-radius:3px}
+  .att .rm{position:absolute;top:-6px;right:-6px;width:17px;height:17px;border-radius:50%;
+    background:var(--coral);color:#1a0a08;display:grid;place-items:center;font-size:8px;cursor:pointer}
+  .cmd{position:relative;border:1px solid var(--line-strong);border-radius:5px;
+    background:var(--ink-750);display:flex;align-items:flex-end;gap:12px;padding:13px 14px;
+    transition:.15s}
+  .cmd:focus-within{border-color:var(--amber-bd);box-shadow:0 0 0 1px var(--amber-bd),0 0 22px rgba(255,157,0,.08)}
+  .cmd .glyph{color:var(--amber);font-family:var(--f-mono);font-size:14px;padding-bottom:1px;user-select:none}
+  .cmd .ta{flex:1;font-family:var(--f-mono);font-size:13px;color:var(--text-hi);min-height:22px;
+    padding-top:1px;outline:none}
+  .cmd .ta:empty::before{content:"Type a command — the operator speaks here…";color:var(--text-faint)}
+  .cmd .tools{display:flex;gap:5px;align-items:center}
+  .icbtn{width:30px;height:30px;border-radius:4px;border:1px solid transparent;background:none;
+    color:var(--text-faint);cursor:pointer;display:grid;place-items:center;font-size:13px;transition:.15s}
+  .icbtn:hover{color:var(--text);background:var(--ink-700);border-color:var(--line)}
+  .send{width:34px;height:30px;border-radius:4px;border:1px solid var(--amber-bd);cursor:pointer;
+    background:linear-gradient(180deg,rgba(255,157,0,.22),rgba(255,157,0,.08));
+    color:var(--amber-soft);display:grid;place-items:center;font-size:12px;transition:.15s}
+  .send:hover{background:linear-gradient(180deg,rgba(255,157,0,.34),rgba(255,157,0,.14));
+    box-shadow:0 0 16px rgba(255,157,0,.2)}
+  .hint{display:flex;gap:16px;margin-top:9px;font-family:var(--f-mono);font-size:9.5px;
+    color:var(--text-faint);letter-spacing:.06em;align-items:center}
+  .hint .g{display:flex;gap:6px;align-items:center}
+
+  /* ---- 4. inspector ---- */
+  .inspector{background:var(--ink-850);border-left:1px solid var(--line)}
+  .inspector .hdr{justify-content:space-between}
+  .inspector .hdr .ti{display:flex;align-items:center;gap:9px;font-family:var(--f-disp);
+    font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-hi)}
+  .inspector .hdr .ti i{color:var(--cyan)}
+  .xbtn{background:none;border:0;color:var(--text-faint);cursor:pointer;font-size:14px}
+  .xbtn:hover{color:var(--text)}
+  .insp-form{padding:15px 16px;border-bottom:1px solid var(--line)}
+  .insp-form label{display:block;margin-bottom:8px;font-family:var(--f-mono);font-size:9px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)}
+  .insp-form .ta{border:1px solid var(--line);border-radius:var(--r);background:var(--ink-750);
+    padding:10px 12px;font-family:var(--f-mono);font-size:11.5px;color:var(--text);
+    min-height:54px;line-height:1.6}
+  .insp-form .ta:empty::before{content:"e.g. verify the integration constant, check the algebra…";color:var(--text-faint)}
+  .insp-form .run{margin-top:10px;width:100%;color:var(--cyan-soft);border:1px solid var(--cyan-bd);
+    background:linear-gradient(180deg,rgba(47,214,194,.12),rgba(47,214,194,.03))}
+  .insp-form .run:hover{background:linear-gradient(180deg,rgba(47,214,194,.2),rgba(47,214,194,.06))}
+  .ann{padding:14px 16px;border-bottom:1px solid var(--line)}
+  .ann .top{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .ann .sev{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase}
+  .ann .sev.hi{color:var(--coral)} .ann .sev.lo{color:var(--amber-soft)}
+  .ann .ins{margin-left:auto;font-family:var(--f-mono);font-size:9px;letter-spacing:.1em;
+    color:var(--text-faint);cursor:pointer}
+  .ann .ins:hover{color:var(--cyan-soft)}
+  .ann .q{border-left:2px solid var(--line-strong);padding:3px 0 3px 12px;margin-bottom:9px;
+    font-family:var(--f-mono);font-size:11px;color:var(--text-dim);font-style:italic}
+  .ann .cm{font-family:var(--f-read);font-size:14px;line-height:1.6;color:#dbe3e3}
+
+  /* ---- tender (spin-off) ---- */
+  .tenderwin{position:fixed;right:404px;bottom:38px;width:386px;z-index:30;
+    border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;
+    background:var(--ink-800);box-shadow:0 26px 60px -18px rgba(0,0,0,.8),0 0 0 1px rgba(0,0,0,.4)}
+  .tw-bar{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:grab;
+    background:var(--ink-750);border-bottom:1px solid var(--line)}
+  .tw-bar .br{color:var(--cyan);font-size:10px}
+  .tw-bar .nm{font-family:var(--f-disp);font-weight:600;font-size:11.5px;color:var(--text-hi);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .tw-bar .ctl{display:flex;gap:4px}
+  .tw-bar .ctl b{width:18px;height:18px;border-radius:3px;display:grid;place-items:center;
+    color:var(--text-faint);font-size:8px;cursor:pointer}
+  .tw-bar .ctl b:hover{background:var(--ink-700);color:var(--text)}
+  .tw-ctx{padding:7px 12px;border-bottom:1px solid var(--line);background:rgba(47,214,194,.04);
+    font-family:var(--f-mono);font-size:10px;color:var(--text-dim);font-style:italic}
+  .tw-body{padding:12px;display:flex;flex-direction:column;gap:9px;height:168px;overflow:auto}
+  .tw-msg{max-width:88%;font-size:11.5px;line-height:1.55;padding:8px 11px;border-radius:5px}
+  .tw-msg.u{align-self:flex-end;font-family:var(--f-mono);color:var(--text-hi);
+    border:1px solid var(--amber-bd);background:rgba(255,157,0,.07)}
+  .tw-msg.a{align-self:flex-start;font-family:var(--f-read);font-size:13px;color:#dbe3e3;
+    border:1px solid var(--line);background:var(--ink-850)}
+  .tw-in{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+  .tw-in .f{flex:1;border:1px solid var(--line-strong);border-radius:4px;background:var(--ink-750);
+    padding:7px 10px;font-family:var(--f-mono);font-size:11px;color:var(--text-faint)}
+  .tw-in .s{width:32px;border-radius:4px;border:1px solid var(--cyan-bd);
+    background:rgba(47,214,194,.12);color:var(--cyan-soft);cursor:pointer;font-size:11px}
+  .tray{position:fixed;left:362px;bottom:14px;z-index:30;display:flex;gap:8px}
+  .tray .t{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:6px;
+    border:1px solid var(--line-strong);background:var(--ink-750);
+    font-family:var(--f-mono);font-size:10px;color:var(--text-dim);cursor:pointer;
+    box-shadow:0 10px 26px -10px rgba(0,0,0,.7)}
+  .tray .t:hover{color:var(--text);border-color:var(--cyan-bd)}
+  .tray .t i{color:var(--cyan);font-size:9px}
+
+  .titlecard{position:fixed;left:50%;top:13px;transform:translateX(-50%);z-index:40;
+    display:flex;align-items:center;gap:11px;padding:7px 16px;border-radius:99px;
+    border:1px solid var(--line);background:rgba(10,15,16,.78);backdrop-filter:blur(7px);
+    font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;color:var(--text-dim)}
+  .titlecard b{color:var(--amber-soft);letter-spacing:.24em}
+</style>
+</head>
+<body>
+<div class="atmos"></div>
+<div class="grain"></div>
+
+<div class="titlecard"><b>DRYDOCK</b> · proposed chat redesign · mock</div>
+
+<div class="shell">
+
+  <!-- 1 · icon rail -->
+  <nav class="col rail">
+    <div class="mark"><i class="fa-solid fa-anchor"></i></div>
+    <a href="#" title="Dock"><i class="fa-solid fa-gauge-high"></i></a>
+    <a href="#" title="Services"><i class="fa-solid fa-server"></i></a>
+    <a href="#" title="GPU"><i class="fa-solid fa-microchip"></i></a>
+    <a href="#" class="on" title="Chat"><i class="fa-solid fa-terminal"></i></a>
+    <a href="#" title="Tools"><i class="fa-solid fa-screwdriver-wrench"></i></a>
+    <span class="sp"></span>
+    <a href="#" title="Settings"><i class="fa-solid fa-sliders"></i></a>
+  </nav>
+
+  <!-- 2 · berths -->
+  <aside class="col berths">
+    <div class="top">
+      <div class="wordmark">
+        <b>BERTHS</b><span>14</span>
+      </div>
+      <button class="btn btn-primary"><i class="fa-solid fa-plus"></i> New berth</button>
+    </div>
+    <div class="subbar sel">
+      <span class="meta" style="color:var(--cyan-soft)">2 picked</span>
+      <div style="display:flex;gap:12px">
+        <button class="link" style="color:var(--coral)"><i class="fa-solid fa-trash"></i> delete</button>
+        <button class="link">clear</button>
+      </div>
+    </div>
+    <div class="berth-list scroll" style="flex:1">
+
+      <div class="berth active">
+        <span class="led pulse" style="--c:var(--amber)"></span>
+        <div class="body">
+          <div class="ttl">Quantum decoder — derivation notes</div>
+          <div class="m"><b>qwen3·6-27b</b> · 14:02 · 28 turns</div>
+        </div>
+        <button class="del"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+      <div class="tender">
+        <div class="berth picked">
+          <span class="pick on"><i class="fa-solid fa-check"></i></span>
+          <div class="body">
+            <div class="ttl" style="display:flex;align-items:center;gap:7px">
+              <i class="fa-solid fa-code-branch" style="color:var(--cyan);font-size:9px"></i>
+              tender · "the matryoshka prefix…"</div>
+            <div class="m"><b>tender</b> · 14:09 · 4 turns</div>
+          </div>
+          <button class="del"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>
+
+      <div class="berth picked">
+        <span class="pick on"><i class="fa-solid fa-check"></i></span>
+        <div class="body">
+          <div class="ttl">vLLM 0.20 arg-surface audit</div>
+          <div class="m"><b>gemma·4-31b</b> · yesterday</div>
+        </div>
+        <button class="del"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+      <div class="berth">
+        <span class="led" style="--c:var(--text-faint)"></span>
+        <div class="body">
+          <div class="ttl">Blackwell cuTensorMap notes</div>
+          <div class="m"><b>qwen3·5-27b</b> · 2d</div>
+        </div>
+        <button class="del"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+      <div class="berth">
+        <span class="led" style="--c:var(--text-faint)"></span>
+        <div class="body">
+          <div class="ttl">Embedding service smoke tests</div>
+          <div class="m"><b>nomic-embed</b> · 4d</div>
+        </div>
+        <button class="del"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+      <div class="berth">
+        <span class="led" style="--c:var(--text-faint)"></span>
+        <div class="body">
+          <div class="ttl">Default-key rotation runbook</div>
+          <div class="m"><b>gemma·4-31b</b> · 6d</div>
+        </div>
+        <button class="del"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- 3 · console -->
+  <main class="col console">
+
+    <div class="strip">
+      <div class="strip-row">
+        <div class="crumb">
+          <span class="b">BERTH&nbsp;07</span>
+          <span class="t">Quantum decoder — derivation notes</span>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="group">
+          <div class="readout main">
+            <span class="l">MAIN</span>
+            <span class="v">qwen3-6-27b-bf16 <i class="fa-solid fa-chevron-down"></i></span>
+          </div>
+          <div class="readout kick">
+            <span class="l">SIDEKICK</span>
+            <span class="v">qwen3-5-27b-q8 <i class="fa-solid fa-chevron-down"></i></span>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="switches">
+          <div class="sw on"><i class="fa-solid fa-square-root-variable ic"></i><span class="track"></span>sympy</div>
+          <div class="sw"><i class="fa-solid fa-bezier-curve ic"></i><span class="track"></span>circuits</div>
+          <div class="sw"><i class="fa-solid fa-code ic"></i><span class="track"></span>render-html</div>
+        </div>
+
+        <div class="telemetry">
+          <div class="tele"><span class="l">TOK/S</span><span class="n">63.2</span></div>
+          <div class="tele"><span class="l">CTX</span><span class="n">18.4<small>/32k</small></span></div>
+          <div class="tele">
+            <span class="l">GPU</span>
+            <span class="bar"><i style="width:74%;background:linear-gradient(90deg,var(--amber),var(--coral))"></i></span>
+          </div>
+          <div class="tele"><span class="l">ELAPSED</span><span class="n">6.4<small>s</small></span></div>
+          <button class="stop"><i class="fa-solid fa-stop"></i> halt</button>
+        </div>
+      </div>
+      <div class="sweep"></div>
+    </div>
+
+    <div class="prompts" onclick="this.querySelector('.cv').classList.toggle('fa-chevron-down')">
+      <i class="fa-solid fa-chevron-right cv" style="font-size:8px"></i>
+      <i class="fa-solid fa-sliders"></i>
+      <span>System prompts</span>
+      <span class="ed">main · sidekick — defaults</span>
+    </div>
+
+    <div class="log scroll">
+      <div class="log-inner">
+        <div class="spine"></div>
+
+        <!-- operator turn -->
+        <div class="turn op">
+          <span class="node"></span>
+          <div class="turn-meta">
+            <span class="who">Operator</span><span class="dot"></span>
+            <span class="x">14:02:51 · seq 1</span>
+            <span class="act"><button><i class="fa-solid fa-pen-to-square"></i> edit</button></span>
+          </div>
+          <div class="block">
+            <div class="op-text">
+              <span class="pr">▸</span>
+              <span>Derive the closed form for ∫ sin(x)·e^x dx and sanity-check it
+              symbolically. The whiteboard photo has my by-hand attempt — tell me where it breaks.</span>
+            </div>
+            <div class="imgrow">
+              <div style="width:120px;height:78px;border:1px solid var(--line-strong);border-radius:3px;
+                background:repeating-linear-gradient(135deg,#13201f 0 7px,#0e1719 7px 14px);
+                display:grid;place-items:center;color:var(--text-faint);font-size:9px;letter-spacing:.1em">
+                WHITEBOARD.JPG</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- model turn -->
+        <div class="turn ai">
+          <span class="node"></span>
+          <div class="turn-meta">
+            <span class="who">qwen3-6-27b</span><span class="dot"></span>
+            <span class="x">14:02:58 · seq 2 · 1,204 tok</span>
+            <span class="act"><button><i class="fa-solid fa-magnifying-glass"></i> critique ▸</button></span>
+          </div>
+
+          <div class="tape">
+            <button class="tape-btn" onclick="var b=this.nextElementSibling,o=b.style.display==='none';b.style.display=o?'block':'none';this.querySelector('.cv').className='fa-solid cv '+(o?'fa-chevron-down':'fa-chevron-right')">
+              <i class="fa-solid fa-chevron-down cv"></i><i class="fa-solid fa-wave-square"></i>
+              <span>Reasoning tape · 2,318 chars</span>
+            </button>
+            <div class="tape-body">
+              The integral ∫ sin(x)·eˣ dx is a classic integration-by-parts cycle.
+              Let me set <em>I = ∫ eˣ sin x dx</em>. By parts twice the integral
+              reappears with a sign flip, so <em>I = eˣ(sin x − cos x)/2 + C</em>.
+              The operator's by-hand attempt drops the ½ factor — that's the break.
+              I'll confirm with the sympy tool before stating it, then flag the
+              missing constant explicitly so the sidekick has something to check…
+            </div>
+          </div>
+
+          <div class="tool">
+            <div class="h">
+              <span class="led" style="--c:var(--green)"></span>
+              <span class="nm">sympy-math.integrate</span>
+              <span class="st ok">✓ ok · 41 ms</span>
+            </div>
+            <div class="args">
+              <span class="a">expr:</span> <span class="v">"exp(x)*sin(x)"</span><br>
+              <span class="a">var:</span> <span class="v">"x"</span>
+            </div>
+            <div class="res">
+              <div class="rl">result</div>
+              exp(x)*sin(x)/2 − exp(x)*cos(x)/2
+            </div>
+          </div>
+
+          <div class="chip art">
+            <i class="fa-solid fa-bezier-curve"></i> derivation-steps.svg · rendered
+            <span class="go">open ▸</span>
+          </div>
+
+          <div class="block">
+            <div class="ai-prose">
+              <p>Your by-hand work is right up until the last line — you lost the
+              <strong>½</strong> factor that integration-by-parts produces. The
+              closed form is:</p>
+              <p class="math">∫ eˣ·sin(x) dx&nbsp;=&nbsp;½·eˣ·( sin x − cos x ) + C</p>
+              <p>The symbolic check agrees (see the tool trace above). The reason
+              the ½ appears: applying parts twice returns <code class="inl">I</code>
+              on the right-hand side, so you solve <code class="inl">2I = …</code>.
+              Skipping that algebra is exactly where the whiteboard derivation
+              diverges. Quick numerical guard:</p>
+              <div class="codeblk">
+                <div class="cap"><span class="l">python · verify</span>
+                  <span class="cp"><i class="fa-regular fa-copy"></i> copy</span></div>
+                <pre><span class="k">from</span> sympy <span class="k">import</span> *
+x = symbols(<span class="s">'x'</span>)
+<span class="c"># closed form vs. direct integration</span>
+assert simplify(diff(exp(x)*(sin(x)-cos(x))/<span class="s">2</span>, x)
+                 - exp(x)*sin(x)) == <span class="s">0</span></pre>
+              </div>
+              <p>So: drop nothing, keep the ½, and the constant of integration —
+              your sidekick flagged that next.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- drift-warning block -->
+        <div class="turn ai">
+          <span class="node"></span>
+          <div class="turn-meta">
+            <span class="who">qwen3-6-27b</span><span class="dot"></span>
+            <span class="x">14:03:40 · seq 3</span>
+          </div>
+          <div class="chip drift">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span><strong style="color:var(--coral)">Format drift</strong> —
+            tool-call JSON leaked into the content stream
+            <span class="x">· raw preserved · click to inspect</span></span>
+          </div>
+          <div class="block">
+            <div class="ai-prose"><p>Re-issuing the call through the proper
+            channel — one moment.</p></div>
+          </div>
+        </div>
+
+        <!-- streaming block -->
+        <div class="turn ai stream">
+          <span class="node"></span>
+          <div class="turn-meta">
+            <span class="who">qwen3-6-27b</span><span class="dot"></span>
+            <span class="x">live · seq 4</span>
+          </div>
+          <div class="block">
+            <div class="ai-prose">
+              <p>To extend this to the matryoshka-prefixed embedding case, note
+              that the same by-parts structure shows up when you differentiate the
+              cosine-similarity kernel<span class="caret"></span></p>
+            </div>
+          </div>
+          <div class="hb">
+            <span class="led pulse" style="--c:var(--cyan)"></span>
+            awaiting model · 6.4s · 63 tok/s
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- composer -->
+    <div class="composer">
+      <div class="composer-in">
+        <div class="flags">
+          <div class="flag">
+            <span class="tag">Reviewer flag · factual</span>
+            <span class="tx">Check the integration constant — the answer omits “+ C” in the boxed line.</span>
+            <span class="rm"><i class="fa-solid fa-xmark"></i></span>
+          </div>
+        </div>
+        <div class="att">
+          <div class="t">
+            <div style="width:54px;height:54px;border:1px solid var(--line-strong);border-radius:3px;
+              background:repeating-linear-gradient(135deg,#13201f 0 6px,#0e1719 6px 12px)"></div>
+            <span class="rm"><i class="fa-solid fa-xmark"></i></span>
+          </div>
+        </div>
+        <div class="cmd">
+          <span class="glyph">▸</span>
+          <div class="ta" contenteditable="true" spellcheck="false">Now redo it for ∫ x²·ln(x) dx and keep the constant this time.</div>
+          <div class="tools">
+            <button class="icbtn" title="Attach"><i class="fa-solid fa-paperclip"></i></button>
+            <button class="icbtn" title="Tools"><i class="fa-solid fa-screwdriver-wrench"></i></button>
+            <button class="send" title="Send"><i class="fa-solid fa-paper-plane"></i></button>
+          </div>
+        </div>
+        <div class="hint">
+          <span class="g"><span class="kbd">↵</span> send</span>
+          <span class="g"><span class="kbd">⇧ ↵</span> newline</span>
+          <span class="g"><span class="kbd">⌘ K</span> commands</span>
+          <span class="g" style="margin-left:auto;color:var(--text-faint)">main · qwen3-6-27b · sympy on</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 4 · inspector -->
+  <aside class="col inspector">
+    <div class="hdr">
+      <div class="ti"><i class="fa-solid fa-magnifying-glass"></i> Inspector</div>
+      <button class="xbtn"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="insp-form">
+      <label>Sidekick directive · qwen3-5-27b</label>
+      <div class="ta" contenteditable="true" spellcheck="false">Verify the integration constant and the ½ factor; check the algebra step by step.</div>
+      <button class="btn run"><i class="fa-solid fa-rotate"></i> Re-run critique</button>
+    </div>
+
+    <div class="scroll" style="flex:1">
+      <div class="ann">
+        <div class="top">
+          <span class="led" style="--c:var(--coral)"></span>
+          <span class="sev hi">High · factual</span>
+          <span class="ins">insert ▸</span>
+        </div>
+        <div class="q">"= ½·eˣ·( sin x − cos x ) + C"</div>
+        <div class="cm">The boxed result is correct, but the inline restatement
+        two lines below drops the <strong>+ C</strong>. Flag it so the operator
+        doesn't copy the constant-free version.</div>
+      </div>
+
+      <div class="ann">
+        <div class="top">
+          <span class="led" style="--c:var(--amber)"></span>
+          <span class="sev lo">Low · style</span>
+          <span class="ins">insert ▸</span>
+        </div>
+        <div class="q">"applying parts twice returns I…"</div>
+        <div class="cm">Solid explanation. Could show the intermediate
+        <em>2I = eˣ(sin x − cos x)</em> line explicitly — the operator asked
+        specifically where their derivation breaks.</div>
+      </div>
+
+      <div class="ann">
+        <div class="top">
+          <span class="led" style="--c:var(--green)"></span>
+          <span class="sev lo" style="color:var(--green)">Verified</span>
+        </div>
+        <div class="cm">Symbolic check via <code class="inl" style="font-size:11px">sympy-math.integrate</code>
+        independently reproduces the closed form. No numerical discrepancy.</div>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- floating tender (spin-off) -->
+<div class="tenderwin" id="tw">
+  <div class="tw-bar" id="twbar">
+    <i class="fa-solid fa-code-branch br"></i>
+    <span class="nm">the matryoshka prefix…</span>
+    <div class="ctl"><b><i class="fa-solid fa-minus"></i></b><b><i class="fa-solid fa-xmark"></i></b></div>
+  </div>
+  <div class="tw-ctx">“…use search_document: on stored text and search_query: on queries”</div>
+  <div class="tw-body scroll">
+    <div class="tw-msg u">▸ Does the ½ trick generalise to the matryoshka kernel?</div>
+    <div class="tw-msg a">Yes — the recurrence is identical once you treat the
+    truncated dimension as a fixed scalar. The prefix only changes the constant,
+    not the by-parts structure.</div>
+    <div class="tw-msg u">▸ Show the kernel derivative.</div>
+  </div>
+  <div class="tw-in">
+    <div class="f">Ask about this…</div>
+    <button class="s"><i class="fa-solid fa-paper-plane"></i></button>
+  </div>
+</div>
+
+<!-- dock tray (minimised tenders) -->
+<div class="tray">
+  <div class="t"><i class="fa-solid fa-code-branch"></i> tender · cuTensorMap repro <i class="fa-solid fa-up-right-and-down-left-from-center" style="color:var(--text-faint)"></i></div>
+</div>
+
+<script>
+  // lightweight drag for the tender window — makes the mock feel real
+  (function(){
+    var w=document.getElementById('tw'),bar=document.getElementById('twbar');
+    var dx=0,dy=0,drag=false;
+    bar.addEventListener('mousedown',function(e){
+      drag=true;var r=w.getBoundingClientRect();
+      dx=e.clientX-r.left;dy=e.clientY-r.top;
+      w.style.right='auto';w.style.bottom='auto';bar.style.cursor='grabbing';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove',function(e){
+      if(!drag)return;
+      w.style.left=Math.max(8,e.clientX-dx)+'px';
+      w.style.top=Math.max(8,e.clientY-dy)+'px';
+    });
+    window.addEventListener('mouseup',function(){drag=false;bar.style.cursor='grab'});
+  })();
+</script>
+</body>
+</html>
