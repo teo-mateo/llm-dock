@@ -489,19 +489,24 @@ export default function ChatSidebar({ onCollapse, conversations, activeId, onSel
 
   return (
     <div className="w-full border-r border-border flex flex-col bg-app flex-shrink-0 h-full">
-      {/* Header */}
+      {/* Title bar */}
+      <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-shrink-0">
+        <i className="fa-solid fa-message text-xs text-blue-400/80 flex-shrink-0"></i>
+        <span className="flex-1 min-w-0 truncate text-xs font-semibold text-fg uppercase tracking-wide">
+          Conversations
+        </span>
+        <button
+          onClick={onCollapse}
+          className="text-fg-subtle hover:text-fg p-1 -m-1 cursor-pointer"
+          title="Hide conversations"
+          aria-label="Hide conversations"
+        >
+          <i className="fa-solid fa-angles-left text-xs"></i>
+        </button>
+      </div>
+
+      {/* Actions */}
       <div className="p-3 border-b border-border">
-        <div className="flex justify-between items-center mb-2">
-          <button
-            onClick={onCollapse}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg hover:bg-surface-muted cursor-pointer"
-            title="Hide conversations"
-            aria-label="Hide conversations"
-            aria-expanded={true}
-          >
-            <i className="fa-solid fa-angles-left text-xs"></i>
-          </button>
-        </div>
         <button
           onClick={onCreate}
           className="w-full px-3 py-2 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
