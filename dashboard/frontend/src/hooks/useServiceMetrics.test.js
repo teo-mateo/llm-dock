@@ -196,4 +196,244 @@ describe('useServiceMetrics', () => {
     expect(result.current.history).toEqual([])
     expect(result.current.loading).toBe(false)
   })
+
+  it('normalizes llama.cpp metric names to vLLM equivalents', async () => {
+    const llamacppMetrics = {
+      'llamacpp:prompt_tokens_total': { '{}': 25000 },
+      'llamacpp:tokens_predicted_total': { '{}': 60000 },
+      'llamacpp:prompt_tokens_seconds': { '{}': 500 },
+      'llamacpp:predicted_tokens_seconds': { '{}': 100 },
+      'llamacpp:requests_processing': { '{}': 2 },
+      'llamacpp:requests_deferred': { '{}': 1 },
+    }
+    mockFetchAPI.mockResolvedValue({ metrics: llamacppMetrics, engine: 'llamacpp', scraped_at: '2026-01-01T00:00:00Z' })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.engine).toBe('llamacpp')
+    expect(result.current.metrics).toHaveProperty('vllm:prompt_tokens_total')
+    expect(result.current.metrics).toHaveProperty('vllm:generation_tokens_total')
+    expect(result.current.metrics).toHaveProperty('vllm:prompt_tokens_seconds')
+    expect(result.current.metrics).toHaveProperty('vllm:generation_tokens_seconds')
+    expect(result.current.metrics).toHaveProperty('vllm:num_requests_running')
+    expect(result.current.metrics).toHaveProperty('vllm:num_requests_waiting')
+    expect(result.current.metrics).not.toHaveProperty('llamacpp:prompt_tokens_total')
+    expect(result.current.metrics).not.toHaveProperty('llamacpp:tokens_predicted_total')
+  })
+
+  it('leaves vLLM metric names unchanged', async () => {
+    mockFetchAPI.mockResolvedValue({ metrics: mockMetrics, engine: 'vllm', scraped_at: '2026-01-01T00:00:00Z' })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'vllm-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.engine).toBe('vllm')
+    expect(result.current.metrics).toHaveProperty('vllm:prompt_tokens_total')
+    expect(result.current.metrics).toHaveProperty('vllm:generation_tokens_total')
+  })
+
+const llamacppMetricsBase = {
+  metrics: {
+    'llamacpp:prompt_tokens_total': { '{}': 1000 },
+    'llamacpp:tokens_predicted_total': { '{}': 2000 },
+    'llamacpp:prompt_tokens_seconds': { '{}': 500 },
+    'llamacpp:predicted_tokens_seconds': { '{}': 60 },
+    'llamacpp:requests_processing': { '{}': 1 },
+    'llamacpp:requests_deferred': { '{}': 0 },
+  },
+  engine: 'llamacpp',
+  scraped_at: '2026-01-01T00:00:00Z'
+}
+
+function slotsPayload(slots) {
+  return { slots, scraped_at: '2026-01-01T00:00:00Z' }
+}
+
+function queueLlamaCpp({ metrics, slots }) {
+  const metricsQueue = (Array.isArray(metrics) ? metrics : [metrics]).slice()
+  const slotsQueue = (Array.isArray(slots) ? slots : [slots]).slice()
+  mockFetchAPI.mockImplementation((path) => {
+    if (path.includes('/slots')) {
+      const next = slotsQueue.length > 1 ? slotsQueue.shift() : slotsQueue[0]
+      return next instanceof Error ? Promise.reject(next) : Promise.resolve(next)
+    }
+    const next = metricsQueue.length > 1 ? metricsQueue.shift() : metricsQueue[0]
+    return next instanceof Error ? Promise.reject(next) : Promise.resolve(next)
+  })
+}
+
+describe('useServiceMetrics llama.cpp slots', () => {
+  it('derives live generation rate from slot n_decoded deltas', async () => {
+    queueLlamaCpp({
+      metrics: llamacppMetricsBase,
+      slots: [
+        slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 1000, n_prompt_tokens: 500, n_prompt_tokens_processed: 500 }]),
+        slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 1200, n_prompt_tokens: 500, n_prompt_tokens_processed: 500 }]),
+      ]
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history.length).toBeGreaterThanOrEqual(3)
+    // first scrape establishes the baseline — no delta yet
+    expect(result.current.history[0].generationTokensRate).toBe(0)
+    // second scrape sees n_decoded 1000 -> 1200
+    expect(result.current.history[1].generationTokensRate).toBeGreaterThan(0)
+    // subsequent scrapes see no further movement
+    expect(result.current.history[2].generationTokensRate).toBe(0)
+  })
+
+  it('derives prompt rate from slot n_prompt_tokens_processed deltas', async () => {
+    queueLlamaCpp({
+      metrics: llamacppMetricsBase,
+      slots: [
+        slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 0, n_prompt_tokens: 800, n_prompt_tokens_processed: 500 }]),
+        slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 0, n_prompt_tokens: 800, n_prompt_tokens_processed: 800 }]),
+      ]
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history[0].promptTokensRate).toBe(0)
+    expect(result.current.history[1].promptTokensRate).toBeGreaterThan(0)
+    expect(result.current.history[1].generationTokensRate).toBe(0)
+  })
+
+  it('task rollover resets the baseline without a negative spike', async () => {
+    queueLlamaCpp({
+      metrics: llamacppMetricsBase,
+      slots: [
+        slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 1500, n_prompt_tokens: 500, n_prompt_tokens_processed: 500 }]),
+        slotsPayload([{ id: 0, is_processing: true, id_task: 101, n_decoded: 5, n_prompt_tokens: 300, n_prompt_tokens_processed: 300 }]),
+        slotsPayload([{ id: 0, is_processing: true, id_task: 101, n_decoded: 25, n_prompt_tokens: 300, n_prompt_tokens_processed: 300 }]),
+      ]
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // task changed 100 -> 101 with n_decoded reset to 5: delta discarded, rate 0
+    expect(result.current.history[1].generationTokensRate).toBe(0)
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // same task 101, n_decoded 5 -> 25: real delta
+    expect(result.current.history[2].generationTokensRate).toBeGreaterThan(0)
+  })
+
+  it('idle slots yield zero rates even with stale throughput gauges', async () => {
+    queueLlamaCpp({
+      metrics: {
+        metrics: {
+          'llamacpp:prompt_tokens_total': { '{}': 1000 },
+          'llamacpp:tokens_predicted_total': { '{}': 2000 },
+          'llamacpp:prompt_tokens_seconds': { '{}': 1954 },
+          'llamacpp:predicted_tokens_seconds': { '{}': 104 },
+          'llamacpp:requests_processing': { '{}': 0 },
+          'llamacpp:requests_deferred': { '{}': 0 },
+        },
+        engine: 'llamacpp',
+        scraped_at: '2026-01-01T00:00:00Z'
+      },
+      slots: slotsPayload([
+        { id: 0, is_processing: false, id_task: 100, n_decoded: 1602, n_prompt_tokens: 4834, n_prompt_tokens_processed: 2129 },
+      ])
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    for (const point of result.current.history) {
+      expect(point.promptTokensRate).toBe(0)
+      expect(point.generationTokensRate).toBe(0)
+    }
+    expect(result.current.history[0].running).toBe(0)
+  })
+
+  it('falls back to throughput gauges when the slots endpoint fails', async () => {
+    queueLlamaCpp({
+      metrics: llamacppMetricsBase,
+      slots: new Error('404')
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.history.length).toBeGreaterThanOrEqual(1)
+    const firstPoint = result.current.history[0]
+    expect(firstPoint.promptTokensRate).toBe(500)
+    expect(firstPoint.generationTokensRate).toBe(60)
+  })
+
+  it('gauge fallback is zeroed while idle', async () => {
+    queueLlamaCpp({
+      metrics: {
+        metrics: {
+          'llamacpp:prompt_tokens_total': { '{}': 1000 },
+          'llamacpp:tokens_predicted_total': { '{}': 2000 },
+          'llamacpp:prompt_tokens_seconds': { '{}': 500 },
+          'llamacpp:predicted_tokens_seconds': { '{}': 60 },
+          'llamacpp:requests_processing': { '{}': 0 },
+          'llamacpp:requests_deferred': { '{}': 0 },
+        },
+        engine: 'llamacpp',
+        scraped_at: '2026-01-01T00:00:00Z'
+      },
+      slots: new Error('404')
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    const firstPoint = result.current.history[0]
+    expect(firstPoint.promptTokensRate).toBe(0)
+    expect(firstPoint.generationTokensRate).toBe(0)
+  })
+
+  it('running/waiting counts still map from metrics while rates come from slots', async () => {
+    queueLlamaCpp({
+      metrics: {
+        metrics: {
+          ...llamacppMetricsBase.metrics,
+          'llamacpp:requests_processing': { '{}': 2 },
+          'llamacpp:requests_deferred': { '{}': 1 },
+        },
+        engine: 'llamacpp',
+        scraped_at: '2026-01-01T00:00:00Z'
+      },
+      slots: slotsPayload([{ id: 0, is_processing: true, id_task: 100, n_decoded: 100, n_prompt_tokens: 500, n_prompt_tokens_processed: 500 }])
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'llamacpp-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.history[0].running).toBe(2)
+    expect(result.current.history[0].waiting).toBe(1)
+  })
+})
 })

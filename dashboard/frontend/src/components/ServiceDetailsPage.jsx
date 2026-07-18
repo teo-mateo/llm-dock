@@ -181,7 +181,7 @@ export default function ServiceDetailsPage() {
 
       {isMetricsRoute ? (
         <div className="flex-1 overflow-auto">
-          <MetricsPanel serviceName={serviceName} enabled={templateType === 'vllm' && runtime?.status === 'running'} />
+          <MetricsPanel serviceName={serviceName} enabled={(templateType === 'vllm' || templateType === 'llamacpp') && runtime?.status === 'running'} />
         </div>
       ) : isLogsRoute ? (
         <div className="flex-1 min-h-0">
