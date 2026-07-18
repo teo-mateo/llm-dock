@@ -341,8 +341,10 @@ def update_service(service_name):
             if new_port in used_ports:
                 return jsonify({"error": f"Port {new_port} is already in use"}), 409
 
-        # Update in database
-        compose_mgr.update_service_in_db(service_name, data)
+        # Update in database — merge into existing to preserve fields not
+        # sent by the client (favorite, etc.)
+        existing.update(data)
+        compose_mgr.update_service_in_db(service_name, existing)
 
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
@@ -757,6 +759,8 @@ def services_stream():
                         "container_id": event["container_id"],
                         "timestamp": datetime.fromtimestamp(event["timestamp"]).isoformat() + "Z",
                     }
+                    if "metadata" in event:
+                        payload["metadata"] = event["metadata"]
                     yield "data: " + json.dumps(payload) + "\n\n"
                 else:
                     yield ": keepalive\n\n"
