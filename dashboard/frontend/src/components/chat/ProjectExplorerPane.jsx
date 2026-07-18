@@ -130,7 +130,7 @@ export default function ProjectExplorerPane({ project, refreshKey = 0, editingPa
           title="Hide file explorer"
           aria-label="Hide file explorer"
         >
-          <i className="fa-solid fa-angles-left text-xs"></i>
+          <i className="fa-solid fa-angles-left text-sm"></i>
         </button>
       </div>
 

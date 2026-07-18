@@ -501,7 +501,7 @@ export default function ChatSidebar({ onCollapse, conversations, activeId, onSel
           title="Hide conversations"
           aria-label="Hide conversations"
         >
-          <i className="fa-solid fa-angles-left text-xs"></i>
+          <i className="fa-solid fa-angles-left text-sm"></i>
         </button>
       </div>
 
