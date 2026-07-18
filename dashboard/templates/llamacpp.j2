@@ -34,7 +34,7 @@
       {% endif %}--alias {{ alias }}
       --host "0.0.0.0"
       --port 8080
-       --api-key {{ api_key }}
-       --metrics
-       {% for flag in rendered_flags %}{{ flag }}
-       {% endfor %}
+      --api-key {{ api_key }}
+      --metrics
+      {% for flag in rendered_flags %}{{ flag }}
+      {% endfor %}

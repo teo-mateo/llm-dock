@@ -31,11 +31,16 @@ function draw(canvas, history) {
   const labelW = 44
   const pad = 2
   const chartX = labelW
-  const chartW = width - chartX - pad
+  const chartW = width - 2 * labelW
+  const chartRight = chartX + chartW
 
+  // Prefill runs 10-100x faster than decode, so a shared scale would flatten
+  // the gen line. Each line keeps its own scale, with its axis labels drawn
+  // in the line's color: prompt on the left, gen on the right.
   const promptData = points.map(p => p.promptTokensRate || 0)
   const genData = points.map(p => p.generationTokensRate || 0)
-  const globalMax = Math.max(1, ...promptData, ...genData)
+  const promptMax = Math.max(1, ...promptData)
+  const genMax = Math.max(1, ...genData)
 
   // Grid lines
   ctx.strokeStyle = cssVar('--color-chart-grid')
@@ -44,7 +49,7 @@ function draw(canvas, history) {
     const y = pad + (height - 2 * pad) * (i / 4)
     ctx.beginPath()
     ctx.moveTo(chartX, y)
-    ctx.lineTo(width, y)
+    ctx.lineTo(chartRight, y)
     ctx.stroke()
   }
 
@@ -60,30 +65,34 @@ function draw(canvas, history) {
   const pointW = chartW / (MAX_POINTS - 1)
 
   // Y-axis labels
-  ctx.fillStyle = cssVar('--color-fg-subtle')
   ctx.font = '9px sans-serif'
-  ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
-  for (let i = 0; i <= 4; i++) {
-    const val = globalMax * (1 - i / 4)
-    const y = pad + (height - 2 * pad) * (i / 4)
-    ctx.fillText(labelTps(val), chartX - 4, y)
+  const drawAxis = (max, color, align, x) => {
+    ctx.fillStyle = color
+    ctx.textAlign = align
+    for (let i = 0; i <= 4; i++) {
+      const val = max * (1 - i / 4)
+      const y = pad + (height - 2 * pad) * (i / 4)
+      ctx.fillText(labelTps(val), x, y)
+    }
   }
+  drawAxis(promptMax, cssVar('--color-chart-memory'), 'right', chartX - 4)
+  drawAxis(genMax, cssVar('--color-chart-compute'), 'left', chartRight + 4)
 
-  const drawLine = (data, color) => {
+  const drawLine = (data, max, color) => {
     ctx.strokeStyle = color
     ctx.lineWidth = 2
     ctx.beginPath()
     data.forEach((val, i) => {
-      const x = width - pad - (len - 1 - i) * pointW
-      const y = height - pad - (val / globalMax) * (height - 2 * pad)
+      const x = chartRight - (len - 1 - i) * pointW
+      const y = height - pad - (val / max) * (height - 2 * pad)
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
     })
     ctx.stroke()
   }
 
-  drawLine(promptData, cssVar('--color-chart-memory'))
-  drawLine(genData, cssVar('--color-chart-compute'))
+  drawLine(promptData, promptMax, cssVar('--color-chart-memory'))
+  drawLine(genData, genMax, cssVar('--color-chart-compute'))
 }
 
 export default function TokenSparkline({ history }) {
