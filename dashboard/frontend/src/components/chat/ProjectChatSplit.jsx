@@ -96,10 +96,15 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
               <i className="fa-solid fa-angles-right text-sm"></i>
             </button>
           </div>
-          <div className="py-4 overflow-hidden">
-            <span className="text-[10px] font-semibold text-fg-subtle uppercase tracking-widest select-none" style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }} title={project.name}>
+          <div className="py-4 overflow-hidden w-full flex items-center justify-center">
+            <button
+              onClick={() => setCollapsed(false)}
+              className="text-[10px] font-semibold text-fg-subtle hover:text-fg uppercase tracking-widest cursor-pointer"
+              style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
+              title={`Show ${project.name} files`}
+            >
               {project.name}
-            </span>
+            </button>
           </div>
         </div>
       )}
