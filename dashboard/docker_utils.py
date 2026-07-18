@@ -127,6 +127,7 @@ def get_docker_services():
     model_path_map = {}
     model_name_map = {}
     kind_map = {}
+    favorite_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
@@ -135,6 +136,7 @@ def get_docker_services():
             model_path_map[service_name] = config.get("model_path")
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
+            favorite_map[service_name] = bool(config.get("favorite", False))
 
     # Get Open WebUI registered URLs (one query for all services)
     openwebui_urls = get_openwebui_registered_urls()
@@ -177,6 +179,7 @@ def get_docker_services():
                 "model_size": model_size,
                 "model_size_str": model_size_str,
                 "kind": kind_map.get(service_name, "chat"),
+                "favorite": favorite_map.get(service_name, False),
             }
 
     # Build complete services list from compose file
@@ -204,6 +207,7 @@ def get_docker_services():
                     "model_size": model_size,
                     "model_size_str": model_size_str,
                     "kind": kind_map.get(service_name, "chat"),
+                    "favorite": favorite_map.get(service_name, False),
                 }
             )
 

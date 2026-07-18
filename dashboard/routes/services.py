@@ -649,6 +649,44 @@ def set_public_port(service_name):
         return jsonify({"error": str(e)}), 500
 
 
+@services_bp.route("/api/services/<service_name>/favorite", methods=["POST"])
+@require_auth
+@_serialize_db
+def set_favorite(service_name):
+    """Set or unset the favorite flag for a service."""
+    try:
+        if service_name == "open-webui":
+            return jsonify({"error": "Cannot favorite infrastructure services"}), 400
+
+        data = request.get_json(silent=True) or {}
+        favorite = bool(data.get("favorite", True))
+
+        compose_mgr = ComposeManager(COMPOSE_FILE)
+        service_config = compose_mgr.get_service_from_db(service_name)
+        if not service_config:
+            return jsonify({"error": f'Service "{service_name}" not found'}), 404
+
+        service_config["favorite"] = favorite
+        compose_mgr.update_service_in_db(service_name, service_config)
+
+        from services import event_manager
+        event_manager.emit({
+            "service_name": service_name,
+            "action": "metadata-changed",
+            "status": None,
+            "container_id": None,
+            "metadata": {"favorite": favorite},
+            "timestamp": time.time(),
+        })
+
+        logger.info(f"Service favorite updated: {service_name} -> {favorite}")
+        return jsonify({"success": True, "favorite": favorite}), 200
+
+    except Exception as e:
+        logger.error(f"Failed to update favorite: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # ============================================
 # SSE helpers
 # ============================================

@@ -21,7 +21,7 @@ orchestration (recovery, the cancel registry, list/active lookups) stays on the
 DB directly — those are durable-coordination concerns, not part of running a
 single stream, and an ephemeral mode wires up its own (or no) manager.
 """
-from .models import ChatRun
+from .models import ChatRun, Message
 from .runs import ChatRunStatus
 
 
@@ -47,8 +47,12 @@ class PersistencePolicy:
         the run was already terminal (cancelled mid-stream)."""
         raise NotImplementedError
 
-    def fail(self, run_id, error):
-        """Mark the run failed with the given error text."""
+    def fail(self, run_id, error, partial_msg=None):
+        """Mark the run failed with the given error text.
+
+        If partial_msg is given, persist it as an error message with the
+        accumulated content/reasoning before the failure.
+        """
         raise NotImplementedError
 
     def cancel(self, run_id):
@@ -73,8 +77,11 @@ class DbPersistencePolicy(PersistencePolicy):
     def complete(self, run_id, assistant_msg, artifacts):
         return self.db.complete_run_with_message(run_id, assistant_msg, artifacts)
 
-    def fail(self, run_id, error):
-        self.db.fail_chat_run(run_id, error)
+    def fail(self, run_id, error, partial_msg=None):
+        if partial_msg is not None:
+            self.db.fail_chat_run_with_message(run_id, error, partial_msg)
+        else:
+            self.db.fail_chat_run(run_id, error)
 
     def cancel(self, run_id):
         self.db.cancel_chat_run(run_id)
@@ -108,7 +115,7 @@ class NullPersistencePolicy(PersistencePolicy):
         self.messages.append(assistant_msg)
         return assistant_msg
 
-    def fail(self, run_id, error):
+    def fail(self, run_id, error, partial_msg=None):
         pass
 
     def cancel(self, run_id):

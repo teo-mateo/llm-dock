@@ -216,8 +216,12 @@ def test_failed_send_clears_active_run_and_surfaces_error(ctx, monkeypatch):
 
     assert '"error": "model exploded"' in body  # error metadata surfaced on the stream
     assert db.get_active_run_for_conversation(conv.id) is None
-    # Failed run wrote no completed assistant message.
-    assert [m.role for m in db.get_messages(conv.id)] == ["user"]
+    # Failed run wrote a partial assistant message with accumulated content.
+    messages = db.get_messages(conv.id)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assistant = messages[1]
+    assert assistant.content == "partial"
+    assert assistant.error == "model exploded"
 
 
 # -- Startup recovery ----------------------------------------------------

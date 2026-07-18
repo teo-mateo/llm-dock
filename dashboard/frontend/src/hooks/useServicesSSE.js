@@ -47,11 +47,20 @@ function applyDeltaToState(state, delta) {
     return state
   }
 
+  const base = serviceIndex !== -1 ? services[serviceIndex] : {}
   const updatedService = {
-    ...(serviceIndex !== -1 ? services[serviceIndex] : {}),
+    ...base,
     name: delta.service_name,
-    status: delta.status,
-    container_id: delta.container_id,
+  }
+
+  if (delta.status !== null && delta.status !== undefined) {
+    updatedService.status = delta.status
+  }
+  if (delta.container_id !== null && delta.container_id !== undefined) {
+    updatedService.container_id = delta.container_id
+  }
+  if (delta.metadata) {
+    Object.assign(updatedService, delta.metadata)
   }
 
   if (serviceIndex !== -1) {
@@ -78,6 +87,8 @@ export const sortServices = (services) => {
   return [...services].sort((a, b) => {
     if (a.name === 'open-webui') return -1
     if (b.name === 'open-webui') return 1
+    if (a.favorite && !b.favorite) return -1
+    if (!a.favorite && b.favorite) return 1
     return a.name.localeCompare(b.name)
   })
 }
@@ -336,6 +347,38 @@ export default function useServicesSSE() {
 
   const sortedServices = state.services ? sortServices(state.services) : null
 
+  const toggleFavorite = useCallback(async (serviceName) => {
+    if (!state.services) return
+    const svc = state.services.find(s => s.name === serviceName)
+    if (!svc) return
+
+    // Optimistic update
+    dispatch({ type: 'DELTA', payload: {
+      service_name: serviceName,
+      action: 'metadata-changed',
+      status: null,
+      container_id: null,
+      metadata: { favorite: !svc.favorite },
+    }})
+
+    try {
+      await fetchAPI(`/services/${serviceName}/favorite`, {
+        method: 'POST',
+        body: JSON.stringify({ favorite: !svc.favorite }),
+      })
+    } catch (err) {
+      // Revert on failure
+      dispatch({ type: 'DELTA', payload: {
+        service_name: serviceName,
+        action: 'metadata-changed',
+        status: null,
+        container_id: null,
+        metadata: { favorite: svc.favorite },
+      }})
+      throw err
+    }
+  }, [state.services])
+
   return {
     services: sortedServices,
     error,
@@ -345,5 +388,6 @@ export default function useServicesSSE() {
     running: state.running,
     stopped: state.stopped,
     refresh: startStream,
+    toggleFavorite,
   }
 }

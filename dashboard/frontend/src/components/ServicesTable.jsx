@@ -17,6 +17,19 @@ function isInfra(name) {
   return name === 'open-webui'
 }
 
+function FavoriteButton({ service, onToggleFavorite }) {
+  if (isInfra(service.name)) return null
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggleFavorite(service.name) }}
+      className="shrink-0 p-0.5 -ml-1 rounded hover:bg-surface-muted cursor-pointer transition-colors"
+      title={service.favorite ? 'Remove from favorites' : 'Add to favorites'}
+    >
+      <i className={service.favorite ? 'fa-solid fa-star text-amber-400' : 'fa-regular fa-star text-fg-subtle hover:text-fg-muted'}></i>
+    </button>
+  )
+}
+
 function StatusDot({ status }) {
   const color = status === 'running'
     ? 'bg-success'
@@ -167,7 +180,7 @@ function Toast({ message, onDone }) {
 
 export default function ServicesTable() {
   const navigate = useNavigate()
-  const { services, error, connected, refresh } = useServicesSSE()
+  const { services, error, connected, refresh, toggleFavorite } = useServicesSSE()
   const [transitioning, setTransitioning] = useState({})
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
@@ -205,6 +218,14 @@ export default function ServicesTable() {
     }
   }, [refresh])
 
+  const handleToggleFavorite = useCallback(async (name) => {
+    try {
+      await toggleFavorite(name)
+    } catch (err) {
+      setToast(`Failed to toggle favorite for ${name}: ${err.message}`)
+    }
+  }, [toggleFavorite])
+
   const handleEdit = (name) => {
     navigate(`/services/${name}`)
   }
@@ -235,6 +256,9 @@ export default function ServicesTable() {
 
   const term = search.trim().toLowerCase()
   const visible = term ? services.filter(s => s.name.toLowerCase().includes(term)) : services
+  const favVisible = visible.filter(s => s.favorite)
+  const otherVisible = visible.filter(s => !s.favorite)
+  const showSeparator = favVisible.length > 0 && otherVisible.length > 0
 
   function ConnectionDot({ connected, error }) {
     let color
@@ -314,20 +338,39 @@ export default function ServicesTable() {
               : `No services matching "${search}"`}
           </div>
         ) : (
-          visible.map(svc => (
-            <ServiceCard
-              key={svc.name}
-              service={svc}
-              transitioning={transitioning}
-              onStart={handleStart}
-              onStop={handleStop}
-              onRestart={handleRestart}
-              onSetPublicPort={handleSetPublicPort}
-              onEdit={handleEdit}
-              onViewLogs={handleViewLogs}
-              onDelete={handleDelete}
-            />
-          ))
+          <>
+            {favVisible.map(svc => (
+              <ServiceCard
+                key={svc.name}
+                service={svc}
+                transitioning={transitioning}
+                onStart={handleStart}
+                onStop={handleStop}
+                onRestart={handleRestart}
+                onSetPublicPort={handleSetPublicPort}
+                onToggleFavorite={handleToggleFavorite}
+                onEdit={handleEdit}
+                onViewLogs={handleViewLogs}
+                onDelete={handleDelete}
+              />
+            ))}
+            {showSeparator && <div className="border-t border-border my-2" />}
+            {otherVisible.map(svc => (
+              <ServiceCard
+                key={svc.name}
+                service={svc}
+                transitioning={transitioning}
+                onStart={handleStart}
+                onStop={handleStop}
+                onRestart={handleRestart}
+                onSetPublicPort={handleSetPublicPort}
+                onToggleFavorite={handleToggleFavorite}
+                onEdit={handleEdit}
+                onViewLogs={handleViewLogs}
+                onDelete={handleDelete}
+              />
+            ))}
+          </>
         )}
       </div>
 
@@ -358,20 +401,43 @@ export default function ServicesTable() {
                 </td>
               </tr>
             ) : (
-              visible.map(svc => (
-                <ServiceRow
-                  key={svc.name}
-                  service={svc}
-                  transitioning={transitioning}
-                  onStart={handleStart}
-                  onStop={handleStop}
-                  onRestart={handleRestart}
-                  onSetPublicPort={handleSetPublicPort}
-                  onEdit={handleEdit}
-                  onViewLogs={handleViewLogs}
-                  onDelete={handleDelete}
-                />
-              ))
+              <>
+                {favVisible.map(svc => (
+                  <ServiceRow
+                    key={svc.name}
+                    service={svc}
+                    transitioning={transitioning}
+                    onStart={handleStart}
+                    onStop={handleStop}
+                    onRestart={handleRestart}
+                    onSetPublicPort={handleSetPublicPort}
+                    onToggleFavorite={handleToggleFavorite}
+                    onEdit={handleEdit}
+                    onViewLogs={handleViewLogs}
+                    onDelete={handleDelete}
+                  />
+                ))}
+                {showSeparator && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-1.5 bg-surface-strong border-y border-border-subtle" />
+                  </tr>
+                )}
+                {otherVisible.map(svc => (
+                  <ServiceRow
+                    key={svc.name}
+                    service={svc}
+                    transitioning={transitioning}
+                    onStart={handleStart}
+                    onStop={handleStop}
+                    onRestart={handleRestart}
+                    onSetPublicPort={handleSetPublicPort}
+                    onToggleFavorite={handleToggleFavorite}
+                    onEdit={handleEdit}
+                    onViewLogs={handleViewLogs}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </>
             )}
           </tbody>
         </table>
@@ -440,7 +506,7 @@ function PortCell({ service, onSetPublicPort }) {
 
 // Mobile (md:hidden) stacked card — same data/actions as a table row,
 // no horizontal scroll (issue #39).
-function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete }) {
+function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onToggleFavorite, onEdit, onViewLogs, onDelete }) {
   const engine = getEngine(service.name)
   const infra = isInfra(service.name)
 
@@ -448,6 +514,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
     <div className={`rounded-lg border border-border p-3 ${service.status === 'running' ? 'bg-success-subtle' : 'bg-surface-muted'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex items-center font-medium text-fg">
+          <FavoriteButton service={service} onToggleFavorite={onToggleFavorite} />
           {!infra ? (
             <button
               onClick={() => onEdit(service.name)}
@@ -514,7 +581,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
   )
 }
 
-function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onEdit, onViewLogs, onDelete }) {
+function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onToggleFavorite, onEdit, onViewLogs, onDelete }) {
   const engine = getEngine(service.name)
   const infra = isInfra(service.name)
 
@@ -523,6 +590,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
       <td className="px-6 py-3 whitespace-nowrap">
         <div className="flex flex-col">
           <div className="flex items-center font-medium text-fg">
+            <FavoriteButton service={service} onToggleFavorite={onToggleFavorite} />
             {!infra ? (
               <button
                 onClick={() => onEdit(service.name)}
