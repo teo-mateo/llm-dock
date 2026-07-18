@@ -9,6 +9,11 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+function labelTps(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return n.toFixed(1)
+}
+
 function draw(canvas, history) {
   const ctx = canvas.getContext('2d')
   const dpr = window.devicePixelRatio || 1
@@ -21,7 +26,16 @@ function draw(canvas, history) {
   ctx.scale(dpr, dpr)
   ctx.clearRect(0, 0, width, height)
 
+  const points = history.slice(-MAX_POINTS)
+  const len = points.length
+  const labelW = 44
   const pad = 2
+  const chartX = labelW
+  const chartW = width - chartX - pad
+
+  const promptData = points.map(p => p.promptTokensRate || 0)
+  const genData = points.map(p => p.generationTokensRate || 0)
+  const globalMax = Math.max(1, ...promptData, ...genData)
 
   // Grid lines
   ctx.strokeStyle = cssVar('--color-chart-grid')
@@ -29,42 +43,47 @@ function draw(canvas, history) {
   for (let i = 0; i <= 4; i++) {
     const y = pad + (height - 2 * pad) * (i / 4)
     ctx.beginPath()
-    ctx.moveTo(0, y)
+    ctx.moveTo(chartX, y)
     ctx.lineTo(width, y)
     ctx.stroke()
   }
-
-  // Limit history to MAX_POINTS to prevent canvas spill
-  const points = history.slice(-MAX_POINTS)
-  const len = points.length
 
   if (len < 2) {
     ctx.fillStyle = cssVar('--color-fg-subtle')
     ctx.font = '13px sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('Awaiting data points...', width / 2, height / 2)
+    ctx.fillText('Awaiting data points...', chartX + chartW / 2, height / 2)
     return
   }
 
-  const pointW = (width - 2 * pad) / (MAX_POINTS - 1)
+  const pointW = chartW / (MAX_POINTS - 1)
 
-  const drawLine = (selector, color) => {
-    const data = points.map(selector)
-    const lineMax = Math.max(1, ...data)
+  // Y-axis labels
+  ctx.fillStyle = cssVar('--color-fg-subtle')
+  ctx.font = '9px sans-serif'
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  for (let i = 0; i <= 4; i++) {
+    const val = globalMax * (1 - i / 4)
+    const y = pad + (height - 2 * pad) * (i / 4)
+    ctx.fillText(labelTps(val), chartX - 4, y)
+  }
+
+  const drawLine = (data, color) => {
     ctx.strokeStyle = color
     ctx.lineWidth = 2
     ctx.beginPath()
     data.forEach((val, i) => {
       const x = width - pad - (len - 1 - i) * pointW
-      const y = height - pad - (val / lineMax) * (height - 2 * pad)
+      const y = height - pad - (val / globalMax) * (height - 2 * pad)
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
     })
     ctx.stroke()
   }
 
-  drawLine(dp => dp.promptTokensRate || 0, cssVar('--color-chart-memory'))
-  drawLine(dp => dp.generationTokensRate || 0, cssVar('--color-chart-compute'))
+  drawLine(promptData, cssVar('--color-chart-memory'))
+  drawLine(genData, cssVar('--color-chart-compute'))
 }
 
 export default function TokenSparkline({ history }) {

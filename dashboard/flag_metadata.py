@@ -492,6 +492,12 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "description": "Reasoning format (auto, cot, etc.)",
         "tip": "Controls how <b>chain-of-thought / reasoning tokens</b> are surfaced in API responses. <code>auto</code> (default) detects the model's capability; <code>deepseek</code> extracts <code>&lt;think&gt;</code> blocks into a separate <code>reasoning_content</code> field; <code>none</code> leaves thought tags raw inside <code>content</code>.",
     },
+    "metrics": {
+        "cli": "--metrics",
+        "type": "bool",
+        "description": "Enable Prometheus-compatible metrics endpoint at /metrics",
+        "tip": "Exposes a <b>Prometheus-compatible metrics endpoint</b> at <code>/metrics</code> with real-time counters for prompt tokens, generation tokens, request queue, and slot utilization. Enabled by default for all services.",
+    },
     # Memory
     "no_mmap": {
         "cli": "--no-mmap",
@@ -1165,6 +1171,7 @@ _LLAMACPP_LLAMA_SERVER_CATEGORIES = {
     "log_verbosity": "Features",
     "log_file": "Features",
     "reasoning_format": "Features",
+    "metrics": "Features",
     "no_mmap": "Memory",
     "rope_freq_base": "RoPE",
     "rope_freq_scale": "RoPE",

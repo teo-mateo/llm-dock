@@ -37,7 +37,7 @@ export default function MetricsPanel({ serviceName, enabled }) {
           <span className="text-fg-subtle text-sm">(disabled)</span>
         </div>
         <p className="text-fg-muted text-sm">
-          Metrics are only available for running vLLM services. Start the service to see live metrics.
+          Metrics are only available for running services. Start the service to see live metrics.
         </p>
       </div>
     )
@@ -77,7 +77,7 @@ export default function MetricsPanel({ serviceName, enabled }) {
         <div className="flex flex-col items-center justify-center py-12">
           <i className="fa-solid fa-chart-line text-3xl text-fg-faint mb-3" />
           <p className="text-fg-muted text-sm mb-1">No metrics available</p>
-          <p className="text-fg-subtle text-xs">The vLLM prometheus endpoint returned no data or is unreachable.</p>
+          <p className="text-fg-subtle text-xs">The prometheus endpoint returned no data or is unreachable.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
