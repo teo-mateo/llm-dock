@@ -96,8 +96,10 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
               <i className="fa-solid fa-angles-right text-sm"></i>
             </button>
           </div>
-          <div className="py-4">
-            <i className="fa-solid fa-folder text-sm text-amber-500/50" title={project.name}></i>
+          <div className="flex-1 flex items-center justify-center py-4 overflow-hidden">
+            <span className="text-[10px] font-semibold text-fg-subtle uppercase tracking-widest select-none" style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }} title={project.name}>
+              {project.name}
+            </span>
           </div>
         </div>
       )}
