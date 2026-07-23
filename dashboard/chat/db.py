@@ -588,6 +588,42 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
+    def delete_message(self, msg_id: str) -> Optional[Message]:
+        """Delete a single message by id.
+
+        Critiques and artifacts for the message are removed explicitly (FK
+        cascades are not relied upon — the in-memory test DB doesn't enable
+        PRAGMA foreign_keys). Any chat_run still referencing the message via
+        user_message_id is detached (set to NULL), matching the FK's ON DELETE
+        SET NULL semantics.
+
+        Returns the deleted message, or None if not found.
+        """
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM messages WHERE id = ?", (msg_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            msg = self._row_to_message(row)
+            conn.execute("DELETE FROM critiques WHERE message_id = ?", (msg_id,))
+            conn.execute("DELETE FROM artifacts WHERE message_id = ?", (msg_id,))
+            conn.execute(
+                "UPDATE chat_runs SET user_message_id = NULL WHERE user_message_id = ?",
+                (msg_id,),
+            )
+            conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
+            conn.execute(
+                "UPDATE conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE id = ?",
+                (msg.conversation_id,),
+            )
+            conn.commit()
+            return msg
+        finally:
+            self._close_conn(conn)
+
     # -- Critiques --
 
     def _row_to_critique(self, row: sqlite3.Row) -> Critique:

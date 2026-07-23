@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { getConversation, cancelActiveRun } from '../services/chat'
+import { getConversation, cancelActiveRun, deleteMessage as deleteMessageAPI } from '../services/chat'
 import { streamChat } from '../services/sse'
 
 // A conversation has a live background run when its active_run is queued or
@@ -659,6 +659,29 @@ export default function useChat({ onConversationUpdated } = {}) {
     }
   }, [])
 
+  const deleteMessage = useCallback(async (msgId) => {
+    // Block deletion while a run is active — mirrors the backend 409 guard
+    // and the edit/send blocking, so the UI never optimistically removes a
+    // message from under an in-flight turn.
+    if (!conversation || streaming || cancellingRef.current || isRunActive(conversation.active_run)) return
+    try {
+      await deleteMessageAPI(conversation.id, msgId)
+      setMessages(prev => prev.filter(m => m.id !== msgId))
+      setCritiques(prev => {
+        const next = { ...prev }
+        delete next[msgId]
+        return next
+      })
+      setArtifacts(prev => {
+        const next = { ...prev }
+        delete next[msgId]
+        return next
+      })
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [conversation, streaming])
+
   return {
     conversation,
     messages,
@@ -673,12 +696,14 @@ export default function useChat({ onConversationUpdated } = {}) {
     pendingToolCalls,
     heartbeat,
     artifacts,
+    setArtifacts,
     streamingArtifacts,
     streamingParseWarning,
     error,
     loadConversation,
     sendMessage,
     editMessage,
+    deleteMessage,
     stopStreaming,
     setConversation,
   }

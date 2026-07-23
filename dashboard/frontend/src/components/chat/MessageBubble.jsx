@@ -28,9 +28,10 @@ const MD_COMPONENTS = {
   },
 }
 
-export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, isActiveCritique, artifacts, disableEdit }) {
+export default function MessageBubble({ message, critique, critiqueLoading, hasSidekick, onCritique, onEdit, onDelete, isActiveCritique, artifacts, disableEdit, disableDelete }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(message.content)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const proseClass = useProseClass('max-w-none', 'text-[15px]', 'leading-relaxed', 'font-serif', '[&>*:first-child]:mt-0', '[&>*:last-child]:mb-0')
   const isUser = message.role === 'user'
   const isTemp = message.id?.startsWith('temp-')
@@ -187,7 +188,7 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
 
         {/* Action buttons */}
         {!isTemp && (
-          <div className={`flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
+          <div className={`flex gap-2 mt-1 ${confirmingDelete ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity ${isUser ? 'justify-end' : ''}`}>
             {isUser && !editing && !disableEdit && (
               <button
                 onClick={() => setEditing(true)}
@@ -203,6 +204,28 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
                 loading={critiqueLoading}
                 onClick={onCritique}
               />
+            )}
+            {!disableDelete && confirmingDelete ? (
+              <>
+                <button
+                  onClick={() => { onDelete?.(message.id); setConfirmingDelete(false) }}
+                  className="text-xs px-1.5 py-0.5 bg-danger rounded text-white"
+                >Yes</button>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-xs px-1.5 py-0.5 bg-surface-strong rounded text-fg"
+                >No</button>
+              </>
+            ) : (
+              !disableDelete && (
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  className="text-xs text-fg-subtle hover:text-danger-fg"
+                  title="Delete message"
+                >
+                  <i className="fa-solid fa-trash mr-1"></i>Delete
+                </button>
+              )
             )}
           </div>
         )}

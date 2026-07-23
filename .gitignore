@@ -95,3 +95,6 @@ tools/traces/
 
 # Project files (machine-local user content, managed by the dashboard)
 dashboard/project_files/
+
+# Internal agent artifacts
+.pi-subagents/

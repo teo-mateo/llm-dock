@@ -32,7 +32,9 @@ export default function MessageList({
   hasSidekick,
   onCritique,
   onEdit,
+  onDelete,
   disableEdit,
+  disableDelete,
   streaming,
   streamingContent,
   streamingReasoning,
@@ -91,7 +93,9 @@ export default function MessageList({
             hasSidekick={hasSidekick}
             onCritique={onCritique}
             onEdit={onEdit}
+            onDelete={onDelete}
             disableEdit={disableEdit}
+            disableDelete={disableDelete}
             isActiveCritique={activeCritiqueId === msg.id}
             artifacts={artifacts[msg.id]}
           />

@@ -35,6 +35,12 @@ export async function deleteConversations(ids) {
   })
 }
 
+export async function deleteMessage(conversationId, messageId) {
+  return fetchAPI(`/chat/conversations/${conversationId}/messages/${messageId}`, {
+    method: 'DELETE',
+  })
+}
+
 // -- Projects --
 
 export async function listProjects() {

@@ -663,6 +663,30 @@ def edit_message(conv_id, msg_id):
                                effective_project_id=project_id)
 
 
+@chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["DELETE"])
+@require_auth
+def delete_message(conv_id, msg_id):
+    db = _get_db()
+    conv = db.get_conversation(conv_id)
+    if conv is None:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    msg = db.get_message(msg_id)
+    if msg is None or msg.conversation_id != conv_id:
+        return jsonify({"error": "Message not found"}), 404
+
+    # Block deletion while a run is active — the in-flight assistant turn
+    # hasn't been persisted yet, but deleting a prior message mid-run would
+    # leave the transcript inconsistent for the ongoing turn.
+    if db.get_active_run_for_conversation(conv_id) is not None:
+        return jsonify({"error": "Cannot delete a message while a run is active"}), 409
+
+    if db.delete_message(msg_id) is None:
+        return jsonify({"error": "Message not found"}), 404
+    logger.info("message deleted: %s from conversation %s", msg_id, conv_id)
+    return jsonify({"ok": True})
+
+
 # -- Runs (observation + cancellation, issue #58) --
 
 
