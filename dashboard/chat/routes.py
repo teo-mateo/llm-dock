@@ -18,6 +18,7 @@ from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import openrouter, settings_store
+from .prompt_seed import seed_default_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def init_chat(app, db_path: str = None):
         db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chat.db")
     db = ChatDB(db_path)
     app.config["CHAT_DB"] = db
+    seed_default_prompts(db)
 
     from .mcp_client import MCPClientManager
     from . import mcp_config
@@ -341,12 +343,19 @@ def create_conversation():
         if _get_db().get_project(project_id) is None:
             return jsonify({"error": "Project not found"}), 400
 
-    # Honor an explicit prompt from the client (a fork or programmatic
-    # caller may want one), otherwise fall back to whatever the user has
-    # configured as the dashboard-wide default — and only then to the
-    # built-in baked into constants.py.
+    # Resolve the system prompt for the new conversation. Precedence:
+    # 1. An explicit main_system_prompt in the request body wins outright.
+    # 2. Otherwise, if a prompt_id is given, fetch that managed prompt's
+    #    content from the DB (404 if it doesn't exist).
+    # 3. Otherwise fall back to the global default system prompt.
     if "main_system_prompt" in data:
         main_system_prompt = data["main_system_prompt"]
+    elif data.get("prompt_id"):
+        prompt = _get_db().get_prompt(data["prompt_id"])
+        if prompt is None:
+            logger.info("create_conversation: prompt_id %s not found", data["prompt_id"])
+            return jsonify({"error": "Prompt not found"}), 404
+        main_system_prompt = prompt.content
     else:
         main_system_prompt = settings_store.get_main_system_prompt()
 
@@ -444,6 +453,91 @@ def delete_conversations_batch():
         return jsonify({"error": "ids must be a list of strings"}), 400
     deleted = _get_db().delete_conversations(ids)
     return jsonify({"ok": True, "deleted": deleted})
+
+
+# -- Chat Prompts (issue #96) --
+
+
+@chat_bp.route("/api/chat/prompts", methods=["GET"])
+@require_auth
+def list_prompts():
+    """Return all managed prompts, ordered by sort_order."""
+    prompts = _get_db().list_prompts()
+    return jsonify({"prompts": [p.to_dict() for p in prompts]})
+
+
+@chat_bp.route("/api/chat/prompts", methods=["POST"])
+@require_auth
+def create_prompt():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    name = data.get("name")
+    content = data.get("content")
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({"error": "name is required"}), 400
+    if not isinstance(content, str) or not content.strip():
+        return jsonify({"error": "content is required"}), 400
+    prompt = _get_db().create_prompt(name, content)
+    logger.info("chat prompt created: %s", prompt.id)
+    return jsonify(prompt.to_dict()), 201
+
+
+@chat_bp.route("/api/chat/prompts/<prompt_id>", methods=["GET"])
+@require_auth
+def get_prompt(prompt_id):
+    prompt = _get_db().get_prompt(prompt_id)
+    if prompt is None:
+        return jsonify({"error": "Prompt not found"}), 404
+    return jsonify(prompt.to_dict())
+
+
+@chat_bp.route("/api/chat/prompts/<prompt_id>", methods=["PUT"])
+@require_auth
+def update_prompt(prompt_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    name = data.get("name")
+    content = data.get("content")
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({"error": "name is required"}), 400
+    if not isinstance(content, str) or not content.strip():
+        return jsonify({"error": "content is required"}), 400
+    db = _get_db()
+    if db.get_prompt(prompt_id) is None:
+        return jsonify({"error": "Prompt not found"}), 404
+    prompt = db.update_prompt(prompt_id, name, content)
+    if prompt is None:
+        return jsonify({"error": "Prompt not found"}), 404
+    logger.info("chat prompt updated: %s", prompt_id)
+    return jsonify(prompt.to_dict())
+
+
+@chat_bp.route("/api/chat/prompts/<prompt_id>", methods=["DELETE"])
+@require_auth
+def delete_prompt(prompt_id):
+    db = _get_db()
+    if db.get_prompt(prompt_id) is None:
+        return jsonify({"error": "Prompt not found"}), 404
+    db.delete_prompt(prompt_id)
+    logger.info("chat prompt deleted: %s", prompt_id)
+    return jsonify({"ok": True})
+
+
+@chat_bp.route("/api/chat/prompts/reorder", methods=["PATCH"])
+@require_auth
+def reorder_prompts():
+    """Reorder prompts by supplying the full ordered list of ids."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    ids = data.get("ids")
+    if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+        return jsonify({"error": "ids must be a list of strings"}), 400
+    _get_db().reorder_prompts(ids)
+    logger.info("chat prompts reordered (%d ids)", len(ids))
+    return jsonify({"ok": True})
 
 
 # -- Messages --

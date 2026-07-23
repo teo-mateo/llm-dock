@@ -1,14 +1,15 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
-import SystemPromptEditor from './SystemPromptEditor'
+import PromptSelector from './PromptSelector'
 import CritiquePanel from './CritiquePanel'
 import SpinoffWindow from './SpinoffWindow'
 import SpinoffTaskbar from './SpinoffTaskbar'
 import TextContextMenu from './TextContextMenu'
 import McpToggle from './McpToggle'
 import useCritique from '../../hooks/useCritique'
+import useChatPrompts from '../../hooks/useChatPrompts'
 import { updateConversation } from '../../services/chat'
 
 let spinoffCounter = 0
@@ -40,18 +41,18 @@ export default function ChatArea({
   onRefreshConversations,
 }) {
   const { critique, loading: critiqueLoading } = useCritique(setCritiques)
+  const { prompts } = useChatPrompts()
+  const currentPrompt = conversation?.main_system_prompt || ''
+  const selectedPromptId = useMemo(() => {
+    if (!currentPrompt) return null
+    const match = prompts.find(p => p.content === currentPrompt)
+    return match ? match.id : null
+  }, [currentPrompt, prompts])
   const [critiqueTarget, setCritiqueTarget] = useState(null)
   const [pendingInserts, setPendingInserts] = useState([])
   const [spinoffs, setSpinoffs] = useState([]) // [{id, text, minimized, zIndex}]
   const topZRef = useRef(100)
   const composerRef = useRef(null)
-  // Lets handleSend flush a just-edited system prompt to the server before
-  // the message is posted (SystemPromptEditor persists on blur).
-  const promptEditorRef = useRef(null)
-  // Guards handleSend against re-entry: the composer stays enabled while
-  // handleSend awaits the prompt flush (streaming is still false), so a
-  // double-submit would otherwise open two concurrent SSE streams.
-  const sendInFlightRef = useRef(false)
 
   const quoteSelection = useCallback((text) => {
     if (!text) return
@@ -170,30 +171,17 @@ export default function ChatArea({
     onReloadConversation?.(conversation.id)
   }
 
-  function handleSystemPromptChange(field, value) {
-    return updateConversation(conversation.id, { [field]: value })
+  async function handlePromptSelect(promptId) {
+    const nextPrompt = promptId === null
+      ? ''
+      : prompts.find(p => p.id === promptId)?.content || ''
+    await updateConversation(conversation.id, { main_system_prompt: nextPrompt })
+    onReloadConversation?.(conversation.id)
   }
 
-  async function handleSend(msg, images) {
-    // Drop a re-entrant submit that lands while we're still awaiting the
-    // flush below — otherwise both calls reach onSend with a pre-streaming
-    // sendMessage closure and start concurrent streams. Once onSend runs,
-    // sendMessage flips `streaming` true and the composer's own disabled
-    // guard takes over.
-    if (sendInFlightRef.current) return
-    sendInFlightRef.current = true
-    try {
-      // SystemPromptEditor persists on blur; focusing the composer blurs it,
-      // so a save — or a chain of them, if the user edited again mid-save —
-      // can still be running. flush() resolves only once the prompt is fully
-      // persisted, so the backend reads the new prompt for the reply. A
-      // failed save is surfaced in the editor and does not block the send.
-      await promptEditorRef.current?.flush()
-      onSend(msg, images)
-      setPendingInserts([])
-    } finally {
-      sendInFlightRef.current = false
-    }
+  function handleSend(msg, images) {
+    onSend(msg, images)
+    setPendingInserts([])
   }
 
   return (
@@ -232,13 +220,13 @@ export default function ChatArea({
           )}
         </div>
 
-        {/* System prompt editor — keyed by conversation so local edit
-            state resets cleanly when the user switches conversations. */}
-        <SystemPromptEditor
+        {/* Prompt selector — read-only, keyed by conversation so selection
+            state resets cleanly when switching conversations. */}
+        <PromptSelector
           key={conversation.id}
-          ref={promptEditorRef}
-          mainPrompt={conversation.main_system_prompt || ''}
-          onSaveMain={v => handleSystemPromptChange('main_system_prompt', v)}
+          prompts={prompts}
+          selectedPromptId={selectedPromptId}
+          onSelect={handlePromptSelect}
         />
 
         {/* Error display */}

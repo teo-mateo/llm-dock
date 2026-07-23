@@ -201,28 +201,24 @@ def test_get_after_put_is_a_consistent_snapshot(client):
     assert body["current"] == "B"
 
 
-# -- Integration: create_conversation consumes the configured default ---
+# -- Integration: create_conversation system-prompt resolution ----------
 
 
-def test_new_conversation_uses_custom_default_prompt(client):
-    """POST /conversations without main_system_prompt picks up the override.
-
-    This is the actual acceptance criterion the API exists for. A
-    regression that reverted create_conversation to DEFAULT_MAIN_SYSTEM_PROMPT
-    would leave every settings-endpoint test green but fail here.
-    """
-    custom = "Custom global default. Be terse."
-    client.put(SETTINGS_PATH, json={"content": custom}, headers=_auth())
-
+def test_new_conversation_defaults_to_global_prompt(client):
+    """POST /conversations with no prompt_id or main_system_prompt falls
+    back to the global default system prompt from settings_store."""
+    client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
     r = client.post(
         CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
     )
     assert r.status_code == 201, r.get_data(as_text=True)
-    assert r.get_json()["main_system_prompt"] == custom
+    assert r.get_json()["main_system_prompt"] == "global default"
 
 
-def test_new_conversation_uses_builtin_when_no_customization(client):
-    """With nothing configured, a new conversation gets the built-in prompt."""
+def test_new_conversation_defaults_to_builtin_no_customization(client):
+    """With no global customization at all, the default is the built-in
+    DEFAULT_MAIN_SYSTEM_PROMPT."""
+    from chat.constants import DEFAULT_MAIN_SYSTEM_PROMPT
     r = client.post(
         CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
     )
@@ -230,10 +226,8 @@ def test_new_conversation_uses_builtin_when_no_customization(client):
     assert r.get_json()["main_system_prompt"] == DEFAULT_MAIN_SYSTEM_PROMPT
 
 
-def test_explicit_prompt_overrides_global_default(client):
-    """An explicit main_system_prompt in the request body still wins."""
-    client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
-
+def test_explicit_main_system_prompt_takes_precedence(client):
+    """An explicit main_system_prompt in the request body wins outright."""
     r = client.post(
         CONVERSATIONS_PATH,
         json={"main_service": "svc-a", "main_system_prompt": "explicit override"},
@@ -251,7 +245,6 @@ def test_explicit_empty_prompt_is_honored_not_replaced(client):
     the global default.
     """
     client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
-
     r = client.post(
         CONVERSATIONS_PATH,
         json={"main_service": "svc-a", "main_system_prompt": ""},
@@ -259,3 +252,76 @@ def test_explicit_empty_prompt_is_honored_not_replaced(client):
     )
     assert r.status_code == 201, r.get_data(as_text=True)
     assert r.get_json()["main_system_prompt"] == ""
+
+
+def test_new_conversation_with_prompt_id(client):
+    """A prompt_id fetches the managed prompt's content as main_system_prompt."""
+    prompt_content = "You are a pirate. Speak like one."
+    r = client.post(
+        "/api/chat/prompts",
+        json={"name": "pirate", "content": prompt_content},
+        headers=_auth(),
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    prompt_id = r.get_json()["id"]
+
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={"main_service": "svc-a", "prompt_id": prompt_id},
+        headers=_auth(),
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == prompt_content
+
+
+def test_new_conversation_with_invalid_prompt_id(client):
+    """A non-existent prompt_id returns 404."""
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={"main_service": "svc-a", "prompt_id": "nonexistent-prompt-id"},
+        headers=_auth(),
+    )
+    assert r.status_code == 404
+    assert "not found" in r.get_json()["error"].lower()
+
+
+def test_explicit_prompt_overrides_prompt_id(client):
+    """When both prompt_id and main_system_prompt are given, the explicit
+    main_system_prompt wins."""
+    prompt_content = "Prompt content from DB"
+    r = client.post(
+        "/api/chat/prompts",
+        json={"name": "test", "content": prompt_content},
+        headers=_auth(),
+    )
+    assert r.status_code == 201
+    prompt_id = r.get_json()["id"]
+
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={
+            "main_service": "svc-a",
+            "prompt_id": prompt_id,
+            "main_system_prompt": "explicit override",
+        },
+        headers=_auth(),
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["main_system_prompt"] == "explicit override"
+
+
+def test_existing_conversation_prompt_is_unaffected(client):
+    """A conversation created with a specific main_system_prompt retains it
+    on retrieval — regression for existing stored prompts."""
+    explicit = "Stored prompt that must survive."
+    r = client.post(
+        CONVERSATIONS_PATH,
+        json={"main_service": "svc-a", "main_system_prompt": explicit},
+        headers=_auth(),
+    )
+    assert r.status_code == 201
+    conv_id = r.get_json()["id"]
+
+    r = client.get(f"{CONVERSATIONS_PATH}/{conv_id}", headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["main_system_prompt"] == explicit
