@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react'
-import ChatInput, { pickFence } from './ChatInput'
+import ChatInput from './ChatInput'
+import { pickFence } from '../../utils/fence'
 
 afterEach(() => cleanup())
 
@@ -63,7 +64,6 @@ describe('ChatInput attachments', () => {
 
     // Wait for the placeholder chip to render. While pending, the send
     // button must be disabled, even though the composer has typed text.
-    const sendBtn = screen.getByRole('button', { name: '', hidden: true }) // submit
     // Submit button is the one with type=submit; find it more robustly:
     const submitBtn = document.querySelector('button[type="submit"]')
     await waitFor(() => {

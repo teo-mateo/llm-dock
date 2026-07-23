@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import CritiqueOverlay from './CritiqueOverlay'
 
-export default function CritiquePanel({ messageId, originalContent, critique, loading, onCritique, onClose, onInsertAnnotation }) {
+export default function CritiquePanel({ messageId, critique, loading, onCritique, onClose, onInsertAnnotation }) {
   const [instructions, setInstructions] = useState('')
 
   function handleSubmit(e) {
@@ -57,7 +57,7 @@ export default function CritiquePanel({ messageId, originalContent, critique, lo
         )}
 
         {critique && (
-          <CritiqueOverlay critique={critique} originalContent={originalContent} onInsertAnnotation={onInsertAnnotation} />
+          <CritiqueOverlay critique={critique} onInsertAnnotation={onInsertAnnotation} />
         )}
 
         {!critique && !loading && (

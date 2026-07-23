@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { pickFence } from '../../utils/fence'
 
 // Attach allowlist. Non-image entries are inlined into the outgoing message
 // as fenced code blocks (see buildMessage). PDFs are intentionally excluded
@@ -44,20 +45,6 @@ function langHintFromName(name) {
   if (!ext) return ''
   if (ext === 'md' || ext === 'markdown') return 'markdown'
   return ext
-}
-
-// Pick a fence that won't be closed early by backtick runs inside `content`.
-// CommonMark allows fences of any length ≥ 3, and the closing fence must be at
-// least as long as the opening one — so we pick one strictly longer than the
-// longest internal run.
-export function pickFence(content) {
-  let longest = 0
-  const re = /`+/g
-  let m
-  while ((m = re.exec(content)) !== null) {
-    if (m[0].length > longest) longest = m[0].length
-  }
-  return '`'.repeat(Math.max(3, longest + 1))
 }
 
 function formatSize(bytes) {

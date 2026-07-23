@@ -10,7 +10,7 @@ const SEVERITY_COLORS = {
   info: { badge: 'bg-accent-subtle text-accent-fg', border: 'border-accent', icon: 'text-accent-fg' },
 }
 
-function AnnotationCard({ annotation, index, onInsert }) {
+function AnnotationCard({ annotation, onInsert }) {
   const severity = annotation.severity || 'info'
   const colors = SEVERITY_COLORS[severity] || SEVERITY_COLORS.info
 
@@ -50,7 +50,7 @@ function AnnotationCard({ annotation, index, onInsert }) {
   )
 }
 
-export default function CritiqueOverlay({ critique, originalContent, onInsertAnnotation }) {
+export default function CritiqueOverlay({ critique, onInsertAnnotation }) {
   if (!critique) return null
 
   const verdict = critique.verdict || 'pass'

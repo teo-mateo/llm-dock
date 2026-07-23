@@ -272,7 +272,6 @@ export default function ChatArea({
       {critiqueTarget && targetMessage && (
         <CritiquePanel
           messageId={critiqueTarget}
-          originalContent={targetMessage.content}
           critique={critiques[critiqueTarget]}
           loading={critiqueLoading[critiqueTarget]}
           onCritique={handleCritique}

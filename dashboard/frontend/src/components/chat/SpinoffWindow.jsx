@@ -149,15 +149,13 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
     const controller = new AbortController()
     abortRef.current = controller
 
-    let fullContent = ''
-
     await streamChat(
       `/chat/conversations/${currentConvId}/messages`,
       { content },
       {
         signal: controller.signal,
         onDelta: ({ content: c }) => {
-          if (c) { fullContent += c; setStreamingContent(prev => prev + c) }
+          if (c) { setStreamingContent(prev => prev + c) }
         },
         onDone: () => {},
         onMessageSaved: () => {
