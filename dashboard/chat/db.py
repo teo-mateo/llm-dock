@@ -1,8 +1,9 @@
 import sqlite3
 import logging
+import uuid
 from typing import Optional, List, Tuple
 
-from .models import Conversation, Message, Critique, Artifact, ChatRun, Project
+from .models import Conversation, Message, Critique, Artifact, ChatRun, Project, Prompt
 from .runs import ChatRunStatus, ACTIVE_STATUSES, TERMINAL_STATUSES, ALL_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,17 @@ CREATE TABLE IF NOT EXISTS chat_runs (
 
 CREATE INDEX IF NOT EXISTS idx_chat_runs_conversation ON chat_runs(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_runs_status ON chat_runs(status);
+
+CREATE TABLE IF NOT EXISTS chat_prompts (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    sort_order  INTEGER DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_sort ON chat_prompts(sort_order);
 """
 
 # conversations.project_id was added via ALTER TABLE, which in sqlite cannot
@@ -1005,3 +1017,87 @@ class ChatDB:
 
     def cancel_chat_run(self, run_id: str) -> Optional[ChatRun]:
         return self.update_chat_run_status(run_id, ChatRunStatus.CANCELLED)
+
+    # -- Chat Prompts (issue #93) --
+
+    def _row_to_prompt(self, row: sqlite3.Row) -> Prompt:
+        return Prompt(
+            id=row["id"],
+            name=row["name"],
+            content=row["content"],
+            sort_order=row["sort_order"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def create_prompt(self, name: str, content: str) -> Prompt:
+        conn = self._get_conn()
+        try:
+            prompt_id = str(uuid.uuid4())
+            sort_order = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM chat_prompts"
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO chat_prompts (id, name, content, sort_order) VALUES (?, ?, ?, ?)",
+                (prompt_id, name, content, sort_order),
+            )
+            conn.commit()
+            return self.get_prompt(prompt_id)
+        finally:
+            self._close_conn(conn)
+
+    def get_prompt(self, prompt_id: str) -> Optional[Prompt]:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM chat_prompts WHERE id = ?", (prompt_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return self._row_to_prompt(row)
+        finally:
+            self._close_conn(conn)
+
+    def list_prompts(self) -> List[Prompt]:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM chat_prompts ORDER BY sort_order ASC, created_at ASC"
+            ).fetchall()
+            return [self._row_to_prompt(row) for row in rows]
+        finally:
+            self._close_conn(conn)
+
+    def update_prompt(self, prompt_id: str, name: str, content: str) -> Optional[Prompt]:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE chat_prompts SET name = ?, content = ?, "
+                "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
+                (name, content, prompt_id),
+            )
+            conn.commit()
+            return self.get_prompt(prompt_id)
+        finally:
+            self._close_conn(conn)
+
+    def delete_prompt(self, prompt_id: str) -> bool:
+        conn = self._get_conn()
+        try:
+            cur = conn.execute("DELETE FROM chat_prompts WHERE id = ?", (prompt_id,))
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            self._close_conn(conn)
+
+    def reorder_prompts(self, ids: List[str]) -> None:
+        conn = self._get_conn()
+        try:
+            for idx, prompt_id in enumerate(ids):
+                conn.execute(
+                    "UPDATE chat_prompts SET sort_order = ? WHERE id = ?",
+                    (idx, prompt_id),
+                )
+            conn.commit()
+        finally:
+            self._close_conn(conn)

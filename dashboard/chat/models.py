@@ -204,3 +204,23 @@ class Conversation:
         if include_messages:
             d["messages"] = [m.to_dict() for m in self.messages]
         return d
+
+
+@dataclass
+class Prompt:
+    id: str
+    name: str
+    content: str
+    sort_order: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "content": self.content,
+            "sort_order": self.sort_order,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
