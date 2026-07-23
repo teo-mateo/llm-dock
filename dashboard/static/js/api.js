@@ -125,11 +125,7 @@ async function handleLogin(event) {
         // Store the short-lived session token, not the raw password
         setToken(data.token);
         document.getElementById('token-input').value = '';
-        hideLoginModal();
-        startServicesStream();
-        startGPUStream();
-        loadSystemInfo();
-        loadImageMetadata();
+        window.location.href = '/v2';
     } catch (error) {
         errorEl.textContent = `Login failed: ${error.message}`;
         errorEl.classList.remove('hidden');
@@ -201,12 +197,7 @@ async function handleTOTPLogin() {
         if (data.token) {
             setToken(data.token);
             totpInput.value = '';
-            hideLoginModal();
-            loadServices().catch(() => {});
-            startServicesStream();
-            startGPUStream();
-            loadSystemInfo();
-            loadImageMetadata();
+            window.location.href = '/v2';
         }
     } catch (error) {
         if (errorEl) {
