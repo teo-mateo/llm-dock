@@ -1,4 +1,5 @@
 import { useTheme } from '../contexts/ThemeContext'
+import PromptsEditor from './settings/PromptsEditor'
 import TOTPSetup from './TOTPSetup'
 
 const THEMES = [
@@ -44,6 +45,7 @@ export default function SettingsPage() {
       </div>
 
       <ThemeCard />
+      <PromptsEditor />
       <TOTPSetup />
     </div>
   )
