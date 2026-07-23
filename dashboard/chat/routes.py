@@ -18,6 +18,7 @@ from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import openrouter, settings_store
+from .prompt_seed import seed_default_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def init_chat(app, db_path: str = None):
         db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chat.db")
     db = ChatDB(db_path)
     app.config["CHAT_DB"] = db
+    seed_default_prompts(db)
 
     from .mcp_client import MCPClientManager
     from . import mcp_config
