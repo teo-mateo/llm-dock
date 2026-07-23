@@ -267,7 +267,7 @@ class TestTOTPLoginEndpoint:
         data = resp.get_json()
         assert "token" in data
         assert data["token"].startswith("totp-")
-        assert data["expires_in"] == 300
+        assert data["expires_in"] == 28800
 
     def test_login_token_can_authenticate(self, client):
         test_secret = pyotp.random_base32()
