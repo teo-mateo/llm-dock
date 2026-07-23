@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import useChatPrompts from '../hooks/useChatPrompts'
+import useChatPrompts from '../../hooks/useChatPrompts'
 
 const PREVIEW_LEN = 150
 
