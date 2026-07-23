@@ -343,14 +343,21 @@ def create_conversation():
         if _get_db().get_project(project_id) is None:
             return jsonify({"error": "Project not found"}), 400
 
-    # Honor an explicit prompt from the client (a fork or programmatic
-    # caller may want one), otherwise fall back to whatever the user has
-    # configured as the dashboard-wide default — and only then to the
-    # built-in baked into constants.py.
+    # Resolve the system prompt for the new conversation. Precedence:
+    # 1. An explicit main_system_prompt in the request body wins outright.
+    # 2. Otherwise, if a prompt_id is given, fetch that managed prompt's
+    #    content from the DB (404 if it doesn't exist).
+    # 3. Otherwise default to an empty string — no global fallback.
     if "main_system_prompt" in data:
         main_system_prompt = data["main_system_prompt"]
+    elif data.get("prompt_id"):
+        prompt = _get_db().get_prompt(data["prompt_id"])
+        if prompt is None:
+            logger.info("create_conversation: prompt_id %s not found", data["prompt_id"])
+            return jsonify({"error": "Prompt not found"}), 404
+        main_system_prompt = prompt.content
     else:
-        main_system_prompt = settings_store.get_main_system_prompt()
+        main_system_prompt = ""
 
     conv = Conversation(
         id=str(uuid.uuid4()),
