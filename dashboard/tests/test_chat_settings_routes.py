@@ -204,24 +204,26 @@ def test_get_after_put_is_a_consistent_snapshot(client):
 # -- Integration: create_conversation system-prompt resolution ----------
 
 
-def test_new_conversation_defaults_to_empty_string(client):
-    """POST /conversations with no prompt_id or main_system_prompt defaults
-    to an empty string — the old global-default fallback is gone."""
+def test_new_conversation_defaults_to_global_prompt(client):
+    """POST /conversations with no prompt_id or main_system_prompt falls
+    back to the global default system prompt from settings_store."""
     client.put(SETTINGS_PATH, json={"content": "global default"}, headers=_auth())
     r = client.post(
         CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
     )
     assert r.status_code == 201, r.get_data(as_text=True)
-    assert r.get_json()["main_system_prompt"] == ""
+    assert r.get_json()["main_system_prompt"] == "global default"
 
 
-def test_new_conversation_defaults_to_empty_string_no_customization(client):
-    """With no global customization at all, the default is still ""."""
+def test_new_conversation_defaults_to_builtin_no_customization(client):
+    """With no global customization at all, the default is the built-in
+    DEFAULT_MAIN_SYSTEM_PROMPT."""
+    from chat.constants import DEFAULT_MAIN_SYSTEM_PROMPT
     r = client.post(
         CONVERSATIONS_PATH, json={"main_service": "svc-a"}, headers=_auth()
     )
     assert r.status_code == 201, r.get_data(as_text=True)
-    assert r.get_json()["main_system_prompt"] == ""
+    assert r.get_json()["main_system_prompt"] == DEFAULT_MAIN_SYSTEM_PROMPT
 
 
 def test_explicit_main_system_prompt_takes_precedence(client):
