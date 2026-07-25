@@ -49,8 +49,10 @@ class ServiceSummaryTest {
 
     @Test
     fun `a stopped chat-capable service is still chat-capable, just not running`() {
-        // F07-R2 needs the stopped row to remain visible in the picker's
-        // filter — only selectability (isRunning) is meant to gate it.
+        // Data-model level only: isChatCapable is a static property of the
+        // service, independent of its current status. Since F07-RO, the
+        // picker itself additionally requires isRunning before a local
+        // service is shown at all — see ModelPickerSheetTest.
         val service = ServiceSummary("ds4-a", "exited", "chat")
         assertTrue(service.isChatCapable)
         assertFalse(service.isRunning)

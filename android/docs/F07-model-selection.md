@@ -28,23 +28,36 @@ its port.
 - [ ] An embedding service never appears, running or not.
 - [ ] Starting a container elsewhere makes it appear in an open picker
       without a manual refresh.
-- [ ] With nothing running, the picker says so and points at the Models
-      tab.
+- [ ] With nothing running, the picker shows exactly
+      `No LLM-Dock models are running at this time.`
 
-## F07-R2 · Stopped models are visible but not selectable (Must)
+## F07-R2 · Stopped models are not shown at all (Must) — *revised*
 
-Stopped containers appear greyed, so it is obvious why a favourite is
-missing rather than it just being absent.
+Stopped containers do **not** appear in the picker. Only what can answer
+right now is listed.
 
-Whether the picker can start one is F11 — it is the same guarded action,
-reached from here.
+This reverses the original requirement, at the owner's direction on
+2026-07-25, after using the picker on a real rig: *"only show running
+models. don't show grayed out models — that is just noise."* This rig
+carries far more stopped services than running ones (typically one
+running against half a dozen stopped), so the greyed rows dominated the
+sheet while none of them could be tapped.
+
+The original rationale — that a greyed row explains why a favourite is
+missing, rather than it just being absent — did not survive contact with
+that ratio. Seeing every stopped model is the **Models tab**'s job
+(F10/F11), which is where starting one belongs anyway.
+
+Absent is also strictly safer than disabled: an unselectable row cannot
+be mis-tapped if it does not exist.
 
 **Acceptance criteria**
 
-- [ ] A stopped service is listed, visibly disabled, and cannot be chosen
-      as a thread's model.
-- [ ] Its state (`exited`, `not-created`) is distinguishable from
-      `running`.
+- [ ] A stopped service (`exited` or `not-created`) never appears in the
+      picker.
+- [ ] Filtering is in the picker UI only — `ServicesStreamRepository`,
+      `ServiceSummary` and the stream parser still carry stopped services,
+      because F10's Models tab needs them.
 
 ## F07-R3 · OpenRouter models (Should)
 
@@ -117,7 +130,9 @@ rendered anywhere in the app, or written to logs.
 
 ## Deviations from the mockup
 
-None.
+- **No stopped-models section.** Screen 07a draws stopped services as
+  greyed rows beneath the running ones. They are not rendered at all —
+  see the revised F07-R2 for why. The mockup is otherwise followed.
 
 ## Out of scope
 
@@ -128,15 +143,26 @@ None.
 ## Verification notes
 
 **Two R1 criteria are outstanding, both needing a container transition
-this project's agents are forbidden to make.** Everything else in R1, R2,
+this project's agents are forbidden to make.** Everything else in R1,
 R4 and R6 is verified on device; R3 and R5 are verified apart from the
 sub-criteria named below.
+
+R2's original criteria were verified on device *before* the requirement
+was revised — stopped services did render greyed, inert and with `exited`
+distinguishable from `not created`. That evidence is now obsolete: the
+revised R2 asserts the opposite, that they do not render at all.
 
 | Outstanding | Why it could not be closed |
 |---|---|
 | R1 · live add on start elsewhere | No agent may start or stop a container. JVM evidence only: `ServicesStreamRepositoryTest` (merge + reconnect) and `NewChatViewModelTest`'s delta-updates-the-list test. |
-| R1 · "nothing is running" empty state | `llamacpp-mimo-v2-5-q4` is the rig's only running chat-capable service and cannot be stopped to force the branch. **No test at all** — a Compose `if (running.isEmpty())` branch with no Compose UI test infrastructure in this project. |
+| R1 · empty state on screen | `llamacpp-mimo-v2-5-q4` is the rig's only running chat-capable service and cannot be stopped to force the branch. The **string** is unit-tested; how the branch *looks* is not, and cannot be — this project has no Compose UI test infrastructure. |
 | R3 · group hidden when unconfigured | Needs a dashboard with no `OPENROUTER_API_KEY`. |
+
+**The empty state matters more since R2 was revised.** With stopped
+models no longer listed, a picker with nothing running is now completely
+empty apart from the OpenRouter group — so that one string is the entire
+local half of the screen. It was a rare corner when stopped rows filled
+the sheet; it is the normal appearance of an idle rig now.
 
 **One owner action closes both R1 items:** open the model picker, stop
 `llamacpp-mimo-v2-5-q4`, watch the row grey out and the empty state
