@@ -78,6 +78,13 @@ data class ConversationDetail(
     val activeRun: ActiveRun?,
     val lastRun: LastRun?,
     val updatedAt: String?,
+    /**
+     * The enabled MCP server ids (F08). Read-only here — `mcp_servers` on the
+     * wire is a read-only array; changing it goes through
+     * `ConversationsRepository.setMcpServers`'s `mcp_servers_json` PUT
+     * (Architecture D6), never a write to this field.
+     */
+    val mcpServers: List<String> = emptyList(),
 ) {
     val isGenerating: Boolean
         get() = activeRun != null && activeRun.status in GENERATING_STATUSES

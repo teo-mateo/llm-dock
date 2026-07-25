@@ -3,6 +3,7 @@ package com.hpz.llmdockchat.feature.thread
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
+import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -106,6 +107,17 @@ data class ModelPickerState(
     val remoteModelsConfigured: Boolean = false,
 )
 
+/**
+ * The "tools for this chat" sheet (F08), open only while
+ * [ThreadUiState.Loaded.toolsPicker] is non-null. Unlike [ModelPickerState],
+ * which subscribes to a live stream for the sheet's whole time on screen,
+ * [servers] is a one-shot fetch on open ([ThreadViewModel.openToolsPicker]) —
+ * the registry doesn't change often enough mid-session to warrant a
+ * subscription, and re-fetching on every open already satisfies F08-R1's
+ * "reloading the registry makes it appear without an app update".
+ */
+data class ToolsPickerState(val servers: List<McpServerInfo> = emptyList())
+
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState
 
@@ -132,6 +144,8 @@ sealed interface ThreadUiState {
         val pendingEdit: PendingEdit? = null,
         /** Non-null exactly while the "switch model" sheet (F07-R4) is open. */
         val modelPicker: ModelPickerState? = null,
+        /** Non-null exactly while the "tools for this chat" sheet (F08) is open. */
+        val toolsPicker: ToolsPickerState? = null,
     ) : ThreadUiState {
 
         /**
@@ -150,6 +164,10 @@ sealed interface ThreadUiState {
 
         /** F07-R4's third criterion — switching is unavailable while a run is active. */
         val canSwitchModel: Boolean
+            get() = !runActive
+
+        /** F08-R4 — the sheet is unavailable while a run is active, so a toggle can never race a turn that already started. */
+        val canOpenTools: Boolean
             get() = !runActive
 
         /**

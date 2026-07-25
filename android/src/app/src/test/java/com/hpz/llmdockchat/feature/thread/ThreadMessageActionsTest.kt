@@ -13,6 +13,8 @@ import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.ConversationsRepository
+import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ChatMessage
@@ -61,6 +63,8 @@ class ThreadMessageActionsTest {
     private lateinit var repository: ChatRepository
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var conversationsRepository: ConversationsRepository
+    private lateinit var mcpServersRepository: McpServersRepository
     private val store = ViewModelStore()
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "actions-main") }
 
@@ -80,6 +84,8 @@ class ThreadMessageActionsTest {
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -103,6 +109,8 @@ class ThreadMessageActionsTest {
                     drafts = drafts,
                     servicesStreamRepository = servicesStreamRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    conversationsRepository = conversationsRepository,
+                    mcpServersRepository = mcpServersRepository,
                     coalesceWindowMs = 0,
                     titleSettleDelayMs = 1,
                 )

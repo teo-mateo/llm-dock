@@ -74,6 +74,7 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
+import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 import kotlinx.coroutines.launch
 
 /**
@@ -119,6 +120,9 @@ fun ThreadScreen(
         onOpenModelPicker = viewModel::openModelPicker,
         onCloseModelPicker = viewModel::closeModelPicker,
         onSwitchModel = { viewModel.switchModel(it.ref) },
+        onOpenToolsPicker = viewModel::openToolsPicker,
+        onCloseToolsPicker = viewModel::closeToolsPicker,
+        onToggleTool = viewModel::toggleTool,
         modifier = modifier,
     )
 }
@@ -148,6 +152,9 @@ private fun ThreadContent(
     onOpenModelPicker: () -> Unit,
     onCloseModelPicker: () -> Unit,
     onSwitchModel: (ModelOption) -> Unit,
+    onOpenToolsPicker: () -> Unit,
+    onCloseToolsPicker: () -> Unit,
+    onToggleTool: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -207,7 +214,14 @@ private fun ThreadContent(
                     }
                 },
                 actions = {
-                    if (loaded != null) ThreadOverflowMenu(canSwitchModel = loaded.canSwitchModel, onOpenModelPicker = onOpenModelPicker)
+                    if (loaded != null) {
+                        ThreadOverflowMenu(
+                            canSwitchModel = loaded.canSwitchModel,
+                            onOpenModelPicker = onOpenModelPicker,
+                            canOpenTools = loaded.canOpenTools,
+                            onOpenToolsPicker = onOpenToolsPicker,
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
             )
@@ -310,10 +324,29 @@ private fun ThreadContent(
             onDismiss = onCloseModelPicker,
         )
     }
+
+    // F08 — the same picker as F03's (screen 07b), reached from the overflow
+    // menu. Selected ids come from the conversation itself, not local sheet
+    // state: `mcpServers` is the server's own array, and `toggleTool` updates
+    // it optimistically the instant a row is tapped (F08-R2).
+    loaded?.toolsPicker?.let { picker ->
+        ToolsPickerSheet(
+            servers = picker.servers,
+            selectedIds = loaded.conversation.mcpServers.toSet(),
+            onToggle = onToggleTool,
+            onDismiss = onCloseToolsPicker,
+            hint = "Changes apply to the next message you send.",
+        )
+    }
 }
 
 @Composable
-private fun ThreadOverflowMenu(canSwitchModel: Boolean, onOpenModelPicker: () -> Unit) {
+private fun ThreadOverflowMenu(
+    canSwitchModel: Boolean,
+    onOpenModelPicker: () -> Unit,
+    canOpenTools: Boolean,
+    onOpenToolsPicker: () -> Unit,
+) {
     val colors = LlmTheme.colors
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }, modifier = Modifier.testTag("thread_overflow")) {
@@ -328,6 +361,15 @@ private fun ThreadOverflowMenu(canSwitchModel: Boolean, onOpenModelPicker: () ->
                 onOpenModelPicker()
             },
             modifier = Modifier.testTag("thread_switch_model"),
+        )
+        DropdownMenuItem(
+            text = { Text(if (canOpenTools) "Tools" else "Tools (run active)") },
+            enabled = canOpenTools,
+            onClick = {
+                expanded = false
+                onOpenToolsPicker()
+            },
+            modifier = Modifier.testTag("thread_tools"),
         )
     }
 }
@@ -743,6 +785,7 @@ private fun ThreadStreamingPreview() {
             onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
             onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
             onOpenModelPicker = {}, onCloseModelPicker = {}, onSwitchModel = {},
+            onOpenToolsPicker = {}, onCloseToolsPicker = {}, onToggleTool = {},
         )
     }
 }

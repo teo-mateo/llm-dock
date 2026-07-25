@@ -126,6 +126,8 @@ fun AppNavHost(
                             drafts = container.draftStore,
                             servicesStreamRepository = container.servicesStreamRepository,
                             openRouterModelsRepository = container.openRouterModelsRepository,
+                            conversationsRepository = container.conversationsRepository,
+                            mcpServersRepository = container.mcpServersRepository,
                         )
                     }
                 },
