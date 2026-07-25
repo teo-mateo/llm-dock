@@ -30,8 +30,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,8 +40,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,13 +59,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.core.prefs.ChatAppearance
+import com.hpz.llmdockchat.core.prefs.LocalChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
@@ -79,7 +80,6 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
-import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 import kotlinx.coroutines.launch
 
 /**
@@ -102,6 +102,18 @@ fun ThreadScreen(
     // carries the streaming turn across.
     LaunchedEffect(Unit) { viewModel.load() }
 
+    val appearance = LocalChatAppearance.current
+    val textScale by appearance.textScale.collectAsState()
+    val density = LocalDensity.current
+
+    // Every `sp` in this subtree, in one line — messages, cards, the header,
+    // the composer, and the sheets, which keep the composition locals of
+    // whatever composed them. Multiplying `fontScale` and leaving `density`
+    // alone is what makes this a *text* setting: padding, icons and touch
+    // targets do not move, so a larger size never breaks the layout.
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, density.fontScale * textScale),
+    ) {
     ThreadContent(
         state = state,
         listState = listState,
@@ -125,11 +137,15 @@ fun ThreadScreen(
         onOpenModelPicker = viewModel::openModelPicker,
         onCloseModelPicker = viewModel::closeModelPicker,
         onSwitchModel = { viewModel.switchModel(it.ref) },
-        onOpenToolsPicker = viewModel::openToolsPicker,
-        onCloseToolsPicker = viewModel::closeToolsPicker,
+        onOpenSettings = viewModel::openSettings,
+        onCloseSettings = viewModel::closeSettings,
         onToggleTool = viewModel::toggleTool,
+        onTextScaleChange = appearance::setTextScale,
+        textScale = textScale,
+        baseDensity = density,
         modifier = modifier,
     )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,9 +173,12 @@ private fun ThreadContent(
     onOpenModelPicker: () -> Unit,
     onCloseModelPicker: () -> Unit,
     onSwitchModel: (ModelOption) -> Unit,
-    onOpenToolsPicker: () -> Unit,
-    onCloseToolsPicker: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onCloseSettings: () -> Unit,
     onToggleTool: (String) -> Unit,
+    textScale: Float = ChatAppearance.DEFAULT,
+    onTextScaleChange: (Float) -> Unit = {},
+    baseDensity: Density = Density(1f, 1f),
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -191,14 +210,16 @@ private fun ThreadContent(
                 title = loaded?.conversation?.title ?: "Conversation",
                 model = loaded?.conversation?.modelRef?.displayName,
                 onBack = onBack,
-                overflow = {
+                action = {
                     if (loaded != null) {
-                        ThreadOverflowMenu(
-                            canSwitchModel = loaded.canSwitchModel,
-                            onOpenModelPicker = onOpenModelPicker,
-                            canOpenTools = loaded.canOpenTools,
-                            onOpenToolsPicker = onOpenToolsPicker,
-                        )
+                        IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
+                            Icon(
+                                DesignLabIcons.Cog,
+                                contentDescription = "Chat settings",
+                                tint = colors.fg,
+                                modifier = Modifier.size(21.dp),
+                            )
+                        }
                     }
                 },
             )
@@ -302,17 +323,23 @@ private fun ThreadContent(
         )
     }
 
-    // F08 — the same picker as F03's (screen 07b), reached from the overflow
-    // menu. Selected ids come from the conversation itself, not local sheet
-    // state: `mcpServers` is the server's own array, and `toggleTool` updates
-    // it optimistically the instant a row is tapped (F08-R2).
-    loaded?.toolsPicker?.let { picker ->
-        ToolsPickerSheet(
-            servers = picker.servers,
+    // One sheet for everything about this chat (replaces the two-item overflow
+    // menu). Selected tool ids come from the conversation itself, not local
+    // sheet state: `mcpServers` is the server's own array, and `toggleTool`
+    // updates it optimistically the instant a row is tapped (F08-R2).
+    loaded?.settings?.let { settings ->
+        ChatSettingsSheet(
+            modelName = loaded.conversation.modelRef.displayName,
+            canSwitchModel = loaded.canSwitchModel,
+            onOpenModelPicker = onOpenModelPicker,
+            servers = settings.servers,
             selectedIds = loaded.conversation.mcpServers.toSet(),
-            onToggle = onToggleTool,
-            onDismiss = onCloseToolsPicker,
-            hint = "Changes apply to the next message you send.",
+            canToggleTools = loaded.canToggleTools,
+            onToggleTool = onToggleTool,
+            textScale = textScale,
+            onTextScaleChange = onTextScaleChange,
+            baseDensity = baseDensity,
+            onDismiss = onCloseSettings,
         )
     }
 }
@@ -328,7 +355,7 @@ private fun ThreadHeader(
     title: String,
     model: String?,
     onBack: () -> Unit,
-    overflow: @Composable () -> Unit,
+    action: @Composable () -> Unit,
 ) {
     val colors = LlmTheme.colors
     Row(
@@ -366,41 +393,7 @@ private fun ThreadHeader(
                 )
             }
         }
-        overflow()
-    }
-}
-
-@Composable
-private fun ThreadOverflowMenu(
-    canSwitchModel: Boolean,
-    onOpenModelPicker: () -> Unit,
-    canOpenTools: Boolean,
-    onOpenToolsPicker: () -> Unit,
-) {
-    val colors = LlmTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    IconButton(onClick = { expanded = true }, modifier = Modifier.testTag("thread_overflow")) {
-        Icon(DesignLabIcons.MoreVertical, contentDescription = "More", tint = colors.fg, modifier = Modifier.size(20.dp))
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DropdownMenuItem(
-            text = { Text(if (canSwitchModel) "Switch model" else "Switch model (run active)") },
-            enabled = canSwitchModel,
-            onClick = {
-                expanded = false
-                onOpenModelPicker()
-            },
-            modifier = Modifier.testTag("thread_switch_model"),
-        )
-        DropdownMenuItem(
-            text = { Text(if (canOpenTools) "Tools" else "Tools (run active)") },
-            enabled = canOpenTools,
-            onClick = {
-                expanded = false
-                onOpenToolsPicker()
-            },
-            modifier = Modifier.testTag("thread_tools"),
-        )
+        action()
     }
 }
 
@@ -665,15 +658,18 @@ private fun WaitingIndicator(stopping: Boolean) {
 private fun JumpToLatest(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LlmTheme.colors
     Box(
+        // Accent-filled, not surfaceElevated: it floats over the thread, and in
+        // light mode an elevated grey circle on an almost-white page was
+        // invisible until you knew it was there.
         modifier = modifier
             .clip(CircleShape)
-            .background(colors.surfaceElevated)
+            .background(colors.accent)
             .size(44.dp)
             .testTag("jump_to_latest"),
         contentAlignment = Alignment.Center,
     ) {
         IconButton(onClick = onClick) {
-            Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.fg, modifier = Modifier.size(20.dp))
+            Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.onAccent, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -881,7 +877,7 @@ private fun ThreadStreamingPreview() {
             onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
             onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
             onOpenModelPicker = {}, onCloseModelPicker = {}, onSwitchModel = {},
-            onOpenToolsPicker = {}, onCloseToolsPicker = {}, onToggleTool = {},
+            onOpenSettings = {}, onCloseSettings = {}, onToggleTool = {},
         )
     }
 }

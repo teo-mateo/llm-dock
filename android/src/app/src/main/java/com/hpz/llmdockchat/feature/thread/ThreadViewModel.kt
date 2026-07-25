@@ -266,7 +266,9 @@ class ThreadViewModel(
     fun openModelPicker() {
         val current = loaded() ?: return
         if (current.runActive) return
-        _state.value = current.copy(modelPicker = ModelPickerState())
+        // Settings is where this is reached from; dismiss it rather than stack
+        // one modal sheet on top of another.
+        _state.value = current.copy(settings = null, modelPicker = ModelPickerState())
         modelPickerJob?.cancel()
         modelPickerJob = viewModelScope.launch {
             val openRouter = openRouterModelsRepository.list().getOrNull()
@@ -317,29 +319,30 @@ class ThreadViewModel(
     // -- tools for this chat (F08) ----------------------------------------------
 
     /**
-     * Opens the sheet and fetches the registry once (unlike [openModelPicker],
-     * no live subscription — see [ToolsPickerState]'s doc for why a one-shot
-     * fetch already satisfies F08-R1's "no app update needed" criterion).
-     * Guarded by [ThreadUiState.Loaded.canOpenTools] the same way
-     * [openModelPicker] guards on [ThreadUiState.Loaded.canSwitchModel]
-     * (F08-R4): with the sheet unreachable during a run, a toggle can never
-     * race the turn already in flight.
+     * Opens the chat-settings sheet and fetches the registry once (unlike
+     * [openModelPicker], no live subscription — see [ChatSettingsState]'s doc
+     * for why a one-shot fetch already satisfies F08-R1's "no app update
+     * needed" criterion).
+     *
+     * Unguarded, unlike [openModelPicker]: the sheet also carries the text-size
+     * control, which is unrelated to any run. F08-R4's guarantee is enforced
+     * where it actually matters — [toggleTool] refuses during a run, and the
+     * rows render disabled — rather than by hiding the whole sheet.
      */
-    fun openToolsPicker() {
+    fun openSettings() {
         val current = loaded() ?: return
-        if (!current.canOpenTools) return
-        _state.value = current.copy(toolsPicker = ToolsPickerState())
+        _state.value = current.copy(settings = ChatSettingsState())
         viewModelScope.launch {
             val servers = mcpServersRepository.list().getOrNull().orEmpty()
             val stillOpen = loaded() ?: return@launch
-            if (stillOpen.toolsPicker != null) {
-                _state.value = stillOpen.copy(toolsPicker = ToolsPickerState(servers = servers))
+            if (stillOpen.settings != null) {
+                _state.value = stillOpen.copy(settings = ChatSettingsState(servers = servers))
             }
         }
     }
 
-    fun closeToolsPicker() {
-        loaded()?.let { _state.value = it.copy(toolsPicker = null) }
+    fun closeSettings() {
+        loaded()?.let { _state.value = it.copy(settings = null) }
     }
 
     /**
@@ -357,7 +360,7 @@ class ThreadViewModel(
      */
     fun toggleTool(serverId: String) {
         val current = loaded() ?: return
-        if (!current.canOpenTools) return
+        if (!current.canToggleTools) return
         val previous = current.conversation.mcpServers
         val next = if (serverId in previous) previous - serverId else previous + serverId
         _state.value = current.copy(conversation = current.conversation.copy(mcpServers = next))

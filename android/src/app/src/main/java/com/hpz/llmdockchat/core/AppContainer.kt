@@ -26,6 +26,8 @@ import com.hpz.llmdockchat.core.net.ServerUrlStore
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.prefs.DataStoreDraftStore
+import com.hpz.llmdockchat.core.prefs.ChatAppearance
+import com.hpz.llmdockchat.core.prefs.DataStoreChatAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
@@ -120,6 +122,8 @@ class AppContainer(
     val mcpServersRepository = McpServersRepository(apiClient)
     val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)
     val newChatPreferences: NewChatPreferences = DataStoreNewChatPreferences(dataStore, appScope)
+
+    val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
 
     private val reauthenticator = CredentialReauthenticator(

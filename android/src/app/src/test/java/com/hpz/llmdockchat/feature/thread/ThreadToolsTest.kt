@@ -150,37 +150,37 @@ class ThreadToolsTest {
     // -- F08-R1 · listing --------------------------------------------------
 
     @Test
-    fun `openToolsPicker fetches the registry and populates the sheet`() = threadTest {
+    fun `openSettings fetches the registry and populates the sheet`() = threadTest {
         conversation()
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
 
         mcpServers()
-        viewModel.openToolsPicker()
+        viewModel.openSettings()
 
-        val state = viewModel.awaitState { it.toolsPicker?.servers?.isNotEmpty() == true }
-        assertEquals(8, state.toolsPicker?.servers?.size)
-        assertEquals("sympy-math", state.toolsPicker?.servers?.first()?.id)
+        val state = viewModel.awaitState { it.settings?.servers?.isNotEmpty() == true }
+        assertEquals(8, state.settings?.servers?.size)
+        assertEquals("sympy-math", state.settings?.servers?.first()?.id)
     }
 
     @Test
-    fun `closeToolsPicker dismisses the sheet`() = threadTest {
+    fun `closeSettings dismisses the sheet`() = threadTest {
         conversation()
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
 
         mcpServers()
-        viewModel.openToolsPicker()
-        viewModel.awaitState { it.toolsPicker != null }
+        viewModel.openSettings()
+        viewModel.awaitState { it.settings != null }
 
-        viewModel.closeToolsPicker()
-        assertNull((viewModel.state.value as ThreadUiState.Loaded).toolsPicker)
+        viewModel.closeSettings()
+        assertNull((viewModel.state.value as ThreadUiState.Loaded).settings)
     }
 
     @Test
-    fun `openToolsPicker is refused outright while a run is active`() = threadTest {
+    fun `settings still opens during a run, with the tool rows disabled`() = threadTest {
         conversation()
         val viewModel = viewModel()
         viewModel.load()
@@ -191,12 +191,15 @@ class ThreadToolsTest {
         viewModel.send()
         viewModel.awaitState { it.runActive }
 
-        viewModel.openToolsPicker()
+        mcpServers()
+        viewModel.openSettings()
+        val state = viewModel.awaitState { it.settings != null }
 
-        // Only the load's own GET reached the server — the guard means
-        // openToolsPicker never even tries the mcp-servers fetch.
-        assertEquals(1, server.requestCount)
-        assertNull((viewModel.state.value as ThreadUiState.Loaded).toolsPicker)
+        // The sheet opens — it also holds the text-size control, which has
+        // nothing to do with the run. F08-R4's actual guarantee is that a
+        // toggle cannot race the turn in flight, and that is enforced in
+        // `toggleTool` (see the refusal test below), not by hiding the sheet.
+        assertEquals(false, state.canToggleTools)
     }
 
     // -- F08-R2 · toggle persists, with optimistic revert on failure -------

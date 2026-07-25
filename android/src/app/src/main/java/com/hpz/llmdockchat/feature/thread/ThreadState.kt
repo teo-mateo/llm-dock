@@ -121,15 +121,18 @@ data class ModelPickerState(
 )
 
 /**
- * The "tools for this chat" sheet (F08), open only while
- * [ThreadUiState.Loaded.toolsPicker] is non-null. Unlike [ModelPickerState],
- * which subscribes to a live stream for the sheet's whole time on screen,
- * [servers] is a one-shot fetch on open ([ThreadViewModel.openToolsPicker]) —
- * the registry doesn't change often enough mid-session to warrant a
- * subscription, and re-fetching on every open already satisfies F08-R1's
- * "reloading the registry makes it appear without an app update".
+ * The chat-settings sheet, open only while [ThreadUiState.Loaded.settings] is
+ * non-null. It carries the whole MCP registry so every tool is togglable in
+ * place rather than behind a second sheet.
+ *
+ * Unlike [ModelPickerState], which subscribes to a live stream for the sheet's
+ * whole time on screen, [servers] is a one-shot fetch on open
+ * ([ThreadViewModel.openSettings]) — the registry doesn't change often enough
+ * mid-session to warrant a subscription, and re-fetching on every open already
+ * satisfies F08-R1's "reloading the registry makes it appear without an app
+ * update".
  */
-data class ToolsPickerState(val servers: List<McpServerInfo> = emptyList())
+data class ChatSettingsState(val servers: List<McpServerInfo> = emptyList())
 
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState
@@ -157,8 +160,8 @@ sealed interface ThreadUiState {
         val pendingEdit: PendingEdit? = null,
         /** Non-null exactly while the "switch model" sheet (F07-R4) is open. */
         val modelPicker: ModelPickerState? = null,
-        /** Non-null exactly while the "tools for this chat" sheet (F08) is open. */
-        val toolsPicker: ToolsPickerState? = null,
+        /** Non-null exactly while the chat-settings sheet is open. */
+        val settings: ChatSettingsState? = null,
     ) : ThreadUiState {
 
         /**
@@ -179,8 +182,14 @@ sealed interface ThreadUiState {
         val canSwitchModel: Boolean
             get() = !runActive
 
-        /** F08-R4 — the sheet is unavailable while a run is active, so a toggle can never race a turn that already started. */
-        val canOpenTools: Boolean
+        /**
+         * F08-R4 — a tool cannot be toggled while a run is active, so a toggle
+         * can never race a turn that already started. The settings sheet itself
+         * still opens during a run (it also holds the text-size control, which
+         * has nothing to do with the run); the tool rows inside it read as
+         * disabled. See F08's *Deviations*.
+         */
+        val canToggleTools: Boolean
             get() = !runActive
 
         /**

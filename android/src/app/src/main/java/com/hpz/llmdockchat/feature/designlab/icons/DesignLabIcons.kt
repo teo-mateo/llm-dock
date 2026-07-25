@@ -121,6 +121,56 @@ object DesignLabIcons {
         }
     }
 
+    val Cog: ImageVector by lazy {
+        // A filled gear with an even-odd hole, generated as an 8-tooth polygon
+        // (outer 10.0, root 7.2, hole 3.3) rather than hand-placed curves.
+        // Stroked rings with radial spokes read as a sun no matter the
+        // proportions — the toothed *silhouette* is what makes it a gear.
+        ImageVector.Builder(name = "Cog", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+            .path(fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd) {
+            moveTo(12.38f, 4.81f)
+            lineTo(13.91f, 2.18f)
+            lineTo(17.59f, 3.71f)
+            lineTo(16.82f, 6.65f)
+            lineTo(17.35f, 7.18f)
+            lineTo(20.29f, 6.41f)
+            lineTo(21.82f, 10.09f)
+            lineTo(19.19f, 11.62f)
+            lineTo(19.19f, 12.38f)
+            lineTo(21.82f, 13.91f)
+            lineTo(20.29f, 17.59f)
+            lineTo(17.35f, 16.82f)
+            lineTo(16.82f, 17.35f)
+            lineTo(17.59f, 20.29f)
+            lineTo(13.91f, 21.82f)
+            lineTo(12.38f, 19.19f)
+            lineTo(11.62f, 19.19f)
+            lineTo(10.09f, 21.82f)
+            lineTo(6.41f, 20.29f)
+            lineTo(7.18f, 17.35f)
+            lineTo(6.65f, 16.82f)
+            lineTo(3.71f, 17.59f)
+            lineTo(2.18f, 13.91f)
+            lineTo(4.81f, 12.38f)
+            lineTo(4.81f, 11.62f)
+            lineTo(2.18f, 10.09f)
+            lineTo(3.71f, 6.41f)
+            lineTo(6.65f, 7.18f)
+            lineTo(7.18f, 6.65f)
+            lineTo(6.41f, 3.71f)
+            lineTo(10.09f, 2.18f)
+            lineTo(11.62f, 4.81f)
+            close()
+            moveTo(12.00f, 8.70f)
+            curveTo(13.82f, 8.70f, 15.30f, 10.18f, 15.30f, 12.00f)
+            curveTo(15.30f, 13.82f, 13.82f, 15.30f, 12.00f, 15.30f)
+            curveTo(10.18f, 15.30f, 8.70f, 13.82f, 8.70f, 12.00f)
+            curveTo(8.70f, 10.18f, 10.18f, 8.70f, 12.00f, 8.70f)
+            close()
+            }
+            .build()
+    }
+
     val Power: ImageVector by lazy {
         strokeIcon("Power") {
             moveTo(12f, 3f); lineTo(12f, 11f)
