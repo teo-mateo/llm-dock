@@ -77,6 +77,20 @@ data class ThreadState(
     val streaming: StreamingTurn? = null,
 )
 
+/**
+ * An edit about to be confirmed (F06-R3). [discardCount] is messages
+ * **strictly after** [message] — the edited message itself is not discarded,
+ * it is replaced in place, matching what `PUT …/messages/<id>` actually does
+ * server-side (`DELETE … WHERE seq >= msg.seq`, then a fresh row is inserted
+ * for the edit itself).
+ */
+data class PendingEdit(
+    val message: ChatMessage,
+    val content: String,
+    val images: List<String>,
+    val discardCount: Int,
+)
+
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState
 
@@ -91,6 +105,16 @@ sealed interface ThreadUiState {
         val sending: Boolean = false,
         /** Surfaced once and dismissed — a 409, a failed Stop, an unreadable photo. */
         val actionError: String? = null,
+        /** Confirm-before-delete (F06-R2, F00-R9). Null until Delete is tapped in the menu. */
+        val pendingDelete: ChatMessage? = null,
+        /**
+         * The composer is prefilled with this message's text/images and Send
+         * now means "edit and resend" (F06-R3). Only ever a user message —
+         * the server rejects editing an assistant one.
+         */
+        val editingMessage: ChatMessage? = null,
+        /** Confirm-before-edit-and-resend, holding the exact discard count. */
+        val pendingEdit: PendingEdit? = null,
     ) : ThreadUiState {
 
         /**

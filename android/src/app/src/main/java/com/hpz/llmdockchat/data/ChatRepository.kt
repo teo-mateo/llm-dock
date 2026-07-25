@@ -11,6 +11,7 @@ import com.hpz.llmdockchat.core.net.parseFrame
 import com.hpz.llmdockchat.data.dto.CancelRunRequestDto
 import com.hpz.llmdockchat.data.dto.CancelRunResponseDto
 import com.hpz.llmdockchat.data.dto.ConversationDetailDto
+import com.hpz.llmdockchat.data.dto.DeleteMessageResponseDto
 import com.hpz.llmdockchat.data.dto.SendMessageRequestDto
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ConversationDetail
@@ -96,6 +97,22 @@ class ChatRepository(
             path = Endpoints.cancelActiveRun(conversationId),
             deserializer = CancelRunResponseDto.serializer(),
             body = ApiJson.encodeToString(CancelRunRequestDto(expectedRunId)),
+        )
+        Unit
+    }
+
+    /**
+     * `DELETE …/messages/<msg_id>` (F06). The server refuses with 409 while a
+     * run is active in this conversation — the in-flight turn is not yet
+     * persisted, and deleting a prior message mid-run would leave the
+     * transcript inconsistent. That surfaces here as an ordinary failure; the
+     * caller must not remove the message locally until this succeeds.
+     */
+    suspend fun deleteMessage(conversationId: String, messageId: String): Result<Unit> = apiCall {
+        api.request(
+            method = "DELETE",
+            path = Endpoints.conversationMessage(conversationId, messageId),
+            deserializer = DeleteMessageResponseDto.serializer(),
         )
         Unit
     }

@@ -1,0 +1,53 @@
+{
+  "id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+  "title": "F06-TEST multi turn",
+  "main_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+  "sidekick_service": null,
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [],
+  "active_run": null,
+  "last_run": {
+    "id": "035d944d-5105-451c-96d6-0d84d831a128",
+    "status": "completed",
+    "error": null
+  },
+  "created_at": "2026-07-25T05:54:19Z",
+  "updated_at": "2026-07-25T05:54:41Z",
+  "messages": [
+    {
+      "id": "m1",
+      "conversation_id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+      "role": "user",
+      "content": "What is a transistor?",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 1,
+      "created_at": "2026-07-25T05:54:20Z"
+    },
+    {
+      "id": "m3",
+      "conversation_id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+      "role": "user",
+      "content": "Who invented it?",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 3,
+      "created_at": "2026-07-25T05:54:30Z"
+    },
+    {
+      "id": "m4",
+      "conversation_id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+      "role": "assistant",
+      "content": "It was invented at Bell Labs in 1947.",
+      "reasoning_content": null,
+      "model_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+      "images": [],
+      "seq": 4,
+      "created_at": "2026-07-25T05:54:35Z"
+    }
+  ]
+}

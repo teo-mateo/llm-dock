@@ -64,20 +64,34 @@ import kotlin.math.min
  * one block still being written (Architecture P2 — see
  * `core/markdown/MarkdownParser.kt` for the two-phase design).
  *
- * Wrapped in one [SelectionContainer] so selection spans every block, not just
- * a single paragraph (F05-R3's second criterion).
+ * [selectable] wraps the blocks in one [SelectionContainer] so selection spans
+ * every block, not just a single paragraph (F05-R3's second criterion) — but
+ * only while the message is in F06's selection mode. A [SelectionContainer]
+ * claims long-press for its own selection-start gesture, which is exactly the
+ * gesture F06-R1 needs for the action menu; rather than fight that
+ * conflict on every message all the time, selection is off by default and
+ * turned on per-message from the long-press menu's "Select text" row
+ * (`ThreadMessages.kt`'s `LongPressableMessage`), which simultaneously stops
+ * offering the long-press gesture for as long as it's on (F06-R4's second
+ * criterion). See F06's *Deviations* for why this changes how F05-R3's
+ * already-shipped selection is invoked, not whether it works.
  */
 @Composable
-fun MarkdownBody(raw: String, modifier: Modifier = Modifier) {
+fun MarkdownBody(raw: String, modifier: Modifier = Modifier, selectable: Boolean = false) {
     val colors = LlmTheme.colors
     val blocks = remember(raw) { splitMdBlocks(raw) }
-    SelectionContainer(modifier = modifier.testTag("markdown_body")) {
+    val body: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             blocks.forEach { rawBlock ->
                 val block = remember(rawBlock, colors) { parseMdBlock(rawBlock, colors) }
                 MdBlockView(block, colors)
             }
         }
+    }
+    if (selectable) {
+        SelectionContainer(modifier = modifier.testTag("markdown_body"), content = body)
+    } else {
+        Box(modifier.testTag("markdown_body")) { body() }
     }
 }
 

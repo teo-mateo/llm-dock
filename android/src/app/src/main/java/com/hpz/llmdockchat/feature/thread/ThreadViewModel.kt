@@ -8,7 +8,9 @@ import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.model.ArtifactRecord
+import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
+import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.model.ParseWarning
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -39,6 +41,10 @@ class ThreadViewModel(
     val state: StateFlow<ThreadUiState> = _state.asStateFlow()
 
     private var streamJob: Job? = null
+
+    /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
+    private var composerBeforeEdit: String = ""
+    private var attachmentsBeforeEdit: List<String> = emptyList()
 
     fun load() {
         viewModelScope.launch {
@@ -166,12 +172,140 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(actionError = message) }
     }
 
+    // -- delete (F06-R2) -------------------------------------------------------
+
+    /** Opens the confirm. The menu itself hides Delete while a run is active; this is the second guard. */
+    fun requestDelete(message: ChatMessage) {
+        val current = loaded() ?: return
+        if (current.runActive) return
+        _state.value = current.copy(pendingDelete = message)
+    }
+
+    /** No request — the confirm's whole point is that cancelling touches nothing. */
+    fun cancelDelete() {
+        loaded()?.let { _state.value = it.copy(pendingDelete = null) }
+    }
+
+    /**
+     * The message is **not** removed optimistically — only a refetch after a
+     * confirmed 200 does that (F06-R2's second criterion: a 409 must show the
+     * server's message, not a row that quietly vanished and came back).
+     */
+    fun confirmDelete() {
+        val current = loaded() ?: return
+        val target = current.pendingDelete ?: return
+        _state.value = current.copy(pendingDelete = null)
+        viewModelScope.launch {
+            repository.deleteMessage(conversationId, target.id).fold(
+                onSuccess = { reloadConversation() },
+                onFailure = { failure ->
+                    loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
+                },
+            )
+        }
+    }
+
+    // -- edit and resend (F06-R3) ----------------------------------------------
+
+    /**
+     * The menu hides this action on an assistant message; this is the second
+     * guard (the server would 400 it anyway — F06-R3's fourth criterion).
+     */
+    fun beginEdit(message: ChatMessage) {
+        if (message.role != MessageRole.USER) return
+        val current = loaded() ?: return
+        if (current.runActive) return
+        composerBeforeEdit = current.composer
+        attachmentsBeforeEdit = current.attachments
+        _state.value = current.copy(
+            editingMessage = message,
+            composer = message.content,
+            attachments = message.images,
+            pendingEdit = null,
+            actionError = null,
+        )
+    }
+
+    /** Leaves edit mode and restores whatever was in the composer before it started. No request. */
+    fun cancelEdit() {
+        val current = loaded() ?: return
+        if (current.editingMessage == null) return
+        _state.value = current.copy(
+            editingMessage = null,
+            pendingEdit = null,
+            composer = composerBeforeEdit,
+            attachments = attachmentsBeforeEdit,
+        )
+        drafts.save(conversationId, composerBeforeEdit)
+    }
+
+    /**
+     * Send, while editing, opens the confirm instead of sending. [discardCount]
+     * is computed from what this client already has loaded — verified against
+     * the server's own truncation in `ThreadEditAndResendTest`.
+     */
+    fun requestEditConfirm() {
+        val current = loaded() ?: return
+        val target = current.editingMessage ?: return
+        if (current.composer.isBlank() && current.attachments.isEmpty()) return
+        _state.value = current.copy(
+            pendingEdit = PendingEdit(
+                message = target,
+                content = current.composer.trim(),
+                images = current.attachments,
+                discardCount = current.thread.messages.count { it.seq > target.seq },
+            ),
+        )
+    }
+
+    /** Stays in edit mode; only the confirm closes. No request. */
+    fun cancelEditConfirm() {
+        loaded()?.let { _state.value = it.copy(pendingEdit = null) }
+    }
+
+    /**
+     * `PUT …/messages/<id>` truncates from [PendingEdit.message]'s position on
+     * the server *before* the run even starts, so the local copy is truncated
+     * here too rather than left to show stale turns under the new answer for
+     * the length of the stream. If the request is rejected before any frame
+     * arrives — a 409, someone else started a run in between — [finishRun]
+     * refetches to undo this rather than trust the rollback to be correct on
+     * its own (F06-R3's last criterion).
+     */
+    fun confirmEdit() {
+        val current = loaded() ?: return
+        val edit = current.pendingEdit ?: return
+        val pending = PendingUserMessage(edit.content, edit.images)
+        val messagesBeforeEdit = current.thread.messages
+        _state.value = current.copy(
+            pendingEdit = null,
+            editingMessage = null,
+            composer = "",
+            attachments = emptyList(),
+            sending = true,
+            actionError = null,
+            thread = ThreadState(
+                messages = messagesBeforeEdit.filter { it.seq < edit.message.seq },
+                streaming = StreamingTurn(userMessage = pending),
+            ),
+        )
+        drafts.clear(conversationId)
+
+        collectRun(
+            flow = repository.editAndResend(conversationId, edit.message.id, pending.content, pending.images),
+            restoreOnEarlyFailure = pending,
+            titleBefore = current.conversation.title,
+            messagesBeforeEdit = messagesBeforeEdit,
+        )
+    }
+
     // -- the stream ----------------------------------------------------------
 
     private fun collectRun(
         flow: Flow<RunEvent>,
         restoreOnEarlyFailure: PendingUserMessage?,
         titleBefore: String,
+        messagesBeforeEdit: List<ChatMessage>? = null,
     ) {
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
@@ -244,6 +378,7 @@ class ThreadViewModel(
                 failureMessage = failureMessage,
                 restoreOnEarlyFailure = restoreOnEarlyFailure,
                 expectTitle = !titleFrameSeen && titleBefore == UNTITLED,
+                messagesBeforeEdit = messagesBeforeEdit,
             )
         }
     }
@@ -259,6 +394,7 @@ class ThreadViewModel(
         failureMessage: String?,
         restoreOnEarlyFailure: PendingUserMessage?,
         expectTitle: Boolean,
+        messagesBeforeEdit: List<ChatMessage>? = null,
     ) {
         val current = loaded()
 
@@ -268,14 +404,25 @@ class ThreadViewModel(
             // back, so dropping `streaming` leaves no phantom turn behind, and
             // the text goes back in the composer rather than vanishing.
             val restored = restoreOnEarlyFailure?.content.orEmpty()
-            _state.value = (current ?: return).copy(
+            val loadedCurrent = current ?: return
+            // `confirmEdit` truncated `messages` locally on the assumption the
+            // request would succeed. A rejection here means the server never
+            // touched anything (F06-R3's last criterion), so that truncation
+            // has to come back — a refetch proves it rather than trusting the
+            // in-memory rollback to be right on its own.
+            val messages = if (messagesBeforeEdit != null) {
+                repository.load(conversationId).getOrNull()?.messages ?: messagesBeforeEdit
+            } else {
+                loadedCurrent.thread.messages
+            }
+            _state.value = loadedCurrent.copy(
                 sending = false,
-                thread = current.thread.copy(streaming = null),
-                composer = current.composer.ifBlank { restored },
-                attachments = current.attachments.ifEmpty { restoreOnEarlyFailure?.images.orEmpty() },
+                thread = loadedCurrent.thread.copy(streaming = null, messages = messages),
+                composer = loadedCurrent.composer.ifBlank { restored },
+                attachments = loadedCurrent.attachments.ifEmpty { restoreOnEarlyFailure?.images.orEmpty() },
                 actionError = error.appError.displayMessage,
             )
-            if (current.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
+            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
             return
         }
 

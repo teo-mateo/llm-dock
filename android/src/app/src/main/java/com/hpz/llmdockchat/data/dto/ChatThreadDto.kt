@@ -103,3 +103,8 @@ data class CancelRunRequestDto(@SerialName("expected_run_id") val expectedRunId:
  */
 @Serializable
 data class CancelRunResponseDto(val run: LastRunDto? = null)
+
+/** `DELETE …/messages/<id>` → `{"ok": true}` (F06). Nothing else is returned —
+ *  the caller already knows which message it deleted. */
+@Serializable
+data class DeleteMessageResponseDto(val ok: Boolean = false)

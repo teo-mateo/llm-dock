@@ -101,8 +101,65 @@ sheet.
 
 None.
 
+## Deviations found while implementing
+
+- **Text selection is invoked through the menu, not by long-pressing text
+  directly.** F05 shipped `MarkdownBody` always wrapped in a
+  `SelectionContainer`, so a long-press on the text itself started a
+  selection. That gesture and F06-R1's long-press-for-menu compete for the
+  same touch: `SelectionContainer`'s own long-press-to-select handler and an
+  outer long-press-to-open-menu handler both sit on the same pointer stream
+  over the same glyphs, and there is no reliable way to referee between them
+  from outside Compose's text-selection internals.
+
+  Resolved by making selection opt-in per message: `MarkdownBody` (and the
+  equivalent in `UserBubble`) only mounts a `SelectionContainer` when that
+  specific message is in "selection mode", entered via the long-press menu's
+  "Select text" row and left via a "Done" pill. While a message is not in
+  that mode it has no selection gesture at all, so the long-press-to-menu
+  detector is the only thing listening and always wins; while it is in that
+  mode the long-press detector is removed entirely (not merely overridden),
+  so the selection drag is the only thing listening. Verified live on device:
+  long-press opens the menu everywhere text is *not* already in selection
+  mode, and once "Select text" is tapped, long-pressing the same text starts
+  a native selection (word highlight, drag handles, the system Copy/Select
+  all toolbar) with no menu popping up over it.
+
+  This changes *how* F05-R3's selection is invoked, not whether it works —
+  selecting a span in rendered prose and in a code block is unchanged once
+  selection mode is on. See `feature/thread/MarkdownRender.kt`'s
+  `MarkdownBody` doc comment and `feature/thread/ThreadMessages.kt`'s
+  `LongPressableMessage`.
+
 ## Out of scope
 
 - Editing assistant messages (the server rejects it — 400).
 - Reordering or moving messages between threads.
 - Retrying a failed turn as a distinct action — edit-and-resend covers it.
+
+## Verification notes
+
+**Deleting a user message does not cascade to its assistant reply.**
+`chat/routes.py:delete_message` is a single-row delete and the spec never
+asked for cascading, so the reply is left with no preceding question.
+Verified live. Recorded so a future reader does not file it as a bug.
+
+**The discard count is exact.** `create_run_with_user_message`
+(`chat/db.py:903`) does `DELETE … WHERE seq >= msg.seq` and then inserts
+a fresh row for the edit, so the edited message is destroyed and
+replaced. The client's strictly-after count is therefore what the user
+actually loses. Verified against the live backend at the first message of
+a thread (discards 3) and at the last user turn before its reply
+(discards 1).
+
+**For the owner, needing a real thumb:** drag-selecting inside a
+horizontally-scrolling code block, and long-press timing generally.
+Synthetic `input swipe` does not reproduce Compose's
+long-press-then-extend gesture — one attempt was eaten by the edge-back
+gesture.
+
+**Not caught live:** cancelling an edit-and-resend run mid-stream. The
+local model finishes faster than a Stop tap lands on this rig, so only
+the already-finished no-op case was exercised. `confirmEdit` routes
+through the same `collectRun`/`finishRun` as `send()`, which F04 covers
+for cancellation, and nothing edit-specific touches that path.

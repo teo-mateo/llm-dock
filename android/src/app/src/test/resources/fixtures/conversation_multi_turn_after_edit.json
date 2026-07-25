@@ -1,0 +1,42 @@
+{
+  "id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+  "title": "F06-TEST multi turn",
+  "main_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+  "sidekick_service": null,
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [],
+  "active_run": null,
+  "last_run": {
+    "id": "6c1e8b1a-0000-0000-0000-000000000001",
+    "status": "completed",
+    "error": null
+  },
+  "created_at": "2026-07-25T05:54:19Z",
+  "updated_at": "2026-07-25T05:54:50Z",
+  "messages": [
+    {
+      "id": "m1-edited",
+      "conversation_id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+      "role": "user",
+      "content": "What is a diode?",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 1,
+      "created_at": "2026-07-25T05:54:45Z"
+    },
+    {
+      "id": "m5",
+      "conversation_id": "39dc7f47-91da-4a0f-b731-59f507a12c1b",
+      "role": "assistant",
+      "content": "A diode is a two-terminal device that conducts current in one direction.",
+      "reasoning_content": null,
+      "model_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+      "images": [],
+      "seq": 2,
+      "created_at": "2026-07-25T05:54:49Z"
+    }
+  ]
+}

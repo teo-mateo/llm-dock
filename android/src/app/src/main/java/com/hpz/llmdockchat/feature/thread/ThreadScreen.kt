@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -102,6 +104,14 @@ fun ThreadScreen(
         onAddAttachment = viewModel::addAttachment,
         onRemoveAttachment = viewModel::removeAttachment,
         onAttachmentFailed = viewModel::reportAttachmentFailure,
+        onRequestDelete = viewModel::requestDelete,
+        onCancelDelete = viewModel::cancelDelete,
+        onConfirmDelete = viewModel::confirmDelete,
+        onBeginEdit = viewModel::beginEdit,
+        onCancelEdit = viewModel::cancelEdit,
+        onRequestEditConfirm = viewModel::requestEditConfirm,
+        onCancelEditConfirm = viewModel::cancelEditConfirm,
+        onConfirmEdit = viewModel::confirmEdit,
         modifier = modifier,
     )
 }
@@ -120,6 +130,14 @@ private fun ThreadContent(
     onAddAttachment: (String) -> Unit,
     onRemoveAttachment: (Int) -> Unit,
     onAttachmentFailed: (String) -> Unit,
+    onRequestDelete: (ChatMessage) -> Unit,
+    onCancelDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+    onBeginEdit: (ChatMessage) -> Unit,
+    onCancelEdit: () -> Unit,
+    onRequestEditConfirm: () -> Unit,
+    onCancelEditConfirm: () -> Unit,
+    onConfirmEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -196,12 +214,16 @@ private fun ThreadContent(
                         // Your own turn always pulls the view to the bottom,
                         // even if you had scrolled up to re-read something.
                         following = true
-                        onSend()
+                        // Send, while editing a message, means "edit and
+                        // resend" — F06-R3 — which opens the discard-count
+                        // confirm rather than posting straight away.
+                        if (it.editingMessage != null) onRequestEditConfirm() else onSend()
                     },
                     onStop = onStop,
                     onAddAttachment = onAddAttachment,
                     onRemoveAttachment = onRemoveAttachment,
                     onAttachmentFailed = onAttachmentFailed,
+                    onCancelEdit = onCancelEdit,
                 )
             }
         },
@@ -215,9 +237,53 @@ private fun ThreadContent(
                     listState = listState,
                     following = following,
                     onFollowingChange = { following = it },
+                    onRequestDelete = onRequestDelete,
+                    onBeginEdit = onBeginEdit,
                 )
             }
         }
+    }
+
+    // F00-R9 / F06-R2 / F06-R3 — each destructive action confirms, naming the
+    // specific target: the delete dialog has nothing else to name (there is
+    // one message), the edit dialog states the discard count in numbers.
+    loaded?.pendingDelete?.let {
+        AlertDialog(
+            onDismissRequest = onCancelDelete,
+            modifier = Modifier.testTag("delete_confirm_dialog"),
+            title = { Text("Delete this message?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = onConfirmDelete, modifier = Modifier.testTag("confirm_delete")) {
+                    Text("Delete", color = colors.red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelDelete, modifier = Modifier.testTag("cancel_delete")) { Text("Cancel") }
+            },
+        )
+    }
+    loaded?.pendingEdit?.let { edit ->
+        val body = if (edit.discardCount == 0) {
+            "This message will be resent."
+        } else {
+            val plural = if (edit.discardCount == 1) "message" else "messages"
+            "This will discard ${edit.discardCount} $plural after it and start a new answer."
+        }
+        AlertDialog(
+            onDismissRequest = onCancelEditConfirm,
+            modifier = Modifier.testTag("edit_confirm_dialog"),
+            title = { Text("Edit and resend?") },
+            text = { Text(body, modifier = Modifier.testTag("edit_confirm_body")) },
+            confirmButton = {
+                TextButton(onClick = onConfirmEdit, modifier = Modifier.testTag("confirm_edit")) { Text("Resend") }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelEditConfirm, modifier = Modifier.testTag("cancel_edit_confirm")) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
@@ -227,6 +293,8 @@ private fun LoadedThread(
     listState: LazyListState,
     following: Boolean,
     onFollowingChange: (Boolean) -> Unit,
+    onRequestDelete: (ChatMessage) -> Unit,
+    onBeginEdit: (ChatMessage) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val streaming = state.thread.streaming
@@ -280,6 +348,11 @@ private fun LoadedThread(
         listState.scrollToItem(count - 1)
     }
 
+    // F06-R1/R4 — one menu open at a time, one message in selection mode at a
+    // time. Neither survives navigating away; there is nothing to restore.
+    var menuMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var selectionModeMessageId by remember { mutableStateOf<String?>(null) }
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -289,7 +362,11 @@ private fun LoadedThread(
                 .testTag("thread_list"),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(state.thread.messages)
+            items(
+                messages = state.thread.messages,
+                selectionModeMessageId = selectionModeMessageId,
+                onLongPress = { menuMessage = it },
+            )
 
             streaming?.let { turn ->
                 turn.userMessage?.let { pending ->
@@ -327,11 +404,44 @@ private fun LoadedThread(
                 },
             )
         }
+
+        if (selectionModeMessageId != null) {
+            SelectionDonePill(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                onClick = { selectionModeMessageId = null },
+            )
+        }
+    }
+
+    menuMessage?.let { message ->
+        MessageActionsSheet(
+            message = message,
+            canEdit = message.role == MessageRole.USER && !state.runActive,
+            // F06-R2's third criterion — Delete is not offered at all while a
+            // run is active, on top of the server's own 409 guard.
+            canDelete = !state.runActive,
+            onDismiss = { menuMessage = null },
+            onSelectText = { selectionModeMessageId = message.id },
+            onEditAndResend = { onBeginEdit(message) },
+            onDelete = { onRequestDelete(message) },
+        )
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.items(messages: List<ChatMessage>) {
-    items(messages.size, key = { messages[it].id }) { index -> MessageBubble(messages[index]) }
+private fun androidx.compose.foundation.lazy.LazyListScope.items(
+    messages: List<ChatMessage>,
+    selectionModeMessageId: String?,
+    onLongPress: (ChatMessage) -> Unit,
+) {
+    items(messages.size, key = { messages[it].id }) { index ->
+        val message = messages[index]
+        LongPressableMessage(
+            message = message,
+            selectionActive = selectionModeMessageId != null,
+            selected = selectionModeMessageId == message.id,
+            onLongPress = onLongPress,
+        )
+    }
 }
 
 private fun Int?.orZero(): Int = this ?: 0
@@ -442,6 +552,7 @@ private fun ThreadComposer(
     onAddAttachment: (String) -> Unit,
     onRemoveAttachment: (Int) -> Unit,
     onAttachmentFailed: (String) -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
     val colors = LlmTheme.colors
     val context = LocalContext.current
@@ -486,6 +597,31 @@ private fun ThreadComposer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // F06-R3 — Send now means "edit and resend" (wired one level up); this
+        // says so, and gives a way out that touches nothing (F06-R3's third
+        // criterion: cancelling leaves the thread byte-identical).
+        if (state.editingMessage != null) {
+            Row(
+                Modifier.fillMaxWidth().testTag("editing_banner"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Editing message",
+                    color = colors.accent,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "Cancel",
+                    color = colors.subtle,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .clickable(onClick = onCancelEdit)
+                        .testTag("editing_cancel"),
+                )
+            }
+        }
+
         if (state.attachments.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("attachment_strip")) {
                 state.attachments.forEachIndexed { index, dataUrl ->
@@ -559,6 +695,8 @@ private fun ThreadStreamingPreview() {
             listState = rememberLazyListState(),
             onBack = {}, onComposerChange = {}, onSend = {}, onStop = {}, onRetry = {},
             onDismissError = {}, onAddAttachment = {}, onRemoveAttachment = {}, onAttachmentFailed = {},
+            onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
+            onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
         )
     }
 }
