@@ -7,6 +7,8 @@ import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.ConversationsRepository
+import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ArtifactRecord
@@ -24,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * One thread: load it, send a turn, render the stream, stop it (F04).
@@ -39,6 +43,8 @@ class ThreadViewModel(
     private val drafts: DraftStore,
     private val servicesStreamRepository: ServicesStreamRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
+    private val conversationsRepository: ConversationsRepository,
+    private val mcpServersRepository: McpServersRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
 ) : ViewModel() {
@@ -50,6 +56,26 @@ class ThreadViewModel(
 
     /** The model picker's own live subscription — separate from [streamJob], which is the chat run's. */
     private var modelPickerJob: Job? = null
+
+    /**
+     * Serialises the tools writes (F08-R2). Every toggle PUTs the **whole**
+     * server-id array, so two writes in flight at once is a lost-update race:
+     * the earlier one can reach the server last and leave it holding a list
+     * the sheet no longer shows. Cancelling the earlier coroutine does not
+     * help — `ApiClient` runs a blocking call, and a request already handed
+     * to the server cannot be recalled — so the writes are ordered instead.
+     * The last one queued is the last one sent, and it carries the newest
+     * selection, so the server deterministically ends up agreeing with the UI.
+     */
+    private val toolsWriteLock = Mutex()
+
+    /**
+     * Which toggle is the newest, so a *stale* write's failure is not acted
+     * on: a later write carries the whole array and will establish the right
+     * state on its own, and reverting to a superseded selection would fight
+     * it. Only the most recent toggle's own outcome reverts the sheet.
+     */
+    private var latestToolsToggle = 0L
 
     /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
     private var composerBeforeEdit: String = ""
@@ -238,6 +264,72 @@ class ThreadViewModel(
                     loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
                 },
             )
+        }
+    }
+
+    // -- tools for this chat (F08) ----------------------------------------------
+
+    /**
+     * Opens the sheet and fetches the registry once (unlike [openModelPicker],
+     * no live subscription — see [ToolsPickerState]'s doc for why a one-shot
+     * fetch already satisfies F08-R1's "no app update needed" criterion).
+     * Guarded by [ThreadUiState.Loaded.canOpenTools] the same way
+     * [openModelPicker] guards on [ThreadUiState.Loaded.canSwitchModel]
+     * (F08-R4): with the sheet unreachable during a run, a toggle can never
+     * race the turn already in flight.
+     */
+    fun openToolsPicker() {
+        val current = loaded() ?: return
+        if (!current.canOpenTools) return
+        _state.value = current.copy(toolsPicker = ToolsPickerState())
+        viewModelScope.launch {
+            val servers = mcpServersRepository.list().getOrNull().orEmpty()
+            val stillOpen = loaded() ?: return@launch
+            if (stillOpen.toolsPicker != null) {
+                _state.value = stillOpen.copy(toolsPicker = ToolsPickerState(servers = servers))
+            }
+        }
+    }
+
+    fun closeToolsPicker() {
+        loaded()?.let { _state.value = it.copy(toolsPicker = null) }
+    }
+
+    /**
+     * `PUT /api/chat/conversations/<id>` with `mcp_servers_json` (F08-R2) —
+     * the same call [com.hpz.llmdockchat.feature.newchat.NewChatViewModel]
+     * uses for a brand-new thread, reused here for an existing one.
+     *
+     * Applied optimistically — the switch in the sheet must flip the instant
+     * it's tapped, not after a round trip — and rolled back to exactly what
+     * it was before this toggle if the write fails, so the UI never claims a
+     * state the server doesn't have (F08-R2's fourth criterion). No refetch
+     * on success: the writes are ordered by [toolsWriteLock], so the array
+     * this client wrote last is already what the server has — a refetch
+     * would cost a round trip to learn what it just told the server.
+     */
+    fun toggleTool(serverId: String) {
+        val current = loaded() ?: return
+        if (!current.canOpenTools) return
+        val previous = current.conversation.mcpServers
+        val next = if (serverId in previous) previous - serverId else previous + serverId
+        _state.value = current.copy(conversation = current.conversation.copy(mcpServers = next))
+
+        val toggle = ++latestToolsToggle
+        viewModelScope.launch {
+            toolsWriteLock.withLock {
+                conversationsRepository.setMcpServers(conversationId, next).fold(
+                    onSuccess = {},
+                    onFailure = { failure ->
+                        if (toggle != latestToolsToggle) return@fold
+                        val latest = loaded() ?: return@fold
+                        _state.value = latest.copy(
+                            conversation = latest.conversation.copy(mcpServers = previous),
+                            actionError = failure.appError.displayMessage,
+                        )
+                    },
+                )
+            }
         }
     }
 

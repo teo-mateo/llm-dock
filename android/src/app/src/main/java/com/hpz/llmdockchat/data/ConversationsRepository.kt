@@ -27,7 +27,7 @@ import kotlinx.serialization.encodeToString
  * thread count, so the simplicity of one request wins (see F02's
  * *Deviations*).
  */
-class ConversationsRepository(private val api: ApiClient) {
+open class ConversationsRepository(private val api: ApiClient) {
 
     suspend fun list(): Result<List<ConversationSummary>> = apiCall {
         api.get(
@@ -77,8 +77,12 @@ class ConversationsRepository(private val api: ApiClient) {
      * `PUT /api/chat/conversations/<id>` with `mcp_servers_json` (F03-R3) —
      * the only way to set tools on a thread just created via [create], which
      * does not accept the field.
+     *
+     * `open` so a test can stand in a write whose completion order it
+     * controls — the lost-update race this replaces was invisible to a
+     * MockWebServer test, which answers in the order it was handed responses.
      */
-    suspend fun setMcpServers(id: String, serverIds: List<String>): Result<Unit> = apiCall {
+    open suspend fun setMcpServers(id: String, serverIds: List<String>): Result<Unit> = apiCall {
         api.request(
             method = "PUT",
             path = Endpoints.conversation(id),

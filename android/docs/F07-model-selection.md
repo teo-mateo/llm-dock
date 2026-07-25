@@ -142,9 +142,9 @@ rendered anywhere in the app, or written to logs.
 
 ## Verification notes
 
-**Two R1 criteria are outstanding, both needing a container transition
-this project's agents are forbidden to make.** Everything else in R1,
-R4 and R6 is verified on device; R3 and R5 are verified apart from the
+**One R1 criterion is outstanding**, needing a container transition this
+project's agents are forbidden to make. Everything else in R1, R4 and R6
+is verified on device; R3 and R5 are verified apart from the
 sub-criteria named below.
 
 R2's original criteria were verified on device *before* the requirement
@@ -155,8 +155,17 @@ revised R2 asserts the opposite, that they do not render at all.
 | Outstanding | Why it could not be closed |
 |---|---|
 | R1 · live add on start elsewhere | No agent may start or stop a container. JVM evidence only: `ServicesStreamRepositoryTest` (merge + reconnect) and `NewChatViewModelTest`'s delta-updates-the-list test. |
-| R1 · empty state on screen | `llamacpp-mimo-v2-5-q4` is the rig's only running chat-capable service and cannot be stopped to force the branch. The **string** is unit-tested; how the branch *looks* is not, and cannot be — this project has no Compose UI test infrastructure. |
 | R3 · group hidden when unconfigured | Needs a dashboard with no `OPENROUTER_API_KEY`. |
+
+**R1's empty state is now CLOSED** (2026-07-25), verified on device rather
+than only by unit test. It could not be forced — no agent may stop the
+rig's last running model — but the owner stopped
+`llamacpp-mimo-v2-5-q4` while working on something else, and the branch
+was screenshotted in that window: the exact string, in amber, with no
+Stopped section and the OpenRouter group still listed beneath it.
+
+That leaves **one** outstanding R1 criterion, the live add on a container
+starting elsewhere.
 
 **The empty state matters more since R2 was revised.** With stopped
 models no longer listed, a picker with nothing running is now completely
@@ -164,10 +173,11 @@ empty apart from the OpenRouter group — so that one string is the entire
 local half of the screen. It was a rare corner when stopped rows filled
 the sheet; it is the normal appearance of an idle rig now.
 
-**One owner action closes both R1 items:** open the model picker, stop
-`llamacpp-mimo-v2-5-q4`, watch the row grey out and the empty state
-appear, then start it again and watch it return — all without touching
-refresh.
+**What closes the last R1 item:** with the model picker open, start any
+chat-capable container and watch it appear in the list without touching
+refresh. Since the revised R2 hides stopped services, a stop/start is now
+a *clearer* test than it was — the sheet goes from empty to populated,
+rather than one row changing shade.
 
 **The engine-prefix filter is load-bearing, not redundant with `kind`.**
 `open-webui` is genuinely `running` with `kind: "chat"` on this rig, so

@@ -13,6 +13,8 @@ import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.ConversationsRepository
+import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -63,6 +65,8 @@ class ThreadViewModelTest {
     private lateinit var repository: ChatRepository
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var conversationsRepository: ConversationsRepository
+    private lateinit var mcpServersRepository: McpServersRepository
     private val store = ViewModelStore()
 
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "test-main") }
@@ -84,6 +88,8 @@ class ThreadViewModelTest {
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(servicesTransport)
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -112,6 +118,8 @@ class ThreadViewModelTest {
                     drafts = drafts,
                     servicesStreamRepository = servicesStreamRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    conversationsRepository = conversationsRepository,
+                    mcpServersRepository = mcpServersRepository,
                     // Zero so a flush is still scheduled through the
                     // dispatcher; the window itself is asserted in
                     // ThreadCoalescingTest.
@@ -610,6 +618,8 @@ class ThreadViewModelTest {
                     drafts,
                     servicesStreamRepository,
                     openRouterModelsRepository,
+                    conversationsRepository,
+                    mcpServersRepository,
                     coalesceWindowMs,
                     titleSettleDelayMs = 1,
                 )

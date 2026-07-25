@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -44,9 +42,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ManagedPrompt
-import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
+import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 
 /**
  * Screen 03 · New chat sheet (F03). A pushed screen rather than a modal, as
@@ -396,64 +394,6 @@ private fun PromptPickerSheet(
                 )
             }
             item { Spacer(Modifier.height(16.dp)) }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ToolsPickerSheet(
-    servers: List<McpServerInfo>,
-    selectedIds: Set<String>,
-    onToggle: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LlmTheme.colors
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = colors.surface,
-        modifier = Modifier.testTag("tools_picker_sheet"),
-    ) {
-        // C3: the sheet draws behind the navigation bar, so without
-        // this its last row is unreachable under the 44 dp button bar.
-        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            items(servers, key = { it.id }) { server ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onToggle(server.id) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .testTag("tool_option_${server.id}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Checkbox(
-                        checked = server.id in selectedIds,
-                        onCheckedChange = { onToggle(server.id) },
-                        colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(server.name, color = colors.fg, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            server.description,
-                            color = colors.muted,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-            item {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("tools_picker_done"),
-                ) {
-                    Text("Done", color = colors.accent)
-                }
-            }
         }
     }
 }

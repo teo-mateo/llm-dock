@@ -53,4 +53,24 @@ class ChatThreadMapperTest {
 
         assertEquals(emptyList<Any>(), domain.messages.single().artifacts)
     }
+
+    /** F08 reads the enabled tool set through this same mapper (Architecture D6). */
+    @Test
+    fun `mcp_servers is carried through to the domain model`() {
+        val dto = ConversationDetailDto(
+            id = "c1",
+            title = "t",
+            mainService = "llamacpp-laguna-s-2.1-q4",
+            mcpServers = listOf("sympy-math", "websearch"),
+        )
+
+        assertEquals(listOf("sympy-math", "websearch"), dto.toDomain().mcpServers)
+    }
+
+    @Test
+    fun `a missing mcp_servers key maps to an empty list`() {
+        val dto = ConversationDetailDto(id = "c1", title = "t", mainService = "llamacpp-laguna-s-2.1-q4")
+
+        assertEquals(emptyList<String>(), dto.toDomain().mcpServers)
+    }
 }
