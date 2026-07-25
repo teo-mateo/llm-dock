@@ -25,6 +25,7 @@ import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.baseUrl
 import com.hpz.llmdockchat.testing.readFixture
+import com.hpz.llmdockchat.testing.quiesceAndRelease
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -96,8 +97,8 @@ class ThreadViewModelTest {
     fun tearDown() {
         store.clear()
         server.close()
+        mainExecutor.quiesceAndRelease()
         Dispatchers.resetMain()
-        mainExecutor.shutdownNow()
     }
 
     private fun conversation(fixture: String = "conversation_completed.json") =

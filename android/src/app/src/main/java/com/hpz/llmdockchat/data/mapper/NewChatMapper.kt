@@ -10,7 +10,16 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ServiceSummary
 
 fun ServiceDto.toDomain(): ServiceSummary =
-    ServiceSummary(name = name, status = status, kind = kind, port = hostPort, favorite = favorite)
+    ServiceSummary(
+        name = name,
+        status = status,
+        kind = kind,
+        port = hostPort,
+        favorite = favorite,
+        exitCode = exitCode,
+        modelSizeStr = modelSizeStr,
+        createdAt = created,
+    )
 
 fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder)
 

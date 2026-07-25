@@ -55,10 +55,44 @@ class ServicesStreamRepository(private val transport: SseTransport) {
         }
     }
 
+    /**
+     * Same reconnecting loop as [stream], but surfaces connection health
+     * alongside the list (F10-R1's fifth criterion): [ServicesStreamState.stale]
+     * flips true the moment a connection attempt fails, so the Models tab can
+     * show "reconnecting" instead of going quiet, and flips back to false as
+     * soon as the retry lands — which, since `services_stream` always opens
+     * with a fresh snapshot, *is* the "falls back to a snapshot fetch" the
+     * requirement asks for; a second, separate REST call would read the same
+     * `get_docker_services()` data over again for no benefit.
+     *
+     * Additive on purpose — [stream] is untouched, so F03/F07/F09's callers
+     * see no behaviour change.
+     */
+    fun streamWithStatus(reconnectDelayMs: Long = RECONNECT_DELAY_MS): Flow<ServicesStreamState> = flow {
+        var current = emptyList<ServiceSummary>()
+        while (true) {
+            try {
+                transport.open(StreamRequest(path = Endpoints.SERVICES_STREAM))
+                    .collect { payload ->
+                        current = mergeServiceEvent(current, parseServiceStreamFrame(payload))
+                        emit(ServicesStreamState(current, stale = false))
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                emit(ServicesStreamState(current, stale = true))
+            }
+            delay(reconnectDelayMs)
+        }
+    }
+
     companion object {
         const val RECONNECT_DELAY_MS = 2_000L
     }
 }
+
+/** [services] is the last list known, [stale] true while a dropped connection is being retried. */
+data class ServicesStreamState(val services: List<ServiceSummary>, val stale: Boolean)
 
 /**
  * Pure and separately tested. A [ServiceStreamEvent.Snapshot] replaces

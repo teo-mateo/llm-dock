@@ -24,6 +24,7 @@ import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.ScriptedSseTransport
 import com.hpz.llmdockchat.testing.baseUrl
 import com.hpz.llmdockchat.testing.readFixture
+import com.hpz.llmdockchat.testing.quiesceAndRelease
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -95,8 +96,8 @@ class ThreadReconnectTeardownTest {
     fun tearDown() {
         store.clear()
         server.close()
+        mainExecutor.quiesceAndRelease()
         Dispatchers.resetMain()
-        mainExecutor.shutdownNow()
     }
 
     private fun conversation(fixture: String) =

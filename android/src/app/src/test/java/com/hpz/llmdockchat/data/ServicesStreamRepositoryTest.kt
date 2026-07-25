@@ -4,6 +4,7 @@ import com.hpz.llmdockchat.core.net.ServiceStreamEvent
 import com.hpz.llmdockchat.data.dto.ServiceDto
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.testing.FakeSseTransport
+import com.hpz.llmdockchat.testing.ScriptedSseTransport
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -80,5 +81,60 @@ class ServicesStreamRepositoryTest {
 
         assertEquals("running", emissions[0][0].status)
         assertEquals("exited", emissions[1][0].status)
+    }
+
+    // -- streamWithStatus (F10-R1's fifth criterion) ----------------------------
+
+    @Test
+    fun `streamWithStatus is not stale while the connection is up`() = runTest {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            """{"type":"snapshot","data":{"services":[
+                {"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301,"favorite":false}
+            ],"total":1,"running":1,"stopped":0}}""",
+        )
+        val repository = ServicesStreamRepository(transport)
+
+        val emission = withTimeout(5_000) { repository.streamWithStatus().take(1).toList() }.single()
+
+        assertEquals(false, emission.stale)
+        assertEquals(listOf(running), emission.services)
+    }
+
+    /**
+     * A dropped connection must not freeze the last-known list — it is
+     * re-emitted immediately with `stale = true` carrying the last snapshot
+     * forward, rather than the collector hearing nothing until the next
+     * successful reconnect (F10-R1's fifth criterion: "falls back to a
+     * snapshot fetch and shows a stale indicator rather than freezing").
+     * Against a `stream()`-only design (before `streamWithStatus` existed)
+     * this drop would simply never be observed at all — no emission, no
+     * indicator, exactly the "freezing" the requirement rules out. A single
+     * [ScriptedSseTransport.Leg] carries both halves of one real connection:
+     * a snapshot arrives, then the same connection drops mid-stream.
+     */
+    @Test
+    fun `a dropped connection is re-emitted immediately as stale, with the last known list intact`() = runTest {
+        val transport = ScriptedSseTransport()
+        transport.script(
+            ScriptedSseTransport.Leg(
+                payloads = listOf(
+                    """{"type":"snapshot","data":{"services":[
+                        {"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301,"favorite":false}
+                    ],"total":1,"running":1,"stopped":0}}""",
+                ),
+                failWith = RuntimeException("connection reset"),
+            ),
+        )
+        transport.whenScriptRunsOut = { ScriptedSseTransport.Leg(park = true) }
+        val repository = ServicesStreamRepository(transport)
+
+        val emissions = withTimeout(5_000) { repository.streamWithStatus(reconnectDelayMs = 1L).take(2).toList() }
+
+        assertEquals(false, emissions[0].stale)
+        assertEquals(listOf(running), emissions[0].services)
+
+        assertEquals("the drop must be surfaced, not swallowed silently", true, emissions[1].stale)
+        assertEquals("the last known list is carried forward, not blanked", listOf(running), emissions[1].services)
     }
 }

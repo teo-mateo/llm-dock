@@ -76,6 +76,13 @@ class NewChatViewModel(
     private val conversationsRepository: ConversationsRepository,
     private val preferences: NewChatPreferences,
     private val servicesStreamRepository: ServicesStreamRepository,
+    /**
+     * F10-R6's "New chat from a model": the Models tab preselects a specific
+     * running service, taking priority over whatever [preferences] last
+     * remembered. Null for every other entry into this sheet (F02's FAB,
+     * F07-R4's mid-thread switch does not use this screen at all).
+     */
+    private val preselectedServiceName: String? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NewChatUiState>(NewChatUiState.Loading)
@@ -119,7 +126,20 @@ class NewChatViewModel(
 
             var selectedModel: ModelOption? = null
             var unavailable = false
-            if (rememberedRaw != null) {
+
+            // F10-R6: a preselected service wins outright over whatever was
+            // remembered — that is the entire point of tapping "New chat"
+            // from a specific row on the Models tab. If it stopped running
+            // between the tap and this load (unlikely, but possible), fall
+            // through to the ordinary remembered-model resolution below
+            // rather than silently landing on a dead service.
+            val preselectedMatch = preselectedServiceName
+                ?.let { name -> localServices.find { it.serviceName == name } }
+                ?.takeIf { it.isRunning }
+
+            if (preselectedMatch != null) {
+                selectedModel = preselectedMatch
+            } else if (rememberedRaw != null) {
                 when (val ref = parseModelRef(rememberedRaw)) {
                     is ModelRef.Local -> {
                         val match = localServices.find { it.serviceName == ref.serviceName }

@@ -19,6 +19,7 @@ import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.FakeTokenStore
+import com.hpz.llmdockchat.testing.quiesceAndRelease
 import com.hpz.llmdockchat.testing.baseUrl
 import com.hpz.llmdockchat.testing.readFixture
 import kotlinx.coroutines.CompletableDeferred
@@ -94,8 +95,8 @@ class ThreadToolsTest {
     fun tearDown() {
         store.clear()
         server.close()
+        mainExecutor.quiesceAndRelease()
         Dispatchers.resetMain()
-        mainExecutor.shutdownNow()
     }
 
     private fun conversation(fixture: String = "conversation_completed.json") =
@@ -366,7 +367,15 @@ private class OutOfOrderMcpWrites(api: ApiClient) : ConversationsRepository(api)
     override suspend fun setMcpServers(id: String, serverIds: List<String>): Result<Unit> =
         withContext(NonCancellable) {
             val index = nextIndex.getAndIncrement()
-            gates[index].await()
+            // Bounded on purpose. NonCancellable models "a request already on
+            // the wire is not recalled by cancelling its coroutine" — which
+            // also means `store.clear()` cannot kill this, so an unbounded
+            // await on a gate the test never releases parks a coroutine on
+            // Dispatchers.Main *forever*. The next class to call
+            // `Dispatchers.setMain` then dies with "Main is used concurrently
+            // with setting it", and the flake gets blamed on that class.
+            // Reproduced at ~1 run in 5 across the full suite.
+            runCatching { withTimeout(GATE_TIMEOUT_MS) { gates[index].await() } }
             stored = serverIds
             settled.send(index)
             Result.success(Unit)
@@ -385,5 +394,11 @@ private class OutOfOrderMcpWrites(api: ApiClient) : ConversationsRepository(api)
         const val GATE_COUNT = 8
         /** A deadlock guard, not a timing assumption — every await here is signalled, not slept on. */
         const val AWAIT_TIMEOUT_MS = 10_000L
+
+        /**
+         * Ceiling on a *non-cancellable* park, so it must be shorter than the
+         * teardown's `awaitTermination` or a leaked write outlives the class.
+         */
+        const val GATE_TIMEOUT_MS = 2_000L
     }
 }
