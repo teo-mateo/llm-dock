@@ -163,3 +163,57 @@ app must not call them. A bad tap must not be able to corrupt
 
 - Anything that writes `services.json`.
 - Benchmarks (`/api/benchmarks/*`).
+
+## Verification notes
+
+All Must criteria verified, most on device against the live rig. The
+review reproduced the implementer's findings independently rather than
+trusting them.
+
+**One shared confirm path, structurally.** `ServiceControlController` is
+a single sealed state machine (Idle / Confirming / InFlight / Failed).
+Both `ModelsViewModel` (the row actions, F10-R5) and
+`ModelDetailViewModel` hold an instance and only ever call
+`requestStart` / `requestStop` / `confirm` / `dismiss`. Verified by grep:
+the repository's `start`/`stop` are reached from exactly one place,
+inside `confirm()`. There is no second path that could fire without a
+confirm — which is the property F10-R5's "same confirmation path"
+criterion actually wanted.
+
+`InFlight` refuses a second request; the test asserts the state is
+unchanged after a second `requestStart`, not that a button looked
+disabled.
+
+**Dropping the VRAM guard was exercised for real, twice.** With the GPU
+at 94.1 / 95.6 GB, starting `llamacpp-gemma-4-26b-a4b-it-q8` (27 GB) from
+the app failed in ~0.6 s with exit code 139 — a genuine `cudaMalloc
+failed: out of memory` in `docker logs`. The app never showed "running"
+at any point; it went straight back to "Exited (code 139)" live, with no
+manual refresh. This is the behaviour the owner asked for in place of a
+guard.
+
+**The start confirm's wording was corrected.** It said *"you'll see the
+error here"*. It will not: the screen only ever learns the **exit code**.
+The reason lives in the container's log, which is exactly the split
+F11-R5's own reasoning assumed. Now says the status shows the exit code
+and the reason is in the logs.
+
+**A long `model_path` broke the detail rows** — the label had `weight(1f)`
+and the value none, so "Model path" wrapped one character per line. The
+same failure mode as F10's GPU card, and neither was caught by a JVM test,
+because layout is not what they measure. Fixed by swapping which side
+takes the weight; confirmed on device against a real
+`/hf-cache/hub/models--unsloth--…` path.
+
+**Skipped, both Should**
+
+| Item | Why |
+|---|---|
+| R6 · Restart | Deprioritised. A clean extension of the same controller if it is ever wanted. |
+| R7 · Readiness | **Blocked on F12.** Readiness means watching the container log for the server's listening line, and no log-stream client exists until F12 builds one. Picked up there. |
+
+**Rig state after review:** unchanged. `llamacpp-laguna-s-2.1-q4` and
+`open-webui` running as before; `llamacpp-gemma-4-26b-a4b-it-q8` still
+exited, its exit code moved 0 → 139 by the deliberate OOM tests. Every
+action went through the app's own confirm → start/stop, never `docker`
+directly and never a configuration endpoint.

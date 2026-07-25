@@ -20,6 +20,11 @@ object Destinations {
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
 
+    /** F11 — pushed on top of [TABS] without the bottom bar, same as [THREAD]. */
+    private const val MODEL_DETAIL_ROUTE = "model_detail"
+    const val MODEL_DETAIL = "$MODEL_DETAIL_ROUTE/{serviceName}"
+    fun modelDetail(serviceName: String) = "$MODEL_DETAIL_ROUTE/$serviceName"
+
     /**
      * F02-R8's primary action, built out in F03. [NEW_CHAT] is the route
      * *pattern* registered with `composable(...)` — it must be the string

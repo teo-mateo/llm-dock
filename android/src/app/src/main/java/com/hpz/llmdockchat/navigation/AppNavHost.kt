@@ -30,6 +30,8 @@ import com.hpz.llmdockchat.feature.connect.ConnectScreen
 import com.hpz.llmdockchat.feature.connect.ConnectViewModel
 import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
 import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
+import com.hpz.llmdockchat.feature.models.ModelDetailScreen
+import com.hpz.llmdockchat.feature.models.ModelDetailViewModel
 import com.hpz.llmdockchat.feature.models.ModelsScreen
 import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
@@ -127,9 +129,32 @@ fun AppNavHost(
                         onNewChatFromModel = { serviceName ->
                             navController.navigate(Destinations.newChatWithService(serviceName))
                         },
+                        onOpenDetail = { serviceName ->
+                            navController.navigate(Destinations.modelDetail(serviceName))
+                        },
                     )
                 }
             }
+        }
+
+        composable(Destinations.MODEL_DETAIL) { backStackEntry ->
+            val serviceName = backStackEntry.arguments?.getString("serviceName").orEmpty()
+            val viewModel: ModelDetailViewModel = viewModel(
+                // Keyed by service so opening a second model's detail from the
+                // first (via Back then a different row) never shares state,
+                // same reasoning as THREAD's key.
+                key = "model_detail_$serviceName",
+                factory = viewModelFactory {
+                    initializer {
+                        ModelDetailViewModel(
+                            serviceName = serviceName,
+                            servicesRepository = container.servicesRepository,
+                            servicesStreamRepository = container.servicesStreamRepository,
+                        )
+                    }
+                },
+            )
+            ModelDetailScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
 
         composable(Destinations.THREAD) { backStackEntry ->

@@ -94,7 +94,7 @@ class ModelsViewModelTest {
     }
 
     @Test
-    fun `running services are grouped first, stopped second, each in the payload's host-port order`() {
+    fun `running first, stopped second, favourites first within each, host-port order otherwise`() {
         server.enqueue(MockResponse.Builder().body(readFixture("services_list.json")).build())
         val viewModel = viewModel()
 
@@ -102,11 +102,33 @@ class ModelsViewModelTest {
         val state = settled(viewModel) as ModelsUiState.Loaded
 
         // Fixture: open-webui (3300) and llamacpp-gemma-4-26b-a4b-it-q8 (3301)
-        // are the only two "running" rows; everything else is exited/not-created.
-        assertEquals(listOf("open-webui", "llamacpp-gemma-4-26b-a4b-it-q8"), state.running.map { it.name })
+        // are the only two "running" rows; everything else is exited or
+        // not-created. gemma is `favorite: true` and open-webui is not, so
+        // gemma leads despite the higher port — favourites-first wins over
+        // host-port order, and host-port order is only the tiebreak.
+        assertEquals(listOf("llamacpp-gemma-4-26b-a4b-it-q8", "open-webui"), state.running.map { it.name })
         assertEquals(19, state.stopped.size)
-        assertEquals("vllm-qwen3-6-27b-fp8", state.stopped.first().name) // host_port 3302, first stopped row
         assertEquals(false, state.stale)
+    }
+
+    @Test
+    fun `host-port order still holds between rows of equal favourite-ness`() {
+        server.enqueue(MockResponse.Builder().body(readFixture("services_list.json")).build())
+        val viewModel = viewModel()
+
+        viewModel.start()
+        val state = settled(viewModel) as ModelsUiState.Loaded
+
+        // The sort is `sortedByDescending { favorite }`, which is *stable* —
+        // that stability is the whole reason a service changing status does
+        // not shuffle its neighbours (F10-R2's second criterion). Assert it
+        // rather than trust the name: within each favourite-ness band the
+        // server's own host_port order must survive.
+        listOf(state.running, state.stopped).forEach { group ->
+            group.groupBy { it.favorite }.values.forEach { band ->
+                assertEquals(band.map { it.port }.sorted(), band.map { it.port })
+            }
+        }
     }
 
     @Test
