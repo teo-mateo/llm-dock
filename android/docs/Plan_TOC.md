@@ -182,7 +182,7 @@ Mark completed features `[DONE]` in the Status column.
 | F06 | Message actions | [F06-message-actions.md](F06-message-actions.md) | 06b | [DONE] |
 | F07 | Model selection | [F07-model-selection.md](F07-model-selection.md) | 07a | [WIP] — two R1 criteria need a container transition, see the feature file |
 | F08 | Per-conversation tools | [F08-conversation-tools.md](F08-conversation-tools.md) | 07b | [DONE] — R5 (Should) unexercised, see the feature file |
-| F09 | Run continuity and reattachment | [F09-run-continuity.md](F09-run-continuity.md) | 08a, 08b | [ ] |
+| F09 | Run continuity and reattachment | [F09-run-continuity.md](F09-run-continuity.md) | 08a, 08b | [DONE] — R5's failed-while-away is fixture-only, see the feature file |
 | F10 | Models tab — list and GPU header | [F10-models-list.md](F10-models-list.md) | 10a | [ ] |
 | F11 | Model detail, start and stop | [F11-model-detail-and-control.md](F11-model-detail-and-control.md) | 10b, 10d | [ ] |
 | F12 | Container logs | [F12-container-logs.md](F12-container-logs.md) | 10c | [ ] |

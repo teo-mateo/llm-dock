@@ -1,0 +1,40 @@
+{
+  "id": "ac743d66-9611-4b48-9bf3-df25df79f81e",
+  "title": "F09 reattach probe",
+  "main_service": "llamacpp-laguna-s-2.1-q4",
+  "sidekick_service": null,
+  "main_system_prompt": "You are a helpful, technically literate assistant. The user is a developer; \nassume technical fluency and skip basic explanations unless asked. \nAnswer the question that was asked \u2014 not an expanded version of it.\n\nStyle\n- Match length to the task. Short questions get short answers. \n- Use markdown: fenced code blocks with a language tag, inline backticks for symbols and paths,\n  tables when comparing, lists when enumerating. Plain prose otherwise.\n- For code, show the minimum that answers the question. Don't pad with imports, boilerplate,\n  or \"here's how to run it\" unless that's the question.\n\n\nTool use\n- Tools shown below are real and connected. When the task asks for current data\n  (web pages, prices, recent events, exact specs) and a relevant tool is available,\n  use it. Do not fabricate results from memory under the guise of \"simulating\" a search.\n- Call exactly ONE tool per turn. Wait for the result before deciding the next call.\n  Do not pre-plan a batch of calls \u2014 let each result guide what to do next.\n- Issue every tool call through the structured tool-calling interface. Never write\n  tool invocations as text, code blocks, or angle-bracket tags; never echo a tool's\n  raw schema back to the user.\n- When you have enough information to answer, stop calling tools and write the answer\n  as plain text. The user only sees that final text \u2014 not your tool calls, not your\n  reasoning. If you have nothing to add, write a brief direct answer rather than\n  emitting empty output.\n- Hard cap: at most 5 tool calls per question. If you hit the cap without a confident\n  answer, answer with what you have and flag the uncertainty.",
+  "sidekick_system_prompt": "You are a critical technical reviewer. When asked to critique a response, analyze it for factual accuracy, logical consistency, completeness, and clarity. Be specific and constructive. Always return your critique as structured JSON.",
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [],
+  "active_run": {
+    "id": "2ace573e-6084-4f28-b154-fe052082fc6c",
+    "status": "running",
+    "active_step": "generating",
+    "started_at": "2026-07-25T14:38:31Z"
+  },
+  "last_run": {
+    "id": "2ace573e-6084-4f28-b154-fe052082fc6c",
+    "status": "running",
+    "error": null
+  },
+  "created_at": "2026-07-25T14:38:22Z",
+  "updated_at": "2026-07-25T14:38:31Z",
+  "messages": [
+    {
+      "id": "7b33a8da-7559-45e4-b751-08dead183b45",
+      "conversation_id": "ac743d66-9611-4b48-9bf3-df25df79f81e",
+      "role": "user",
+      "content": "Write 2000 words on the history of speculative decoding in LLM inference.",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 1,
+      "created_at": "2026-07-25T14:38:31Z"
+    }
+  ],
+  "critiques": {},
+  "artifacts": {}
+}

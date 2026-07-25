@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -456,6 +457,11 @@ private fun LoadedThread(
             )
 
             streaming?.let { turn ->
+                // Screen 08a's banner. Only on a turn this client did not
+                // start — it explains why an answer is already half written.
+                if (turn.reattached && !turn.unconfirmed) {
+                    item(key = "reattached_banner") { ReattachedBanner() }
+                }
                 turn.userMessage?.let { pending ->
                     item(key = "pending_user") {
                         MessageBubble(pending.asMessage())
@@ -549,9 +555,68 @@ private fun StreamingBubble(turn: StreamingTurn) {
         modifier = Modifier.testTag("streaming_turn"),
         trailing = {
             turn.toolCalls.forEach { ToolCallCard(it) }
-            if (!turn.hasVisibleOutput && !turn.unconfirmed) WaitingIndicator(turn.stopping)
+            when {
+                // F09-R4's fourth criterion. The text above is real and stays,
+                // but the turn is *not* finished — the run is still going on the
+                // server and this client has lost the thread of it. Shown even
+                // when there is output, which is exactly when a plain silence
+                // would read as "done".
+                turn.reconnecting -> ReconnectingIndicator()
+                !turn.hasVisibleOutput && !turn.unconfirmed -> WaitingIndicator(turn.stopping)
+            }
         },
     )
+}
+
+/**
+ * Screen 08a. Says why an answer is already in progress in a thread that was
+ * just opened — the run outlived the app, which is the whole point of F09.
+ */
+@Composable
+private fun ReattachedBanner() {
+    val colors = LlmTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.accent.copy(alpha = 0.13f))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+            .testTag("reattached_banner"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("↻", color = colors.accent, style = MaterialTheme.typography.labelLarge)
+        Column {
+            Text(
+                "Picked up where you left off",
+                color = colors.fg,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "This answer kept generating while you were away.",
+                color = colors.muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+/** Screen 08b's honest offline line, on the turn rather than as a modal. */
+@Composable
+private fun ReconnectingIndicator() {
+    val colors = LlmTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("reconnecting_indicator"),
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = colors.amber)
+        Text(
+            "Reconnecting… the run is still going on the server.",
+            color = colors.amber,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
 }
 
 @Composable

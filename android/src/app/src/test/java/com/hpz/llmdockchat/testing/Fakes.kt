@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.Collections
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -156,6 +157,75 @@ class FakeSseTransport : SseTransport {
             }
         } else {
             parked.complete(Unit)
+        }
+    }
+}
+
+/**
+ * A [SseTransport] that serves a *different* scripted connection to each `open`
+ * — which [FakeSseTransport] cannot, and which is the whole subject of F09: a
+ * run is streamed, the socket drops, and the client reattaches to the same run
+ * over a second connection that replays it from the beginning.
+ *
+ * Nothing here resolves on its own. A [Leg] emits its payloads and then does
+ * exactly one of: throw, park until cancelled, or complete — and every step can
+ * be held on an explicit gate, so a test decides the ordering rather than
+ * discovering whichever one the scheduler happened to pick.
+ */
+class ScriptedSseTransport : SseTransport {
+
+    /** One connection's behaviour, in order. */
+    class Leg(
+        val payloads: List<String> = emptyList(),
+        /** Awaited before anything is emitted. Null emits straight away. */
+        val openGate: CompletableDeferred<Unit>? = null,
+        /** Awaited after the payloads, before [tailPayloads] / [failWith] / [park]. */
+        val endGate: CompletableDeferred<Unit>? = null,
+        /**
+         * Emitted after [endGate] on the *same* connection — the live tail that
+         * follows a mid-run subscribe's replay chunk.
+         */
+        val tailPayloads: List<String> = emptyList(),
+        /** Thrown once the payloads are out — how a mid-stream drop arrives. */
+        val failWith: Throwable? = null,
+        /** Stay connected and silent until the collector goes away. */
+        val park: Boolean = false,
+    ) {
+        /** Completed when this leg's `open` is collected. */
+        val opened = CompletableDeferred<Unit>()
+
+        /** Completed once every payload has been emitted. */
+        val drained = CompletableDeferred<Unit>()
+
+        /** Completed only if a parked leg was cancelled — proof of teardown. */
+        val cancelled = CompletableDeferred<Unit>()
+    }
+
+    val requests: MutableList<StreamRequest> = Collections.synchronizedList(mutableListOf())
+
+    private val legs = ArrayDeque<Leg>()
+
+    /** Served once [legs] runs out: a connection that never says anything. */
+    var whenScriptRunsOut: () -> Leg = { Leg(park = true) }
+
+    fun script(vararg next: Leg) = apply { synchronized(legs) { legs += next } }
+
+    override fun open(request: StreamRequest): Flow<String> = flow {
+        val leg = synchronized(legs) { legs.removeFirstOrNull() } ?: whenScriptRunsOut()
+        requests += request
+        leg.opened.complete(Unit)
+        leg.openGate?.await()
+        leg.payloads.forEach { emit(it) }
+        leg.drained.complete(Unit)
+        leg.endGate?.await()
+        leg.tailPayloads.forEach { emit(it) }
+        leg.failWith?.let { throw it }
+        if (leg.park) {
+            try {
+                awaitCancellation()
+            } finally {
+                leg.cancelled.complete(Unit)
+            }
         }
     }
 }
