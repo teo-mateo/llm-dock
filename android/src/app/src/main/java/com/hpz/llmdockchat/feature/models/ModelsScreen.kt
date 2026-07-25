@@ -3,6 +3,8 @@ package com.hpz.llmdockchat.feature.models
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +80,7 @@ fun ModelsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val actionState by viewModel.actionState.collectAsState()
+    val refreshing by viewModel.refreshing.collectAsState()
     LaunchedEffect(Unit) { viewModel.start() }
 
     // F10-R3's third criterion: these two run only while this composable is
@@ -101,6 +107,8 @@ fun ModelsScreen(
         onRequestStop = viewModel::requestStop,
         onDismissAction = viewModel::dismissAction,
         onConfirmAction = viewModel::confirmAction,
+        refreshing = refreshing,
+        onRefresh = viewModel::refresh,
         modifier = modifier,
     )
 }
@@ -118,10 +126,13 @@ private fun ModelsContent(
     onRequestStop: (String) -> Unit,
     onDismissAction: () -> Unit,
     onConfirmAction: () -> Unit,
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
     val loaded = state as? ModelsUiState.Loaded
+    val pullState = rememberPullToRefreshState()
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
     Scaffold(
         modifier = modifier.testTag("models_screen"),
@@ -135,7 +146,26 @@ private fun ModelsContent(
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        // Wraps every state, not just the loaded one: a failed initial load is
+        // exactly when someone reaches for a pull. That only works because
+        // FailedState scrolls — PullToRefreshBox drives off nested scroll, so
+        // a child that cannot scroll never dispatches the gesture at all and
+        // the pull silently does nothing.
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize().padding(padding).testTag("models_pull_refresh"),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    state = pullState,
+                    isRefreshing = refreshing,
+                    containerColor = colors.surfaceElevated,
+                    color = colors.accent,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            },
+            state = pullState,
+        ) {
             when (state) {
                 is ModelsUiState.Loading -> LoadingState()
                 is ModelsUiState.Failed -> FailedState(state.message, onRetry)
@@ -330,6 +360,18 @@ private fun GpuHeaderCard(gpu: GpuState) {
             .testTag("gpu_header"),
     ) {
         when (gpu) {
+            is GpuState.Connecting -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.testTag("gpu_connecting"),
+            ) {
+                CircularProgressIndicator(
+                    color = colors.accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(15.dp),
+                )
+                Text("Reading GPU stats…", color = colors.muted, style = MaterialTheme.typography.bodyMedium)
+            }
             is GpuState.Available -> gpu.gpus.forEachIndexed { index, card ->
                 if (index > 0) Spacer(Modifier.height(12.dp))
                 GpuCard(card)
@@ -746,7 +788,13 @@ private fun EmptyState() {
 private fun FailedState(message: String, onRetry: () -> Unit) {
     val colors = LlmTheme.colors
     Column(
-        Modifier.fillMaxSize().padding(32.dp).testTag("models_failed"),
+        // verticalScroll with nothing to scroll: it is here so the column
+        // dispatches nested scroll and pull-to-refresh works on this screen.
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp)
+            .testTag("models_failed"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

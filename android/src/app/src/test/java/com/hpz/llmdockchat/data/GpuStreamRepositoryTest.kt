@@ -24,7 +24,7 @@ import org.junit.Test
 class GpuStreamRepositoryTest {
 
     @Test
-    fun `stream opens unavailable, then available once a frame with gpus lands`() = runTest {
+    fun `stream opens connecting, then available once a frame with gpus lands`() = runTest {
         val transport = FakeSseTransport()
         transport.payloads = listOf(
             """{"gpus": [{"index": 0, "name": "RTX PRO 6000", "memory": {"total": 97887, "used": 61440},
@@ -35,7 +35,11 @@ class GpuStreamRepositoryTest {
 
         val emissions = withTimeout(5_000) { repository.stream().take(2).toList() }
 
-        assertTrue("first emission is unavailable before any frame arrives", emissions[0] is GpuState.Unavailable)
+        // Connecting, not Unavailable: no frame has arrived, which is not the
+        // same claim as "this host has no usable GPU" and must not render as
+        // one. F10-R3's fourth criterion — never "available" with stale zeros —
+        // is unchanged; this is the other half of the same distinction.
+        assertEquals(GpuState.Connecting, emissions[0])
         val available = emissions[1] as GpuState.Available
         assertEquals(1, available.gpus.size)
         assertEquals(61440, available.gpus[0].memoryUsedMiB)
@@ -52,7 +56,7 @@ class GpuStreamRepositoryTest {
 
         val emissions = withTimeout(5_000) { repository.stream().take(2).toList() }
 
-        assertTrue(emissions[0] is GpuState.Unavailable)
+        assertEquals(GpuState.Connecting, emissions[0])
         assertTrue(emissions[1] is GpuState.Unavailable)
     }
 
