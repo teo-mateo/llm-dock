@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Full-resolution camera captures, handed to the camera app by Uri and
+         read back once before being discarded (see ImageAttachments.kt). -->
+    <cache-path name="camera-captures" path="camera-captures/" />
+</paths>

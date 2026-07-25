@@ -172,7 +172,11 @@ private fun CodeBlockView(block: MdBlock.CodeBlock, colors: LlmColors) {
                     .testTag("code_copy"),
             )
         }
-        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp)) {
+        // C4: the padding goes *outside* the scroll container, so the viewport
+        // ends at the inset and long lines are clipped there. Inside it, the
+        // padding scrolled along with the text and code slid out under the
+        // block's own left edge.
+        Box(Modifier.fillMaxWidth().padding(10.dp).horizontalScroll(rememberScrollState())) {
             Text(
                 block.code,
                 color = colors.fg,
@@ -314,7 +318,7 @@ fun ArtifactCard(artifact: ArtifactRecord, modifier: Modifier = Modifier) {
         when (artifact.type) {
             "svg" -> SvgArtifactBody(artifact, colors)
             "image" -> ImageArtifactBody(artifact, colors)
-            "code" -> Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp)) {
+            "code" -> Box(Modifier.fillMaxWidth().padding(10.dp).horizontalScroll(rememberScrollState())) {
                 Text(artifact.content, color = colors.fg, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
             }
             "html" -> HtmlArtifactPlaceholder(colors)
@@ -417,13 +421,51 @@ private fun SvgWebView(svg: String, zoomable: Boolean, modifier: Modifier = Modi
                 settings.setSupportZoom(zoomable)
                 settings.builtInZoomControls = zoomable
                 settings.displayZoomControls = false
+                // Obey the viewport meta in [svgDocument] rather than assuming
+                // the 980 px desktop width a WebView guesses for a page without
+                // one — that guess is half of why the diagram sat off-frame.
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                isVerticalScrollBarEnabled = false
+                isHorizontalScrollBarEnabled = false
             }
         },
         update = { webView ->
-            val html = "<html><body style=\"margin:0;display:flex;align-items:center;justify-content:center;\">$svg</body></html>"
-            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            val html = svgDocument(svg, zoomable)
+            // `update` runs on every recomposition, and a reload resets the
+            // user's zoom — so only reload when the document actually changed.
+            if (webView.tag != html) {
+                webView.tag = html
+                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            }
         },
     )
+}
+
+/**
+ * Fits the diagram to its frame.
+ *
+ * Schemdraw sizes its root element in **points** (`width="173.168pt"`) and puts
+ * the real geometry in the `viewBox`. Nothing in the old wrapper related that
+ * to the size of the frame, so a drawing wider than the phone was simply
+ * cropped — and because the body centred it, the overflow went off *both*
+ * edges and the left of the circuit could not be reached at any zoom. Capping
+ * both dimensions at 100% and letting the viewBox supply the aspect ratio is
+ * what makes it fit; `width/height:auto` is needed to stop the `pt` attributes
+ * winning.
+ */
+private fun svgDocument(svg: String, zoomable: Boolean): String {
+    val scaling = if (zoomable) "initial-scale=1,minimum-scale=1,maximum-scale=6" else "initial-scale=1,user-scalable=no"
+    return """
+        <html><head>
+        <meta name="viewport" content="width=device-width,$scaling">
+        <style>
+          html,body{margin:0;height:100%;}
+          body{display:flex;align-items:center;justify-content:center;}
+          svg{max-width:100%;max-height:100%;width:auto;height:auto;display:block;}
+        </style>
+        </head><body>$svg</body></html>
+    """.trimIndent()
 }
 
 /** F05-R6's fourth criterion — tap an image, get it full-screen with pinch-zoom. */

@@ -335,6 +335,35 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
                     i = end + 1
                 }
             }
+            // Must be tested before the `[` case, or the `!` falls through to
+            // the default branch as a literal and the rest is picked up as an
+            // ordinary link — which is exactly what shipped: `!` followed by
+            // blue underlined alt text pointing at a URL the phone cannot
+            // fetch. Every schemdraw turn hit it, because the tool emits a
+            // Markdown image next to the artifact that already draws it.
+            c == '!' && i + 1 < n && raw[i + 1] == '[' -> {
+                val image = matchImage(raw, i)
+                if (image == null) {
+                    append(c); i++
+                } else {
+                    // Inline images are not rendered on the phone (F05-R6
+                    // covers artifacts, not arbitrary remote images), so this
+                    // is a caption, not a control: no link, nothing to tap,
+                    // and no pretence that the picture is one tap away. With
+                    // no alt text there is nothing to caption, so the literal
+                    // source stands in — this parser never silently strips.
+                    withStyle(imageRefStyle(colors)) {
+                        append(
+                            if (image.text.isBlank()) {
+                                raw.substring(i, image.end)
+                            } else {
+                                "Image: ${image.text}"
+                            },
+                        )
+                    }
+                    i = image.end
+                }
+            }
             c == '[' -> {
                 val link = matchLink(raw, i)
                 if (link == null) {
@@ -359,6 +388,12 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
 private val ESCAPABLE = "\\`*_{}[]()#+-.!$>~".toSet()
 
 private data class LinkMatch(val text: String, val url: String, val end: Int)
+
+/**
+ * `![alt](url)` — the same shape as a link, one character further along.
+ * [LinkMatch.end] is still an index into `raw`, so it spans the leading `!`.
+ */
+private fun matchImage(raw: String, start: Int): LinkMatch? = matchLink(raw, start + 1)
 
 /** `[text](url)`. Anything short of the full shape falls through as literal `[`. */
 private fun matchLink(raw: String, start: Int): LinkMatch? {
@@ -401,4 +436,10 @@ private fun codeSpanStyle(colors: LlmColors) = SpanStyle(
 private fun mathSpanStyle(colors: LlmColors) = SpanStyle(
     fontFamily = FontFamily.Monospace,
     color = colors.muted,
+)
+
+/** Reads as a figure caption — deliberately not the accent colour a link uses. */
+private fun imageRefStyle(colors: LlmColors) = SpanStyle(
+    color = colors.subtle,
+    fontStyle = FontStyle.Italic,
 )

@@ -270,3 +270,23 @@ persists the reply. Reattachment is F09.
   re-sending — that is F06).
 - Streaming to more than one thread at a time in the UI. Multiple runs can
   exist server-side; the app renders the one that is open.
+
+## Known gap — attachments are not persisted (F04-R9)
+
+Composer **text** is persisted to DataStore via `DraftStore`, so it
+survives process death and the 401 round-trip F00-R3 describes.
+**Attachments are not** — they live only in `ThreadViewModel._state`
+(`addAttachment`). Anything that destroys the ViewModel, most commonly
+process death while the system photo picker is in the foreground, brings
+the text back and drops the images with no indication. Observed once on a
+real device: a one-character draft returned and its image did not, and
+the turn was sent without it.
+
+Not fixed in the real-device fix pass, deliberately. Once the ViewModel
+is gone nothing knows an attachment existed, so it cannot even be
+reported — the fix is to persist attachments, and at ~140 KB per base64
+data URL that is wrong for DataStore (which rewrites the whole file) and
+risks `TransactionTooLarge` in `SavedStateHandle`. The right shape is
+files in `cacheDir` keyed by conversation, with the draft record pointing
+at them. That is a small feature, not a fix — schedule it rather than
+bolting it on.

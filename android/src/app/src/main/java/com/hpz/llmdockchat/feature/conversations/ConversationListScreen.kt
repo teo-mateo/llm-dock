@@ -131,6 +131,8 @@ private fun ConversationListContent(
         loaded?.actionError?.let { snackbarHost.showSnackbar(it) }
     }
 
+    FollowNewConversations(loaded?.conversations, listState)
+
     Scaffold(
         modifier = modifier.testTag("conversation_list_screen"),
         containerColor = colors.app,
@@ -181,6 +183,11 @@ private fun ConversationListContent(
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize().testTag("conversation_list"),
+                                // Fix pass A5: the FAB floats over the list, so
+                                // without this the last conversation's title
+                                // sits under it and its timestamp is
+                                // unreachable — there is no further scroll.
+                                contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
                             ) {
                                 items(state.conversations, key = { it.id }) { item ->
                                     ConversationRow(
@@ -230,6 +237,38 @@ private fun ConversationListContent(
             },
             onDismiss = { pendingBatchDelete = false },
         )
+    }
+}
+
+/**
+ * Fix pass A3 — "the conversation I just started is not in the list".
+ *
+ * The refresh on return does happen; what goes wrong is where the new row
+ * lands. `LazyColumn` anchors its viewport on the first visible item's *key*,
+ * so when a refresh prepends a conversation the anchor stays put and the new
+ * row is laid out above the fold, with nothing on screen changing. The reader
+ * concludes the thread was lost.
+ *
+ * So: when the head of the list changes, work out how many rows were prepended
+ * and, if the viewport was sitting inside that region — i.e. at or near the top
+ * — put it back at the top. Someone who has scrolled down to read older threads
+ * keeps their place.
+ */
+@Composable
+private fun FollowNewConversations(conversations: List<ConversationSummary>?, listState: LazyListState) {
+    val head = conversations?.firstOrNull()?.id
+    var previousHead by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(head) {
+        val previous = previousHead
+        previousHead = head
+        if (previous == null || head == null || head == previous || conversations == null) {
+            return@LaunchedEffect
+        }
+        val prepended = conversations.indexOfFirst { it.id == previous }
+        if (prepended > 0 && listState.firstVisibleItemIndex <= prepended) {
+            listState.scrollToItem(0)
+        }
     }
 }
 
@@ -341,7 +380,10 @@ private fun ConversationRowBody(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                EngineChip(item.modelRef, item.engine)
+                // C2: the model name is the part that gives way when the row
+                // is narrow. Un-weighted, the chip took the whole width and
+                // the live badge next to it ellipsised to "● genera…".
+                EngineChip(item.modelRef, item.engine, Modifier.weight(1f, fill = false))
                 if (item.isGenerating) GeneratingIndicator(item.activeRun)
             }
         }
@@ -351,10 +393,10 @@ private fun ConversationRowBody(
 }
 
 @Composable
-private fun EngineChip(modelRef: ModelRef, engine: Engine) {
+private fun EngineChip(modelRef: ModelRef, engine: Engine, modifier: Modifier = Modifier) {
     val chip = LlmTheme.colors.chipColors(engine)
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(chip.background)
             .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -370,6 +412,9 @@ private fun EngineChip(modelRef: ModelRef, engine: Engine) {
         )
     }
 }
+
+/** Extended FAB (56 dp) plus the Scaffold's own 16 dp margin. */
+private val FAB_CLEARANCE = 80.dp
 
 private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
     Engine.LLAMA_CPP -> engineLlamaCpp

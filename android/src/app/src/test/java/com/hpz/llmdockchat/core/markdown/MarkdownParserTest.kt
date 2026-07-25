@@ -87,6 +87,42 @@ class MarkdownParserTest {
         assertEquals("this [is not a link at all", text.text)
     }
 
+    // -- images ---------------------------------------------------------------
+
+    @Test
+    fun `an image renders as a caption, not a stray bang and a link`() {
+        val text = parseInline("![RC low-pass filter](http://x/a.svg)", colors)
+        assertEquals("Image: RC low-pass filter", text.text)
+        assertEquals(0, text.getLinkAnnotations(0, text.length).size)
+    }
+
+    @Test
+    fun `an image with no alt text keeps its literal source`() {
+        val text = parseInline("![](http://x/a.svg)", colors)
+        assertEquals("![](http://x/a.svg)", text.text)
+        assertEquals(0, text.getLinkAnnotations(0, text.length).size)
+    }
+
+    @Test
+    fun `an image inside a sentence leaves the surrounding prose alone`() {
+        val text = parseInline("before ![a diagram](http://x/a.svg) after", colors)
+        assertEquals("before Image: a diagram after", text.text)
+    }
+
+    @Test
+    fun `an escaped bang before a link stays a link`() {
+        val text = parseInline("""\![the docs](https://example.com)""", colors)
+        assertEquals("!the docs", text.text)
+        assertEquals(1, text.getLinkAnnotations(0, text.length).size)
+    }
+
+    @Test
+    fun `a bang that is not an image is literal`() {
+        val text = parseInline("wow! [the docs](https://example.com)", colors)
+        assertEquals("wow! the docs", text.text)
+        assertEquals(1, text.getLinkAnnotations(0, text.length).size)
+    }
+
     // -- lists ---------------------------------------------------------------
 
     @Test

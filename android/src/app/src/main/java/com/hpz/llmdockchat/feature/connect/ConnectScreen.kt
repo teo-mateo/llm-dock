@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -100,8 +100,16 @@ private fun ConnectContent(
         modifier = modifier
             .fillMaxSize()
             .background(colors.app)
+            // Connect has no Scaffold, so it owns its own insets (fix pass
+            // A2 — nothing above it supplies any). `safeDrawing` is the union
+            // of the system bars, the cutout and the IME, and it sits
+            // *outside* the scroll so the keyboard shrinks the viewport and
+            // the form scrolls inside it. Inside the scroll — where
+            // `imePadding()` used to be — it only lengthened the content,
+            // which on a window the OEM also resizes for the IME meant the
+            // keyboard was paid for twice (fix pass B1).
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
-            .imePadding()
             .padding(horizontal = 22.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

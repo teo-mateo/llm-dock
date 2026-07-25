@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.thread
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
@@ -10,13 +11,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,13 +42,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -123,6 +133,11 @@ private fun ThreadContent(
         }
     }
 
+    // Whether the thread follows the tail of the answer. Hoisted here because
+    // both halves of the screen move it: the list turns it off when the reader
+    // scrolls up, and sending turns it back on. See [LoadedThread].
+    var following by remember { mutableStateOf(true) }
+
     Scaffold(
         modifier = modifier.testTag("thread_screen"),
         containerColor = colors.app,
@@ -166,6 +181,30 @@ private fun ThreadContent(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
             )
         },
+        // The composer is the Scaffold's bottom bar rather than the last child
+        // of the body (fix pass B1). That is what keeps the keyboard from
+        // destroying the screen: Scaffold measures the bar first and gives the
+        // thread what is left, instead of a Column handing the composer an
+        // unbounded height and squeezing the list — and the app bar — to
+        // nothing.
+        bottomBar = {
+            loaded?.let {
+                ThreadComposer(
+                    state = it,
+                    onComposerChange = onComposerChange,
+                    onSend = {
+                        // Your own turn always pulls the view to the bottom,
+                        // even if you had scrolled up to re-read something.
+                        following = true
+                        onSend()
+                    },
+                    onStop = onStop,
+                    onAddAttachment = onAddAttachment,
+                    onRemoveAttachment = onRemoveAttachment,
+                    onAttachmentFailed = onAttachmentFailed,
+                )
+            }
+        },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (state) {
@@ -174,12 +213,8 @@ private fun ThreadContent(
                 is ThreadUiState.Loaded -> LoadedThread(
                     state = state,
                     listState = listState,
-                    onComposerChange = onComposerChange,
-                    onSend = onSend,
-                    onStop = onStop,
-                    onAddAttachment = onAddAttachment,
-                    onRemoveAttachment = onRemoveAttachment,
-                    onAttachmentFailed = onAttachmentFailed,
+                    following = following,
+                    onFollowingChange = { following = it },
                 )
             }
         }
@@ -190,26 +225,47 @@ private fun ThreadContent(
 private fun LoadedThread(
     state: ThreadUiState.Loaded,
     listState: LazyListState,
-    onComposerChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onStop: () -> Unit,
-    onAddAttachment: (String) -> Unit,
-    onRemoveAttachment: (Int) -> Unit,
-    onAttachmentFailed: (String) -> Unit,
+    following: Boolean,
+    onFollowingChange: (Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val streaming = state.thread.streaming
 
-    // "At the bottom" is the whole auto-scroll rule (F04-R3): follow the tail
-    // while the user is there, stop the instant they scroll up, resume when
-    // they come back. No separate follow flag to get out of sync.
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val tailSignal = streaming?.content?.length.orZero() +
         streaming?.reasoning?.length.orZero() +
         state.thread.messages.size
 
-    LaunchedEffect(tailSignal) {
-        if (atBottom && listState.layoutInfo.totalItemsCount > 0) {
+    // F04-R3. Following the tail has to be a *mode*, not a measurement taken
+    // when the effect happens to run. Deriving it from `canScrollForward`
+    // loses a race with the stream: a delta makes the list scrollable one
+    // frame before the effect that would have scrolled it runs, so the first
+    // delta reads "not at the bottom", declines to scroll, and the thread
+    // never follows again. That is fix pass A1 — it passed on the emulator
+    // only because the taller viewport delayed the first overflow.
+    //
+    // The mode is turned off by the reader dragging the content downwards
+    // (nested scroll below), and turned back on by the list settling at its
+    // end — whether that is the ↓ button, a manual scroll back, or the
+    // auto-scroll itself.
+    LaunchedEffect(atBottom) {
+        if (atBottom) onFollowingChange(true)
+    }
+
+    val stopFollowingOnDragBack = remember(onFollowingChange) {
+        object : NestedScrollConnection {
+            // Only gestures reach a nested-scroll connection; `scrollToItem`
+            // and `animateScrollToItem` do not dispatch through it, so the
+            // auto-scroll can never switch itself off.
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0f) onFollowingChange(false)
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(tailSignal, following) {
+        if (following && listState.layoutInfo.totalItemsCount > 0) {
             listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
         }
     }
@@ -224,61 +280,53 @@ private fun LoadedThread(
         listState.scrollToItem(count - 1)
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize().testTag("thread_list"),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                items(state.thread.messages)
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(stopFollowingOnDragBack)
+                .testTag("thread_list"),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            items(state.thread.messages)
 
-                streaming?.let { turn ->
-                    turn.userMessage?.let { pending ->
-                        item(key = "pending_user") {
-                            MessageBubble(pending.asMessage())
-                        }
-                    }
-                    // Its own item, so a delta recomposes this element alone
-                    // rather than the whole column (Architecture P2).
-                    item(key = "streaming") { StreamingBubble(turn) }
-                }
-
-                // A persisted failure has no message of its own when the model
-                // died before producing any text; the run's error is still the
-                // truth about that turn (F04-R8).
-                if (streaming == null) {
-                    state.runError?.takeIf { state.thread.messages.lastOrNull()?.error == null }?.let { error ->
-                        item(key = "run_error") {
-                            Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { ErrorNote(error) }
-                        }
+            streaming?.let { turn ->
+                turn.userMessage?.let { pending ->
+                    item(key = "pending_user") {
+                        MessageBubble(pending.asMessage())
                     }
                 }
-
-                // Scrolling this 1 dp tail into view lands exactly at the
-                // bottom of the content, whatever the last item's height.
-                item(key = "tail") { Spacer(Modifier.height(1.dp)) }
+                // Its own item, so a delta recomposes this element alone
+                // rather than the whole column (Architecture P2).
+                item(key = "streaming") { StreamingBubble(turn) }
             }
 
-            if (!atBottom) {
-                JumpToLatest(
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                    onClick = {
-                        scope.launch { listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1) }
-                    },
-                )
+            // A persisted failure has no message of its own when the model
+            // died before producing any text; the run's error is still the
+            // truth about that turn (F04-R8).
+            if (streaming == null) {
+                state.runError?.takeIf { state.thread.messages.lastOrNull()?.error == null }?.let { error ->
+                    item(key = "run_error") {
+                        Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { ErrorNote(error) }
+                    }
+                }
             }
+
+            // Scrolling this 1 dp tail into view lands exactly at the
+            // bottom of the content, whatever the last item's height.
+            item(key = "tail") { Spacer(Modifier.height(1.dp)) }
         }
 
-        ThreadComposer(
-            state = state,
-            onComposerChange = onComposerChange,
-            onSend = onSend,
-            onStop = onStop,
-            onAddAttachment = onAddAttachment,
-            onRemoveAttachment = onRemoveAttachment,
-            onAttachmentFailed = onAttachmentFailed,
-        )
+        if (!atBottom) {
+            JumpToLatest(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                onClick = {
+                    onFollowingChange(true)
+                    scope.launch { listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1) }
+                },
+            )
+        }
     }
 }
 
@@ -404,16 +452,37 @@ private fun ThreadComposer(
         if (bitmap == null) onAttachmentFailed("That image could not be read.")
         else onAddAttachment(bitmap.toDataUrl())
     }
-    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) onAddAttachment(bitmap.toDataUrl())
+
+    // Fix pass A4. `TakePicturePreview` returns the camera app's *thumbnail*
+    // (the MediaStore `"data"` extra) — a couple of hundred pixels, useless to
+    // a vision model. `TakePicture` writes the real capture to a Uri we own,
+    // which then goes through exactly the same read-and-downscale path as a
+    // gallery pick.
+    var pendingPhoto by remember { mutableStateOf<Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = pendingPhoto
+        pendingPhoto = null
+        if (!saved || uri == null) return@rememberLauncherForActivityResult
+        val bitmap = runCatching { readImage(context.contentResolver, uri) }.getOrNull()
+        if (bitmap == null) onAttachmentFailed("That photo could not be read.")
+        else onAddAttachment(bitmap.toDataUrl())
+        discardCapture(context, uri)
     }
 
     Column(
         Modifier
             .fillMaxWidth()
             .background(colors.surface)
-            .navigationBarsPadding()
-            .imePadding()
+            // The only insets the composer needs, in either state:
+            // `safeDrawing` is the union of the system bars, the cutout and
+            // the IME, so the bottom is the navigation bar when the keyboard
+            // is down and the keyboard when it is up — never both stacked,
+            // which is what left the 94 dp grey band under the composer (A2).
+            // The horizontal side matters in landscape, where a three-button
+            // bar sits against one edge and would otherwise cover Send.
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            )
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -435,7 +504,15 @@ private fun ThreadComposer(
             onSend = onSend,
             onStop = onStop,
             onPickImage = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            onTakePhoto = { takePhoto.launch(null) },
+            onTakePhoto = {
+                val uri = runCatching { newCaptureUri(context) }.getOrNull()
+                if (uri == null) {
+                    onAttachmentFailed("The camera could not be opened.")
+                } else {
+                    pendingPhoto = uri
+                    takePhoto.launch(uri)
+                }
+            },
         )
     }
 }

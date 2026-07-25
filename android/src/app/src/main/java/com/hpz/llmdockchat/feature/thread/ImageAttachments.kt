@@ -1,11 +1,14 @@
 package com.hpz.llmdockchat.feature.thread
 
 import android.content.ContentResolver
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import androidx.core.content.FileProvider
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * Images on the wire are `data:image/jpeg;base64,…` URLs — the same encoding
@@ -52,6 +55,25 @@ fun readImage(resolver: ContentResolver, uri: Uri): Bitmap? {
     }
     return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
 }
+
+/**
+ * Somewhere for the camera app to write a full-resolution capture, handed over
+ * as a `content://` Uri through the app's [FileProvider] (`camera-captures` in
+ * `res/xml/file_paths.xml`). Cache-dir, because the file is only ever read once
+ * — the attachment itself lives on as a downscaled data URL.
+ */
+fun newCaptureUri(context: Context): Uri {
+    val dir = File(context.cacheDir, CAPTURE_DIR).apply { mkdirs() }
+    val file = File.createTempFile("capture_", ".jpg", dir)
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+/** Best-effort: a capture left behind is cache, and the OS will reclaim it. */
+fun discardCapture(context: Context, uri: Uri) {
+    runCatching { context.contentResolver.delete(uri, null, null) }
+}
+
+private const val CAPTURE_DIR = "camera-captures"
 
 fun decodeDataUrl(dataUrl: String): Bitmap? {
     val encoded = dataUrl.substringAfter(BASE64_MARKER, "").takeIf { it.isNotEmpty() } ?: return null
