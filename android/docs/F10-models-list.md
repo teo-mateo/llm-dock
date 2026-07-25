@@ -138,3 +138,47 @@ renames, deletes or reconfigures a service.
 
 - Benchmarks, metrics panels, Open WebUI registration, key rotation,
   compose rebuilds. All exist on the dashboard; none belong here.
+
+## Verification notes
+
+All Must criteria verified; R5 was deferred to F11 by design (it depends
+on F11's start/stop path).
+
+**The stream teardown was a real bug, found and fixed during F10.** Both
+the services and GPU streams were launched in `viewModelScope`, and
+Navigation Compose's tab-switch idiom (`popUpTo … saveState` +
+`restoreState`) keeps the ViewModel alive across a switch — so both SSE
+connections survived leaving the tab, confirmed as `ESTAB` in `ss -tnp`.
+A leaked GPU stream polls the host every 3 s forever. They are now
+collected by `LaunchedEffect`s in `ModelsScreen`, which Compose disposes
+when the destination stops being current; independently re-verified in
+review (both sockets to `:3399` reach `FIN-WAIT-2` and vanish within ~3 s
+of switching to Chats).
+
+To see those sockets, filter `ss -tnp` on the **`qemu-system-x86`**
+process — the emulator's host-side connections are NAT'd through it.
+
+**Added beyond the spec, at the owner's request:** favourites sort first
+within each group, and a name/port filter appears once there are 8 or
+more services. The spec described a list, not a searchable one, which is
+why neither was there. Favouriting itself stays on the dashboard —
+F10-R7 forbids this tab any mutating call but start/stop.
+
+### Known issue — GPU header can stick on "unavailable" after a blip
+
+After a network drop and restore while the Models tab is open, the GPU
+card can stay on "GPU stats unavailable" indefinitely even though
+`/api/gpu/stream` is healthy. Leaving the tab and returning fixes it.
+
+The services list recovers from the same blip, so this is specific to the
+GPU stream. Likely cause: the SSE client uses `readTimeout(0)` — correct
+for a long-lived stream, but it means a half-open socket left by the drop
+can hang inside `transport.open()` rather than throwing, so the reconnect
+loop never runs and the backoff never gets a chance to retry.
+
+Not a criterion failure — R3's "unavailable state" criterion is about a
+missing GPU or a failing `nvidia-smi`, not this — and remounting recovers
+it. Recorded rather than fixed: the honest fix is a read timeout slightly
+longer than the stream's own tick interval, which is a change to shared
+SSE plumbing that every feature uses, and F09 already documented why
+touching that plumbing casually is risky.
