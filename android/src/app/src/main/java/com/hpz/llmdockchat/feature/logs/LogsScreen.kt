@@ -17,14 +17,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,10 +38,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.LogLevel
@@ -59,21 +55,24 @@ private const val TRUNCATION_MARKER = "[... earlier lines truncated ...]\n"
 /**
  * F12: streaming container logs, follow-tail, and share (screens 10c).
  *
+ * A pane rather than a screen: it is the second tab of the model detail
+ * screen, which owns the header, the back affordance and the share action.
+ * Because the tab is only composed while it is selected, the log stream opens
+ * when you switch to it and is torn down when you switch away — the same
+ * composition-scoped ownership the two streams on the models list use.
+ *
  * The stream is collected from this composition, not from the ViewModel's own
  * scope — see [LogsViewModel]'s class doc. [retryToken] is bumped to restart
  * the `LaunchedEffect` after a failure or a `stream_end`, the same "key
  * changes, effect restarts" idiom used everywhere else in this app for a
  * stream that should reconnect on demand rather than automatically.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogsScreen(
+fun LogsPane(
     viewModel: LogsViewModel,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
     var retryToken by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(retryToken) {
@@ -87,51 +86,30 @@ fun LogsScreen(
         }
     }
 
-    val colors = LlmTheme.colors
-    Scaffold(
-        modifier = modifier.testTag("logs_screen"),
-        containerColor = colors.app,
-        topBar = {
-            TopAppBar(
-                title = { Text("Logs", color = colors.fg) },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("logs_back")) {
-                        Text("←", color = colors.fg)
-                    }
-                },
-                actions = {
-                    val loaded = state as? LogsUiState.Loaded
-                    if (loaded != null && loaded.lines.isNotEmpty()) {
-                        IconButton(
-                            onClick = { shareLogs(context, loaded.lines) },
-                            modifier = Modifier.testTag("logs_share"),
-                        ) {
-                            Text("⇪", color = colors.fg)
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
+    Box(modifier.fillMaxSize().testTag("logs_screen")) {
+        when (val current = state) {
+            is LogsUiState.Loading -> LoadingBox()
+            is LogsUiState.NotCreated -> MessageBox(
+                testTag = "logs_not_created",
+                title = "No container yet",
+                message = current.message,
             )
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (val current = state) {
-                is LogsUiState.Loading -> LoadingBox()
-                is LogsUiState.NotCreated -> MessageBox(
-                    testTag = "logs_not_created",
-                    title = "No container yet",
-                    message = current.message,
-                )
-                is LogsUiState.Failed -> MessageBox(
-                    testTag = "logs_failed",
-                    title = "Couldn't load logs",
-                    message = current.message,
-                    onRetry = { retryToken++ },
-                )
-                is LogsUiState.Loaded -> LoadedLogs(current)
-            }
+            is LogsUiState.Failed -> MessageBox(
+                testTag = "logs_failed",
+                title = "Couldn't load logs",
+                message = current.message,
+                onRetry = { retryToken++ },
+            )
+            is LogsUiState.Loaded -> LoadedLogs(current)
         }
     }
+}
+
+/** F12-R5 — share the buffer as text, offered from the hosting screen's header. */
+fun shareLogsFrom(context: Context, state: LogsUiState?) {
+    val loaded = state as? LogsUiState.Loaded ?: return
+    if (loaded.lines.isEmpty()) return
+    shareLogs(context, loaded.lines)
 }
 
 @Composable
@@ -229,9 +207,14 @@ private fun LogRow(text: String, color: Color) {
     Text(
         text,
         color = color,
-        style = MaterialTheme.typography.bodySmall,
+        // Explicit and small rather than a body style: container output is
+        // long unwrapped lines, and at bodySmall a single llama.cpp timing
+        // line wrapped four times. Fitting more of a line matters more here
+        // than matching the app's reading sizes.
+        fontSize = 9.sp,
+        lineHeight = 12.sp,
         fontFamily = FontFamily.Monospace,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 1.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
     )
 }
 

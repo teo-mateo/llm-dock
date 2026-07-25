@@ -54,6 +54,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.hpz.llmdockchat.core.ui.ConfirmDialog
+import com.hpz.llmdockchat.core.ui.NoticeDialog
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
@@ -76,6 +78,7 @@ fun ModelsScreen(
     viewModel: ModelsViewModel,
     onNewChatFromModel: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
+    onOpenLogs: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -102,6 +105,7 @@ fun ModelsScreen(
         onRetry = viewModel::retry,
         onNewChatFromModel = onNewChatFromModel,
         onOpenDetail = onOpenDetail,
+        onOpenLogs = onOpenLogs,
         onQueryChange = viewModel::onQueryChange,
         onRequestStart = viewModel::requestStart,
         onRequestStop = viewModel::requestStop,
@@ -121,6 +125,7 @@ private fun ModelsContent(
     onRetry: () -> Unit,
     onNewChatFromModel: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
+    onOpenLogs: (String) -> Unit = {},
     onQueryChange: (String) -> Unit,
     onRequestStart: (String) -> Unit,
     onRequestStop: (String) -> Unit,
@@ -173,6 +178,7 @@ private fun ModelsContent(
                     state = state,
                     onNewChatFromModel = onNewChatFromModel,
                     onOpenDetail = onOpenDetail,
+                    onOpenLogs = onOpenLogs,
                     onQueryChange = onQueryChange,
                     actionState = actionState,
                     onRequestStart = onRequestStart,
@@ -224,6 +230,7 @@ private fun ModelsList(
     state: ModelsUiState.Loaded,
     onNewChatFromModel: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
+    onOpenLogs: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     actionState: ServiceActionState,
     onRequestStart: (String) -> Unit,
@@ -261,7 +268,7 @@ private fun ModelsList(
             item(key = "running_header") { SectionHeader("Running", running.size) }
             items(running, key = { "running_${it.name}" }) { service ->
                 ServiceRow(
-                    service, now, zone, onNewChatFromModel, onOpenDetail,
+                    service, now, zone, onNewChatFromModel, onOpenDetail, onOpenLogs,
                     pending = actionState.pendingFor(service.name),
                     onRequestStart = onRequestStart, onRequestStop = onRequestStop,
                 )
@@ -272,6 +279,7 @@ private fun ModelsList(
             items(stopped, key = { "stopped_${it.name}" }) { service ->
                 ServiceRow(
                     service, now, zone, onNewChatFromModel = null, onOpenDetail = onOpenDetail,
+                    onOpenLogs = onOpenLogs,
                     pending = actionState.pendingFor(service.name),
                     onRequestStart = onRequestStart, onRequestStop = onRequestStop,
                 )
@@ -300,47 +308,37 @@ fun ServiceActionDialog(
 ) {
     val colors = LlmTheme.colors
     when (actionState) {
-        is ServiceActionState.Confirming -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = onDismiss,
-            modifier = Modifier.testTag("service_action_confirm"),
-            title = {
-                Text(
-                    if (actionState.action == ServiceAction.STOP) "Stop ${actionState.serviceName}?" else "Start ${actionState.serviceName}?",
-                    color = colors.fg,
-                )
-            },
-            text = {
-                Text(
-                    if (actionState.action == ServiceAction.STOP) {
-                        "Any chat streaming on ${actionState.serviceName} right now will fail."
-                    } else {
-                        // Deliberately does not promise the reason. There is no
-                        // VRAM guard (F11-R5 was dropped), so an oversubscribed
-                        // start really does fail — but all this screen learns is
-                        // the exit code. The actual "cudaMalloc failed: out of
-                        // memory" only exists in the container's log, so saying
-                        // "you'll see the error here" overclaimed.
-                        "This starts the container. If the model doesn't fit in memory it will exit " +
-                            "almost immediately — the status shows the exit code, the reason is in the logs."
-                    },
-                    color = colors.muted,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = onConfirm, modifier = Modifier.testTag("service_action_confirm_button")) {
-                    Text(if (actionState.action == ServiceAction.STOP) "Stop" else "Start", color = colors.accent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel", color = colors.muted) }
-            },
-        )
-        is ServiceActionState.Failed -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = onDismiss,
-            modifier = Modifier.testTag("service_action_failed"),
-            title = { Text("Couldn't ${if (actionState.action == ServiceAction.STOP) "stop" else "start"} ${actionState.serviceName}", color = colors.red) },
-            text = { Text(actionState.message, color = colors.muted) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("OK", color = colors.accent) } },
+        is ServiceActionState.Confirming -> {
+            val stopping = actionState.action == ServiceAction.STOP
+            ConfirmDialog(
+                icon = if (stopping) DesignLabIcons.Power else DesignLabIcons.Play,
+                tint = if (stopping) colors.red else colors.green,
+                title = if (stopping) "Stop ${actionState.serviceName}?" else "Start ${actionState.serviceName}?",
+                message = if (stopping) {
+                    "Any chat streaming on ${actionState.serviceName} right now will fail."
+                } else {
+                    // Deliberately does not promise the reason. There is no
+                    // VRAM guard (F11-R5 was dropped), so an oversubscribed
+                    // start really does fail — but all this screen learns is
+                    // the exit code. The actual "cudaMalloc failed: out of
+                    // memory" only exists in the container's log, so saying
+                    // "you'll see the error here" overclaimed.
+                    "If the model doesn't fit in memory the container exits almost immediately — " +
+                        "the status shows the exit code, the reason is in the logs."
+                },
+                confirmLabel = if (stopping) "Stop" else "Start",
+                onConfirm = onConfirm,
+                onDismiss = onDismiss,
+                testTag = "service_action_confirm",
+            )
+        }
+        is ServiceActionState.Failed -> NoticeDialog(
+            icon = DesignLabIcons.Power,
+            tint = colors.red,
+            title = "Couldn't ${if (actionState.action == ServiceAction.STOP) "stop" else "start"} ${actionState.serviceName}",
+            message = actionState.message,
+            onDismiss = onDismiss,
+            testTag = "service_action_failed",
         )
         ServiceActionState.Idle, is ServiceActionState.InFlight -> Unit
     }
@@ -500,6 +498,7 @@ private fun ServiceRow(
     zone: ZoneId,
     onNewChatFromModel: ((String) -> Unit)?,
     onOpenDetail: (String) -> Unit,
+    onOpenLogs: (String) -> Unit,
     pending: Boolean,
     onRequestStart: (String) -> Unit,
     onRequestStop: (String) -> Unit,
@@ -523,7 +522,16 @@ private fun ServiceRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            EngineChip(service.engine, isRunning = service.isRunning, modifier = Modifier.testTag("service_dot_${service.name}"))
+            // The pill is its own tap target, opening the logs tab: the logs
+            // are what is wanted from a container that just exited, and they
+            // were two taps deep behind the configuration.
+            EngineChip(
+                service.engine,
+                isRunning = service.isRunning,
+                modifier = Modifier
+                    .clickable { onOpenLogs(service.name) }
+                    .testTag("service_dot_${service.name}"),
+            )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     service.name,
