@@ -4,7 +4,7 @@ How the Android app gets built. This is the protocol; `docs/Plan_TOC.md`
 is the spec and `docs/Architecture.md` is the technical foundation.
 
 Written for an autonomous run: the project owner is not available, so
-nothing here waits on a human except the stop conditions in §7.
+nothing here waits on a human except the stop conditions in §8.
 
 ---
 
@@ -98,8 +98,19 @@ State these in the brief; do not assume they are inferred:
 - **Never** call the dashboard's configuration endpoints — see F00-R10.
 - **Never** edit a requirements file except to add to its *Deviations*
   section, and only with a reason.
-- Test conversations are free to create and delete; prefix them so they
-  are identifiable, and clean up.
+- **Never delete a file, and never ask permission to delete one.** A
+  delete prompts the owner for approval; during an unattended run that
+  stalls the agent until someone wakes up. Leftover scratch files cost
+  nothing by comparison — the owner clears them at the end.
+  - Temporary files go in the session scratchpad, not the repo.
+  - If one must live inside `android/src` to compile — a probe test, say —
+    name it `Tmp*` or `Probe*`, leave it, and **list it in the report** so
+    the orchestrator can deal with it before committing. It must not break
+    the build or fail a test run.
+  - Still fine, and say so: creating and overwriting files,
+    `git checkout -- <path>` to revert an edit, and `dev.sh clear`.
+- Test conversations are free to create and delete via the API; prefix
+  them so they are identifiable. That is server state, not files.
 
 ---
 
@@ -139,7 +150,40 @@ The reviewer never runs below the implementer's tier.
 
 ---
 
-## 6. What "done" means
+## 6. Calibration — what this app is
+
+State this in every brief, implementation and review alike.
+
+**This is a single-user Android client for a home LLM rig on a LAN.** One
+person, one phone, one dashboard. No adversary, no fleet, no uptime
+commitment, no compliance bar. Judge every finding and every fix against
+that, not against a general-purpose production app.
+
+The line: **a fix is worth making when a real user on this setup would
+actually hit it, or when a later feature would inherit the mistake.**
+Everything else is noise, and noise has a cost — an hour spent on a flaky
+test for already-verified behaviour is an hour F04 does not get.
+
+Worked examples from F00:
+
+- **Worth it.** A blocking disk read on the main thread, because thirteen
+  features would have copied the pattern. Unordered preference writes,
+  because sign-out would leave a token on disk.
+- **Not worth it.** A regression test for cancellation behaviour a probe
+  had already verified. It consumed ~30 minutes of retries on a
+  timing-dependent assertion and was dropped.
+
+This cuts both ways. Do not gold-plate — and do not quietly lower the bar
+on something that genuinely matters. Correctness in the foundation still
+counts; polish for its own sake does not.
+
+A flaky test is worse than no test: it fails later for reasons unrelated
+to whatever is being worked on then. Prefer a deterministic assertion, or
+none plus a note.
+
+---
+
+## 7. What "done" means
 
 Every **Must** requirement implemented, and every acceptance criterion
 for it verified **with evidence**:
@@ -161,7 +205,7 @@ the plan describing something the app does not do.
 
 ---
 
-## 7. When to stop
+## 8. When to stop
 
 Stop, write up the state, and leave the tree clean. Do not grind.
 

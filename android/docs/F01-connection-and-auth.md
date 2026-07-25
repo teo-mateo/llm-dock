@@ -192,3 +192,50 @@ yet", not "no".
   dashboard work.
 - Disabling TOTP server-side.
 - Multiple saved servers. One address at a time.
+
+## Backend findings from F00
+
+Discovered while building the foundation, confirmed independently against
+`dashboard/` source and against the live dashboard. Each one changes how
+F01 should be built; none of them were known when this file was written.
+
+1. **Neither login route goes through `require_auth`.**
+   `routes/system.py:32` (`/api/auth/login`) and `:68` (`/api/auth/session`)
+   carry no decorator — unlike `/api/auth/verify` at `:61`, which does. So
+   the transport must not attach a stored bearer to either: the first
+   carries only `X-TOTP-Code`, and the second uses the *password* as its
+   bearer, which a session token would overwrite. F00 exempts
+   `GET /api/health` and both login routes via `Endpoints.establishesSession`,
+   and exempts the same three from the 401 re-auth path so a wrong password
+   reports itself instead of looping. See F00-R2 and its Deviations.
+
+2. **`X-TOTP-Token` never arrives, so re-auth cannot rely on it.**
+   `auth.py:85` sets that header only inside the `X-TOTP-Code` branch opened
+   at `:75`; the two bearer paths return at `:63` and `:72` without it, and
+   the login routes bypass `require_auth` entirely, returning their token in
+   the JSON body. **Silent re-authentication (F01-R6) must re-exchange the
+   stored credential**, not wait for header rotation. F00 implements and
+   tests the header handling anyway, as insurance.
+
+3. **Do not send `X-TOTP-Code` on an ordinary route.** `auth.py:53-66`: a
+   bearer beginning `totp-` that has expired returns 401 *immediately* and
+   never falls through to the `X-TOTP-Code` branch at `:75`. With a stale
+   token stored, the interceptor attaches it and the code is silently
+   ignored. Always re-authenticate through `/api/auth/login`.
+
+4. **`POST /api/auth/session` returns 400, not 401, when the
+   `Authorization` header is missing** — 401 means the token was wrong. A
+   missing-credential bug will surface as a 400.
+
+5. **Re-auth needs single-flight.** F00's `SessionAuthenticator` bounds
+   retries per call (verified: four consecutive 401s produce exactly two
+   requests), but N concurrent 401s each invoke `reauthenticate()` and
+   produce N credential exchanges. F01 owns deduplicating them.
+
+6. **Credential storage: use the platform Keystore.**
+   `androidx.security:security-crypto` is deprecated in its entirety — see
+   `Architecture.md` U1. F00 added no dependency on it.
+
+7. **`allowBackup` is still on with the stock rules.** A session token in
+   DataStore lands in cloud backup. Tolerable for a disposable 8 h token;
+   decide it deliberately before storing the long-lived credential.
