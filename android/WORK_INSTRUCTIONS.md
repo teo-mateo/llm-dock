@@ -207,6 +207,34 @@ A flaky test is worse than no test: it fails later for reasons unrelated
 to whatever is being worked on then. Prefer a deterministic assertion, or
 none plus a note.
 
+### A green test is not evidence until you have seen it fail
+
+Three times in one day a test on this project passed while proving
+nothing:
+
+- **F00** — a cancellation probe that used a *busy* stream, where the
+  behaviour it was checking is masked. The bug it was meant to rule out
+  was real, and shipped.
+- **F07** — a test asserting that closing the model picker tore down its
+  SSE connection. It checked that a UI flag went null, and its fake
+  transport completed on its own, so the cancellation path never ran.
+- **F08** — a regression test for the tool-write race whose first version
+  passed against the broken code, because its gates released before the
+  second write's coroutine had started, so the writes applied in the
+  benign order anyway.
+
+Each looked like coverage and was decoration. So:
+
+- **A regression test must be run against the unfixed code and seen to
+  fail**, with the failure message quoted in the report. If reverting the
+  fix is awkward, say what you did instead — do not skip it silently.
+- **Assert the mechanism, not the symptom.** "The flag is null" is not
+  "the connection closed". "No error surfaced" is not "the write landed".
+- **A fake that completes, times out, or resolves on its own can hide the
+  very thing under test.** Make it stay open, or park it on an explicit
+  gate, and add a barrier so ordering is decided rather than accidental.
+- Timing that happens to work is not determinism. Drain the queue.
+
 ---
 
 ## 7. What "done" means
