@@ -35,6 +35,14 @@ object Endpoints {
     /** F07-R1's third criterion — a snapshot, then deltas as containers start/stop. */
     const val SERVICES_STREAM = "/api/services/stream"
 
+    /** F11-R2 — the stored config for one service. 404 when Docker knows the
+     * container but `services.json` does not (F11-R2's fourth criterion). */
+    fun serviceDetail(name: String): String = "/api/services/$name"
+
+    /** F11-R4 / F10-R5 — the only two mutating service calls this app makes. */
+    fun serviceStart(name: String): String = "/api/services/$name/start"
+    fun serviceStop(name: String): String = "/api/services/$name/stop"
+
     /** F10-R3's GPU header — one `data:` frame per tick, no `type` envelope. */
     const val GPU_STREAM = "/api/gpu/stream"
 

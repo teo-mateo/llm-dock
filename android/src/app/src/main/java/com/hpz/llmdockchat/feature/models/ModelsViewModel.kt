@@ -102,6 +102,16 @@ class ModelsViewModel(
     private val _state = MutableStateFlow<ModelsUiState>(ModelsUiState.Loading)
     val state: StateFlow<ModelsUiState> = _state.asStateFlow()
 
+    /** F10-R5's row start/stop, sharing its confirm path with the detail
+     * screen's — see [ServiceControlController]'s class doc. */
+    val controller = ServiceControlController(servicesRepository, viewModelScope)
+    val actionState: StateFlow<ServiceActionState> = controller.actionState
+
+    fun requestStart(serviceName: String) = controller.requestStart(serviceName)
+    fun requestStop(serviceName: String) = controller.requestStop(serviceName)
+    fun dismissAction() = controller.dismiss()
+    fun confirmAction() = controller.confirm()
+
     /** One-shot, same guard as [com.hpz.llmdockchat.feature.newchat.NewChatViewModel.load]. */
     private var started = false
 

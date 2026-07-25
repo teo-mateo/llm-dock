@@ -184,7 +184,7 @@ Mark completed features `[DONE]` in the Status column.
 | F08 | Per-conversation tools | [F08-conversation-tools.md](F08-conversation-tools.md) | 07b | [DONE] — R5 (Should) unexercised, see the feature file |
 | F09 | Run continuity and reattachment | [F09-run-continuity.md](F09-run-continuity.md) | 08a, 08b | [DONE] — R5's failed-while-away is fixture-only, see the feature file |
 | F10 | Models tab — list and GPU header | [F10-models-list.md](F10-models-list.md) | 10a | [DONE] — R5 carried forward to F11 |
-| F11 | Model detail, start and stop | [F11-model-detail-and-control.md](F11-model-detail-and-control.md) | 10b, 10d | [ ] |
+| F11 | Model detail, start and stop | [F11-model-detail-and-control.md](F11-model-detail-and-control.md) | 10b | [DONE] — R6 skipped, R7 deferred to F12, R5 dropped |
 | F12 | Container logs | [F12-container-logs.md](F12-container-logs.md) | 10c | [ ] |
 | F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
