@@ -5,16 +5,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,9 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.Engine
@@ -409,29 +415,21 @@ private fun ServiceRow(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = { onOpenDetail(service.name) })
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
             .testTag("service_row_${service.name}"),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .background(if (service.isRunning) colors.green else colors.subtle, CircleShape)
-                .testTag("service_dot_${service.name}"),
-        )
+        EngineChip(service.engine, isRunning = service.isRunning, modifier = Modifier.testTag("service_dot_${service.name}"))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    service.name,
-                    color = colors.fg,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                EngineChip(service.engine)
-            }
+            Text(
+                service.name,
+                color = colors.fg,
+                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 service.subtitle(now, zone),
                 color = colors.muted,
@@ -444,6 +442,7 @@ private fun ServiceRow(
         if (onNewChatFromModel != null && service.isRunning && service.isChatCapable) {
             TextButton(
                 onClick = { onNewChatFromModel(service.name) },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 modifier = Modifier.testTag("new_chat_from_model_${service.name}"),
             ) {
                 Text("New chat", color = colors.accent, style = MaterialTheme.typography.labelMedium)
@@ -458,19 +457,28 @@ private fun ServiceRow(
         } else if (service.isRunning) {
             TextButton(
                 onClick = { onRequestStop(service.name) },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 modifier = Modifier.testTag("service_row_stop_${service.name}"),
             ) { Text("Stop", color = colors.red, style = MaterialTheme.typography.labelMedium) }
         } else {
             TextButton(
                 onClick = { onRequestStart(service.name) },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 modifier = Modifier.testTag("service_row_start_${service.name}"),
             ) { Text("Start", color = colors.accent, style = MaterialTheme.typography.labelMedium) }
         }
     }
 }
 
+/**
+ * The engine pill, square rather than a rounded chip so it reads as a fixed
+ * "type" tag rather than a status badge — the actual running/stopped status
+ * is the vertical bar on its leading edge, not the pill's shape or color.
+ * Green when running, gray otherwise; the bar and the pill sit flush against
+ * each other (no gap, no rounding on the seam) so they read as one control.
+ */
 @Composable
-private fun EngineChip(engine: Engine) {
+private fun EngineChip(engine: Engine, isRunning: Boolean, modifier: Modifier = Modifier) {
     val colors = LlmTheme.colors
     val chip = when (engine) {
         Engine.LLAMA_CPP -> colors.engineLlamaCpp
@@ -479,28 +487,75 @@ private fun EngineChip(engine: Engine) {
         Engine.OPEN_ROUTER -> colors.engineOpenRouter
         Engine.UNKNOWN -> colors.engineUnknown
     }
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(chip.background)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    ) {
-        Text(
-            engineLabel(engine),
-            color = chip.foreground,
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
+    Row(modifier.height(IntrinsicSize.Min)) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(if (isRunning) colors.green else colors.subtle),
         )
+        val lines = engineLabelLines(engine)
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                .background(chip.background)
+                .width(CHIP_WIDTH)
+                .padding(vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            lines.forEach { line ->
+                Text(
+                    line,
+                    color = chip.foreground,
+                    fontSize = chipFontSize(lines),
+                    lineHeight = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
     }
 }
 
+/**
+ * Short on purpose. This label sits inline before the model name on every
+ * row, so each character it costs is a character the name loses — and the
+ * name is what the owner is actually reading. "llama.cpp" is unmistakable
+ * as "llama"; the picker (which has a whole row to itself) still spells
+ * them out in full.
+ */
 internal fun engineLabel(engine: Engine): String = when (engine) {
     Engine.LLAMA_CPP -> "llama.cpp"
     Engine.VLLM -> "vLLM"
     Engine.DS4 -> "ds4"
-    Engine.OPEN_ROUTER -> "OpenRouter"
+    Engine.OPEN_ROUTER -> "open router"
     Engine.UNKNOWN -> "?"
 }
+
+/**
+ * Split for a fixed-width chip: break on a dot or a space, never mid-word,
+ * so "llama.cpp" stacks as llama/cpp and "vLLM" stays on one line.
+ */
+internal fun engineLabelLines(engine: Engine): List<String> =
+    engineLabel(engine).split('.', ' ').filter { it.isNotEmpty() }
+
+/**
+ * Every chip is [CHIP_WIDTH] wide regardless of engine, so the model names
+ * beside them all start at the same x — a ragged left edge on a list this
+ * long is harder to scan than a slightly small label. The type shrinks to
+ * fit instead of the box growing: sizes are picked off the longest line
+ * rather than measured, which is deterministic and needs no layout pass.
+ */
+private fun chipFontSize(lines: List<String>): TextUnit = when (lines.maxOf { it.length }) {
+    in 0..3 -> 9.sp
+    4 -> 8.sp
+    5 -> 7.sp
+    else -> 6.sp
+}
+
+private val CHIP_WIDTH = 30.dp
 
 @Composable
 private fun LoadingState() {

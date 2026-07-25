@@ -9,6 +9,7 @@ import com.hpz.llmdockchat.core.net.apiCall
 import com.hpz.llmdockchat.data.dto.ServiceActionResponseDto
 import com.hpz.llmdockchat.data.dto.ServiceDetailResponseDto
 import com.hpz.llmdockchat.data.dto.ServiceListResponseDto
+import com.hpz.llmdockchat.data.dto.ServiceLogsResponseDto
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ServiceConfig
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -55,5 +56,18 @@ class ServicesRepository(private val api: ApiClient) {
     suspend fun stop(name: String): Result<Unit> = apiCall {
         api.request(method = "POST", path = Endpoints.serviceStop(name), deserializer = ServiceActionResponseDto.serializer())
         Unit
+    }
+
+    /**
+     * `GET /api/services/<name>/logs` (F12-R3) — the one-shot fallback, used
+     * when the stream cannot be established. Lines are split client-side on
+     * `\n` rather than trusting the server's own `lines` count.
+     */
+    suspend fun fetchLogsOnce(name: String, tail: Int = 200): Result<List<String>> = apiCall {
+        api.get(
+            Endpoints.serviceLogs(name),
+            ServiceLogsResponseDto.serializer(),
+            query = mapOf("tail" to tail.toString()),
+        ).logs.split("\n")
     }
 }

@@ -25,6 +25,11 @@ object Destinations {
     const val MODEL_DETAIL = "$MODEL_DETAIL_ROUTE/{serviceName}"
     fun modelDetail(serviceName: String) = "$MODEL_DETAIL_ROUTE/$serviceName"
 
+    /** F12 — pushed on top of [MODEL_DETAIL], same as it is on top of [TABS]. */
+    private const val LOGS_ROUTE = "logs"
+    const val LOGS = "$LOGS_ROUTE/{serviceName}"
+    fun logs(serviceName: String) = "$LOGS_ROUTE/$serviceName"
+
     /**
      * F02-R8's primary action, built out in F03. [NEW_CHAT] is the route
      * *pattern* registered with `composable(...)` — it must be the string
