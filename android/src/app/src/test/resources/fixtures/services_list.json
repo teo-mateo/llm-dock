@@ -1,0 +1,318 @@
+{
+  "services": [
+    {
+      "name": "open-webui",
+      "status": "running",
+      "exit_code": null,
+      "container_id": "45f4781d9375",
+      "created": "2026-05-17T16:20:50.466872844Z",
+      "ports": {
+        "8080/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "3300"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "3300"
+          }
+        ]
+      },
+      "host_port": 3300,
+      "openwebui_registered": false,
+      "model_size": null,
+      "model_size_str": null,
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "llamacpp-gemma-4-26b-a4b-it-q8",
+      "status": "running",
+      "exit_code": null,
+      "container_id": "422d0d28b9f3",
+      "created": "2026-07-25T00:21:36.7856723Z",
+      "ports": {
+        "8080/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "3301"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "3301"
+          }
+        ]
+      },
+      "host_port": 3301,
+      "openwebui_registered": false,
+      "model_size": 27636232928,
+      "model_size_str": "25.74 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "vllm-qwen3-6-27b-fp8",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "addbc3b6cba4",
+      "created": "2026-07-09T06:21:04.917763839Z",
+      "ports": {},
+      "host_port": 3302,
+      "openwebui_registered": true,
+      "model_size": 30890040930,
+      "model_size_str": "28.77 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "llamacpp-gemma-4-31b-it-q8",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "808b319d8d2c",
+      "created": "2026-07-16T20:36:09.847362152Z",
+      "ports": {},
+      "host_port": 3303,
+      "openwebui_registered": true,
+      "model_size": 36220760896,
+      "model_size_str": "33.73 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "llamacpp-laguna-s-2.1-q4",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "ad2ebac90c49",
+      "created": "2026-07-23T11:57:40.965954593Z",
+      "ports": {},
+      "host_port": 3304,
+      "openwebui_registered": false,
+      "model_size": 73395172000,
+      "model_size_str": "68.35 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "llamacpp-UNSLOTH-qwen3-5-122b-a10b-q4",
+      "status": "exited",
+      "exit_code": 1,
+      "container_id": "ad84e637686e",
+      "created": "2026-07-18T08:40:01.408537407Z",
+      "ports": {},
+      "host_port": 3305,
+      "openwebui_registered": true,
+      "model_size": 68357580224,
+      "model_size_str": "63.66 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "llamacpp-qwen3-5-397b-a17b-iq4xs",
+      "status": "exited",
+      "exit_code": 137,
+      "container_id": "66deba383dbe",
+      "created": "2026-07-14T21:50:15.666217685Z",
+      "ports": {},
+      "host_port": 3306,
+      "openwebui_registered": true,
+      "model_size": null,
+      "model_size_str": null,
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "llamacpp-mimo-v2-5-q4",
+      "status": "exited",
+      "exit_code": 137,
+      "container_id": "6d81d3413015",
+      "created": "2026-07-22T12:20:38.621409749Z",
+      "ports": {},
+      "host_port": 3307,
+      "openwebui_registered": false,
+      "model_size": 191605325344,
+      "model_size_str": "178.45 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "vllm-laguna-s-2.1-nvfp4",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "03730fd83cd7",
+      "created": "2026-07-23T11:32:36.766115916Z",
+      "ports": {},
+      "host_port": 3308,
+      "openwebui_registered": false,
+      "model_size": 71938632441,
+      "model_size_str": "67.00 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "llamacpp-qwen3.6-27b-mtp-q8",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "c3503ed3906e",
+      "created": "2026-07-20T16:12:14.472810104Z",
+      "ports": {},
+      "host_port": 3309,
+      "openwebui_registered": false,
+      "model_size": 36707630784,
+      "model_size_str": "34.19 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "vllm-qwen3.6-35b-a3b-fp8",
+      "status": "not-created",
+      "container_id": null,
+      "created": null,
+      "ports": {},
+      "host_port": 3310,
+      "openwebui_registered": true,
+      "model_size": 37493004698,
+      "model_size_str": "34.92 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "vllm-gemma-4-31b-bf16-mtp",
+      "status": "not-created",
+      "container_id": null,
+      "created": null,
+      "ports": {},
+      "host_port": 3312,
+      "openwebui_registered": false,
+      "model_size": 62578682098,
+      "model_size_str": "58.28 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "vllm-qwen3-6-27b-bf16",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "1c52a2541f1d",
+      "created": "2026-07-11T10:42:17.352671144Z",
+      "ports": {},
+      "host_port": 3314,
+      "openwebui_registered": false,
+      "model_size": 55586107980,
+      "model_size_str": "51.77 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "ds4-deepseek-v4-flash",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "2862214a3ce5",
+      "created": "2026-06-16T14:02:11.039674899Z",
+      "ports": {},
+      "host_port": 3315,
+      "openwebui_registered": false,
+      "model_size": 86720111488,
+      "model_size_str": "80.76 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "vllm-qwen3-6-27b-nvfp4",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "af7eddd2006e",
+      "created": "2026-07-11T10:08:13.865563772Z",
+      "ports": {},
+      "host_port": 3316,
+      "openwebui_registered": false,
+      "model_size": 23443107979,
+      "model_size_str": "21.83 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "llamacpp-gemma-4-e4b-it-q8",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "df6f4ccd558e",
+      "created": "2026-07-13T20:51:43.415679104Z",
+      "ports": {},
+      "host_port": 3317,
+      "openwebui_registered": false,
+      "model_size": 8658666176,
+      "model_size_str": "8.06 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "vllm-qwen3-5-4b",
+      "status": "not-created",
+      "container_id": null,
+      "created": null,
+      "ports": {},
+      "host_port": 3318,
+      "openwebui_registered": false,
+      "model_size": 9342907509,
+      "model_size_str": "8.70 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "llamacpp-qwen3.6-27b-mtp-q8-dflash",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "f074080fbc96",
+      "created": "2026-07-22T21:32:03.022637575Z",
+      "ports": {},
+      "host_port": 3320,
+      "openwebui_registered": false,
+      "model_size": 36707630784,
+      "model_size_str": "34.19 GB",
+      "kind": "chat",
+      "favorite": true
+    },
+    {
+      "name": "vllm-qwen3-6-27b-fp8-dflash",
+      "status": "exited",
+      "exit_code": 0,
+      "container_id": "fa5020cdde16",
+      "created": "2026-07-18T11:56:26.074598065Z",
+      "ports": {},
+      "host_port": 3321,
+      "openwebui_registered": false,
+      "model_size": 30890040930,
+      "model_size_str": "28.77 GB",
+      "kind": "chat",
+      "favorite": false
+    },
+    {
+      "name": "vllm-bge-m3",
+      "status": "not-created",
+      "container_id": null,
+      "created": null,
+      "ports": {},
+      "host_port": 3370,
+      "openwebui_registered": false,
+      "model_size": 4582247429,
+      "model_size_str": "4.27 GB",
+      "kind": "embedding",
+      "favorite": false
+    },
+    {
+      "name": "vllm-nomic-embed-text-v1.5",
+      "status": "not-created",
+      "container_id": null,
+      "created": null,
+      "ports": {},
+      "host_port": 3380,
+      "openwebui_registered": false,
+      "model_size": 2077947102,
+      "model_size_str": "1.94 GB",
+      "kind": "embedding",
+      "favorite": false
+    }
+  ],
+  "total": 21,
+  "running": 2,
+  "stopped": 19
+}

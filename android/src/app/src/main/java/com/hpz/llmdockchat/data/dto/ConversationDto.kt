@@ -46,3 +46,38 @@ data class DeleteConversationsRequestDto(val ids: List<String>)
 /** `POST /api/chat/conversations/delete` → `{"ok": true, "deleted": <n>}`. */
 @Serializable
 data class DeleteConversationsResponseDto(val ok: Boolean = false, val deleted: Int = 0)
+
+/**
+ * `POST /api/chat/conversations` request body (F03-R1). [ApiJson] has
+ * `explicitNulls = false` and default `encodeDefaults = false`, so a null
+ * [promptId] and null [mainSystemPrompt] are both omitted from the wire —
+ * not sent as `null`. That distinction is load-bearing: with neither field
+ * present, `create_conversation` in `dashboard/chat/routes.py` falls back to
+ * the server's configured default system prompt (F03-R2); sending an
+ * explicit null or empty string would not.
+ */
+@Serializable
+data class CreateConversationRequestDto(
+    @SerialName("main_service") val mainService: String,
+    @SerialName("prompt_id") val promptId: String? = null,
+    @SerialName("main_system_prompt") val mainSystemPrompt: String? = null,
+)
+
+/**
+ * Only what F03 needs out of `POST`/`PUT /api/chat/conversations(/<id>)`'s
+ * response — the server returns the full conversation
+ * (`to_dict(include_messages=True)` on create, `to_dict()` on update); the
+ * rest is ignored via `ignoreUnknownKeys`.
+ */
+@Serializable
+data class ConversationIdResponseDto(val id: String = "")
+
+/**
+ * `PUT /api/chat/conversations/<id>` body for setting a fresh thread's tools
+ * (F03-R3). `POST /api/chat/conversations` does not accept `mcp_servers_json`
+ * at all — `create_conversation` builds the row from a fixed field set that
+ * excludes it — so tool selection on a brand-new thread is always this
+ * follow-up PUT, the same call F08 uses to change it later.
+ */
+@Serializable
+data class UpdateMcpServersRequestDto(@SerialName("mcp_servers_json") val mcpServersJson: String)

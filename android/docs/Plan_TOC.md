@@ -176,7 +176,7 @@ Mark completed features `[DONE]` in the Status column.
 | F00 | Cross-cutting requirements | [F00-cross-cutting.md](F00-cross-cutting.md) | all | [DONE] |
 | F01 | Connection and authentication | [F01-connection-and-auth.md](F01-connection-and-auth.md) | 01 | [WIP] — one Must criterion outstanding, see the feature file |
 | F02 | Conversation list | [F02-conversation-list.md](F02-conversation-list.md) | 02 | [DONE] |
-| F03 | Starting a conversation | [F03-new-conversation.md](F03-new-conversation.md) | 03 | [ ] |
+| F03 | Starting a conversation | [F03-new-conversation.md](F03-new-conversation.md) | 03 | [DONE] |
 | F04 | Sending a turn and streaming the reply | [F04-chat-turn-and-streaming.md](F04-chat-turn-and-streaming.md) | 04, 06a | [ ] |
 | F05 | Rendering assistant output | [F05-message-rendering.md](F05-message-rendering.md) | 05 | [ ] |
 | F06 | Message actions | [F06-message-actions.md](F06-message-actions.md) | 06b | [ ] |

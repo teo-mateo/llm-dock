@@ -7,6 +7,7 @@ import com.hpz.llmdockchat.core.auth.TokenStore
 import com.hpz.llmdockchat.core.net.BaseUrl
 import com.hpz.llmdockchat.core.net.BaseUrlResult
 import com.hpz.llmdockchat.core.net.ServerUrlStore
+import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,23 @@ class SoftwareSecretCipher : SecretCipher {
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, raw, 0, 12))
         String(cipher.doFinal(raw, 12, raw.size - 12))
     }.getOrNull()
+}
+
+/** In-memory [NewChatPreferences] — no DataStore, so tests can assert on what was
+ * remembered without any disk I/O or coroutine hydration. */
+class FakeNewChatPreferences(
+    initialModel: String? = null,
+    initialMcpServerIds: List<String> = emptyList(),
+) : NewChatPreferences {
+    var rememberedModel: String? = initialModel
+        private set
+    var rememberedMcpServerIds: List<String> = initialMcpServerIds
+        private set
+
+    override suspend fun lastModel(): String? = rememberedModel
+    override fun rememberModel(mainService: String) { rememberedModel = mainService }
+    override suspend fun lastMcpServerIds(): List<String> = rememberedMcpServerIds
+    override fun rememberMcpServerIds(ids: List<String>) { rememberedMcpServerIds = ids }
 }
 
 fun baseUrl(raw: String): BaseUrl = (BaseUrl.normalize(raw) as BaseUrlResult.Valid).baseUrl
