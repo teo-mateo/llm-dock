@@ -11,6 +11,7 @@ import com.hpz.llmdockchat.data.dto.DeleteConversationsRequestDto
 import com.hpz.llmdockchat.data.dto.DeleteConversationsResponseDto
 import com.hpz.llmdockchat.data.dto.OkResponseDto
 import com.hpz.llmdockchat.data.dto.UpdateMcpServersRequestDto
+import com.hpz.llmdockchat.data.dto.UpdateSystemPromptRequestDto
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import kotlinx.serialization.builtins.ListSerializer
@@ -92,6 +93,23 @@ open class ConversationsRepository(private val api: ApiClient) {
                     mcpServersJson = ApiJson.encodeToString(ListSerializer(String.serializer()), serverIds),
                 ),
             ),
+        )
+        Unit
+    }
+
+    /**
+     * `PUT /api/chat/conversations/<id>` with `main_system_prompt`.
+     *
+     * The text, not a prompt id: `db.update_conversation`'s allowed set has no
+     * `prompt_id`, and the conversation row stores the resolved content anyway.
+     * Takes effect on the next turn, like every other conversation setting.
+     */
+    open suspend fun setMainSystemPrompt(id: String, content: String): Result<Unit> = apiCall {
+        api.request(
+            method = "PUT",
+            path = Endpoints.conversation(id),
+            deserializer = ConversationIdResponseDto.serializer(),
+            body = ApiJson.encodeToString(UpdateSystemPromptRequestDto(mainSystemPrompt = content)),
         )
         Unit
     }

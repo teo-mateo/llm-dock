@@ -17,6 +17,8 @@ import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.PromptsRepository
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.wireValue
@@ -48,6 +50,7 @@ class ThreadViewModel(
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val mcpServersRepository: McpServersRepository,
+    private val promptsRepository: PromptsRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
     private val reconnectInitialMs: Long = ReconnectBackoff.DEFAULT_INITIAL_MS,
@@ -266,7 +269,9 @@ class ThreadViewModel(
     fun openModelPicker() {
         val current = loaded() ?: return
         if (current.runActive) return
-        _state.value = current.copy(modelPicker = ModelPickerState())
+        // Settings is where this is reached from; dismiss it rather than stack
+        // one modal sheet on top of another.
+        _state.value = current.copy(settings = null, modelPicker = ModelPickerState())
         modelPickerJob?.cancel()
         modelPickerJob = viewModelScope.launch {
             val openRouter = openRouterModelsRepository.list().getOrNull()
@@ -317,29 +322,71 @@ class ThreadViewModel(
     // -- tools for this chat (F08) ----------------------------------------------
 
     /**
-     * Opens the sheet and fetches the registry once (unlike [openModelPicker],
-     * no live subscription — see [ToolsPickerState]'s doc for why a one-shot
-     * fetch already satisfies F08-R1's "no app update needed" criterion).
-     * Guarded by [ThreadUiState.Loaded.canOpenTools] the same way
-     * [openModelPicker] guards on [ThreadUiState.Loaded.canSwitchModel]
-     * (F08-R4): with the sheet unreachable during a run, a toggle can never
-     * race the turn already in flight.
+     * Opens the chat-settings sheet and fetches the registry once (unlike
+     * [openModelPicker], no live subscription — see [ChatSettingsState]'s doc
+     * for why a one-shot fetch already satisfies F08-R1's "no app update
+     * needed" criterion).
+     *
+     * Unguarded, unlike [openModelPicker]: the sheet also carries the text-size
+     * control, which is unrelated to any run. F08-R4's guarantee is enforced
+     * where it actually matters — [toggleTool] refuses during a run, and the
+     * rows render disabled — rather than by hiding the whole sheet.
      */
-    fun openToolsPicker() {
+    fun openSettings() {
         val current = loaded() ?: return
-        if (!current.canOpenTools) return
-        _state.value = current.copy(toolsPicker = ToolsPickerState())
+        _state.value = current.copy(settings = ChatSettingsState())
+        // Two independent fetches, each applied as it lands. Awaiting both
+        // before showing anything means a slow or failing prompts endpoint
+        // holds back the tool list, which is the thing usually being opened
+        // for — and each `settings != null` check is what stops a late
+        // response repopulating a sheet the user has already closed.
         viewModelScope.launch {
             val servers = mcpServersRepository.list().getOrNull().orEmpty()
-            val stillOpen = loaded() ?: return@launch
-            if (stillOpen.toolsPicker != null) {
-                _state.value = stillOpen.copy(toolsPicker = ToolsPickerState(servers = servers))
+            loaded()?.settings?.let { open ->
+                _state.value = loaded()!!.copy(settings = open.copy(servers = servers))
+            }
+        }
+        viewModelScope.launch {
+            val prompts = promptsRepository.list().getOrNull().orEmpty().sortedBy { it.sortOrder }
+            loaded()?.settings?.let { open ->
+                _state.value = loaded()!!.copy(settings = open.copy(prompts = prompts))
             }
         }
     }
 
-    fun closeToolsPicker() {
-        loaded()?.let { _state.value = it.copy(toolsPicker = null) }
+    fun closeSettings() {
+        loaded()?.let { _state.value = it.copy(settings = null) }
+    }
+
+    /**
+     * Switches the thread's system prompt (the settings sheet's picker).
+     *
+     * Optimistic like [toggleTool], and reverted the same way — the sheet shows
+     * the selection immediately, and a failed write puts the previous prompt
+     * back rather than leaving the UI claiming something the server does not
+     * have. Refused during a run for the same reason a tool toggle is: the turn
+     * in flight already read the old prompt.
+     */
+    fun selectPrompt(prompt: ManagedPrompt) {
+        val current = loaded() ?: return
+        if (!current.canToggleTools) return
+        val previous = current.conversation.mainSystemPrompt
+        if (previous == prompt.content) return
+        _state.value = current.copy(
+            conversation = current.conversation.copy(mainSystemPrompt = prompt.content),
+        )
+        viewModelScope.launch {
+            conversationsRepository.setMainSystemPrompt(conversationId, prompt.content).fold(
+                onSuccess = {},
+                onFailure = { failure ->
+                    val latest = loaded() ?: return@fold
+                    _state.value = latest.copy(
+                        conversation = latest.conversation.copy(mainSystemPrompt = previous),
+                        actionError = failure.appError.displayMessage,
+                    )
+                },
+            )
+        }
     }
 
     /**
@@ -357,7 +404,7 @@ class ThreadViewModel(
      */
     fun toggleTool(serverId: String) {
         val current = loaded() ?: return
-        if (!current.canOpenTools) return
+        if (!current.canToggleTools) return
         val previous = current.conversation.mcpServers
         val next = if (serverId in previous) previous - serverId else previous + serverId
         _state.value = current.copy(conversation = current.conversation.copy(mcpServers = next))

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -29,9 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -40,8 +40,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,22 +59,29 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.core.prefs.ChatAppearance
+import com.hpz.llmdockchat.core.prefs.LocalChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
-import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 import kotlinx.coroutines.launch
 
 /**
@@ -98,6 +104,18 @@ fun ThreadScreen(
     // carries the streaming turn across.
     LaunchedEffect(Unit) { viewModel.load() }
 
+    val appearance = LocalChatAppearance.current
+    val textScale by appearance.textScale.collectAsState()
+    val density = LocalDensity.current
+
+    // Every `sp` in this subtree, in one line — messages, cards, the header,
+    // the composer, and the sheets, which keep the composition locals of
+    // whatever composed them. Multiplying `fontScale` and leaving `density`
+    // alone is what makes this a *text* setting: padding, icons and touch
+    // targets do not move, so a larger size never breaks the layout.
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, density.fontScale * textScale),
+    ) {
     ThreadContent(
         state = state,
         listState = listState,
@@ -121,11 +139,16 @@ fun ThreadScreen(
         onOpenModelPicker = viewModel::openModelPicker,
         onCloseModelPicker = viewModel::closeModelPicker,
         onSwitchModel = { viewModel.switchModel(it.ref) },
-        onOpenToolsPicker = viewModel::openToolsPicker,
-        onCloseToolsPicker = viewModel::closeToolsPicker,
+        onOpenSettings = viewModel::openSettings,
+        onCloseSettings = viewModel::closeSettings,
         onToggleTool = viewModel::toggleTool,
+        onSelectPrompt = viewModel::selectPrompt,
+        onTextScaleChange = appearance::setTextScale,
+        textScale = textScale,
+        baseDensity = density,
         modifier = modifier,
     )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,9 +176,13 @@ private fun ThreadContent(
     onOpenModelPicker: () -> Unit,
     onCloseModelPicker: () -> Unit,
     onSwitchModel: (ModelOption) -> Unit,
-    onOpenToolsPicker: () -> Unit,
-    onCloseToolsPicker: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onCloseSettings: () -> Unit,
     onToggleTool: (String) -> Unit,
+    onSelectPrompt: (ManagedPrompt) -> Unit = {},
+    textScale: Float = ChatAppearance.DEFAULT,
+    onTextScaleChange: (Float) -> Unit = {},
+    baseDensity: Density = Density(1f, 1f),
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -183,48 +210,22 @@ private fun ThreadContent(
             }
         },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            loaded?.conversation?.title ?: "Conversation",
-                            color = colors.fg,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("thread_title"),
-                        )
-                        // F04-R3: who is answering stays visible for the whole
-                        // turn, not just at the moment it starts.
-                        loaded?.conversation?.modelRef?.let { ref ->
-                            Text(
-                                ref.displayName,
-                                color = colors.subtle,
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("thread_model"),
+            ThreadHeader(
+                title = loaded?.conversation?.title ?: "Conversation",
+                model = loaded?.conversation?.modelRef?.displayName,
+                onBack = onBack,
+                action = {
+                    if (loaded != null) {
+                        IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
+                            Icon(
+                                DesignLabIcons.Cog,
+                                contentDescription = "Chat settings",
+                                tint = colors.fg,
+                                modifier = Modifier.size(21.dp),
                             )
                         }
                     }
                 },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
-                        Text("←", color = colors.fg)
-                    }
-                },
-                actions = {
-                    if (loaded != null) {
-                        ThreadOverflowMenu(
-                            canSwitchModel = loaded.canSwitchModel,
-                            onOpenModelPicker = onOpenModelPicker,
-                            canOpenTools = loaded.canOpenTools,
-                            onOpenToolsPicker = onOpenToolsPicker,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
             )
         },
         // The composer is the Scaffold's bottom bar rather than the last child
@@ -326,52 +327,80 @@ private fun ThreadContent(
         )
     }
 
-    // F08 — the same picker as F03's (screen 07b), reached from the overflow
-    // menu. Selected ids come from the conversation itself, not local sheet
-    // state: `mcpServers` is the server's own array, and `toggleTool` updates
-    // it optimistically the instant a row is tapped (F08-R2).
-    loaded?.toolsPicker?.let { picker ->
-        ToolsPickerSheet(
-            servers = picker.servers,
+    // One sheet for everything about this chat (replaces the two-item overflow
+    // menu). Selected tool ids come from the conversation itself, not local
+    // sheet state: `mcpServers` is the server's own array, and `toggleTool`
+    // updates it optimistically the instant a row is tapped (F08-R2).
+    loaded?.settings?.let { settings ->
+        ChatSettingsSheet(
+            modelName = loaded.conversation.modelRef.displayName,
+            canSwitchModel = loaded.canSwitchModel,
+            onOpenModelPicker = onOpenModelPicker,
+            servers = settings.servers,
             selectedIds = loaded.conversation.mcpServers.toSet(),
-            onToggle = onToggleTool,
-            onDismiss = onCloseToolsPicker,
-            hint = "Changes apply to the next message you send.",
+            canToggleTools = loaded.canToggleTools,
+            onToggleTool = onToggleTool,
+            prompts = settings.prompts,
+            activePromptContent = loaded.conversation.mainSystemPrompt,
+            onSelectPrompt = onSelectPrompt,
+            textScale = textScale,
+            onTextScaleChange = onTextScaleChange,
+            baseDensity = baseDensity,
+            onDismiss = onCloseSettings,
         )
     }
 }
 
+/**
+ * The thread header. A `TopAppBar` cannot carry a two-line title at a sane
+ * height — it centres a single title slot in a fixed 64 dp bar — so this is the
+ * same hand-rolled shell the conversation list uses, for the same reason, and
+ * so the two screens' headers line up when you push from one to the other.
+ */
 @Composable
-private fun ThreadOverflowMenu(
-    canSwitchModel: Boolean,
-    onOpenModelPicker: () -> Unit,
-    canOpenTools: Boolean,
-    onOpenToolsPicker: () -> Unit,
+private fun ThreadHeader(
+    title: String,
+    model: String?,
+    onBack: () -> Unit,
+    action: @Composable () -> Unit,
 ) {
     val colors = LlmTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    IconButton(onClick = { expanded = true }, modifier = Modifier.testTag("thread_overflow")) {
-        Text("⋮", color = colors.fg, style = MaterialTheme.typography.titleLarge)
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DropdownMenuItem(
-            text = { Text(if (canSwitchModel) "Switch model" else "Switch model (run active)") },
-            enabled = canSwitchModel,
-            onClick = {
-                expanded = false
-                onOpenModelPicker()
-            },
-            modifier = Modifier.testTag("thread_switch_model"),
-        )
-        DropdownMenuItem(
-            text = { Text(if (canOpenTools) "Tools" else "Tools (run active)") },
-            enabled = canOpenTools,
-            onClick = {
-                expanded = false
-                onOpenToolsPicker()
-            },
-            modifier = Modifier.testTag("thread_tools"),
-        )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .height(64.dp)
+            .padding(start = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
+            Icon(DesignLabIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Text(
+                title,
+                color = colors.fg,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("thread_title"),
+            )
+            // F04-R3: who is answering stays visible for the whole turn, not
+            // just at the moment it starts.
+            if (model != null) {
+                Text(
+                    model,
+                    color = colors.subtle,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("thread_model"),
+                )
+            }
+        }
+        action()
     }
 }
 
@@ -442,6 +471,12 @@ private fun LoadedThread(
     var selectionModeMessageId by remember { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize()) {
+        // A thread created but not yet spoken in. Without this the screen is a
+        // blank sheet between the header and the composer, which reads as a
+        // thread that failed to load rather than one with nothing in it yet.
+        if (state.thread.messages.isEmpty() && state.thread.streaming == null) {
+            EmptyThread(state.conversation.modelRef.displayName)
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -636,14 +671,56 @@ private fun WaitingIndicator(stopping: Boolean) {
 private fun JumpToLatest(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LlmTheme.colors
     Box(
+        // Accent-filled, not surfaceElevated: it floats over the thread, and in
+        // light mode an elevated grey circle on an almost-white page was
+        // invisible until you knew it was there.
         modifier = modifier
             .clip(CircleShape)
-            .background(colors.surfaceElevated)
+            .background(colors.accent)
             .size(44.dp)
             .testTag("jump_to_latest"),
         contentAlignment = Alignment.Center,
     ) {
-        IconButton(onClick = onClick) { Text("↓", color = colors.fg) }
+        IconButton(onClick = onClick) {
+            Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.onAccent, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun EmptyThread(modelName: String) {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxSize().padding(40.dp).testTag("thread_empty"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.accentSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(DesignLabIcons.ChatBubble, contentDescription = null, tint = colors.accent, modifier = Modifier.size(28.dp))
+        }
+        Text(
+            "Ask it anything",
+            color = colors.fg,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Text(
+            // Naming the model is the useful half: it is the one thing about a
+            // brand-new thread that is already decided, and the one thing worth
+            // changing before the first turn.
+            "$modelName is answering. The cog changes the model and its tools.",
+            color = colors.subtle,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -850,7 +927,7 @@ private fun ThreadStreamingPreview() {
             onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
             onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
             onOpenModelPicker = {}, onCloseModelPicker = {}, onSwitchModel = {},
-            onOpenToolsPicker = {}, onCloseToolsPicker = {}, onToggleTool = {},
+            onOpenSettings = {}, onCloseSettings = {}, onToggleTool = {},
         )
     }
 }

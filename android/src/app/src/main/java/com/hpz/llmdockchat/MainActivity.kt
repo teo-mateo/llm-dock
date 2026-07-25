@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import com.hpz.llmdockchat.core.prefs.LocalChatAppearance
 import com.hpz.llmdockchat.core.AppContainer
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
@@ -84,10 +86,15 @@ private fun AppRoot(container: AppContainer, modifier: Modifier = Modifier) {
     }
 
     start?.let { destination ->
-        AppNavHost(
-            container = container,
-            startDestination = destination,
-            modifier = modifier.testTag("app_root"),
-        )
+        // Provided at the root, not per screen: the chat text size is one
+        // app-wide setting, and every screen that reads it must see the same
+        // instance or the value would reset on navigation.
+        CompositionLocalProvider(LocalChatAppearance provides container.chatAppearance) {
+            AppNavHost(
+                container = container,
+                startDestination = destination,
+                modifier = modifier.testTag("app_root"),
+            )
+        }
     }
 }

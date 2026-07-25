@@ -27,14 +27,15 @@ import kotlinx.coroutines.flow.flow
 class GpuStreamRepository(private val transport: SseTransport) {
 
     /**
-     * Emits [GpuState.Unavailable] immediately on connect (F10-R3's fourth
+     * Emits [GpuState.Connecting] immediately on connect (F10-R3's fourth
      * criterion: a header that has not heard from the server yet must not look
-     * "available" with stale zeros), then whatever the stream reports. Never
+     * "available" with stale zeros — nor claim the GPU is unavailable, which
+     * is a different statement), then whatever the stream reports. Never
      * completes on its own — a dropped connection is retried, not surfaced as
      * a flow failure, same posture as [ServicesStreamRepository.stream].
      */
     fun stream(interval: Double = DEFAULT_INTERVAL_S, backoff: ReconnectBackoff = ReconnectBackoff()): Flow<GpuState> = flow {
-        emit(GpuState.Unavailable(null))
+        emit(GpuState.Connecting)
         while (true) {
             try {
                 transport.open(

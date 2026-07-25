@@ -43,7 +43,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -81,9 +83,15 @@ fun MarkdownBody(raw: String, modifier: Modifier = Modifier, selectable: Boolean
     val colors = LlmTheme.colors
     val blocks = remember(raw) { splitMdBlocks(raw) }
     val body: @Composable () -> Unit = {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            blocks.forEach { rawBlock ->
+        // 6dp between blocks ran paragraphs together into one grey mass at
+        // this body size; 12 is about half a line, which is what separates
+        // paragraphs on paper. Headings take more, above only, so a heading
+        // binds to the text under it rather than floating between two
+        // sections.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            blocks.forEachIndexed { index, rawBlock ->
                 val block = remember(rawBlock, colors) { parseMdBlock(rawBlock, colors) }
+                if (block is MdBlock.Heading && index > 0) Spacer(Modifier.height(6.dp))
                 MdBlockView(block, colors)
             }
         }
@@ -102,6 +110,7 @@ private fun MdBlockView(block: MdBlock, colors: LlmColors) {
             block.text,
             color = colors.fg,
             fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold,
             style = headingStyle(block.level),
         )
         is MdBlock.Paragraph -> Text(
@@ -129,13 +138,30 @@ private fun MdBlockView(block: MdBlock, colors: LlmColors) {
     }
 }
 
+/**
+ * Sizes given outright rather than pulled from [MaterialTheme.typography].
+ *
+ * The theme defines neither `headlineSmall` nor `titleSmall`, so h1 and h4+ were
+ * silently falling back to Material's defaults — and Material's `titleSmall` is
+ * 14sp, *smaller* than this body text at 16sp. A model that writes `#### ` got a
+ * heading that looked like de-emphasised prose. Every level is now at least body
+ * size, and each is strictly larger than the one below it.
+ */
 @Composable
-private fun headingStyle(level: Int) = when (level) {
-    1 -> MaterialTheme.typography.headlineSmall
-    2 -> MaterialTheme.typography.titleLarge
-    3 -> MaterialTheme.typography.titleMedium
-    else -> MaterialTheme.typography.titleSmall
-}
+private fun headingStyle(level: Int) = MaterialTheme.typography.bodyLarge.copy(
+    fontSize = when (level) {
+        1 -> 24.sp
+        2 -> 21.sp
+        3 -> 18.sp
+        else -> 16.sp
+    },
+    lineHeight = when (level) {
+        1 -> 30.sp
+        2 -> 27.sp
+        3 -> 24.sp
+        else -> 22.sp
+    },
+)
 
 /**
  * F05-R2 — language label, copy button, and its own horizontal scroll so a

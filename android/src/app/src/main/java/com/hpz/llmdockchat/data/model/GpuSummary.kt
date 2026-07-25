@@ -33,6 +33,13 @@ data class GpuSummary(
  * fourth criterion).
  */
 sealed interface GpuState {
+    /**
+     * Connected but no frame has arrived yet. Distinct from [Unavailable]:
+     * conflating the two made the header claim "GPU stats unavailable" for the
+     * second or two before the first tick, which reads as a broken dashboard
+     * rather than as one that has not answered yet.
+     */
+    data object Connecting : GpuState
     data class Available(val gpus: List<GpuSummary>) : GpuState
     data class Unavailable(val message: String?) : GpuState
 }

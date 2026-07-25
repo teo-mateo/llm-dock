@@ -6,6 +6,8 @@ import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.model.ConversationSummary
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,10 +27,24 @@ sealed interface ConversationListUiState {
         val selection: Set<String> = emptySet(),
         /** A delete that failed — surfaced once, not swallowed (F00-R4). */
         val actionError: String? = null,
+        /**
+         * Swiped away but not yet deleted on the server. Held here rather than
+         * removed from [conversations] so a refresh landing inside the undo
+         * window cannot resurrect the row.
+         */
+        val pendingUndo: PendingUndo? = null,
     ) : ConversationListUiState {
-        val isEmpty: Boolean get() = conversations.isEmpty()
+        /** What the list draws: the pending row is already gone from it. */
+        val visible: List<ConversationSummary>
+            get() = pendingUndo?.let { pending -> conversations.filterNot { it.id == pending.id } }
+                ?: conversations
+
+        val isEmpty: Boolean get() = visible.isEmpty()
         val selectionMode: Boolean get() = selection.isNotEmpty()
     }
+
+    /** A delete waiting out its undo window. */
+    data class PendingUndo(val id: String, val title: String)
 
     data class Failed(val message: String) : ConversationListUiState
 }
@@ -61,11 +77,15 @@ class ConversationListViewModel(
         viewModelScope.launch {
             repository.list().fold(
                 onSuccess = { conversations ->
-                    val selection = (current as? ConversationListUiState.Loaded)?.selection.orEmpty()
+                    val loaded = current as? ConversationListUiState.Loaded
+                    val selection = loaded?.selection.orEmpty()
                         .intersect(conversations.map { it.id }.toSet())
                     _state.value = ConversationListUiState.Loaded(
                         conversations = conversations,
                         selection = selection,
+                        // Carried across: the server still has this row, so a
+                        // refresh mid-window would otherwise pop it back.
+                        pendingUndo = loaded?.pendingUndo,
                     )
                 },
                 onFailure = { failure ->
@@ -75,6 +95,10 @@ class ConversationListViewModel(
         }
     }
 
+    /**
+     * Confirm-then-delete, still used by the multi-select bar's single-row
+     * path. A swipe goes through [deleteWithUndo] instead.
+     */
     fun delete(id: String) {
         viewModelScope.launch {
             repository.delete(id).fold(
@@ -82,6 +106,68 @@ class ConversationListViewModel(
                 onFailure = { failure -> reportActionFailure(failure.appError.displayMessage) },
             )
         }
+    }
+
+    private var undoJob: Job? = null
+
+    /**
+     * Swipe-to-delete with an undo window instead of a confirm dialog.
+     *
+     * The row leaves the list at once and the request is held for
+     * [UNDO_WINDOW_MS]; only when that expires is anything sent to the server,
+     * so an undo costs nothing and needs no second call to put the thread back.
+     * That is also why this cannot use an optimistic delete plus a re-create —
+     * the server assigns ids, and a re-created thread would not be the same
+     * conversation.
+     *
+     * A second swipe inside the window commits the first immediately rather
+     * than dropping it: the alternative is silently keeping a thread the user
+     * has already swiped away.
+     */
+    fun deleteWithUndo(item: ConversationSummary) {
+        commitPendingNow()
+        updateLoaded { it.copy(pendingUndo = ConversationListUiState.PendingUndo(item.id, item.title)) }
+        undoJob = viewModelScope.launch {
+            delay(UNDO_WINDOW_MS)
+            commitPending(item.id)
+        }
+    }
+
+    fun undoDelete() {
+        undoJob?.cancel()
+        undoJob = null
+        updateLoaded { it.copy(pendingUndo = null) }
+    }
+
+    /** Commits without waiting — used when a second swipe arrives, and on clear-down. */
+    private fun commitPendingNow() {
+        val pending = (_state.value as? ConversationListUiState.Loaded)?.pendingUndo ?: return
+        undoJob?.cancel()
+        undoJob = null
+        viewModelScope.launch { commitPending(pending.id) }
+    }
+
+    private suspend fun commitPending(id: String) {
+        repository.delete(id).fold(
+            onSuccess = {
+                updateLoaded {
+                    it.copy(
+                        conversations = it.conversations.filterNot { row -> row.id == id },
+                        pendingUndo = it.pendingUndo?.takeIf { pending -> pending.id != id },
+                    )
+                }
+            },
+            onFailure = { failure ->
+                // The row comes back: it still exists on the server, and
+                // leaving it hidden would be the UI lying about what is there.
+                updateLoaded {
+                    it.copy(
+                        pendingUndo = it.pendingUndo?.takeIf { pending -> pending.id != id },
+                        actionError = failure.appError.displayMessage,
+                    )
+                }
+            },
+        )
     }
 
     fun deleteSelected() {
@@ -106,6 +192,11 @@ class ConversationListViewModel(
 
     private fun reportActionFailure(message: String) = updateLoaded {
         it.copy(refreshing = false, actionError = message)
+    }
+
+    private companion object {
+        /** Long enough to read the snackbar and reach for it, short enough not to feel stuck. */
+        const val UNDO_WINDOW_MS = 3_000L
     }
 
     private inline fun updateLoaded(transform: (ConversationListUiState.Loaded) -> ConversationListUiState.Loaded) {

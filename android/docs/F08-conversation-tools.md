@@ -96,7 +96,23 @@ is needed for them, and nothing must break on them.
 
 ## Deviations from the mockup
 
-None.
+**The tools sheet no longer exists as its own screen.** It was merged into
+a single chat-settings sheet (`feature/thread/ChatSettingsSheet.kt`),
+reached from a cog in the thread header, alongside the model switcher and
+a chat text-size control. The overflow menu it replaced put both entries
+two taps from anything and could show neither's current state. The tool
+rows are the same rows, with a `Switch` in place of the `Checkbox` —
+these are on/off capabilities for the thread, not items being picked out
+of a list.
+
+**F08-R4 is satisfied by the second branch of its own criterion, not the
+first.** The sheet now *opens* during a run, because it also holds the
+text-size control, which has nothing to do with any run. The tool rows
+inside it render disabled and the section header reads "Tools ·
+unavailable while a run is active". The guarantee itself is unchanged and
+is enforced where it always was — `toggleTool` refuses outright while
+`canToggleTools` is false (renamed from `canOpenTools`, which no longer
+describes what it gates).
 
 ## Verification notes
 
@@ -140,7 +156,7 @@ to F04-R10's "navigation is not cancellation".
 
 | Item | Why |
 |---|---|
-| R4 during a real run | Verified by JVM test (the guard blocks both open and toggle; the server is never contacted) and by inspection (`enabled = canOpenTools`, not merely relabelled). Not caught on screen: turns on this rig finish in under a second, too fast to screenshot a stable generating state. |
+| R4 during a real run | Verified by JVM test (`toggleTool` refuses and the server is never contacted) and by inspection (`enabled = canToggleTools` on the rows and the switches, not merely relabelled). Not caught on screen: turns on this rig finish in under a second, too fast to screenshot a stable generating state. |
 | R1 · dynamic registry reload | Requires editing `mcp_servers.json` and reloading the registry — a dashboard configuration action, out of scope for the app and for its agents. |
 | R5 · project file tools (Should) | No project-scoped conversation on hand. F04's `ToolCallCard` special-cases no server id, so a project-files call renders like any other; confirmed by inspection only. |
 

@@ -85,6 +85,13 @@ data class ConversationDetail(
      * (Architecture D6), never a write to this field.
      */
     val mcpServers: List<String> = emptyList(),
+    /**
+     * The thread's resolved system prompt text. The server stores the content,
+     * not which managed prompt it came from, so identifying the current prompt
+     * means matching this against the registry — see
+     * [com.hpz.llmdockchat.data.dto.PromptDto].
+     */
+    val mainSystemPrompt: String = "",
 ) {
     val isGenerating: Boolean
         get() = activeRun != null && activeRun.status in GENERATING_STATUSES

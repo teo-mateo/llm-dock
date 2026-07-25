@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.conversations
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,13 +28,16 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
@@ -41,6 +48,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,7 +64,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.hpz.llmdockchat.core.time.Timestamps
+import com.hpz.llmdockchat.core.ui.ConfirmDialog
 import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
@@ -66,6 +76,7 @@ import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import java.time.Instant
 import java.time.ZoneId
 
@@ -97,6 +108,8 @@ fun ConversationListScreen(
         onNewConversation = onNewConversation,
         onRetry = viewModel::refresh,
         onDelete = viewModel::delete,
+        onSwipeDelete = viewModel::deleteWithUndo,
+        onUndoDelete = viewModel::undoDelete,
         onEnterSelection = viewModel::enterSelection,
         onToggleSelection = viewModel::toggleSelection,
         onClearSelection = viewModel::clearSelection,
@@ -114,6 +127,8 @@ private fun ConversationListContent(
     onNewConversation: () -> Unit,
     onRetry: () -> Unit,
     onDelete: (String) -> Unit,
+    onSwipeDelete: (ConversationSummary) -> Unit = {},
+    onUndoDelete: () -> Unit = {},
     onEnterSelection: (String) -> Unit,
     onToggleSelection: (String) -> Unit,
     onClearSelection: () -> Unit,
@@ -131,12 +146,41 @@ private fun ConversationListContent(
         loaded?.actionError?.let { snackbarHost.showSnackbar(it) }
     }
 
+    // Indefinite on purpose: the window is the ViewModel's to time, and when it
+    // expires `pendingUndo` goes null, this effect is cancelled, and the
+    // snackbar goes with it. A duration here would be a second clock to keep
+    // in sync with that one.
+    val pendingUndo = loaded?.pendingUndo
+    LaunchedEffect(pendingUndo?.id) {
+        val pending = pendingUndo ?: return@LaunchedEffect
+        val result = snackbarHost.showSnackbar(
+            message = "Deleted \u201c${pending.title}\u201d",
+            actionLabel = "Undo",
+            withDismissAction = false,
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndoDelete()
+    }
+
     FollowNewConversations(loaded?.conversations, listState)
 
+    Box(Modifier.fillMaxSize().background(colors.appGradient)) {
     Scaffold(
         modifier = modifier.testTag("conversation_list_screen"),
-        containerColor = colors.app,
-        snackbarHost = { SnackbarHost(snackbarHost) { Snackbar(it, containerColor = colors.surfaceElevated, contentColor = colors.fg) } },
+        // Transparent so the gradient behind the Scaffold shows through; the
+        // opaque `app` fill is what made every screen sit in one flat band.
+        containerColor = Color.Transparent,
+        snackbarHost = {
+            SnackbarHost(snackbarHost) { data ->
+                Snackbar(
+                    data,
+                    containerColor = colors.surfaceElevated,
+                    contentColor = colors.fg,
+                    actionColor = colors.accent,
+                    shape = RoundedCornerShape(14.dp),
+                )
+            }
+        },
         topBar = {
             if (loaded?.selectionMode == true) {
                 SelectionTopBar(
@@ -145,21 +189,19 @@ private fun ConversationListContent(
                     onDelete = { pendingBatchDelete = true },
                 )
             } else {
-                TopAppBar(
-                    title = { Text("Chats", color = colors.fg) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
-                )
+                ListHeader(count = loaded?.conversations?.size)
             }
         },
         floatingActionButton = {
             if (loaded?.selectionMode != true) {
-                ExtendedFloatingActionButton(
+                FloatingActionButton(
                     onClick = onNewConversation,
                     containerColor = colors.accent,
                     contentColor = colors.onAccent,
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.testTag("new_conversation_fab"),
                 ) {
-                    Text("New chat")
+                    Icon(DesignLabIcons.Plus, contentDescription = "New chat")
                 }
             }
         },
@@ -189,7 +231,7 @@ private fun ConversationListContent(
                                 // unreachable — there is no further scroll.
                                 contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
                             ) {
-                                items(state.conversations, key = { it.id }) { item ->
+                                items(state.visible, key = { it.id }) { item ->
                                     ConversationRow(
                                         item = item,
                                         selected = item.id in state.selection,
@@ -200,9 +242,8 @@ private fun ConversationListContent(
                                         onLongPress = {
                                             if (state.selectionMode) onToggleSelection(item.id) else onEnterSelection(item.id)
                                         },
-                                        onRequestDelete = { pendingDelete = item },
+                                        onRequestDelete = { onSwipeDelete(item) },
                                     )
-                                    HorizontalDivider(color = colors.line)
                                 }
                             }
                         }
@@ -211,9 +252,12 @@ private fun ConversationListContent(
             }
         }
     }
+    }
 
     pendingDelete?.let { target ->
         ConfirmDialog(
+            icon = DesignLabIcons.Trash,
+            tint = colors.red,
             title = "Delete conversation?",
             message = "“${target.title}” will be deleted. This can't be undone.",
             confirmLabel = "Delete",
@@ -228,7 +272,9 @@ private fun ConversationListContent(
     if (pendingBatchDelete) {
         val count = loaded?.selection?.size ?: 0
         ConfirmDialog(
-            title = "Delete $count conversations?",
+            icon = DesignLabIcons.Trash,
+            tint = colors.red,
+            title = if (count == 1) "Delete this conversation?" else "Delete $count conversations?",
             message = "This can't be undone.",
             confirmLabel = "Delete",
             onConfirm = {
@@ -272,24 +318,89 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * The list header. Replaces the `TopAppBar` rather than restyling it: Material's
+ * app bar fixes its own height and title style, and the design wants a two-line
+ * block (title over a live count) on the page background with no bar of its own.
+ */
+@Composable
+private fun ListHeader(count: Int?) {
+    val colors = LlmTheme.colors
+    HeaderShell {
+        Column {
+        Text(
+            "Chats",
+            color = colors.fg,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        if (count != null) {
+            Text(
+                if (count == 1) "1 conversation" else "$count conversations",
+                color = colors.subtle,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        }
+    }
+}
+
+/**
+ * Both headers live in this box so entering selection mode does not resize the
+ * header and shove the whole list down. A `TopAppBar` cannot be one of them —
+ * it brings its own fixed height, which is what made the selection bar taller
+ * than the list header it replaced.
+ */
+@Composable
+private fun HeaderShell(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            // TopAppBar consumed the status-bar inset itself; a plain Box does
+            // not, so without this the title rides up under the clock.
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .height(HEADER_HEIGHT)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) { content() }
+}
+
+private val HEADER_HEIGHT = 76.dp
+
 @Composable
 private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Unit) {
     val colors = LlmTheme.colors
-    TopAppBar(
-        title = { Text("$count selected", color = colors.fg) },
-        navigationIcon = {
+    HeaderShell {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             IconButton(onClick = onClose, modifier = Modifier.testTag("selection_close")) {
-                Text("✕", color = colors.fg)
+                Icon(DesignLabIcons.Close, contentDescription = "Cancel selection", tint = colors.fg, modifier = Modifier.size(20.dp))
             }
-        },
-        actions = {
-            TextButton(onClick = onDelete, modifier = Modifier.testTag("selection_delete")) {
-                Text("Delete", color = colors.red)
+            Text(
+                "$count selected",
+                color = colors.fg,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(colors.red.copy(alpha = 0.12f))
+                    .clickable(onClick = onDelete)
+                    .testTag("selection_delete"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(DesignLabIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(18.dp))
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceElevated),
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -320,7 +431,12 @@ private fun ConversationRow(
     SwipeToDismissBox(
         state = dismissState,
         modifier = Modifier.testTag("conversation_row_swipe_${item.id}"),
-        backgroundContent = { DeleteSwipeBackground() },
+        // Only while the row is actually being dragged. `backgroundContent` is
+        // composed unconditionally, and the row body above it is transparent so
+        // the page gradient shows through — so an always-drawn red panel made
+        // every settled row red with a stray "Delete" peeking out from under
+        // the badge.
+        backgroundContent = { if (dismissState.progress < 1f) DeleteSwipeBackground() },
     ) {
         ConversationRowBody(item, selected = false, selectionMode = false, onOpen, onLongPress)
     }
@@ -353,42 +469,99 @@ private fun ConversationRowBody(
     val zone = remember { ZoneId.systemDefault() }
     val time = remember(item.updatedAt) { item.updatedAt?.let { Timestamps.relative(it, now, zone) }.orEmpty() }
 
-    Row(
-        modifier = Modifier
+    Column(
+        Modifier
             .fillMaxWidth()
-            .background(if (selected) colors.accentDeep.copy(alpha = 0.25f) else colors.app)
+            // The row is drawn on the page gradient, so "unselected" is
+            // transparent, not an opaque `app` fill — an opaque row would punch
+            // a flat rectangle through the backdrop.
+            .background(if (selected) colors.accentSoft else Color.Transparent)
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
             .testTag("conversation_row_${item.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (selectionMode) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = { onOpen() },
-                colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
-            )
-        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (selectionMode) {
+                // Sized to the badge it replaces. Checkbox otherwise enforces a
+                // 48 dp minimum interactive size against the badge's 36 dp, so
+                // every row grew taller the moment a long-press entered
+                // selection mode and the whole list jumped. The 48 dp target is
+                // not lost: the entire row is clickable and toggles selection.
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 36.dp) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = { onOpen() },
+                            colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
+                        )
+                    }
+                }
+            } else {
+                // The badge carries the live state as colour, which is why the
+                // generating dot can stay a small detail rather than the only
+                // signal a row is busy.
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .background(
+                            if (item.isGenerating) colors.accentSoft else colors.surfaceHigh,
+                            RoundedCornerShape(12.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        DesignLabIcons.ChatBubble,
+                        contentDescription = null,
+                        tint = if (item.isGenerating) colors.accent else colors.muted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
 
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                item.title,
-                color = colors.fg,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // C2: the model name is the part that gives way when the row
-                // is narrow. Un-weighted, the chip took the whole width and
-                // the live badge next to it ellipsised to "● genera…".
-                EngineChip(item.modelRef, item.engine, Modifier.weight(1f, fill = false))
-                if (item.isGenerating) GeneratingIndicator(item.activeRun)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        item.title,
+                        color = colors.fg,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Without the weight the title measures at its full
+                        // intrinsic width and pushes the timestamp off the row
+                        // — `maxLines = 1` alone does not constrain a Text.
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(time, color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // C2: the model name is the part that gives way when the row
+                    // is narrow. Un-weighted, the chip took the whole width and
+                    // the live badge next to it ellipsised to "● genera…".
+                    EngineChip(item.modelRef, item.engine, Modifier.weight(1f, fill = false))
+                    if (item.isGenerating) GeneratingIndicator(item.activeRun)
+                }
             }
         }
 
-        Text(time, color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+        // Indented past the badge so the dividers read as separators between
+        // rows rather than as a full-width grid. One fixed indent in both
+        // modes — keying it off `selectionMode` made every divider jump
+        // outwards the moment a long-press swapped the badge for a checkbox.
+        Box(
+            Modifier
+                .padding(start = ROW_DIVIDER_INDENT)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.line),
+        )
     }
 }
 
@@ -413,7 +586,10 @@ private fun EngineChip(modelRef: ModelRef, engine: Engine, modifier: Modifier = 
     }
 }
 
-/** Extended FAB (56 dp) plus the Scaffold's own 16 dp margin. */
+/** Where the row's text column starts: 20 dp page margin + 36 dp badge + 12 dp gap. */
+private val ROW_DIVIDER_INDENT = 68.dp
+
+/** FAB (56 dp) plus the Scaffold's own 16 dp margin. */
 private val FAB_CLEARANCE = 80.dp
 
 private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
@@ -485,33 +661,6 @@ private fun FailedState(message: String, onRetry: () -> Unit) {
             Text("Retry", color = colors.accent)
         }
     }
-}
-
-@Composable
-private fun ConfirmDialog(
-    title: String,
-    message: String,
-    confirmLabel: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LlmTheme.colors
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        title = { Text(title, color = colors.fg) },
-        text = { Text(message, color = colors.muted) },
-        confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm_dialog_confirm")) {
-                Text(confirmLabel, color = colors.red)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.testTag("confirm_dialog_dismiss")) {
-                Text("Cancel", color = colors.muted)
-            }
-        },
-    )
 }
 
 @Preview

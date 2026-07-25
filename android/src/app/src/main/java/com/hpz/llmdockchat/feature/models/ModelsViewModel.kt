@@ -30,7 +30,7 @@ sealed interface ModelsUiState {
         val stopped: List<ServiceSummary>,
         /** True while the services stream is down and being retried (F10-R1's fifth criterion). */
         val stale: Boolean = false,
-        val gpu: GpuState = GpuState.Unavailable(null),
+        val gpu: GpuState = GpuState.Connecting,
         /** Free-text name filter. Empty means "show everything". */
         val query: String = "",
     ) : ModelsUiState {
@@ -135,6 +135,50 @@ class ModelsViewModel(
     fun retry() {
         started = false
         start()
+    }
+
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
+    /**
+     * Pull-to-refresh. Deliberately not [retry]: that drops back to
+     * [ModelsUiState.Loading], which would blank the list under the finger
+     * that pulled it — the one moment the list must stay put.
+     *
+     * The list is already live over SSE, so this is for the case the stream
+     * cannot cover: it has dropped (`stale`), or the initial load failed and
+     * the screen is sitting on an error. A refresh that succeeds therefore
+     * clears `stale`; one that fails on an already-loaded screen keeps the
+     * rows and leaves the staleness flag set rather than throwing away known
+     * state for an error message.
+     */
+    fun refresh() {
+        if (_refreshing.value) return
+        _refreshing.value = true
+        viewModelScope.launch {
+            servicesRepository.list().fold(
+                onSuccess = { services ->
+                    started = true
+                    val (running, stopped) = services.splitByRunning()
+                    val current = _state.value
+                    _state.value = if (current is ModelsUiState.Loaded) {
+                        current.copy(running = running, stopped = stopped, stale = false)
+                    } else {
+                        ModelsUiState.Loaded(running = running, stopped = stopped)
+                    }
+                },
+                onFailure = { failure ->
+                    val current = _state.value
+                    if (current is ModelsUiState.Loaded) {
+                        _state.value = current.copy(stale = true)
+                    } else {
+                        started = false
+                        _state.value = ModelsUiState.Failed(failure.appError.displayMessage)
+                    }
+                },
+            )
+            _refreshing.value = false
+        }
     }
 
     /** Collected by [ModelsScreen] from a composition-scoped `LaunchedEffect` — see the class doc. */

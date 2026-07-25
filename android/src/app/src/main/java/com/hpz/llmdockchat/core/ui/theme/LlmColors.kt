@@ -2,6 +2,7 @@ package com.hpz.llmdockchat.core.ui.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -17,8 +18,17 @@ import androidx.compose.ui.graphics.Color
 @Immutable
 data class LlmColors(
     val app: Color,
+    /**
+     * The app background as a brush. A flat fill was the single biggest reason
+     * the screens read as "washed out": every surface sat in one narrow band,
+     * so nothing looked lifted. Screens that want the flat colour still use
+     * [app] — this is for the full-bleed backdrop of a list.
+     */
+    val appGradient: Brush,
     val surface: Color,
     val surfaceElevated: Color,
+    /** One step above [surfaceElevated] — icon badges and neutral chips. */
+    val surfaceHigh: Color,
     val sunken: Color,
     val fg: Color,
     val muted: Color,
@@ -26,6 +36,8 @@ data class LlmColors(
     val line: Color,
     val lineStrong: Color,
     val accent: Color,
+    /** A wash of [accent] — tinted badges and selected states. */
+    val accentSoft: Color,
     val accentDeep: Color,
     val onAccent: Color,
     val green: Color,
@@ -49,8 +61,10 @@ data class ChipColors(val background: Color, val foreground: Color)
 
 val DarkLlmColors = LlmColors(
     app = Color(0xFF0B0F15),
+    appGradient = Brush.verticalGradient(listOf(Color(0xFF141B29), Color(0xFF0B0F15))),
     surface = Color(0xFF161C27),
     surfaceElevated = Color(0xFF1E2634),
+    surfaceHigh = Color(0xFF273143),
     sunken = Color(0xFF11161F),
     fg = Color(0xFFF3F4F6),
     muted = Color(0xFF9CA3AF),
@@ -58,6 +72,7 @@ val DarkLlmColors = LlmColors(
     line = Color(0x2194A3B8),
     lineStrong = Color(0x3D94A3B8),
     accent = Color(0xFF3B82F6),
+    accentSoft = Color(0x333B82F6),
     accentDeep = Color(0xFF1E3A8A),
     onAccent = Color(0xFFFFFFFF),
     green = Color(0xFF22C55E),
@@ -77,8 +92,10 @@ val DarkLlmColors = LlmColors(
 
 val LightLlmColors = LlmColors(
     app = Color(0xFFF5F6F8),
+    appGradient = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFEDF0F5))),
     surface = Color(0xFFFFFFFF),
     surfaceElevated = Color(0xFFEDF0F4),
+    surfaceHigh = Color(0xFFE1E6EE),
     sunken = Color(0xFFE7EAEF),
     fg = Color(0xFF12161D),
     muted = Color(0xFF56606F),
@@ -86,6 +103,7 @@ val LightLlmColors = LlmColors(
     line = Color(0x1F12161D),
     lineStrong = Color(0x3812161D),
     accent = Color(0xFF2563EB),
+    accentSoft = Color(0x242563EB),
     accentDeep = Color(0xFF1D4ED8),
     onAccent = Color(0xFFFFFFFF),
     green = Color(0xFF15803D),

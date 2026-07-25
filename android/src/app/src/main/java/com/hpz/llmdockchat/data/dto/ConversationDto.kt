@@ -89,3 +89,9 @@ data class UpdateMcpServersRequestDto(@SerialName("mcp_servers_json") val mcpSer
  */
 @Serializable
 data class UpdateMainServiceRequestDto(@SerialName("main_service") val mainService: String)
+
+/** `PUT /api/chat/conversations/<id>` body for a prompt change. */
+@Serializable
+data class UpdateSystemPromptRequestDto(
+    @SerialName("main_system_prompt") val mainSystemPrompt: String,
+)

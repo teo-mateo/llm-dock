@@ -16,19 +16,26 @@ object Destinations {
     const val CHATS = "chats"
     const val MODELS = "models"
 
+    /** Design-lab gallery (experiment, not a shipped feature) — cycles the
+     * `feature/designlab` mockups the owner asked for. */
+    const val DESIGN = "design"
+
     private const val THREAD_ROUTE = "thread"
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
 
-    /** F11 — pushed on top of [TABS] without the bottom bar, same as [THREAD]. */
+    /**
+     * F11 + F12 — pushed on top of [TABS] without the bottom bar, same as
+     * [THREAD]. One screen with two tabs; `tab` picks which opens first, so a
+     * row body lands on the configuration and the engine pill lands on the
+     * logs. Logs used to be a route of its own pushed on top of this one.
+     */
     private const val MODEL_DETAIL_ROUTE = "model_detail"
-    const val MODEL_DETAIL = "$MODEL_DETAIL_ROUTE/{serviceName}"
-    fun modelDetail(serviceName: String) = "$MODEL_DETAIL_ROUTE/$serviceName"
-
-    /** F12 — pushed on top of [MODEL_DETAIL], same as it is on top of [TABS]. */
-    private const val LOGS_ROUTE = "logs"
-    const val LOGS = "$LOGS_ROUTE/{serviceName}"
-    fun logs(serviceName: String) = "$LOGS_ROUTE/$serviceName"
+    const val MODEL_DETAIL = "$MODEL_DETAIL_ROUTE/{serviceName}?tab={tab}"
+    const val MODEL_TAB_CONFIG = "config"
+    const val MODEL_TAB_LOGS = "logs"
+    fun modelDetail(serviceName: String, tab: String = MODEL_TAB_CONFIG) =
+        "$MODEL_DETAIL_ROUTE/$serviceName?tab=$tab"
 
     /**
      * F02-R8's primary action, built out in F03. [NEW_CHAT] is the route

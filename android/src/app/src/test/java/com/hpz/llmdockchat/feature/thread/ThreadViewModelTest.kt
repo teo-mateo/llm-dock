@@ -15,6 +15,7 @@ import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
+import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -68,6 +69,7 @@ class ThreadViewModelTest {
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
+    private lateinit var promptsRepository: PromptsRepository
     private val store = ViewModelStore()
 
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "test-main") }
@@ -91,6 +93,7 @@ class ThreadViewModelTest {
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        promptsRepository = PromptsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -121,6 +124,7 @@ class ThreadViewModelTest {
                     openRouterModelsRepository = openRouterModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
+                    promptsRepository = promptsRepository,
                     // Zero so a flush is still scheduled through the
                     // dispatcher; the window itself is asserted in
                     // ThreadCoalescingTest.
@@ -621,6 +625,7 @@ class ThreadViewModelTest {
                     openRouterModelsRepository,
                     conversationsRepository,
                     mcpServersRepository,
+                    promptsRepository,
                     coalesceWindowMs,
                     titleSettleDelayMs = 1,
                 )

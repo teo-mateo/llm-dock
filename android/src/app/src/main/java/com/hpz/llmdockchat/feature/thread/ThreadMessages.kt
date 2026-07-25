@@ -78,28 +78,8 @@ fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier, selectabl
             artifacts = message.artifacts,
             selectable = selectable,
             modifier = modifier,
-            trailing = { MessageModelChip(message.modelService) },
         )
     }
-}
-
-/**
- * F07-R4's second criterion: a thread's model can change mid-conversation, and
- * every persisted message already carries the one that actually produced it
- * (`model_service`). Null on a message from before switching existed, or on a
- * message role other than assistant (the server never sets it on a user
- * message), so this renders nothing rather than a misleading blank chip.
- */
-@Composable
-private fun MessageModelChip(modelService: String?) {
-    if (modelService.isNullOrBlank()) return
-    Text(
-        parseModelRef(modelService).displayName,
-        color = LlmTheme.colors.subtle,
-        fontFamily = FontFamily.Monospace,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.testTag("message_model"),
-    )
 }
 
 @Composable
@@ -182,7 +162,6 @@ fun AssistantBubble(
         }
         artifacts.forEach { ArtifactCard(it) }
         error?.let { ErrorNote(it) }
-        if (content.isNotBlank()) MessageActionsRow(content)
         trailing?.invoke()
     }
 }
@@ -202,16 +181,16 @@ private fun ReasoningBlock(reasoning: String) {
             .clip(RoundedCornerShape(10.dp))
             .background(colors.sunken)
             .clickable { expanded = !expanded }
-            .padding(horizontal = 12.dp, vertical = 9.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("reasoning_block"),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (expanded) "▾" else "▸", color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(if (expanded) "▾" else "▸", color = colors.subtle, style = MaterialTheme.typography.labelSmall)
             Text(
                 "Reasoning",
                 color = colors.muted,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f),
             )
             Text("${reasoning.length} chars", color = colors.subtle, style = MaterialTheme.typography.labelSmall)
@@ -254,24 +233,24 @@ private fun ToolCallCard(name: String, serverId: String?, arguments: String?, re
             .clip(RoundedCornerShape(10.dp))
             .background(colors.sunken)
             .clickable { expanded = !expanded }
-            .padding(horizontal = 12.dp, vertical = 9.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("tool_call_$name"),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Box(
                 Modifier
-                    .size(7.dp)
+                    .size(6.dp)
                     .background(if (result == null) colors.amber else colors.green, CircleShape),
             )
             Text(
                 serverId?.let { "$it · $name" } ?: name,
                 color = colors.muted,
                 fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f),
             )
-            Text(if (expanded) "▾" else "▸", color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+            Text(if (expanded) "▾" else "▸", color = colors.subtle, style = MaterialTheme.typography.labelSmall)
         }
         if (expanded) {
             MonoBlock("arguments", arguments.orEmpty().ifBlank { "—" })
