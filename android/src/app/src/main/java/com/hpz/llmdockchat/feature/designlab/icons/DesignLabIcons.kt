@@ -145,6 +145,20 @@ object DesignLabIcons {
         }
     }
 
+    val Trash: ImageVector by lazy {
+        strokeIcon("Trash") {
+            moveTo(4f, 6.5f); lineTo(20f, 6.5f)
+            moveTo(9.5f, 6.5f); lineTo(9.5f, 4.5f); lineTo(14.5f, 4.5f); lineTo(14.5f, 6.5f)
+            moveTo(6.5f, 6.5f); lineTo(7.4f, 20f); lineTo(16.6f, 20f); lineTo(17.5f, 6.5f)
+            moveTo(10.5f, 10f); lineTo(10.5f, 16.5f)
+            moveTo(13.5f, 10f); lineTo(13.5f, 16.5f)
+        }
+    }
+
+    val Close: ImageVector by lazy {
+        strokeIcon("Close") { moveTo(6f, 6f); lineTo(18f, 18f); moveTo(18f, 6f); lineTo(6f, 18f) }
+    }
+
     val Sparkle: ImageVector by lazy {
         strokeIcon("Sparkle") {
             moveTo(12f, 3f); lineTo(13.3f, 9.2f); lineTo(19.5f, 10.5f); lineTo(13.3f, 11.8f); lineTo(12f, 18f); lineTo(10.7f, 11.8f); lineTo(4.5f, 10.5f); lineTo(10.7f, 9.2f); close()

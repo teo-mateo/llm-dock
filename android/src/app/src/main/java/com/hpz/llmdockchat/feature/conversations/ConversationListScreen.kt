@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,6 +31,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
@@ -41,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -283,7 +288,8 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
 @Composable
 private fun ListHeader(count: Int?) {
     val colors = LlmTheme.colors
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 10.dp)) {
+    HeaderShell {
+        Column {
         Text(
             "Chats",
             color = colors.fg,
@@ -297,27 +303,58 @@ private fun ListHeader(count: Int?) {
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
+        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Both headers live in this box so entering selection mode does not resize the
+ * header and shove the whole list down. A `TopAppBar` cannot be one of them —
+ * it brings its own fixed height, which is what made the selection bar taller
+ * than the list header it replaced.
+ */
+@Composable
+private fun HeaderShell(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            // TopAppBar consumed the status-bar inset itself; a plain Box does
+            // not, so without this the title rides up under the clock.
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .height(HEADER_HEIGHT)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) { content() }
+}
+
+private val HEADER_HEIGHT = 76.dp
+
 @Composable
 private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Unit) {
     val colors = LlmTheme.colors
-    TopAppBar(
-        title = { Text("$count selected", color = colors.fg) },
-        navigationIcon = {
+    HeaderShell {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             IconButton(onClick = onClose, modifier = Modifier.testTag("selection_close")) {
-                Text("✕", color = colors.fg)
+                Icon(DesignLabIcons.Close, contentDescription = "Cancel selection", tint = colors.fg, modifier = Modifier.size(20.dp))
             }
-        },
-        actions = {
-            TextButton(onClick = onDelete, modifier = Modifier.testTag("selection_delete")) {
-                Text("Delete", color = colors.red)
+            Text(
+                "$count selected",
+                color = colors.fg,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onDelete, modifier = Modifier.testTag("selection_delete")) {
+                Icon(DesignLabIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(20.dp))
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceElevated),
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -402,11 +439,20 @@ private fun ConversationRowBody(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (selectionMode) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onOpen() },
-                    colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
-                )
+                // Sized to the badge it replaces. Checkbox otherwise enforces a
+                // 48 dp minimum interactive size against the badge's 36 dp, so
+                // every row grew taller the moment a long-press entered
+                // selection mode and the whole list jumped. The 48 dp target is
+                // not lost: the entire row is clickable and toggles selection.
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 36.dp) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = { onOpen() },
+                            colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
+                        )
+                    }
+                }
             } else {
                 // The badge carries the live state as colour, which is why the
                 // generating dot can stay a small detail rather than the only
