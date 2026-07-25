@@ -303,7 +303,7 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
                 if (end < 0) {
                     withStyle(mathSpanStyle(colors)) { append(raw.substring(i)) }; i = n
                 } else {
-                    withStyle(mathSpanStyle(colors)) { append(raw.substring(i, end + 2)) }
+                    appendMath(raw.substring(i + 2, end), raw.substring(i, end + 2), colors)
                     i = end + 2
                 }
             }
@@ -312,7 +312,7 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
                 if (end < 0) {
                     append(c); i++
                 } else {
-                    withStyle(mathSpanStyle(colors)) { append(raw.substring(i, end + 1)) }
+                    appendMath(raw.substring(i + 1, end), raw.substring(i, end + 1), colors)
                     i = end + 1
                 }
             }
@@ -383,6 +383,20 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
             }
         }
     }
+}
+
+/**
+ * Inline maths, translated to Unicode where that is faithful and shown as its
+ * own source where it is not.
+ *
+ * The fallback keeps the monospace style, because at that point the reader is
+ * being shown TeX and should be able to tell. What it must never do is print
+ * `$\rightarrow$` in the middle of a sentence in a serif face, which is what
+ * unconditional passthrough did.
+ */
+private fun AnnotatedString.Builder.appendMath(inner: String, source: String, colors: LlmColors) {
+    val translated = LatexUnicode.translate(inner)
+    if (translated != null) append(translated) else withStyle(mathSpanStyle(colors)) { append(source) }
 }
 
 private val ESCAPABLE = "\\`*_{}[]()#+-.!$>~".toSet()
