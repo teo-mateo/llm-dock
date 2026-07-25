@@ -244,6 +244,36 @@ class ChatRepositoryTest {
         assertTrue(events.filterIsInstance<RunEvent.Delta>().first().reasoning.length > 200)
     }
 
+    // -- delete (F06) ----------------------------------------------------------
+
+    @Test
+    fun `delete DELETEs the message path`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"ok": true}""").build())
+
+        repository.deleteMessage("c1", "m2").getOrThrow()
+
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/chat/conversations/c1/messages/m2", request.url.encodedPath)
+    }
+
+    /** The server refuses a delete while a run is active in that conversation. */
+    @Test
+    fun `a 409 on delete fails with the server's message`() = runTest {
+        server.enqueue(
+            MockResponse.Builder()
+                .code(409)
+                .body("""{"error": "Cannot delete a message while a run is active"}""")
+                .build(),
+        )
+
+        val failure = repository.deleteMessage("c1", "m2").exceptionOrNull()
+
+        val http = (failure as ApiException).error as AppError.Http
+        assertEquals(409, http.status)
+        assertEquals("Cannot delete a message while a run is active", http.message)
+    }
+
     // -- cancel --------------------------------------------------------------
 
     @Test
