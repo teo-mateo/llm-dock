@@ -50,6 +50,13 @@ import com.hpz.llmdockchat.data.model.engine
  * this composable only by the caller doing it right; this filters for itself
  * too, so a picker instantiated against the raw list can never show one
  * (F07-R1's second criterion, belt-and-suspenders with [ServiceSummary.isChatCapable]).
+ *
+ * Local rows are further filtered to running services only (F07-RO, a
+ * later owner-requested deviation from F07-R2's original grey-and-disabled
+ * "Stopped" section): a service that isn't running is noise here, not a
+ * choice — starting one is F11's guarded action, reached from the Models
+ * tab, not this sheet. The OpenRouter group is unaffected — those models
+ * are always reachable, so there is no "stopped" state to filter.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,11 +69,9 @@ fun ModelPickerSheet(
     selectedRef: ModelRef? = null,
 ) {
     val colors = LlmTheme.colors
-    val chatCapable = services.filter { it.isChatCapable }
     // Favourites first; sortedByDescending is stable, so the server's own
-    // host-port ordering holds within each group otherwise (F07-R5).
-    val running = chatCapable.filter { it.isRunning }.sortedByDescending { it.favorite }
-    val stopped = chatCapable.filter { !it.isRunning }.sortedByDescending { it.favorite }
+    // host-port ordering holds otherwise (F07-R5).
+    val running = runningChatCapable(services)
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -82,7 +87,7 @@ fun ModelPickerSheet(
             if (running.isEmpty()) {
                 item {
                     Text(
-                        "Nothing is running. Start a model from the Models tab.",
+                        NOTHING_RUNNING_TEXT,
                         color = colors.amber,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -96,15 +101,6 @@ fun ModelPickerSheet(
                     selected = selectedRef == ModelRef.Local(service.name),
                     onClick = { onSelect(ModelOption.LocalService(service.name, service.status)) },
                 )
-            }
-
-            if (stopped.isNotEmpty()) {
-                item { ModelPickerSectionHeader("Stopped") }
-                items(stopped, key = { "stopped:${it.name}" }) { service ->
-                    // F07-R2: visible, greyed, and not clickable — starting one
-                    // is F11's guarded action, reached from there, not here.
-                    LocalServiceRow(service = service, selected = false, onClick = null)
-                }
             }
 
             if (remoteModelsConfigured && remoteModels.isNotEmpty()) {
@@ -123,49 +119,38 @@ fun ModelPickerSheet(
     }
 }
 
+/** Only ever called with a running service (F07-RO removed the stopped/disabled row state). */
 @Composable
-private fun LocalServiceRow(service: ServiceSummary, selected: Boolean, onClick: (() -> Unit)?) {
+private fun LocalServiceRow(service: ServiceSummary, selected: Boolean, onClick: () -> Unit) {
     val colors = LlmTheme.colors
-    val enabled = onClick != null
-    val rowAlpha = if (enabled) 1f else 0.5f
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (selected) colors.accentDeep.copy(alpha = 0.25f) else colors.surface)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .testTag("model_option_${service.name}"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(
-            Modifier.size(8.dp).clip(CircleShape)
-                .background(if (service.isRunning) colors.green else colors.subtle.copy(alpha = rowAlpha)),
-        )
+        Box(Modifier.size(8.dp).clip(CircleShape).background(colors.green))
         Column(Modifier.weight(1f)) {
             Text(
                 service.name,
-                color = colors.fg.copy(alpha = rowAlpha),
+                color = colors.fg,
                 fontFamily = FontFamily.Monospace,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${service.engine.label()} · :${service.port}${service.statusSuffix()}",
-                color = colors.subtle.copy(alpha = rowAlpha),
+                "${service.engine.label()} · :${service.port}",
+                color = colors.subtle,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         if (selected) Text("✓", color = colors.accent, style = MaterialTheme.typography.titleMedium)
     }
-}
-
-/** `running`/`exited`/`not-created` — R2's second criterion: the two stopped states read differently. */
-private fun ServiceSummary.statusSuffix(): String = when (status) {
-    "running" -> ""
-    "not-created" -> " · not created"
-    else -> " · $status"
 }
 
 @Composable
@@ -196,6 +181,17 @@ private fun RemoteModelRow(option: ModelOption.Remote, selected: Boolean, onClic
         if (selected) Text("✓", color = colors.accent, style = MaterialTheme.typography.titleMedium)
     }
 }
+
+/** F07-RO: the owner's exact wording for the local-only empty state. */
+internal const val NOTHING_RUNNING_TEXT = "No LLM-Dock models are running at this time."
+
+/**
+ * Chat-capable AND currently running — the only local services the picker
+ * ever renders since F07-RO dropped the "Stopped" section. Pulled out of
+ * the composable so it's testable on the JVM without Compose.
+ */
+internal fun runningChatCapable(services: List<ServiceSummary>): List<ServiceSummary> =
+    services.filter { it.isChatCapable && it.isRunning }.sortedByDescending { it.favorite }
 
 @Composable
 private fun ModelPickerSectionHeader(title: String) {
