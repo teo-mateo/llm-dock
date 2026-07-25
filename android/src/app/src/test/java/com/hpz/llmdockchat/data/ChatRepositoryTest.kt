@@ -304,4 +304,30 @@ class ChatRepositoryTest {
 
         assertEquals("{}", server.takeRequest().body?.utf8())
     }
+
+    // -- switch model (F07-R4) ------------------------------------------------
+
+    @Test
+    fun `updateMainService PUTs the conversation with the new main_service`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "c1"}""").build())
+
+        repository.updateMainService("c1", "vllm-qwen3-6-27b-fp8").getOrThrow()
+
+        val request = server.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/chat/conversations/c1", request.url.encodedPath)
+        assertEquals("""{"main_service":"vllm-qwen3-6-27b-fp8"}""", request.body?.utf8())
+    }
+
+    @Test
+    fun `updateMainService with an openrouter ref sends the openrouter- prefixed wire value`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "c1"}""").build())
+
+        repository.updateMainService("c1", "openrouter:anthropic/claude-sonnet-5").getOrThrow()
+
+        assertEquals(
+            """{"main_service":"openrouter:anthropic/claude-sonnet-5"}""",
+            server.takeRequest().body?.utf8(),
+        )
+    }
 }

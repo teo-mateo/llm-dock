@@ -3,7 +3,9 @@ package com.hpz.llmdockchat.feature.thread
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
+import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ParseWarning
+import com.hpz.llmdockchat.data.model.ServiceSummary
 
 /** What the user typed, shown before the server has a message id for it. */
 data class PendingUserMessage(val content: String, val images: List<String> = emptyList())
@@ -91,6 +93,19 @@ data class PendingEdit(
     val discardCount: Int,
 )
 
+/**
+ * The "switch model" sheet (F07-R4), open only while [ThreadUiState.Loaded.modelPicker]
+ * is non-null — unlike [NewChatUiState.Loaded]'s `services`, this is not kept
+ * live for the whole time a thread is open (a thread can stay open far longer
+ * than a new-chat sheet does); the stream is subscribed only while the sheet
+ * is up, via [ThreadViewModel.openModelPicker]/[ThreadViewModel.closeModelPicker].
+ */
+data class ModelPickerState(
+    val services: List<ServiceSummary> = emptyList(),
+    val remoteModels: List<ModelOption.Remote> = emptyList(),
+    val remoteModelsConfigured: Boolean = false,
+)
+
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState
 
@@ -115,6 +130,8 @@ sealed interface ThreadUiState {
         val editingMessage: ChatMessage? = null,
         /** Confirm-before-edit-and-resend, holding the exact discard count. */
         val pendingEdit: PendingEdit? = null,
+        /** Non-null exactly while the "switch model" sheet (F07-R4) is open. */
+        val modelPicker: ModelPickerState? = null,
     ) : ThreadUiState {
 
         /**
@@ -130,6 +147,10 @@ sealed interface ThreadUiState {
 
         val canSend: Boolean
             get() = !runActive && (composer.isNotBlank() || attachments.isNotEmpty())
+
+        /** F07-R4's third criterion — switching is unavailable while a run is active. */
+        val canSwitchModel: Boolean
+            get() = !runActive
 
         /**
          * A run that failed — including one that failed while the app was

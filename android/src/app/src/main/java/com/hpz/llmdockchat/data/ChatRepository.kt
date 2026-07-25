@@ -11,8 +11,10 @@ import com.hpz.llmdockchat.core.net.parseFrame
 import com.hpz.llmdockchat.data.dto.CancelRunRequestDto
 import com.hpz.llmdockchat.data.dto.CancelRunResponseDto
 import com.hpz.llmdockchat.data.dto.ConversationDetailDto
+import com.hpz.llmdockchat.data.dto.ConversationIdResponseDto
 import com.hpz.llmdockchat.data.dto.DeleteMessageResponseDto
 import com.hpz.llmdockchat.data.dto.SendMessageRequestDto
+import com.hpz.llmdockchat.data.dto.UpdateMainServiceRequestDto
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import kotlinx.coroutines.flow.Flow
@@ -113,6 +115,22 @@ class ChatRepository(
             method = "DELETE",
             path = Endpoints.conversationMessage(conversationId, messageId),
             deserializer = DeleteMessageResponseDto.serializer(),
+        )
+        Unit
+    }
+
+    /**
+     * `PUT /api/chat/conversations/<id>` with `main_service` (F07-R4). The
+     * caller guards against an active run — the server has no special-cased
+     * rejection for this field, so the guard is entirely client-side, same as
+     * F06-R3's edit-while-a-run-is-active guard.
+     */
+    suspend fun updateMainService(conversationId: String, mainService: String): Result<Unit> = apiCall {
+        api.request(
+            method = "PUT",
+            path = Endpoints.conversation(conversationId),
+            deserializer = ConversationIdResponseDto.serializer(),
+            body = ApiJson.encodeToString(UpdateMainServiceRequestDto(mainService = mainService)),
         )
         Unit
     }

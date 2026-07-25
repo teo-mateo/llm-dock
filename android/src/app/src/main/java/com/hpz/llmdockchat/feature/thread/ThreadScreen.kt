@@ -28,6 +28,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,8 +70,10 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
 import kotlinx.coroutines.launch
 
 /**
@@ -112,6 +116,9 @@ fun ThreadScreen(
         onRequestEditConfirm = viewModel::requestEditConfirm,
         onCancelEditConfirm = viewModel::cancelEditConfirm,
         onConfirmEdit = viewModel::confirmEdit,
+        onOpenModelPicker = viewModel::openModelPicker,
+        onCloseModelPicker = viewModel::closeModelPicker,
+        onSwitchModel = { viewModel.switchModel(it.ref) },
         modifier = modifier,
     )
 }
@@ -138,6 +145,9 @@ private fun ThreadContent(
     onRequestEditConfirm: () -> Unit,
     onCancelEditConfirm: () -> Unit,
     onConfirmEdit: () -> Unit,
+    onOpenModelPicker: () -> Unit,
+    onCloseModelPicker: () -> Unit,
+    onSwitchModel: (ModelOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -195,6 +205,9 @@ private fun ThreadContent(
                     IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
                         Text("←", color = colors.fg)
                     }
+                },
+                actions = {
+                    if (loaded != null) ThreadOverflowMenu(canSwitchModel = loaded.canSwitchModel, onOpenModelPicker = onOpenModelPicker)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
             )
@@ -283,6 +296,38 @@ private fun ThreadContent(
                     Text("Cancel")
                 }
             },
+        )
+    }
+
+    // F07-R4 — the same picker as F03's, reached from the overflow menu.
+    loaded?.modelPicker?.let { picker ->
+        ModelPickerSheet(
+            services = picker.services,
+            remoteModels = picker.remoteModels,
+            remoteModelsConfigured = picker.remoteModelsConfigured,
+            selectedRef = loaded.conversation.modelRef,
+            onSelect = onSwitchModel,
+            onDismiss = onCloseModelPicker,
+        )
+    }
+}
+
+@Composable
+private fun ThreadOverflowMenu(canSwitchModel: Boolean, onOpenModelPicker: () -> Unit) {
+    val colors = LlmTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    IconButton(onClick = { expanded = true }, modifier = Modifier.testTag("thread_overflow")) {
+        Text("⋮", color = colors.fg, style = MaterialTheme.typography.titleLarge)
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(if (canSwitchModel) "Switch model" else "Switch model (run active)") },
+            enabled = canSwitchModel,
+            onClick = {
+                expanded = false
+                onOpenModelPicker()
+            },
+            modifier = Modifier.testTag("thread_switch_model"),
         )
     }
 }
@@ -697,6 +742,7 @@ private fun ThreadStreamingPreview() {
             onDismissError = {}, onAddAttachment = {}, onRemoveAttachment = {}, onAttachmentFailed = {},
             onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
             onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
+            onOpenModelPicker = {}, onCloseModelPicker = {}, onSwitchModel = {},
         )
     }
 }

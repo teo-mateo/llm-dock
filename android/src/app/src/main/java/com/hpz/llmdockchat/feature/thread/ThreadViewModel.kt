@@ -7,11 +7,15 @@ import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
+import com.hpz.llmdockchat.data.model.wireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,6 +37,8 @@ class ThreadViewModel(
     private val conversationId: String,
     private val repository: ChatRepository,
     private val drafts: DraftStore,
+    private val servicesStreamRepository: ServicesStreamRepository,
+    private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
 ) : ViewModel() {
@@ -41,6 +47,9 @@ class ThreadViewModel(
     val state: StateFlow<ThreadUiState> = _state.asStateFlow()
 
     private var streamJob: Job? = null
+
+    /** The model picker's own live subscription — separate from [streamJob], which is the chat run's. */
+    private var modelPickerJob: Job? = null
 
     /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
     private var composerBeforeEdit: String = ""
@@ -170,6 +179,66 @@ class ThreadViewModel(
 
     fun reportAttachmentFailure(message: String) {
         loaded()?.let { _state.value = it.copy(actionError = message) }
+    }
+
+    // -- switch model (F07-R4) --------------------------------------------------
+
+    /**
+     * Opens the sheet and starts its own live services subscription — separate
+     * from [streamJob] (the chat run's), and unlike [NewChatViewModel]'s, not
+     * kept open for the whole time the screen is: a thread stays open far
+     * longer than a new-chat sheet does, so the SSE connection is scoped to the
+     * sheet being visible, cancelled the moment it closes ([closeModelPicker]).
+     */
+    fun openModelPicker() {
+        val current = loaded() ?: return
+        if (current.runActive) return
+        _state.value = current.copy(modelPicker = ModelPickerState())
+        modelPickerJob?.cancel()
+        modelPickerJob = viewModelScope.launch {
+            val openRouter = openRouterModelsRepository.list().getOrNull()
+            loaded()?.let {
+                _state.value = it.copy(
+                    modelPicker = it.modelPicker?.copy(
+                        remoteModels = openRouter?.models.orEmpty(),
+                        remoteModelsConfigured = openRouter?.configured ?: false,
+                    ),
+                )
+            }
+            servicesStreamRepository.stream().collect { services ->
+                loaded()?.let {
+                    _state.value = it.copy(modelPicker = it.modelPicker?.copy(services = services))
+                }
+            }
+        }
+    }
+
+    fun closeModelPicker() {
+        modelPickerJob?.cancel()
+        modelPickerJob = null
+        loaded()?.let { _state.value = it.copy(modelPicker = null) }
+    }
+
+    /**
+     * `PUT /api/chat/conversations/<id>` with the new `main_service`. Earlier
+     * messages are untouched server-side — each already carries its own
+     * `model_service` — only the next turn is affected. The reload afterwards
+     * is what updates the thread header (F07-R4's first criterion).
+     */
+    fun switchModel(ref: ModelRef) {
+        val current = loaded() ?: return
+        if (current.runActive) return
+        viewModelScope.launch {
+            repository.updateMainService(conversationId, ref.wireValue).fold(
+                onSuccess = {
+                    closeModelPicker()
+                    reloadConversation()
+                },
+                onFailure = { failure ->
+                    loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
+                },
+            )
+        }
     }
 
     // -- delete (F06-R2) -------------------------------------------------------

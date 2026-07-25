@@ -11,9 +11,11 @@ import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.testing.FakeNewChatPreferences
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
+import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.MainDispatcherRule
 import com.hpz.llmdockchat.testing.readFixture
@@ -50,6 +52,8 @@ class NewChatViewModelTest {
     private lateinit var promptsRepository: PromptsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var servicesStreamRepository: ServicesStreamRepository
+    private lateinit var servicesStreamTransport: FakeSseTransport
     private lateinit var preferences: FakeNewChatPreferences
 
     @Before
@@ -68,6 +72,10 @@ class NewChatViewModelTest {
         promptsRepository = PromptsRepository(api)
         mcpServersRepository = McpServersRepository(api)
         openRouterModelsRepository = OpenRouterModelsRepository(api)
+        // No payloads by default: most tests never open a picker, and an
+        // empty FakeSseTransport just never emits rather than erroring.
+        servicesStreamTransport = FakeSseTransport()
+        servicesStreamRepository = ServicesStreamRepository(servicesStreamTransport)
         preferences = FakeNewChatPreferences()
     }
 
@@ -83,6 +91,7 @@ class NewChatViewModelTest {
         openRouterModelsRepository = openRouterModelsRepository,
         conversationsRepository = conversationsRepository,
         preferences = preferences,
+        servicesStreamRepository = servicesStreamRepository,
     )
 
     /** Load order in [NewChatViewModel.load]: services, openrouter, prompts, mcp-servers. */
@@ -239,6 +248,43 @@ class NewChatViewModelTest {
         assertNull(state.selectedModel)
         assertFalse(state.rememberedModelUnavailable) // nothing was remembered — not "unavailable"
         assertFalse(state.canStart)
+    }
+
+    /**
+     * F07-R1's third criterion: a container started or stopped elsewhere
+     * reaches an open picker with no manual refresh. `MainDispatcherRule`
+     * runs `viewModelScope` unconfined, so the stream's snapshot and delta
+     * are queued before [NewChatViewModel.load] runs — under Unconfined
+     * dispatch both land, in order, before [settled] ever gets to observe an
+     * intermediate state.
+     */
+    @Test
+    fun `a services-stream delta updates the picker's live list with no manual refresh`() {
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            """{"type":"snapshot","data":{"services":[
+                {"name":"llamacpp-gemma-4-31b-it-q8","status":"exited","kind":"chat","host_port":3303,"favorite":false}
+            ],"total":1,"running":0,"stopped":1}}""",
+            """{"type":"delta","service_name":"llamacpp-gemma-4-31b-it-q8","status":"running"}""",
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        // Not `settled()`: that only waits for the *first* non-Loading value,
+        // and — since `.value` updates from the load and from the stream both
+        // land before this collector is ever dispatched — could observe
+        // either. Wait for the specific outcome instead.
+        val state = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first {
+                    it is NewChatUiState.Loaded &&
+                        it.services.any { s -> s.name == "llamacpp-gemma-4-31b-it-q8" && s.status == "running" }
+                }
+            }
+        } as NewChatUiState.Loaded
+
+        val service = state.services.first { it.name == "llamacpp-gemma-4-31b-it-q8" }
+        assertEquals("running", service.status)
     }
 
     @Test

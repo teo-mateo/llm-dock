@@ -32,6 +32,9 @@ object Endpoints {
     const val PROMPTS = "/api/chat/prompts"
     const val MCP_SERVERS = "/api/chat/mcp-servers"
 
+    /** F07-R1's third criterion — a snapshot, then deltas as containers start/stop. */
+    const val SERVICES_STREAM = "/api/services/stream"
+
     /** Read-only from the phone (F03) — editing the curated list is desktop Tools-page work. */
     const val OPENROUTER_MODELS_SETTINGS = "/api/chat/settings/openrouter-models"
 
