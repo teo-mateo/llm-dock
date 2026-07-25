@@ -1,0 +1,453 @@
+package com.hpz.llmdockchat.feature.thread
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.hpz.llmdockchat.core.error.displayMessage
+import com.hpz.llmdockchat.core.net.RunEvent
+import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.prefs.DraftStore
+import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.model.ConversationDetail
+import com.hpz.llmdockchat.data.model.ParseWarning
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * One thread: load it, send a turn, render the stream, stop it (F04).
+ *
+ * Collection is screen-scoped (Architecture D5). Leaving the thread clears the
+ * ViewModel, which cancels [streamJob], which cancels the HTTP call — and
+ * **nothing else**. No cancel request is sent; the server finishes the run and
+ * persists the reply (F04-R10).
+ */
+class ThreadViewModel(
+    private val conversationId: String,
+    private val repository: ChatRepository,
+    private val drafts: DraftStore,
+    private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
+    private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<ThreadUiState>(ThreadUiState.Loading)
+    val state: StateFlow<ThreadUiState> = _state.asStateFlow()
+
+    private var streamJob: Job? = null
+
+    fun load() {
+        viewModelScope.launch {
+            val draft = drafts.draft(conversationId)
+            repository.load(conversationId).fold(
+                onSuccess = { conversation -> _state.value = loadedFrom(conversation, draft) },
+                onFailure = { failure ->
+                    // A reload that fails mid-thread must not throw away a
+                    // thread already on screen; only a cold load goes to Failed.
+                    val current = _state.value
+                    if (current is ThreadUiState.Loaded) {
+                        _state.value = current.copy(actionError = failure.appError.displayMessage)
+                    } else {
+                        _state.value = ThreadUiState.Failed(failure.appError.displayMessage)
+                    }
+                },
+            )
+        }
+    }
+
+    private fun loadedFrom(conversation: ConversationDetail, draft: String): ThreadUiState.Loaded {
+        val current = _state.value as? ThreadUiState.Loaded
+        return ThreadUiState.Loaded(
+            conversation = conversation,
+            thread = ThreadState(
+                messages = conversation.messages,
+                // A turn held over from a refetch that failed is superseded the
+                // moment a load succeeds; keeping it would show it twice.
+                streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
+            ),
+            composer = current?.composer ?: draft,
+            attachments = current?.attachments.orEmpty(),
+            sending = current?.sending ?: false,
+            actionError = current?.actionError,
+        )
+    }
+
+    fun onComposerChange(text: String) {
+        val current = loaded() ?: return
+        _state.value = current.copy(composer = text)
+        drafts.save(conversationId, text)
+    }
+
+    fun dismissActionError() {
+        loaded()?.let { _state.value = it.copy(actionError = null) }
+    }
+
+    fun send() {
+        val current = loaded() ?: return
+        if (!current.canSend) return
+
+        val pending = PendingUserMessage(current.composer.trim(), current.attachments)
+        _state.value = current.copy(
+            composer = "",
+            attachments = emptyList(),
+            sending = true,
+            actionError = null,
+            thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
+        )
+        drafts.clear(conversationId)
+
+        collectRun(
+            flow = repository.send(conversationId, pending.content, pending.images),
+            restoreOnEarlyFailure = pending,
+            titleBefore = current.conversation.title,
+        )
+    }
+
+    /**
+     * Cancel by conversation with the run id as a guard (F04-R6). The server
+     * cancels cooperatively, so generation stops at the next stream event
+     * rather than instantly, and the run emits **no terminal frame** — the
+     * stream simply ends, which [collectRun] treats as a cancel.
+     */
+    fun stop() {
+        val current = loaded() ?: return
+        // A turn held over from a failed refetch belongs to a run that already
+        // ended; there is nothing of ours left to stop.
+        val turn = current.thread.streaming?.takeUnless { it.unconfirmed }
+        // A run this client is not streaming is still stoppable — one started
+        // on the desktop, or left running here and returned to. The server
+        // finds it from the conversation; the id, when known, is only a guard.
+        val runId = turn?.runId ?: current.conversation.activeRun?.id
+        if (turn == null && runId == null) return
+        if (turn != null) {
+            _state.value = current.copy(thread = current.thread.copy(streaming = turn.copy(stopping = true)))
+        }
+        viewModelScope.launch {
+            repository.cancelActiveRun(conversationId, runId).fold(
+                // With no local stream there is no terminal to react to, so the
+                // refetch that clears the thread's "generating" state has to be
+                // issued here.
+                onSuccess = { if (turn == null) reloadConversation() },
+                onFailure = { failure ->
+                    loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
+                },
+            )
+        }
+    }
+
+    private suspend fun reloadConversation() {
+        val conversation = repository.load(conversationId).getOrNull() ?: return
+        val current = loaded() ?: return
+        _state.value = current.copy(
+            conversation = conversation,
+            thread = current.thread.copy(
+                messages = conversation.messages,
+                streaming = current.thread.streaming?.takeUnless { it.unconfirmed },
+            ),
+        )
+    }
+
+    fun addAttachment(dataUrl: String) {
+        val current = loaded() ?: return
+        _state.value = current.copy(attachments = current.attachments + dataUrl)
+    }
+
+    fun removeAttachment(index: Int) {
+        val current = loaded() ?: return
+        if (index !in current.attachments.indices) return
+        _state.value = current.copy(attachments = current.attachments.filterIndexed { i, _ -> i != index })
+    }
+
+    fun reportAttachmentFailure(message: String) {
+        loaded()?.let { _state.value = it.copy(actionError = message) }
+    }
+
+    // -- the stream ----------------------------------------------------------
+
+    private fun collectRun(
+        flow: Flow<RunEvent>,
+        restoreOnEarlyFailure: PendingUserMessage?,
+        titleBefore: String,
+    ) {
+        streamJob?.cancel()
+        streamJob = viewModelScope.launch {
+            val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage)
+            var titleFrameSeen = false
+            var failureMessage: String? = null
+
+            // Deltas arrive faster than the display refreshes, so they are
+            // folded into the accumulator and published on a timer rather than
+            // one state copy per token (Architecture P1). One timer per burst,
+            // not a ticker: nothing is scheduled while the stream is quiet.
+            var pendingFlush: Job? = null
+            val scheduleFlush = {
+                if (pendingFlush?.isActive != true) {
+                    pendingFlush = launch {
+                        delay(coalesceWindowMs)
+                        if (accumulator.takeDirty()) publishTurn(accumulator)
+                    }
+                }
+            }
+
+            val error: Throwable? = try {
+                flow.collect { event ->
+                    accumulator.sawFrame()
+                    when (event) {
+                        is RunEvent.Delta -> {
+                            accumulator.append(event)
+                            scheduleFlush()
+                        }
+                        is RunEvent.Failed -> failureMessage = event.message
+                        is RunEvent.RunStatus -> {
+                            if (event.status == "failed") failureMessage = event.error ?: failureMessage
+                        }
+                        is RunEvent.ConversationUpdated -> {
+                            titleFrameSeen = true
+                            applyTitle(event.title)
+                        }
+                        // [DONE] and message_saved are NOT the end of the
+                        // stream: the auto-title frame can still follow, so the
+                        // loop keeps reading until the server closes it.
+                        RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
+                        is RunEvent.Unknown -> Unit
+                        else -> {
+                            accumulator.apply(event)
+                            publishTurn(accumulator)
+                        }
+                    }
+                }
+                null
+            } catch (e: CancellationException) {
+                // The screen went away. Not a run outcome — no cleanup, no
+                // refetch, and above all no cancel request (F04-R10).
+                throw e
+            } catch (e: Throwable) {
+                e
+            } finally {
+                pendingFlush?.cancel()
+            }
+
+            // A burst that ended inside the coalescing window leaves text the
+            // cancelled timer will never publish. Flushing here is what makes
+            // the turn on screen complete for the whole refetch that follows —
+            // without it the tail of every answer blinks in only when the
+            // saved message arrives.
+            if (accumulator.takeDirty()) publishTurn(accumulator)
+
+            finishRun(
+                error = error,
+                sawAnyFrame = accumulator.sawAnyFrame,
+                failureMessage = failureMessage,
+                restoreOnEarlyFailure = restoreOnEarlyFailure,
+                expectTitle = !titleFrameSeen && titleBefore == UNTITLED,
+            )
+        }
+    }
+
+    /**
+     * Every path here drops `streaming` and refetches — that is D3's whole
+     * point. What the server has is the answer, whether it saved a message, a
+     * partial plus an error, or nothing at all.
+     */
+    private suspend fun finishRun(
+        error: Throwable?,
+        sawAnyFrame: Boolean,
+        failureMessage: String?,
+        restoreOnEarlyFailure: PendingUserMessage?,
+        expectTitle: Boolean,
+    ) {
+        val current = loaded()
+
+        if (error != null && !sawAnyFrame) {
+            // The run never started — a 409 because one is already active, or
+            // the request never connected. The server rolled the user message
+            // back, so dropping `streaming` leaves no phantom turn behind, and
+            // the text goes back in the composer rather than vanishing.
+            val restored = restoreOnEarlyFailure?.content.orEmpty()
+            _state.value = (current ?: return).copy(
+                sending = false,
+                thread = current.thread.copy(streaming = null),
+                composer = current.composer.ifBlank { restored },
+                attachments = current.attachments.ifEmpty { restoreOnEarlyFailure?.images.orEmpty() },
+                actionError = error.appError.displayMessage,
+            )
+            if (current.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
+            return
+        }
+
+        // Refetch *before* dropping `streaming`, and swap both in one state
+        // update: doing it the other way round blanks the answer for a round
+        // trip and reads as a flicker at the end of every turn.
+        val refetch = repository.load(conversationId)
+        val refetched = refetch.getOrNull()
+        val latest = loaded() ?: return
+
+        if (refetched == null) {
+            // The run is over but the server's copy of it could not be
+            // fetched. Dropping `streaming` now would take the whole turn off
+            // screen — the user's own message included — with nothing to say
+            // why, and after a failure the text is real: the server persisted
+            // the partial plus its error. So the turn stays, marked
+            // unconfirmed: it no longer counts as a live run, it carries the
+            // error the refetch could not deliver, and the next successful
+            // load replaces it rather than duplicating it.
+            _state.value = latest.copy(
+                sending = false,
+                thread = latest.thread.copy(
+                    streaming = latest.thread.streaming?.copy(
+                        unconfirmed = true,
+                        stopping = false,
+                        error = failureMessage,
+                    ),
+                ),
+                actionError = failureMessage
+                    ?: error?.appError?.displayMessage
+                    ?: refetch.exceptionOrNull()?.appError?.displayMessage,
+            )
+            return
+        }
+
+        _state.value = latest.copy(
+            sending = false,
+            conversation = refetched,
+            thread = ThreadState(messages = refetched.messages, streaming = null),
+            // A `{"error": …}` frame is already persisted on the run, so the
+            // refetch surfaces it through `last_run`; only a client-side stream
+            // failure needs reporting here.
+            actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
+        )
+        if (expectTitle) awaitAutoTitle()
+    }
+
+    /**
+     * The auto-title is generated *after* the run is marked complete, and the
+     * SSE observer closes on the run's durable status the moment it idles for
+     * three seconds — so on a rig where titling takes longer than that (a local
+     * model titling with itself does), `conversation_updated` is published to a
+     * bus nobody is listening to any more. Polling briefly is what makes
+     * F04-R7's "without a manual refresh" true in practice. See F04's
+     * *Deviations*.
+     */
+    private suspend fun awaitAutoTitle() {
+        repeat(TITLE_SETTLE_ATTEMPTS) {
+            delay(titleSettleDelayMs)
+            val conversation = repository.load(conversationId).getOrNull() ?: return
+            if (conversation.title != UNTITLED) {
+                applyTitle(conversation.title)
+                return
+            }
+        }
+    }
+
+    private fun applyTitle(title: String) {
+        if (title.isBlank()) return
+        val current = loaded() ?: return
+        _state.value = current.copy(conversation = current.conversation.copy(title = title))
+    }
+
+    private fun publishTurn(accumulator: TurnAccumulator) {
+        val current = loaded() ?: return
+        val existing = current.thread.streaming
+        _state.value = current.copy(
+            sending = false,
+            thread = current.thread.copy(streaming = accumulator.snapshot(stopping = existing?.stopping == true)),
+        )
+    }
+
+    private fun loaded(): ThreadUiState.Loaded? = _state.value as? ThreadUiState.Loaded
+
+    companion object {
+        /** Architecture P1 — roughly one publish per frame, not one per token. */
+        const val DEFAULT_COALESCE_WINDOW_MS = 24L
+        const val DEFAULT_TITLE_SETTLE_DELAY_MS = 1_500L
+        const val TITLE_SETTLE_ATTEMPTS = 4
+
+        /** The exact title `auto_generate_title` refuses to overwrite. */
+        const val UNTITLED = "New Conversation"
+    }
+}
+
+/**
+ * Mutable accumulation of one streaming turn, kept out of UI state so that
+ * appending a token costs an `append` rather than a whole state copy and a
+ * recomposition (Architecture P1).
+ */
+private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
+    private val content = StringBuilder()
+    private val reasoning = StringBuilder()
+    private val toolCalls = mutableListOf<StreamingToolCall>()
+    private var runId: String? = null
+    private var parseWarning: ParseWarning? = null
+    private var dirty = false
+
+    var sawAnyFrame = false
+        private set
+
+    /** Distinguishes "the run never started" from "the stream broke mid-run". */
+    fun sawFrame() {
+        sawAnyFrame = true
+    }
+
+    fun markDirty() {
+        dirty = true
+    }
+
+    fun takeDirty(): Boolean = dirty.also { dirty = false }
+
+    fun append(delta: RunEvent.Delta) {
+        content.append(delta.content)
+        reasoning.append(delta.reasoning)
+        markDirty()
+    }
+
+    fun apply(event: RunEvent) {
+        markDirty()
+        when (event) {
+            is RunEvent.RunStarted -> runId = event.runId
+            is RunEvent.ToolCallPending -> toolCalls += StreamingToolCall(
+                name = event.name.substringAfter(TOOL_NAMESPACE, event.name),
+                serverId = event.name.substringBefore(TOOL_NAMESPACE).takeIf { TOOL_NAMESPACE in event.name },
+            )
+            is RunEvent.ToolCall -> upsertCall(event)
+            is RunEvent.ToolResult -> completeCall(event)
+            is RunEvent.ParseWarning ->
+                parseWarning = ParseWarning(event.kind, event.description, event.snippet)
+            else -> Unit
+        }
+    }
+
+    /** `tool_call_pending` announced the name; this fills in the arguments in place. */
+    private fun upsertCall(event: RunEvent.ToolCall) {
+        val slot = toolCalls.indexOfFirst { it.name == event.name && it.arguments == null }
+        val filled = StreamingToolCall(event.name, event.serverId, event.arguments, null)
+        if (slot >= 0) toolCalls[slot] = filled else toolCalls += filled
+    }
+
+    /** The server matches a result to the most recent unanswered call of that name; so does this. */
+    private fun completeCall(event: RunEvent.ToolResult) {
+        val slot = toolCalls.indexOfLast { it.name == event.name && it.result == null }
+        if (slot >= 0) {
+            toolCalls[slot] = toolCalls[slot].copy(result = event.result, arguments = toolCalls[slot].arguments)
+        } else {
+            toolCalls += StreamingToolCall(event.name, event.serverId, null, event.result)
+        }
+    }
+
+    fun snapshot(stopping: Boolean) = StreamingTurn(
+        userMessage = userMessage,
+        runId = runId,
+        content = content.toString(),
+        reasoning = reasoning.toString(),
+        toolCalls = toolCalls.toList(),
+        parseWarning = parseWarning,
+        stopping = stopping,
+    )
+
+    private companion object {
+        /** `mcp_client.py` namespaces a pending call as `<server_id>__<tool>`. */
+        const val TOOL_NAMESPACE = "__"
+    }
+}

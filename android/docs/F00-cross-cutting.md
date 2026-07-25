@@ -252,7 +252,7 @@ screen. **Do not treat this table as optional.**
 | Criterion | Verify in |
 |---|---|
 | R1 · changing the URL *in Settings* retargets calls with no restart | F13 |
-| R3 · all three — server URL, open conversation and draft preserved across a 401; user's message not lost mid-stream | F01 (routing to Connect), F04 / F06 (draft, thread) |
+| R3 · server URL, open conversation and draft preserved across a 401; user's message not lost mid-stream | **CLOSED.** Routing landed in F01; the draft survives rotation, backgrounding and a force-stop, verified in F04. The 401-specific round trip is largely moot now: F01-R6 supersedes F00-R3, so a 401 re-authenticates silently and the screen — and its draft — never changes. Connect is reached only when re-auth itself fails. |
 | R4 · readable failure state with a retry affordance, distinct from empty | **CLOSED in F02** — verified on device with the network down. The 409-specific wording lands with F04's concurrent-send path. |
 | R5 · loading / populated / empty / failed | **CLOSED for the conversation list in F02.** Still to check on each further list/detail screen: F10, F12. |
 | R6 · a stream quiet for >30 s stays connected; a visible reconnecting state | F09 (chat runs), F12 (logs) |

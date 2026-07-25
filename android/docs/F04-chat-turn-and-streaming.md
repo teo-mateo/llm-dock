@@ -221,6 +221,49 @@ persists the reply. Reattachment is F09.
   run cancelled and saves no assistant message. Corrected in F04-R6.
 - **No critique overlay.** No sidekick, as requested.
 
+## Deviations found while implementing
+
+- **`conversation_updated` is frequently never delivered, so the app polls
+  for the title as a backstop.** `auto_generate_title` runs *after* the run
+  has already been marked complete (`run_manager._execute`), and
+  `observe()`'s idle backstop closes the stream the moment a 3 s silence
+  finds the run in a terminal state. Titling with a local model takes
+  longer than that as often as not: measured 4 s on
+  `llamacpp-gemma-4-26b-a4b-it-q8`, in which case the client gets
+  `{"type":"run_status","status":"completed"}` and the stream closes with
+  the title frame published to a bus nobody is subscribed to. The frame is
+  still handled when it does arrive (and it did on one of the two turns
+  measured); when it does not, the app refetches the conversation a few
+  times over the next six seconds, but only for a thread still titled
+  exactly `New Conversation` — the same guard the server itself uses — so
+  no other thread is ever polled. This is a dashboard-side bug the app
+  works around rather than something F04 changes; without the workaround
+  F04-R7's first criterion fails on this rig.
+- **`run_status` is not reattach-only.** The wire table lists it under
+  "reattach to an already-finished run". The idle backstop above emits it
+  on the *send* path too, so one reader has to accept it from any of the
+  three endpoints.
+- **`run_status` also carries `error`.** The table shows
+  `{"type":"run_status","status":"…"}`; `chat/routes.py:stream_run` sends
+  `{"type":"run_status","status":…,"error":…}`, which is how a reattach to
+  a run that failed while the app was away learns why.
+- **`message_saved`'s `message_id` is a UUID string,** not the integer the
+  shape suggests.
+- **A terminal drops the streamed turn only if the refetch succeeds.** D3
+  says every terminal replaces `streaming` with what the server has. When
+  the refetch itself fails there is nothing to replace it with, and
+  dropping it anyway takes the answer, the error and the user's own
+  message off screen with nothing said — the worst outcome of the three.
+  So the turn is held over, marked unconfirmed: it stops counting as a
+  live run (the composer comes back), it carries the run's error inline
+  since `last_run` could not be fetched, and the next successful load
+  discards it in favour of the saved message.
+- **Stop works with no locally streamed turn.** The requirement assumes
+  Stop belongs to a run this client started. A thread can be opened while a
+  run started elsewhere is still going (F09 has not landed, so there is no
+  reattach yet), and cancel-by-conversation handles that case unchanged —
+  the app passes `active_run.id` as the guard.
+
 ## Out of scope
 
 - Regenerating an answer (no endpoint; the web does it by editing and

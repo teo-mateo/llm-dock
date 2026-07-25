@@ -1,0 +1,4 @@
+data: {"type":"run_started","run_id":"9618edff-a7dc-418d-8632-cfecead7b806"}
+
+data: {"error":"Service 'llamacpp-f04-test-missing' is not reachable. Is it running?"}
+

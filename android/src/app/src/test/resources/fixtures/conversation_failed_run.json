@@ -1,0 +1,31 @@
+{
+  "id": "5c623ee6-94cf-4ca0-9718-1c6fd287776d",
+  "title": "F04-TEST failure",
+  "main_service": "llamacpp-f04-test-missing",
+  "sidekick_service": null,
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [],
+  "active_run": null,
+  "last_run": {
+    "id": "9618edff-a7dc-418d-8632-cfecead7b806",
+    "status": "failed",
+    "error": "Service 'llamacpp-f04-test-missing' is not reachable. Is it running?"
+  },
+  "created_at": "2026-07-25T05:56:31Z",
+  "updated_at": "2026-07-25T05:56:31Z",
+  "messages": [
+    {
+      "id": "2339d881-6b79-4202-b9a4-0d14c5f4db53",
+      "conversation_id": "5c623ee6-94cf-4ca0-9718-1c6fd287776d",
+      "role": "user",
+      "content": "hello",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 1,
+      "created_at": "2026-07-25T05:56:31Z"
+    }
+  ]
+}
