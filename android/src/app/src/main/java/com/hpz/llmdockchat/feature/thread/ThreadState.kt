@@ -3,6 +3,7 @@ package com.hpz.llmdockchat.feature.thread
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ParseWarning
@@ -132,7 +133,10 @@ data class ModelPickerState(
  * satisfies F08-R1's "reloading the registry makes it appear without an app
  * update".
  */
-data class ChatSettingsState(val servers: List<McpServerInfo> = emptyList())
+data class ChatSettingsState(
+    val servers: List<McpServerInfo> = emptyList(),
+    val prompts: List<ManagedPrompt> = emptyList(),
+)
 
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState

@@ -21,7 +21,7 @@ fun ServiceDto.toDomain(): ServiceSummary =
         createdAt = created,
     )
 
-fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder)
+fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder, content = content)
 
 fun McpServerDto.toDomain(): McpServerInfo =
     McpServerInfo(id = id, name = name, description = description, icon = icon)

@@ -15,6 +15,7 @@ import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
+import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.testing.FakeDraftStore
@@ -68,6 +69,7 @@ class ThreadReconnectTeardownTest {
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
+    private lateinit var promptsRepository: PromptsRepository
     private val store = ViewModelStore()
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "probe-main") }
 
@@ -90,6 +92,7 @@ class ThreadReconnectTeardownTest {
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        promptsRepository = PromptsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -115,6 +118,7 @@ class ThreadReconnectTeardownTest {
                     openRouterModelsRepository = openRouterModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
+                    promptsRepository = promptsRepository,
                     coalesceWindowMs = 0,
                     titleSettleDelayMs = 1L,
                     reconnectInitialMs = backoffMs,

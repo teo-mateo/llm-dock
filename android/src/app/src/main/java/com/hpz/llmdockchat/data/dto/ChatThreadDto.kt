@@ -75,6 +75,7 @@ data class ConversationDetailDto(
     val id: String = "",
     val title: String = "",
     @SerialName("main_service") val mainService: String = "",
+    @SerialName("main_system_prompt") val mainSystemPrompt: String = "",
     @SerialName("mcp_servers") val mcpServers: List<String> = emptyList(),
     @SerialName("active_run") val activeRun: ActiveRunDto? = null,
     @SerialName("last_run") val lastRun: LastRunDto? = null,

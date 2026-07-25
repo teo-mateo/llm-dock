@@ -17,6 +17,8 @@ import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.PromptsRepository
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.wireValue
@@ -48,6 +50,7 @@ class ThreadViewModel(
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val mcpServersRepository: McpServersRepository,
+    private val promptsRepository: PromptsRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
     private val reconnectInitialMs: Long = ReconnectBackoff.DEFAULT_INITIAL_MS,
@@ -332,17 +335,58 @@ class ThreadViewModel(
     fun openSettings() {
         val current = loaded() ?: return
         _state.value = current.copy(settings = ChatSettingsState())
+        // Two independent fetches, each applied as it lands. Awaiting both
+        // before showing anything means a slow or failing prompts endpoint
+        // holds back the tool list, which is the thing usually being opened
+        // for — and each `settings != null` check is what stops a late
+        // response repopulating a sheet the user has already closed.
         viewModelScope.launch {
             val servers = mcpServersRepository.list().getOrNull().orEmpty()
-            val stillOpen = loaded() ?: return@launch
-            if (stillOpen.settings != null) {
-                _state.value = stillOpen.copy(settings = ChatSettingsState(servers = servers))
+            loaded()?.settings?.let { open ->
+                _state.value = loaded()!!.copy(settings = open.copy(servers = servers))
+            }
+        }
+        viewModelScope.launch {
+            val prompts = promptsRepository.list().getOrNull().orEmpty().sortedBy { it.sortOrder }
+            loaded()?.settings?.let { open ->
+                _state.value = loaded()!!.copy(settings = open.copy(prompts = prompts))
             }
         }
     }
 
     fun closeSettings() {
         loaded()?.let { _state.value = it.copy(settings = null) }
+    }
+
+    /**
+     * Switches the thread's system prompt (the settings sheet's picker).
+     *
+     * Optimistic like [toggleTool], and reverted the same way — the sheet shows
+     * the selection immediately, and a failed write puts the previous prompt
+     * back rather than leaving the UI claiming something the server does not
+     * have. Refused during a run for the same reason a tool toggle is: the turn
+     * in flight already read the old prompt.
+     */
+    fun selectPrompt(prompt: ManagedPrompt) {
+        val current = loaded() ?: return
+        if (!current.canToggleTools) return
+        val previous = current.conversation.mainSystemPrompt
+        if (previous == prompt.content) return
+        _state.value = current.copy(
+            conversation = current.conversation.copy(mainSystemPrompt = prompt.content),
+        )
+        viewModelScope.launch {
+            conversationsRepository.setMainSystemPrompt(conversationId, prompt.content).fold(
+                onSuccess = {},
+                onFailure = { failure ->
+                    val latest = loaded() ?: return@fold
+                    _state.value = latest.copy(
+                        conversation = latest.conversation.copy(mainSystemPrompt = previous),
+                        actionError = failure.appError.displayMessage,
+                    )
+                },
+            )
+        }
     }
 
     /**

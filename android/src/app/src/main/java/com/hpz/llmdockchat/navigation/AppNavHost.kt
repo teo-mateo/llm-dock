@@ -215,6 +215,7 @@ fun AppNavHost(
                             openRouterModelsRepository = container.openRouterModelsRepository,
                             conversationsRepository = container.conversationsRepository,
                             mcpServersRepository = container.mcpServersRepository,
+                            promptsRepository = container.promptsRepository,
                         )
                     }
                 },

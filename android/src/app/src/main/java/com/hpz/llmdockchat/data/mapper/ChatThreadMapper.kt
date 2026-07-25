@@ -30,6 +30,7 @@ fun ConversationDetailDto.toDomain(): ConversationDetail = ConversationDetail(
     lastRun = lastRun?.toLastRun(),
     updatedAt = updatedAt,
     mcpServers = mcpServers,
+    mainSystemPrompt = mainSystemPrompt,
 )
 
 private fun ChatMessageDto.toDomain(artifacts: List<ArtifactDto>): ChatMessage = ChatMessage(

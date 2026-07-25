@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.thread
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -38,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import kotlin.math.roundToInt
@@ -68,6 +72,9 @@ fun ChatSettingsSheet(
     selectedIds: Set<String>,
     canToggleTools: Boolean,
     onToggleTool: (String) -> Unit,
+    prompts: List<ManagedPrompt>,
+    activePromptContent: String,
+    onSelectPrompt: (ManagedPrompt) -> Unit,
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
     baseDensity: Density,
@@ -122,6 +129,31 @@ fun ChatSettingsSheet(
                         tint = colors.subtle,
                         modifier = Modifier.size(16.dp),
                     )
+                }
+            }
+
+            if (prompts.isNotEmpty()) {
+                item { SectionLabel("System prompt") }
+                items(prompts, key = { "prompt_${it.id}" }) { prompt ->
+                    // Matched on content, not id: the conversation stores the
+                    // resolved text, so a thread created before a prompt was
+                    // edited legitimately matches nothing and shows as custom.
+                    PromptRow(
+                        prompt = prompt,
+                        selected = prompt.content == activePromptContent,
+                        enabled = canToggleTools,
+                        onClick = { onSelectPrompt(prompt) },
+                    )
+                }
+                if (prompts.none { it.content == activePromptContent }) {
+                    item {
+                        Text(
+                            "This chat is using a prompt that isn't in the list — picking one replaces it.",
+                            color = colors.subtle,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+                    }
                 }
             }
 
@@ -267,6 +299,48 @@ private fun SettingRow(
             modifier = Modifier.size(20.dp),
         )
         content()
+    }
+}
+
+/**
+ * A radio-style row: one of these is the thread's prompt, so a switch per row
+ * would be wrong — it would suggest they combine.
+ */
+@Composable
+private fun PromptRow(
+    prompt: ManagedPrompt,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = LlmTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .testTag("prompt_option_${prompt.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(if (selected) colors.accent else Color.Transparent)
+                .border(1.5.dp, if (selected) colors.accent else colors.lineStrong, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(6.dp).clip(CircleShape).background(colors.onAccent))
+        }
+        Text(
+            prompt.name,
+            color = if (enabled) colors.fg else colors.subtle,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

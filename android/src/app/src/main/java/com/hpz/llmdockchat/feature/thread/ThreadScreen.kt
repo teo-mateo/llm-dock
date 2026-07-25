@@ -77,6 +77,7 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
@@ -141,6 +142,7 @@ fun ThreadScreen(
         onOpenSettings = viewModel::openSettings,
         onCloseSettings = viewModel::closeSettings,
         onToggleTool = viewModel::toggleTool,
+        onSelectPrompt = viewModel::selectPrompt,
         onTextScaleChange = appearance::setTextScale,
         textScale = textScale,
         baseDensity = density,
@@ -177,6 +179,7 @@ private fun ThreadContent(
     onOpenSettings: () -> Unit,
     onCloseSettings: () -> Unit,
     onToggleTool: (String) -> Unit,
+    onSelectPrompt: (ManagedPrompt) -> Unit = {},
     textScale: Float = ChatAppearance.DEFAULT,
     onTextScaleChange: (Float) -> Unit = {},
     baseDensity: Density = Density(1f, 1f),
@@ -337,6 +340,9 @@ private fun ThreadContent(
             selectedIds = loaded.conversation.mcpServers.toSet(),
             canToggleTools = loaded.canToggleTools,
             onToggleTool = onToggleTool,
+            prompts = settings.prompts,
+            activePromptContent = loaded.conversation.mainSystemPrompt,
+            onSelectPrompt = onSelectPrompt,
             textScale = textScale,
             onTextScaleChange = onTextScaleChange,
             baseDensity = baseDensity,
