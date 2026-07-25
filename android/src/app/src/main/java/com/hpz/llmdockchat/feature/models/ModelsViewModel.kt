@@ -31,14 +31,48 @@ sealed interface ModelsUiState {
         /** True while the services stream is down and being retried (F10-R1's fifth criterion). */
         val stale: Boolean = false,
         val gpu: GpuState = GpuState.Unavailable(null),
-    ) : ModelsUiState
+        /** Free-text name filter. Empty means "show everything". */
+        val query: String = "",
+    ) : ModelsUiState {
+        val visibleRunning: List<ServiceSummary> get() = running.matching(query)
+        val visibleStopped: List<ServiceSummary> get() = stopped.matching(query)
+
+        /** A query that matches nothing at all, so the screen can say so rather than look empty. */
+        val noMatches: Boolean
+            get() = query.isNotBlank() && visibleRunning.isEmpty() && visibleStopped.isEmpty()
+    }
 
     data class Failed(val message: String) : ModelsUiState
 }
 
-/** Running first, stopped second — the payload's own `host_port` order preserved within each. */
+/**
+ * Running first, stopped second, favourites first within each.
+ *
+ * `sortedByDescending` is stable, so the server's own `host_port` order still
+ * holds between two rows of the same favourite-ness — the same guarantee
+ * F07's picker relies on. Only a row's `status` changes underneath the list,
+ * never its position, so a service that stops moves group without shuffling
+ * its neighbours (F10-R2's second criterion).
+ *
+ * Favouriting itself stays on the dashboard: this tab never writes
+ * (F10-R7), and `POST /api/services/<name>/favorite` is a configuration
+ * endpoint no agent or screen here may call.
+ */
 fun List<ServiceSummary>.splitByRunning(): Pair<List<ServiceSummary>, List<ServiceSummary>> =
-    filter { it.isRunning } to filterNot { it.isRunning }
+    filter { it.isRunning }.sortedByDescending { it.favorite } to
+        filterNot { it.isRunning }.sortedByDescending { it.favorite }
+
+/**
+ * Substring match on the service name, case-insensitive. Deliberately not
+ * fuzzy: with ~20 services on one rig, typing "qwen" or "3307" should narrow
+ * the list predictably rather than cleverly. The port is searchable too — it
+ * is on screen, so it is fair game to type.
+ */
+fun List<ServiceSummary>.matching(query: String): List<ServiceSummary> {
+    val q = query.trim()
+    if (q.isEmpty()) return this
+    return filter { it.name.contains(q, ignoreCase = true) || it.port.toString().contains(q) }
+}
 
 /**
  * F10-R3's third criterion — "closing the tab stops the stream" — turned out
@@ -85,6 +119,8 @@ class ModelsViewModel(
             _state.value = ModelsUiState.Loaded(running = running, stopped = stopped)
         }
     }
+    fun onQueryChange(query: String) = updateLoaded { it.copy(query = query) }
+
 
     fun retry() {
         started = false

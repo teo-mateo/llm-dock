@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,6 +79,7 @@ fun ModelsScreen(
         state = state,
         onRetry = viewModel::retry,
         onNewChatFromModel = onNewChatFromModel,
+        onQueryChange = viewModel::onQueryChange,
         modifier = modifier,
     )
 }
@@ -88,6 +90,7 @@ private fun ModelsContent(
     state: ModelsUiState,
     onRetry: () -> Unit,
     onNewChatFromModel: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -105,14 +108,18 @@ private fun ModelsContent(
             when (state) {
                 is ModelsUiState.Loading -> LoadingState()
                 is ModelsUiState.Failed -> FailedState(state.message, onRetry)
-                is ModelsUiState.Loaded -> ModelsList(state, onNewChatFromModel)
+                is ModelsUiState.Loaded -> ModelsList(state, onNewChatFromModel, onQueryChange)
             }
         }
     }
 }
 
 @Composable
-private fun ModelsList(state: ModelsUiState.Loaded, onNewChatFromModel: (String) -> Unit) {
+private fun ModelsList(
+    state: ModelsUiState.Loaded,
+    onNewChatFromModel: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
+) {
     val now = remember { Instant.now() }
     val zone = remember { ZoneId.systemDefault() }
 
@@ -128,15 +135,28 @@ private fun ModelsList(state: ModelsUiState.Loaded, onNewChatFromModel: (String)
             return@LazyColumn
         }
 
-        if (state.running.isNotEmpty()) {
-            item(key = "running_header") { SectionHeader("Running", state.running.size) }
-            items(state.running, key = { "running_${it.name}" }) { service ->
+        // Only worth the vertical space once the list is long enough to need
+        // it — this rig has ~20 services, a fresh one may have two.
+        if (state.running.size + state.stopped.size >= SEARCH_THRESHOLD) {
+            item(key = "search") { SearchField(state.query, onQueryChange) }
+        }
+
+        if (state.noMatches) {
+            item(key = "no_matches") { NoMatches(state.query) }
+            return@LazyColumn
+        }
+
+        val running = state.visibleRunning
+        val stopped = state.visibleStopped
+        if (running.isNotEmpty()) {
+            item(key = "running_header") { SectionHeader("Running", running.size) }
+            items(running, key = { "running_${it.name}" }) { service ->
                 ServiceRow(service, now, zone, onNewChatFromModel)
             }
         }
-        if (state.stopped.isNotEmpty()) {
-            item(key = "stopped_header") { SectionHeader("Stopped", state.stopped.size) }
-            items(state.stopped, key = { "stopped_${it.name}" }) { service ->
+        if (stopped.isNotEmpty()) {
+            item(key = "stopped_header") { SectionHeader("Stopped", stopped.size) }
+            items(stopped, key = { "stopped_${it.name}" }) { service ->
                 ServiceRow(service, now, zone, onNewChatFromModel = null)
             }
         }
@@ -366,6 +386,41 @@ private fun LoadingState() {
 }
 
 @Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
+    val colors = LlmTheme.colors
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        singleLine = true,
+        placeholder = { Text("Filter by name or port", color = colors.muted) },
+        leadingIcon = { Text("  \uD83D\uDD0D", color = colors.muted) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                TextButton(onClick = { onQueryChange("") }) { Text("Clear", color = colors.accent) }
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("models_search"),
+    )
+}
+
+@Composable
+private fun NoMatches(query: String) {
+    val colors = LlmTheme.colors
+    Text(
+        "No service matches \"$query\".",
+        color = colors.muted,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp).testTag("models_no_matches"),
+    )
+}
+
+/** Below this many services the filter costs more screen than it saves. */
+private const val SEARCH_THRESHOLD = 8
+
+@Composable
 private fun EmptyState() {
     val colors = LlmTheme.colors
     Column(
@@ -414,6 +469,7 @@ private fun ModelsPopulatedPreview() {
             ),
             onRetry = {},
             onNewChatFromModel = {},
+            onQueryChange = {},
         )
     }
 }
@@ -430,6 +486,7 @@ private fun ModelsGpuUnavailablePreview() {
             ),
             onRetry = {},
             onNewChatFromModel = {},
+            onQueryChange = {},
         )
     }
 }
