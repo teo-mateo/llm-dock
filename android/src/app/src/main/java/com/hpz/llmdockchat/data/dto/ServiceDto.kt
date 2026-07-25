@@ -55,3 +55,15 @@ data class ServiceDetailResponseDto(
  * is read — a failure surfaces as a non-2xx, handled by [com.hpz.llmdockchat.core.net.ApiClient] before this ever decodes. */
 @Serializable
 data class ServiceActionResponseDto(val success: Boolean = true)
+
+/** `GET /api/services/<name>/logs` (F12-R3) — the one-shot fallback blob, used
+ * when the stream cannot be established. [logs] is the raw tail, timestamped,
+ * newline-separated; this client splits it client-side rather than trusting
+ * [lines], which counts entries the server split on its own newline. */
+@Serializable
+data class ServiceLogsResponseDto(
+    val service: String = "",
+    val logs: String = "",
+    val lines: Int = 0,
+    val timestamp: String = "",
+)

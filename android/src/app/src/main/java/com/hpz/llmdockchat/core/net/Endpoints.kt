@@ -46,6 +46,12 @@ object Endpoints {
     /** F10-R3's GPU header — one `data:` frame per tick, no `type` envelope. */
     const val GPU_STREAM = "/api/gpu/stream"
 
+    /** F12-R1 — typed SSE frames (`snapshot_start`/`log`/`snapshot_end`/`stream_end`/`error`). */
+    fun serviceLogsStream(name: String): String = "${serviceDetail(name)}/logs/stream"
+
+    /** F12-R3 — the one-shot fallback JSON blob, used when the stream cannot be established. */
+    fun serviceLogs(name: String): String = "${serviceDetail(name)}/logs"
+
     /** Read-only from the phone (F03) — editing the curated list is desktop Tools-page work. */
     const val OPENROUTER_MODELS_SETTINGS = "/api/chat/settings/openrouter-models"
 

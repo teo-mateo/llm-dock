@@ -112,4 +112,30 @@ class ServicesRepositoryTest {
         val request = server.takeRequest()
         assertEquals("/api/services/llamacpp-a/stop", request.url.encodedPath)
     }
+
+    /** F12-R3 — the one-shot fallback, split client-side rather than trusting the server's `lines` count. */
+    @Test
+    fun `fetchLogsOnce splits the logs blob into lines and hits the tail query param`() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder().body(
+                """{"service": "llamacpp-a", "logs": "line one\nline two\nline three", "lines": 3, "timestamp": "now"}""",
+            ).build(),
+        )
+
+        val lines = repository.fetchLogsOnce("llamacpp-a", tail = 50).getOrThrow()
+
+        assertEquals(listOf("line one", "line two", "line three"), lines)
+        val request = server.takeRequest()
+        assertEquals("/api/services/llamacpp-a/logs", request.url.encodedPath)
+        assertEquals("50", request.url.queryParameter("tail"))
+    }
+
+    @Test
+    fun `fetchLogsOnce surfaces a 404 as a real failure, unlike detail`() = runBlocking {
+        server.enqueue(MockResponse.Builder().code(404).body("""{"error": "Service has not been created yet"}""").build())
+
+        val result = repository.fetchLogsOnce("ghost-service")
+
+        assertTrue(result.isFailure)
+    }
 }

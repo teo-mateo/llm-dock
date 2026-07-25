@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.models
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import com.hpz.llmdockchat.data.model.ServiceSummary
 fun ModelDetailScreen(
     viewModel: ModelDetailViewModel,
     onBack: () -> Unit,
+    onOpenLogs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -58,6 +60,7 @@ fun ModelDetailScreen(
         state = state,
         actionState = actionState,
         onBack = onBack,
+        onOpenLogs = onOpenLogs,
         onRetry = viewModel::retry,
         onRequestStart = viewModel::requestStart,
         onRequestStop = viewModel::requestStop,
@@ -73,6 +76,7 @@ private fun ModelDetailContent(
     state: ModelDetailUiState,
     actionState: ServiceActionState,
     onBack: () -> Unit,
+    onOpenLogs: () -> Unit,
     onRetry: () -> Unit,
     onRequestStart: () -> Unit,
     onRequestStop: () -> Unit,
@@ -105,7 +109,7 @@ private fun ModelDetailContent(
             when (state) {
                 is ModelDetailUiState.Loading -> LoadingBox()
                 is ModelDetailUiState.Failed -> FailedBox(state.message, onRetry)
-                is ModelDetailUiState.Loaded -> DetailBody(state, actionState, onRequestStart, onRequestStop)
+                is ModelDetailUiState.Loaded -> DetailBody(state, actionState, onRequestStart, onRequestStop, onOpenLogs)
             }
         }
         ServiceActionDialog(actionState, onDismiss = onDismissAction, onConfirm = onConfirmAction)
@@ -118,6 +122,7 @@ private fun DetailBody(
     actionState: ServiceActionState,
     onRequestStart: () -> Unit,
     onRequestStop: () -> Unit,
+    onOpenLogs: () -> Unit,
 ) {
     val colors = LlmTheme.colors
     val summary = state.summary
@@ -181,6 +186,28 @@ private fun DetailBody(
             item { SectionLabel("Flags") }
             items(flags, key = { it.first }) { (flag, value) -> FlagRow(flag, value) }
         }
+
+        // F12 — same "Logs" entry as screen 10b's mockup. Offered whether the
+        // container is running, stopped, or missing: LogsScreen shows the
+        // right message for each case rather than this row guessing at it.
+        item { SectionLabel("Logs") }
+        item { LogsRow(onClick = onOpenLogs) }
+    }
+}
+
+@Composable
+private fun LogsRow(onClick: () -> Unit) {
+    val colors = LlmTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag("model_detail_logs"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Live output", color = colors.fg, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text("→", color = colors.subtle)
     }
 }
 

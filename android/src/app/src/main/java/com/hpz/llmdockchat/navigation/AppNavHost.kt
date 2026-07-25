@@ -30,6 +30,8 @@ import com.hpz.llmdockchat.feature.connect.ConnectScreen
 import com.hpz.llmdockchat.feature.connect.ConnectViewModel
 import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
 import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
+import com.hpz.llmdockchat.feature.logs.LogsScreen
+import com.hpz.llmdockchat.feature.logs.LogsViewModel
 import com.hpz.llmdockchat.feature.models.ModelDetailScreen
 import com.hpz.llmdockchat.feature.models.ModelDetailViewModel
 import com.hpz.llmdockchat.feature.models.ModelsScreen
@@ -154,7 +156,29 @@ fun AppNavHost(
                     }
                 },
             )
-            ModelDetailScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+            ModelDetailScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onOpenLogs = { navController.navigate(Destinations.logs(serviceName)) },
+            )
+        }
+
+        composable(Destinations.LOGS) { backStackEntry ->
+            val serviceName = backStackEntry.arguments?.getString("serviceName").orEmpty()
+            val viewModel: LogsViewModel = viewModel(
+                // Keyed by service, same reasoning as MODEL_DETAIL's key.
+                key = "logs_$serviceName",
+                factory = viewModelFactory {
+                    initializer {
+                        LogsViewModel(
+                            serviceName = serviceName,
+                            logsStreamRepository = container.logsStreamRepository,
+                            servicesRepository = container.servicesRepository,
+                        )
+                    }
+                },
+            )
+            LogsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
 
         composable(Destinations.THREAD) { backStackEntry ->

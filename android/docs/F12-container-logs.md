@@ -102,3 +102,53 @@ None.
 - Log retention or export to a file.
 - Logs for anything but a compose-managed service (the endpoint refuses
   names outside the project).
+
+## Verification notes
+
+Both Must requirements verified live against the rig; the review
+reproduced the findings independently rather than trusting them.
+
+**`stream_end` is an end state, not a failure — verified by breaking it
+first.** The reviewer patched the `StreamEnd` branch to route to `Failed`
+and watched `LogsViewModelTest` fail at line 112, then reverted. Then
+proved it live: opened logs on a running container and stopped it mid-
+stream. The status flipped from green "Live" to grey "Stream ended —
+container stopped", with the container's own `cleaning up before exit…`
+as the final line. Not an error screen.
+
+This is the criterion that mattered most: a stopped container ends its
+log stream normally, so getting it wrong would make the feature look
+broken every single time the owner stops a model.
+
+**Teardown, independently confirmed.** `ss -tnp` filtered on
+`qemu-system-x86` (where the emulator's host-side sockets live) showed
+the exact stream socket `127.0.0.1:57060 → 127.0.0.1:3399`; it was gone
+within ~1 s of pressing back. This requirement has now been got wrong
+twice on this project — F07, and a real bug in F10 where
+`viewModelScope`-launched streams survived a tab switch — so it is
+verified by socket, never by inspection.
+
+**No reconnect loop, deliberately.** Unlike the GPU and services stream
+repositories, `LogsStreamRepository` does not retry. A `stream_end` is a
+normal outcome, and auto-reconnecting into a genuinely dead stream is
+worse than not. A real network drop instead surfaces as `Failed` with a
+manual Retry, so the user is never stuck — one tap reconnects. Reviewed
+and agreed rather than assumed.
+
+**Follow-tail did not inherit F04's sharp edge.** `ThreadScreen`'s
+pattern misbehaves in a list too short to scroll, where `canScrollForward`
+stays false and following flips back on. Here that is the correct
+behaviour: if the whole buffer fits on screen there is nothing to scroll
+away from, so there is no disagreement to honour.
+
+**Not verified:** keepalive behaviour on a quiet container (accepted on
+code read — SSE comments are already dropped by `SseFrameParser` and
+covered by its tests), and R4's level colouring on screen, since no
+container produced a real ERROR line during review. R4 is Should and its
+classification logic is unit-tested.
+
+**F11-R7 (readiness) was not picked up here**, and the review agreed with
+that call. Wiring "up but not ready" into the picker touches
+`NewChatViewModel`'s selection logic and its own state machine — a
+different screen's concern, not a small addition just because a log
+client now exists. It stays a documented skip.
