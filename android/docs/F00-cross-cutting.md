@@ -222,6 +222,14 @@ stored token (`Endpoints.establishesSession`). Every other call is unchanged.
 The same three are exempt from the 401 re-authentication path, so a wrong
 password reports itself rather than looping through the credential exchange.
 
+**F00-R2 — narrowed by F01-R6: a request with no stored token may now reach
+the network.** The first criterion above ("never reaches the network; the app
+routes to Connect instead") describes what F00 shipped, and F01 changed it:
+the transport now mints a token from the stored credential first, and fails
+the request locally only when it cannot. Without that, a dashboard restart
+would send a signed-in user to Connect, which F01-R6 forbids. See F01's
+*Deviations*.
+
 **F00-R2 — `X-TOTP-Token` cannot be exercised against the real dashboard.**
 `require_auth` emits that header only when a request authenticates via the
 `X-TOTP-Code` header, and the two login routes bypass `require_auth` entirely

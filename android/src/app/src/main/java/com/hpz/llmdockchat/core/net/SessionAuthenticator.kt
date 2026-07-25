@@ -29,7 +29,16 @@ class SessionAuthenticator(
         if (Endpoints.establishesSession(response.request)) return null
 
         val attempted = response.request.header(AuthInterceptor.AUTHORIZATION)?.removePrefix("Bearer ")
-        if (attempted != null && attempted == tokenStore.current()) {
+        val stored = tokenStore.current()
+
+        // A concurrent request already re-authenticated and stored a newer
+        // token. Retrying with it costs nothing; exchanging the credential
+        // again would be the second half of the stampede F01 exists to avoid.
+        if (attempted != null && !stored.isNullOrBlank() && attempted != stored) {
+            return if (priorResponses(response) > 1) giveUp() else retryWith(response, stored)
+        }
+
+        if (attempted != null && attempted == stored) {
             tokenStore.clear()
         }
 
@@ -39,10 +48,13 @@ class SessionAuthenticator(
 
         tokenStore.update(fresh)
         sessionState.authenticated()
-        return response.request.newBuilder()
-            .header(AuthInterceptor.AUTHORIZATION, "Bearer $fresh")
-            .build()
+        return retryWith(response, fresh)
     }
+
+    private fun retryWith(response: Response, token: String): Request =
+        response.request.newBuilder()
+            .header(AuthInterceptor.AUTHORIZATION, "Bearer $token")
+            .build()
 
     private fun giveUp(): Request? {
         sessionState.requireAuthentication()

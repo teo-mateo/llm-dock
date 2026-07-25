@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   Auto Backup, for devices below API 31. See data_extraction_rules.xml for 31+.
+
+   The DataStore file holds the session token and the dashboard credential
+   (F01-R5). Both are encrypted with a key that lives in the platform Keystore
+   and is never backed up, so a restored copy would be undecryptable anyway —
+   but a credential has no business leaving the device at all, so the file is
+   excluded outright.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="file" path="datastore/" />
 </full-backup-content>
