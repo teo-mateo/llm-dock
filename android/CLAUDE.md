@@ -147,8 +147,34 @@ token. Then send `Authorization: Bearer totp-…` on every other call.
 
 ### Test fixtures
 
-- Chat-capable model for testing: **`llamacpp-gemma-4-26b-a4b-it-q8`**,
-  running on `:3301`, `kind=chat` — it passes the F07-R1 picker filter.
+- Chat-capable model for testing: **`llamacpp-mimo-v2-5-q4`**, running on
+  `:3307`, `kind=chat` — it passes the F07-R1 picker filter. It replaced
+  `llamacpp-gemma-4-26b-a4b-it-q8` (which was on `:3301`) on 2026-07-25,
+  so any older thread or fixture naming gemma points at a model that is
+  no longer running. **Confirm what is actually up before assuming** —
+  the owner swaps this, and the port changes with the model. Run from the
+  repo root (`dev.sh token` returns empty elsewhere, and the call then
+  silently 401s):
+
+  ```
+  TOKEN=$(android/scripts/dev.sh token)
+  curl -s -H "Authorization: Bearer $TOKEN" localhost:3399/api/services \
+    | python3 -c 'import sys,json
+  for s in json.load(sys.stdin)["services"]:
+      if s.get("status") == "running":
+          print(s["name"], s.get("host_port"), s.get("kind"))'
+  ```
+
+- **The port field is `host_port`, not `port`.** `GET /api/services`
+  returns a *list* under `services`, and each entry carries `host_port`
+  (an int) plus the raw Docker `ports` map. There is no `port` key —
+  reading one yields `None` and looks like "the API doesn't expose the
+  port". `services.json` is the other way round: keyed by name, with
+  `port`. F07-R1 renders `host_port`.
+- **`kind=chat` alone is not the picker filter.** `open-webui` is
+  `running` with `kind=chat` and is not a model. The name-prefix test
+  (`llamacpp-`/`vllm-`/`ds4-`) in F07-R1 is what excludes it — don't drop
+  it as redundant.`
 - **Creating and deleting conversations is fine.** They share `chat.db`
   with the web UI, so prefix test threads to make them identifiable and
   clean up afterwards.
