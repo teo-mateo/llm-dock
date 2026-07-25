@@ -61,6 +61,10 @@ because of R-A or R-B — it says so explicitly.
 
 ## 3. How to work through this plan
 
+> The per-feature delivery loop — branch, verify, commit, PR, merge,
+> notify — is in **`android/CLAUDE.md` → "How work proceeds"**. This
+> section covers only how the plan itself is maintained.
+
 - Work one feature file at a time, in the order of the index below. The
   order is a dependency order, not a preference: F01 gates everything,
   F04 gates F05/F06/F09.

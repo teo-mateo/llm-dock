@@ -19,19 +19,55 @@ surface the app may call, and the feature index.
 
 ## How work proceeds
 
-- **Serialized.** One feature at a time, in the `F00 → F13` dependency
-  order. No parallel implementation — the emulator is a single shared
-  device and two agents installing the same package will stomp each
-  other.
-- **One commit per completed feature.** A feature is complete when its
-  Must requirements are implemented and their acceptance criteria have
-  been verified on the device.
-- **Mark `[DONE]`** in the Status column of the feature index in
-  `docs/Plan_TOC.md` — there and nowhere else.
-- If implementation forces a deviation, edit the requirement in its
-  feature file and record why in that file's *Deviations* section. Never
-  leave the plan describing something the app doesn't do.
-- Subagents are for research and review, not for parallel implementation.
+**Serialized.** One feature at a time, in the `F00 → F13` dependency
+order. No parallel implementation — the emulator is a single shared
+device, and two agents installing the same package stomp each other.
+Subagents are for research and review only.
+
+### The loop, per feature
+
+```
+1. branch from a fresh main        git checkout main && git pull && git checkout -b android-f04-streaming
+2. implement the Must requirements
+3. verify every Must acceptance criterion   (see "What done means")
+4. mark [DONE] in docs/Plan_TOC.md §6
+5. commit  (one commit per feature)
+6. open a PR
+7. merge it
+8. notify on Telegram
+9. back to 1 for the next feature
+```
+
+Merging is not optional bookkeeping: the features are a dependency chain
+— F01 needs F00's code, F05 needs F04's — and the branching rule says
+branch from a fresh `main`. If a PR doesn't merge before the next feature
+starts, branches stack, the rule breaks, and conflicts follow.
+
+No codex review pass on Android work. That is a deliberate choice, and it
+has a consequence: **there is no second reviewer, so step 3 is the only
+quality gate.** It has to be real.
+
+### What "done" means
+
+A feature is complete when every **Must** requirement in its file is
+implemented and every acceptance criterion for those requirements has
+been verified — with evidence, not assertion:
+
+- logic criteria → a passing JVM test (see `docs/Architecture.md` Part IV)
+- device criteria → a screenshot or a passing instrumented test
+
+Should-priority items may be skipped; note it in the feature file if so.
+Never report a feature done with unverified criteria — say which ones are
+outstanding and why.
+
+### When the plan is wrong
+
+If implementation forces a deviation, edit the requirement in its feature
+file and record why in that file's *Deviations* section, in the same
+commit. Never leave the plan describing something the app doesn't do.
+
+If a feature turns out to depend on something a later feature owns, stop
+and say so rather than half-building both.
 
 ## The project
 
