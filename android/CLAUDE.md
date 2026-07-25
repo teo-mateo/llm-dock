@@ -10,64 +10,38 @@ things, reads logs, and reaches the dashboard running on the host.
 |---|---|
 | **Software requirements** — the spec being built | `docs/Plan_TOC.md`, then the `F00`–`F13` files beside it |
 | **Technical foundation** — architecture, verified deps, test strategy | `docs/Architecture.md` |
+| **How the work is run** — orchestration, agents, models, stop rules | `WORK_INSTRUCTIONS.md` |
 | Features deliberately excluded, and why | `docs/Dropped-Features.md` |
 | Validated screen designs (16 screens) | `../docs/android/chat-app-mockups.html` |
-| Screen → endpoint map | `../docs/android/README.md` — **carries a wrong login endpoint**; `docs/F01-connection-and-auth.md` corrects it |
+| Screen → endpoint map | `../docs/android/README.md` — corrected, and lists the mockups' own factual errors |
 
 `docs/Plan_TOC.md` is the entry point: scope, ground rules, the endpoint
 surface the app may call, and the feature index.
 
 ## How work proceeds
 
-**Serialized.** One feature at a time, in the `F00 → F13` dependency
-order. No parallel implementation — the emulator is a single shared
-device, and two agents installing the same package stomp each other.
-Subagents are for research and review only.
+**Full protocol: [`WORK_INSTRUCTIONS.md`](WORK_INSTRUCTIONS.md).** Read it
+before starting a feature. The essentials:
 
-### The loop, per feature
-
-```
-1. branch from a fresh main        git checkout main && git pull && git checkout -b android-f04-streaming
-2. implement the Must requirements
-3. verify every Must acceptance criterion   (see "What done means")
-4. mark [DONE] in docs/Plan_TOC.md §6
-5. commit  (one commit per feature)
-6. open a PR
-7. merge it
-8. notify on Telegram
-9. back to 1 for the next feature
-```
-
-Merging is not optional bookkeeping: the features are a dependency chain
-— F01 needs F00's code, F05 needs F04's — and the branching rule says
-branch from a fresh `main`. If a PR doesn't merge before the next feature
-starts, branches stack, the rule breaks, and conflicts follow.
-
-No codex review pass on Android work. That is a deliberate choice, and it
-has a consequence: **there is no second reviewer, so step 3 is the only
-quality gate.** It has to be real.
-
-### What "done" means
-
-A feature is complete when every **Must** requirement in its file is
-implemented and every acceptance criterion for those requirements has
-been verified — with evidence, not assertion:
-
-- logic criteria → a passing JVM test (see `docs/Architecture.md` Part IV)
-- device criteria → a screenshot or a passing instrumented test
-
-Should-priority items may be skipped; note it in the feature file if so.
-Never report a feature done with unverified criteria — say which ones are
-outstanding and why.
-
-### When the plan is wrong
-
-If implementation forces a deviation, edit the requirement in its feature
-file and record why in that file's *Deviations* section, in the same
-commit. Never leave the plan describing something the app doesn't do.
-
-If a feature turns out to depend on something a later feature owns, stop
-and say so rather than half-building both.
+- **Serialized.** One feature at a time in `F00 → F13` dependency order.
+  The emulator is one shared device; two agents installing the same
+  package stomp each other.
+- **The main session orchestrates and does not write feature code.** Each
+  feature gets an implementation agent and a separate review-and-testing
+  agent. The orchestrator branches, commits, PRs, merges and marks
+  `[DONE]`.
+- **No codex pass, no human reviewer on Android work.** Those two agents
+  are the entire quality gate, so verification has to be real: logic
+  criteria need a passing JVM test, device criteria a screenshot or an
+  instrumented test. Never report a feature done with unverified
+  criteria — name the outstanding ones.
+- **One commit, one PR, merged, per feature.** Merging is structural: the
+  features form a dependency chain and each branch starts from a fresh
+  `main`, so an unmerged PR forces branches to stack.
+- **When the plan is wrong**, edit the requirement in its feature file and
+  record why under *Deviations*, in the same commit. Never leave the plan
+  describing something the app doesn't do.
+- **Stop rather than grind** — see `WORK_INSTRUCTIONS.md` §7.
 
 ## The project
 
