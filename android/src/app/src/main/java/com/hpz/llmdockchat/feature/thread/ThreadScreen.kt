@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -64,6 +65,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -185,38 +187,11 @@ private fun ThreadContent(
             }
         },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            loaded?.conversation?.title ?: "Conversation",
-                            color = colors.fg,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("thread_title"),
-                        )
-                        // F04-R3: who is answering stays visible for the whole
-                        // turn, not just at the moment it starts.
-                        loaded?.conversation?.modelRef?.let { ref ->
-                            Text(
-                                ref.displayName,
-                                color = colors.subtle,
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("thread_model"),
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
-                        Text("←", color = colors.fg)
-                    }
-                },
-                actions = {
+            ThreadHeader(
+                title = loaded?.conversation?.title ?: "Conversation",
+                model = loaded?.conversation?.modelRef?.displayName,
+                onBack = onBack,
+                overflow = {
                     if (loaded != null) {
                         ThreadOverflowMenu(
                             canSwitchModel = loaded.canSwitchModel,
@@ -226,7 +201,6 @@ private fun ThreadContent(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
             )
         },
         // The composer is the Scaffold's bottom bar rather than the last child
@@ -343,6 +317,59 @@ private fun ThreadContent(
     }
 }
 
+/**
+ * The thread header. A `TopAppBar` cannot carry a two-line title at a sane
+ * height — it centres a single title slot in a fixed 64 dp bar — so this is the
+ * same hand-rolled shell the conversation list uses, for the same reason, and
+ * so the two screens' headers line up when you push from one to the other.
+ */
+@Composable
+private fun ThreadHeader(
+    title: String,
+    model: String?,
+    onBack: () -> Unit,
+    overflow: @Composable () -> Unit,
+) {
+    val colors = LlmTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .height(64.dp)
+            .padding(start = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
+            Icon(DesignLabIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Text(
+                title,
+                color = colors.fg,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("thread_title"),
+            )
+            // F04-R3: who is answering stays visible for the whole turn, not
+            // just at the moment it starts.
+            if (model != null) {
+                Text(
+                    model,
+                    color = colors.subtle,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("thread_model"),
+                )
+            }
+        }
+        overflow()
+    }
+}
+
 @Composable
 private fun ThreadOverflowMenu(
     canSwitchModel: Boolean,
@@ -353,7 +380,7 @@ private fun ThreadOverflowMenu(
     val colors = LlmTheme.colors
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }, modifier = Modifier.testTag("thread_overflow")) {
-        Text("⋮", color = colors.fg, style = MaterialTheme.typography.titleLarge)
+        Icon(DesignLabIcons.MoreVertical, contentDescription = "More", tint = colors.fg, modifier = Modifier.size(20.dp))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         DropdownMenuItem(

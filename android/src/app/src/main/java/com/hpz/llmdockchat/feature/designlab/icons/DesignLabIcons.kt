@@ -147,6 +147,25 @@ object DesignLabIcons {
         }
     }
 
+    val MoreVertical: ImageVector by lazy {
+        ImageVector.Builder(name = "MoreVertical", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+            .path(fill = SolidColor(Color.Black)) {
+                listOf(5.6f, 12f, 18.4f).forEach { cy ->
+                    moveTo(12f, cy - 1.7f)
+                    curveTo(12.94f, cy - 1.7f, 13.7f, cy - 0.94f, 13.7f, cy)
+                    curveTo(13.7f, cy + 0.94f, 12.94f, cy + 1.7f, 12f, cy + 1.7f)
+                    curveTo(11.06f, cy + 1.7f, 10.3f, cy + 0.94f, 10.3f, cy)
+                    curveTo(10.3f, cy - 0.94f, 11.06f, cy - 1.7f, 12f, cy - 1.7f)
+                    close()
+                }
+            }
+            .build()
+    }
+
+    val ChevronLeft: ImageVector by lazy {
+        strokeIcon("ChevronLeft") { moveTo(15f, 5f); lineTo(8f, 12f); lineTo(15f, 19f) }
+    }
+
     val ChevronRight: ImageVector by lazy {
         strokeIcon("ChevronRight") { moveTo(9f, 5f); lineTo(16f, 12f); lineTo(9f, 19f) }
     }
