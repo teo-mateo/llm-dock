@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.model.ParseWarning
@@ -38,7 +39,7 @@ import com.hpz.llmdockchat.data.model.ToolCallRecord
 /**
  * The mockup's split (screen 04): the user's own words in mono, the model's in
  * serif, so it is obvious who is talking without an avatar. Markdown rendering
- * is F05 — this shows the text as it came.
+ * is F05, via [MarkdownBody].
  */
 @Composable
 fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier) {
@@ -50,6 +51,7 @@ fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier) {
             toolCalls = message.toolCalls,
             parseWarning = message.parseWarning,
             error = message.error,
+            artifacts = message.artifacts,
             modifier = modifier,
         )
     }
@@ -58,6 +60,11 @@ fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier) {
 @Composable
 private fun UserBubble(message: ChatMessage, modifier: Modifier = Modifier) {
     val colors = LlmTheme.colors
+    // F05-R6's fourth criterion: a photo the user attached opens full-screen
+    // with pinch-zoom, same as an image artifact — decoded once here so the
+    // viewer (which wants a Bitmap) doesn't re-decode what the thumbnail
+    // already did.
+    var fullScreenDataUrl by remember { mutableStateOf<String?>(null) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -66,7 +73,9 @@ private fun UserBubble(message: ChatMessage, modifier: Modifier = Modifier) {
     ) {
         if (message.images.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                message.images.forEach { ImageThumbnail(it, size = 84.dp) }
+                message.images.forEach { url ->
+                    ImageThumbnail(url, size = 84.dp, onTap = { fullScreenDataUrl = url })
+                }
             }
         }
         if (message.content.isNotBlank()) {
@@ -85,6 +94,13 @@ private fun UserBubble(message: ChatMessage, modifier: Modifier = Modifier) {
             }
         }
     }
+    // Reachable only via a tap forwarded from a thumbnail that already decoded
+    // this exact `dataUrl` successfully, so a second, memoized decode here is
+    // just re-reading the same deterministic result.
+    fullScreenDataUrl?.let { dataUrl ->
+        val bitmap = remember(dataUrl) { decodeDataUrl(dataUrl) }
+        if (bitmap != null) FullScreenBitmapViewer(bitmap) { fullScreenDataUrl = null }
+    }
 }
 
 /**
@@ -100,9 +116,9 @@ fun AssistantBubble(
     parseWarning: ParseWarning?,
     error: String?,
     modifier: Modifier = Modifier,
+    artifacts: List<ArtifactRecord> = emptyList(),
     trailing: @Composable (() -> Unit)? = null,
 ) {
-    val colors = LlmTheme.colors
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -113,15 +129,11 @@ fun AssistantBubble(
         toolCalls.forEach { ToolCallCard(it) }
         parseWarning?.let { ParseWarningChip(it) }
         if (content.isNotBlank()) {
-            Text(
-                content,
-                color = colors.fg,
-                fontFamily = FontFamily.Serif,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.testTag("assistant_text"),
-            )
+            MarkdownBody(content, modifier = Modifier.testTag("assistant_text"))
         }
+        artifacts.forEach { ArtifactCard(it) }
         error?.let { ErrorNote(it) }
+        if (content.isNotBlank()) MessageActionsRow(content)
         trailing?.invoke()
     }
 }
@@ -270,9 +282,20 @@ fun ErrorNote(message: String) {
  * Decodes a `data:image/…;base64,…` URL — the same encoding the web composer
  * sends. Done here rather than with an image loader because the bytes are
  * already in the payload; there is nothing to fetch.
+ *
+ * [onTap] is separate from [onRemove] on purpose: the composer's draft strip
+ * passes only [onRemove], a sent message's thumbnail passes only [onTap]
+ * (F05-R6's fourth criterion), and the two can coexist — the remove button is
+ * a small circle drawn *after* the image, so it wins hit-testing in its own
+ * corner and the image's tap handler only ever sees the rest of the thumbnail.
  */
 @Composable
-fun ImageThumbnail(dataUrl: String, size: androidx.compose.ui.unit.Dp, onRemove: (() -> Unit)? = null) {
+fun ImageThumbnail(
+    dataUrl: String,
+    size: androidx.compose.ui.unit.Dp,
+    onRemove: (() -> Unit)? = null,
+    onTap: (() -> Unit)? = null,
+) {
     val colors = LlmTheme.colors
     val bitmap = remember(dataUrl) { decodeDataUrl(dataUrl) }
     Box(Modifier.size(size)) {
@@ -281,7 +304,11 @@ fun ImageThumbnail(dataUrl: String, size: androidx.compose.ui.unit.Dp, onRemove:
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size).clip(RoundedCornerShape(10.dp)),
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(10.dp))
+                    .let { m -> if (onTap != null) m.clickable(onClick = onTap) else m }
+                    .testTag("image_thumbnail"),
             )
         } else {
             Box(

@@ -95,6 +95,19 @@ State these in the brief; do not assume they are inferred:
 - **Never** start or stop LLM containers, or fire test traffic at them.
 - **Never** wipe, factory-reset or kill the emulator. `dev.sh clear`
   (this app's data only) is fine.
+- **Target a device explicitly whenever more than one is attached.** The
+  owner's physical phone is sometimes plugged in alongside the emulator.
+  `./gradlew installDebug` installs to **every** connected device, and
+  `dev.sh` and bare `adb` target whatever adb happens to pick — an agent
+  hit this and pushed a build to the owner's phone mid-session, under
+  another agent that was using it. Use
+  `adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk`,
+  and `adb -s <serial>` for every shell, screencap and dump.
+  Check with `adb devices -l` first.
+- **The owner's phone is not a test device.** If a brief does not
+  explicitly assign it to you, do not install to it, do not clear its app
+  data (that destroys their stored credential and signs them out), and do
+  not touch their real conversations.
 - **Never** call the dashboard's configuration endpoints — see F00-R10.
 - **Never** edit a requirements file except to add to its *Deviations*
   section, and only with a reason.

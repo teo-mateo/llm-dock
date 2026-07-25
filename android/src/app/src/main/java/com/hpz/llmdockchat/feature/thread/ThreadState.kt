@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.thread
 
+import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.ParseWarning
@@ -34,6 +35,8 @@ data class StreamingTurn(
     val reasoning: String = "",
     val toolCalls: List<StreamingToolCall> = emptyList(),
     val parseWarning: ParseWarning? = null,
+    /** Frames arrive as they're produced; the panel appears as soon as one has (F05-R6/R8). */
+    val artifacts: List<ArtifactRecord> = emptyList(),
     /** Stop has been requested; the server cancels cooperatively, so this lingers a moment. */
     val stopping: Boolean = false,
     /**

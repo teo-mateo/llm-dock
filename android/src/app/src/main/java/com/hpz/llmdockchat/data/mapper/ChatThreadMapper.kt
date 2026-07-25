@@ -1,12 +1,14 @@
 package com.hpz.llmdockchat.data.mapper
 
 import com.hpz.llmdockchat.data.dto.ActiveRunDto
+import com.hpz.llmdockchat.data.dto.ArtifactDto
 import com.hpz.llmdockchat.data.dto.ChatMessageDto
 import com.hpz.llmdockchat.data.dto.ConversationDetailDto
 import com.hpz.llmdockchat.data.dto.LastRunDto
 import com.hpz.llmdockchat.data.dto.ParseWarningDto
 import com.hpz.llmdockchat.data.dto.ToolCallDto
 import com.hpz.llmdockchat.data.model.ActiveRun
+import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.LastRun
@@ -23,13 +25,13 @@ fun ConversationDetailDto.toDomain(): ConversationDetail = ConversationDetail(
     modelRef = parseModelRef(mainService),
     // The server orders by seq already; sorting here makes the list's own
     // ordering independent of that, since `key` stability drives recomposition.
-    messages = messages.sortedBy { it.seq }.map { it.toDomain() },
+    messages = messages.sortedBy { it.seq }.map { it.toDomain(artifacts[it.id].orEmpty()) },
     activeRun = activeRun?.toActiveRun(),
     lastRun = lastRun?.toLastRun(),
     updatedAt = updatedAt,
 )
 
-private fun ChatMessageDto.toDomain(): ChatMessage = ChatMessage(
+private fun ChatMessageDto.toDomain(artifacts: List<ArtifactDto>): ChatMessage = ChatMessage(
     id = id,
     role = parseMessageRole(role),
     content = content,
@@ -41,7 +43,11 @@ private fun ChatMessageDto.toDomain(): ChatMessage = ChatMessage(
     toolCalls = toolCalls.map { it.toDomain() },
     parseWarning = parseWarning?.toDomain(),
     error = error?.takeIf { it.isNotBlank() },
+    artifacts = artifacts.map { it.toDomain() },
 )
+
+private fun ArtifactDto.toDomain(): ArtifactRecord =
+    ArtifactRecord(type = type, title = title, content = content, language = language)
 
 private fun ToolCallDto.toDomain(): ToolCallRecord = ToolCallRecord(
     name = name,

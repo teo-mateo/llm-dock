@@ -267,6 +267,13 @@ normalisation and resolution, R2, R6's framing behaviour (split reads,
 comment keepalives, opaque payloads, cancellation and socket teardown),
 R7's palettes and live theme switching, R10, and R11's formatter.
 
+**R1's second criterion is now fully closed (2026-07-25).** It had only
+ever been half-verified — `http://10.0.2.2:3399` on the emulator, with no
+real HTTPS host to point at. The app now runs on a physical phone against
+`https://models.ai.heapzilla.eu` with no code change: TLS verifies clean,
+`/api/health` answers 200, and authenticated requests work. Both schemes
+are proven.
+
 R8's first criterion is **partly satisfied already**: typography is `sp`
 throughout and the review confirmed at 1.5x system font scale that text
 reflows with nothing clipped or overlapped.
