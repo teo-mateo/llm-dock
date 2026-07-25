@@ -25,9 +25,15 @@ import com.hpz.llmdockchat.core.net.OkHttpSseTransport
 import com.hpz.llmdockchat.core.net.ServerUrlStore
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.core.net.SseTransport
+import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
+import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.HealthRepository
+import com.hpz.llmdockchat.data.McpServersRepository
+import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
+import com.hpz.llmdockchat.data.ServicesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
@@ -99,6 +105,11 @@ class AppContainer(
     )
     val reachabilityRepository = ReachabilityRepository(healthRepository)
     val conversationsRepository = ConversationsRepository(apiClient)
+    val servicesRepository = ServicesRepository(apiClient)
+    val promptsRepository = PromptsRepository(apiClient)
+    val mcpServersRepository = McpServersRepository(apiClient)
+    val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)
+    val newChatPreferences: NewChatPreferences = DataStoreNewChatPreferences(dataStore, appScope)
 
     private val reauthenticator = CredentialReauthenticator(
         credentials = credentialStore,

@@ -111,6 +111,29 @@ empty slots.
   phone send no `sidekick_service`, so it stays null.
 - **No project row.** Screen 03 draws one. Decision 3 removed projects
   from the phone — F03-R4 is withdrawn.
+- **Tools on a new thread are always two calls, not one.** `POST
+  /api/chat/conversations` (`dashboard/chat/routes.py:330-379`,
+  `create_conversation`) builds its `Conversation` row from a fixed field
+  set — `title, main_service, sidekick_service, main_system_prompt,
+  sidekick_system_prompt, parent_conversation_id, selected_text,
+  project_id` — and never reads `mcp_servers_json` from the request body.
+  Only `PUT /api/chat/conversations/<id>` (`update_conversation`) accepts
+  it. So enabling tools on a brand-new thread is always create-then-PUT;
+  the app issues the PUT immediately after a successful create. If that
+  PUT fails, the conversation still exists — the sheet stays open and
+  offers Retry (re-issue only the PUT) or Open anyway, never a second
+  create. F08 (which owns changing tools on an existing thread) should
+  assume the same two-call shape, not a single endpoint.
+- **The model picker is F03's own minimal build, not F07's.** F07 (model
+  selection) doesn't exist yet, and F03-R1 can't work without choosing a
+  model, so this feature builds a flat picker: local services from `GET
+  /api/services` (filtered to a recognised engine prefix and `kind ==
+  "chat"`) plus the curated OpenRouter list from `GET
+  /api/chat/settings/openrouter-models` when configured. It lives entirely
+  in `NewChatScreen`'s `ModelPickerSheet` composable. F07 enriches that one
+  composable (search, favorites, richer grouping) without touching
+  `ModelOption`, the repositories it reads from, or
+  `ConversationsRepository.create`'s signature.
 
 ## Out of scope
 
@@ -119,3 +142,16 @@ empty slots.
 - Projects in any form.
 - Setting a custom `main_system_prompt` free-text on the phone. Pick a
   managed prompt or take the default.
+
+## Carried forward
+
+| Criterion | Verify in |
+|---|---|
+| R5 · "…then shows the generated one without a manual refresh" | **F04.** The auto-title arrives on a `conversation_updated` frame during the first turn (F04-R7). F03 verified only the placeholder-title half. |
+
+Unit-tested rather than device-verified, deliberately: the
+remembered-model-not-running branch (would need a container stopped), and
+the no-managed-prompts / no-MCP-servers empty cases (would need shared
+server config mutated). Everything else in F03 was driven on device
+against the live dashboard, including creation failure — reachable with
+`dev.sh net off`, which is app-scoped and reversible.

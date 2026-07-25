@@ -29,3 +29,10 @@ fun parseModelRef(raw: String): ModelRef =
     } else {
         ModelRef.Local(raw)
     }
+
+/** The inverse of [parseModelRef] — what F03 sends as `main_service` on create. */
+val ModelRef.wireValue: String
+    get() = when (this) {
+        is ModelRef.Local -> serviceName
+        is ModelRef.OpenRouter -> "$OPENROUTER_PREFIX$modelId"
+    }

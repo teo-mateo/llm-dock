@@ -27,7 +27,8 @@ import com.hpz.llmdockchat.feature.connect.ConnectViewModel
 import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
 import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
 import com.hpz.llmdockchat.feature.models.ModelsPlaceholderScreen
-import com.hpz.llmdockchat.feature.newchat.NewChatPlaceholderScreen
+import com.hpz.llmdockchat.feature.newchat.NewChatScreen
+import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadPlaceholderScreen
 
 /**
@@ -116,7 +117,32 @@ fun AppNavHost(
         }
 
         composable(Destinations.NEW_CHAT) {
-            NewChatPlaceholderScreen(onBack = { navController.popBackStack() })
+            val viewModel: NewChatViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer {
+                        NewChatViewModel(
+                            servicesRepository = container.servicesRepository,
+                            promptsRepository = container.promptsRepository,
+                            mcpServersRepository = container.mcpServersRepository,
+                            openRouterModelsRepository = container.openRouterModelsRepository,
+                            conversationsRepository = container.conversationsRepository,
+                            preferences = container.newChatPreferences,
+                        )
+                    }
+                },
+            )
+            NewChatScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onConversationCreated = { id ->
+                    // Replaces the sheet on the back stack — Back from the new
+                    // thread returns to the conversation list, not to a sheet
+                    // for a chat that already exists.
+                    navController.navigate(Destinations.thread(id)) {
+                        popUpTo(Destinations.NEW_CHAT) { inclusive = true }
+                    }
+                },
+            )
         }
     }
 }

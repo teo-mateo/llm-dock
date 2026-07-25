@@ -21,6 +21,14 @@ object Endpoints {
     const val CONVERSATIONS_DELETE_BATCH = "/api/chat/conversations/delete"
     fun conversation(id: String): String = "/api/chat/conversations/$id"
 
+    /** F03 — sources for the new-chat sheet's model/prompt/tools rows. */
+    const val SERVICES = "/api/services"
+    const val PROMPTS = "/api/chat/prompts"
+    const val MCP_SERVERS = "/api/chat/mcp-servers"
+
+    /** Read-only from the phone (F03) — editing the curated list is desktop Tools-page work. */
+    const val OPENROUTER_MODELS_SETTINGS = "/api/chat/settings/openrouter-models"
+
     /**
      * Requests that establish a session, and so cannot depend on one.
      *

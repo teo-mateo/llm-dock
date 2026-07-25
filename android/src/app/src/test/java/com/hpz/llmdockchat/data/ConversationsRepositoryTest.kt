@@ -18,6 +18,7 @@ import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -101,5 +102,76 @@ class ConversationsRepositoryTest {
         assertEquals("POST", request.method)
         assertEquals("/api/chat/conversations/delete", request.url.encodedPath)
         assertTrue(request.body?.utf8().orEmpty().contains(""""ids":["a","b"]"""))
+    }
+
+    // -- create (F03-R1, F03-R2) --
+
+    @Test
+    fun `create with only a model sends just main_service`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv"}""").build())
+
+        val id = repository.create(mainService = "llamacpp-gemma-4-26b-a4b-it-q8").getOrThrow()
+
+        assertEquals("new-conv", id)
+        val body = server.takeRequest().body?.utf8().orEmpty()
+        assertEquals("""{"main_service":"llamacpp-gemma-4-26b-a4b-it-q8"}""", body)
+    }
+
+    @Test
+    fun `create with a named prompt sends prompt_id and omits main_system_prompt`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv"}""").build())
+
+        repository.create(mainService = "llamacpp-gemma-4-26b-a4b-it-q8", promptId = "c2efe71a-cd7b").getOrThrow()
+
+        val body = server.takeRequest().body?.utf8().orEmpty()
+        assertEquals(
+            """{"main_service":"llamacpp-gemma-4-26b-a4b-it-q8","prompt_id":"c2efe71a-cd7b"}""",
+            body,
+        )
+        assertFalse(body.contains("main_system_prompt"))
+    }
+
+    /**
+     * The load-bearing case (F03-R2): "Default" must send NEITHER `prompt_id`
+     * NOR `main_system_prompt` — not nulls, not empty strings — so the server
+     * falls back to its own configured default rather than treating an
+     * explicit empty prompt as the conversation's system prompt.
+     */
+    @Test
+    fun `create with the Default prompt choice omits both prompt_id and main_system_prompt`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv"}""").build())
+
+        repository.create(mainService = "llamacpp-gemma-4-26b-a4b-it-q8", promptId = null).getOrThrow()
+
+        val body = server.takeRequest().body?.utf8().orEmpty()
+        assertEquals("""{"main_service":"llamacpp-gemma-4-26b-a4b-it-q8"}""", body)
+        assertFalse(body.contains("prompt_id"))
+        assertFalse(body.contains("main_system_prompt"))
+    }
+
+    @Test
+    fun `a failed create surfaces the server's own message`() = runTest {
+        server.enqueue(MockResponse.Builder().code(400).body("""{"error": "main_service is required"}""").build())
+
+        val error = repository.create(mainService = "").exceptionOrNull() as ApiException
+        val http = error.error as com.hpz.llmdockchat.core.error.AppError.Http
+        assertEquals("main_service is required", http.message)
+    }
+
+    // -- setMcpServers (F03-R3) --
+
+    @Test
+    fun `setMcpServers PUTs mcp_servers_json as a JSON-encoded array string`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "conv-1"}""").build())
+
+        repository.setMcpServers("conv-1", listOf("sympy-math", "websearch")).getOrThrow()
+
+        val request = server.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/chat/conversations/conv-1", request.url.encodedPath)
+        assertEquals(
+            """{"mcp_servers_json":"[\"sympy-math\",\"websearch\"]"}""",
+            request.body?.utf8().orEmpty(),
+        )
     }
 }

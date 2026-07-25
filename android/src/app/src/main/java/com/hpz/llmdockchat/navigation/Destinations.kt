@@ -20,7 +20,7 @@ object Destinations {
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
 
-    /** F03's placeholder (F02-R8) — the real new-chat sheet is not built yet. */
+    /** F02-R8's primary action, built out in F03. */
     const val NEW_CHAT = "new_chat"
 }
 
