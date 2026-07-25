@@ -24,8 +24,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.hpz.llmdockchat.core.time.Timestamps
 import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
@@ -66,6 +67,7 @@ import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import java.time.Instant
 import java.time.ZoneId
 
@@ -133,9 +135,12 @@ private fun ConversationListContent(
 
     FollowNewConversations(loaded?.conversations, listState)
 
+    Box(Modifier.fillMaxSize().background(colors.appGradient)) {
     Scaffold(
         modifier = modifier.testTag("conversation_list_screen"),
-        containerColor = colors.app,
+        // Transparent so the gradient behind the Scaffold shows through; the
+        // opaque `app` fill is what made every screen sit in one flat band.
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHost) { Snackbar(it, containerColor = colors.surfaceElevated, contentColor = colors.fg) } },
         topBar = {
             if (loaded?.selectionMode == true) {
@@ -145,21 +150,19 @@ private fun ConversationListContent(
                     onDelete = { pendingBatchDelete = true },
                 )
             } else {
-                TopAppBar(
-                    title = { Text("Chats", color = colors.fg) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
-                )
+                ListHeader(count = loaded?.conversations?.size)
             }
         },
         floatingActionButton = {
             if (loaded?.selectionMode != true) {
-                ExtendedFloatingActionButton(
+                FloatingActionButton(
                     onClick = onNewConversation,
                     containerColor = colors.accent,
                     contentColor = colors.onAccent,
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.testTag("new_conversation_fab"),
                 ) {
-                    Text("New chat")
+                    Icon(DesignLabIcons.Plus, contentDescription = "New chat")
                 }
             }
         },
@@ -202,7 +205,6 @@ private fun ConversationListContent(
                                         },
                                         onRequestDelete = { pendingDelete = item },
                                     )
-                                    HorizontalDivider(color = colors.line)
                                 }
                             }
                         }
@@ -210,6 +212,7 @@ private fun ConversationListContent(
                 }
             }
         }
+    }
     }
 
     pendingDelete?.let { target ->
@@ -272,6 +275,31 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
     }
 }
 
+/**
+ * The list header. Replaces the `TopAppBar` rather than restyling it: Material's
+ * app bar fixes its own height and title style, and the design wants a two-line
+ * block (title over a live count) on the page background with no bar of its own.
+ */
+@Composable
+private fun ListHeader(count: Int?) {
+    val colors = LlmTheme.colors
+    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 10.dp)) {
+        Text(
+            "Chats",
+            color = colors.fg,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        if (count != null) {
+            Text(
+                if (count == 1) "1 conversation" else "$count conversations",
+                color = colors.subtle,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Unit) {
@@ -320,7 +348,12 @@ private fun ConversationRow(
     SwipeToDismissBox(
         state = dismissState,
         modifier = Modifier.testTag("conversation_row_swipe_${item.id}"),
-        backgroundContent = { DeleteSwipeBackground() },
+        // Only while the row is actually being dragged. `backgroundContent` is
+        // composed unconditionally, and the row body above it is transparent so
+        // the page gradient shows through — so an always-drawn red panel made
+        // every settled row red with a stray "Delete" peeking out from under
+        // the badge.
+        backgroundContent = { if (dismissState.progress < 1f) DeleteSwipeBackground() },
     ) {
         ConversationRowBody(item, selected = false, selectionMode = false, onOpen, onLongPress)
     }
@@ -353,42 +386,90 @@ private fun ConversationRowBody(
     val zone = remember { ZoneId.systemDefault() }
     val time = remember(item.updatedAt) { item.updatedAt?.let { Timestamps.relative(it, now, zone) }.orEmpty() }
 
-    Row(
-        modifier = Modifier
+    Column(
+        Modifier
             .fillMaxWidth()
-            .background(if (selected) colors.accentDeep.copy(alpha = 0.25f) else colors.app)
+            // The row is drawn on the page gradient, so "unselected" is
+            // transparent, not an opaque `app` fill — an opaque row would punch
+            // a flat rectangle through the backdrop.
+            .background(if (selected) colors.accentSoft else Color.Transparent)
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
             .testTag("conversation_row_${item.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (selectionMode) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = { onOpen() },
-                colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
-            )
-        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onOpen() },
+                    colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
+                )
+            } else {
+                // The badge carries the live state as colour, which is why the
+                // generating dot can stay a small detail rather than the only
+                // signal a row is busy.
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .background(
+                            if (item.isGenerating) colors.accentSoft else colors.surfaceHigh,
+                            RoundedCornerShape(12.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        DesignLabIcons.ChatBubble,
+                        contentDescription = null,
+                        tint = if (item.isGenerating) colors.accent else colors.muted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
 
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                item.title,
-                color = colors.fg,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // C2: the model name is the part that gives way when the row
-                // is narrow. Un-weighted, the chip took the whole width and
-                // the live badge next to it ellipsised to "● genera…".
-                EngineChip(item.modelRef, item.engine, Modifier.weight(1f, fill = false))
-                if (item.isGenerating) GeneratingIndicator(item.activeRun)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        item.title,
+                        color = colors.fg,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Without the weight the title measures at its full
+                        // intrinsic width and pushes the timestamp off the row
+                        // — `maxLines = 1` alone does not constrain a Text.
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(time, color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // C2: the model name is the part that gives way when the row
+                    // is narrow. Un-weighted, the chip took the whole width and
+                    // the live badge next to it ellipsised to "● genera…".
+                    EngineChip(item.modelRef, item.engine, Modifier.weight(1f, fill = false))
+                    if (item.isGenerating) GeneratingIndicator(item.activeRun)
+                }
             }
         }
 
-        Text(time, color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+        // Indented past the badge so the dividers read as separators between
+        // rows rather than as a full-width grid. One fixed indent in both
+        // modes — keying it off `selectionMode` made every divider jump
+        // outwards the moment a long-press swapped the badge for a checkbox.
+        Box(
+            Modifier
+                .padding(start = ROW_DIVIDER_INDENT)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.line),
+        )
     }
 }
 
@@ -413,7 +494,10 @@ private fun EngineChip(modelRef: ModelRef, engine: Engine, modifier: Modifier = 
     }
 }
 
-/** Extended FAB (56 dp) plus the Scaffold's own 16 dp margin. */
+/** Where the row's text column starts: 20 dp page margin + 36 dp badge + 12 dp gap. */
+private val ROW_DIVIDER_INDENT = 68.dp
+
+/** FAB (56 dp) plus the Scaffold's own 16 dp margin. */
 private val FAB_CLEARANCE = 80.dp
 
 private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
