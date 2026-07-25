@@ -180,7 +180,7 @@ Mark completed features `[DONE]` in the Status column.
 | F04 | Sending a turn and streaming the reply | [F04-chat-turn-and-streaming.md](F04-chat-turn-and-streaming.md) | 04, 06a | [DONE] |
 | F05 | Rendering assistant output | [F05-message-rendering.md](F05-message-rendering.md) | 05 | [DONE] |
 | F06 | Message actions | [F06-message-actions.md](F06-message-actions.md) | 06b | [DONE] |
-| F07 | Model selection | [F07-model-selection.md](F07-model-selection.md) | 07a | [ ] |
+| F07 | Model selection | [F07-model-selection.md](F07-model-selection.md) | 07a | [WIP] — two R1 criteria need a container transition, see the feature file |
 | F08 | Per-conversation tools | [F08-conversation-tools.md](F08-conversation-tools.md) | 07b | [ ] |
 | F09 | Run continuity and reattachment | [F09-run-continuity.md](F09-run-continuity.md) | 08a, 08b | [ ] |
 | F10 | Models tab — list and GPU header | [F10-models-list.md](F10-models-list.md) | 10a | [ ] |

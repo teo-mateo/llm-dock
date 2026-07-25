@@ -54,6 +54,8 @@ import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ToolCallRecord
+import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.data.model.parseModelRef
 
 /**
  * The mockup's split (screen 04): the user's own words in mono, the model's in
@@ -76,8 +78,28 @@ fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier, selectabl
             artifacts = message.artifacts,
             selectable = selectable,
             modifier = modifier,
+            trailing = { MessageModelChip(message.modelService) },
         )
     }
+}
+
+/**
+ * F07-R4's second criterion: a thread's model can change mid-conversation, and
+ * every persisted message already carries the one that actually produced it
+ * (`model_service`). Null on a message from before switching existed, or on a
+ * message role other than assistant (the server never sets it on a user
+ * message), so this renders nothing rather than a misleading blank chip.
+ */
+@Composable
+private fun MessageModelChip(modelService: String?) {
+    if (modelService.isNullOrBlank()) return
+    Text(
+        parseModelRef(modelService).displayName,
+        color = LlmTheme.colors.subtle,
+        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.testTag("message_model"),
+    )
 }
 
 @Composable

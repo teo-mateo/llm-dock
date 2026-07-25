@@ -10,10 +10,12 @@ import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
+import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.parseModelRef
 import com.hpz.llmdockchat.data.model.wireValue
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,14 @@ sealed interface NewChatUiState {
 
     data class Loaded(
         val localServices: List<ModelOption.LocalService>,
+        /**
+         * The full, unfiltered `GET /api/services` row set, kept live by
+         * [ServicesStreamRepository] (F07-R1's third criterion) — what
+         * [com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet] actually
+         * renders. [localServices] above is untouched by F07: it still drives
+         * the remembered-model resolution below, exactly as F03 built it.
+         */
+        val services: List<ServiceSummary> = emptyList(),
         val remoteModels: List<ModelOption.Remote>,
         val remoteModelsConfigured: Boolean,
         val selectedModel: ModelOption?,
@@ -65,6 +75,7 @@ class NewChatViewModel(
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val preferences: NewChatPreferences,
+    private val servicesStreamRepository: ServicesStreamRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NewChatUiState>(NewChatUiState.Loading)
@@ -131,6 +142,7 @@ class NewChatViewModel(
 
             _state.value = NewChatUiState.Loaded(
                 localServices = localServices,
+                services = services,
                 remoteModels = remoteModels,
                 remoteModelsConfigured = remoteConfigured,
                 selectedModel = selectedModel,
@@ -140,6 +152,17 @@ class NewChatViewModel(
                 mcpServers = mcpServers,
                 selectedMcpServerIds = rememberedMcpIds.intersect(mcpServers.map { it.id }.toSet()),
             )
+
+            // F07-R1's third criterion: a container started or stopped
+            // elsewhere while this sheet is open shows up with no manual
+            // refresh. Runs for the screen's lifetime (Architecture D5) —
+            // NEW_CHAT is a short pushed screen (F03), not a persistent tab,
+            // so an always-open connection here is cheap.
+            launch {
+                servicesStreamRepository.stream().collect { live ->
+                    updateLoaded { it.copy(services = live) }
+                }
+            }
         }
     }
 

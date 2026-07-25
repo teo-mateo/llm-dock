@@ -13,6 +13,8 @@ import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.testing.FakeDraftStore
@@ -57,6 +59,8 @@ class ThreadMessageActionsTest {
     private lateinit var transport: FakeSseTransport
     private lateinit var drafts: FakeDraftStore
     private lateinit var repository: ChatRepository
+    private lateinit var servicesStreamRepository: ServicesStreamRepository
+    private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
     private val store = ViewModelStore()
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "actions-main") }
 
@@ -74,6 +78,8 @@ class ThreadMessageActionsTest {
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
+        servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
+        openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -95,6 +101,8 @@ class ThreadMessageActionsTest {
                     conversationId = CONVERSATION_ID,
                     repository = repository,
                     drafts = drafts,
+                    servicesStreamRepository = servicesStreamRepository,
+                    openRouterModelsRepository = openRouterModelsRepository,
                     coalesceWindowMs = 0,
                     titleSettleDelayMs = 1,
                 )

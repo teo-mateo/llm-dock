@@ -13,7 +13,10 @@ import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
+import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -55,8 +58,11 @@ class ThreadViewModelTest {
 
     private lateinit var server: MockWebServer
     private lateinit var transport: FakeSseTransport
+    private lateinit var servicesTransport: FakeSseTransport
     private lateinit var drafts: FakeDraftStore
     private lateinit var repository: ChatRepository
+    private lateinit var servicesStreamRepository: ServicesStreamRepository
+    private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
     private val store = ViewModelStore()
 
     private val mainExecutor = Executors.newSingleThreadExecutor { Thread(it, "test-main") }
@@ -67,6 +73,7 @@ class ThreadViewModelTest {
         server = MockWebServer()
         server.start()
         transport = FakeSseTransport()
+        servicesTransport = FakeSseTransport()
         drafts = FakeDraftStore()
         val urlStore = FakeServerUrlStore(baseUrl(server.url("/").toString()))
         val client = OkHttpClient.Builder()
@@ -75,6 +82,8 @@ class ThreadViewModelTest {
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
+        servicesStreamRepository = ServicesStreamRepository(servicesTransport)
+        openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
     }
 
     @After
@@ -101,6 +110,8 @@ class ThreadViewModelTest {
                     conversationId = CONVERSATION_ID,
                     repository = repository,
                     drafts = drafts,
+                    servicesStreamRepository = servicesStreamRepository,
+                    openRouterModelsRepository = openRouterModelsRepository,
                     // Zero so a flush is still scheduled through the
                     // dispatcher; the window itself is asserted in
                     // ThreadCoalescingTest.
@@ -593,7 +604,15 @@ class ThreadViewModelTest {
         store,
         viewModelFactory {
             initializer {
-                ThreadViewModel(CONVERSATION_ID, repository, drafts, coalesceWindowMs, titleSettleDelayMs = 1)
+                ThreadViewModel(
+                    CONVERSATION_ID,
+                    repository,
+                    drafts,
+                    servicesStreamRepository,
+                    openRouterModelsRepository,
+                    coalesceWindowMs,
+                    titleSettleDelayMs = 1,
+                )
             }
         },
     )[ThreadViewModel::class]
@@ -628,8 +647,104 @@ class ThreadViewModelTest {
         assertEquals("survives a 401", drafts.saved[CONVERSATION_ID])
     }
 
+    // -- switch model (F07-R4) -------------------------------------------------
+
+    @Test
+    fun `openModelPicker subscribes to the live services stream, closeModelPicker cancels it`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        server.enqueue(MockResponse.Builder().body("""{"configured": false, "current": []}""").build())
+        servicesTransport.payloads = listOf(SNAPSHOT_ONE_SERVICE)
+        // A real `/api/services/stream` connection never completes on its own —
+        // `stayOpen` matches that, so the only way this test's `cancelled`
+        // assertion below can pass is `closeModelPicker` actually reaching the
+        // collector, not the flow having already finished on its own.
+        servicesTransport.stayOpen = true
+        viewModel.openModelPicker()
+
+        val withServices = viewModel.awaitState { it.modelPicker?.services?.isNotEmpty() == true }
+        assertEquals("llamacpp-a", withServices.modelPicker?.services?.first()?.name)
+
+        viewModel.closeModelPicker()
+        assertNull((viewModel.state.value as ThreadUiState.Loaded).modelPicker)
+
+        // Proof `modelPickerJob.cancel()` reaches all the way down to the
+        // transport, not just flips a state flag while a reconnect loop keeps
+        // polling every `RECONNECT_DELAY_MS` behind the scenes.
+        withTimeout(2_000) { servicesTransport.cancelled.await() }
+        assertEquals(1, servicesTransport.requests.size)
+    }
+
+    @Test
+    fun `switchModel PUTs the new main_service and reloads, updating the header`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "$CONVERSATION_ID"}""").build())
+        conversation(fixture = "conversation_after_switch.json")
+
+        viewModel.switchModel(ModelRef.Local("vllm-qwen3-6-27b-fp8"))
+
+        val updated = viewModel.awaitState { it.conversation.modelRef == ModelRef.Local("vllm-qwen3-6-27b-fp8") }
+        assertNull(updated.modelPicker) // switching closes the sheet on success
+
+        server.takeRequest() // load()'s own GET, issued first
+        val put = server.takeRequest()
+        assertEquals("PUT", put.method)
+        assertEquals("""{"main_service":"vllm-qwen3-6-27b-fp8"}""", put.body?.utf8())
+    }
+
+    @Test
+    fun `switchModel is refused outright while a run is active`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("go")
+        transport.payloads = listOf(RUN_STARTED)
+        transport.stayOpen = true
+        viewModel.send()
+        viewModel.awaitState { it.runActive }
+
+        viewModel.switchModel(ModelRef.Local("vllm-qwen3-6-27b-fp8"))
+
+        // Nothing beyond the load's own GET reached the server — `send` goes
+        // through the fake stream transport, not MockWebServer, and the guard
+        // means switchModel never even tries to PUT.
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `switchModel's failure keeps the sheet open and surfaces the server's message`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        server.enqueue(MockResponse.Builder().body("""{"configured": false, "current": []}""").build())
+        viewModel.openModelPicker()
+        viewModel.awaitState { it.modelPicker != null }
+
+        server.enqueue(
+            MockResponse.Builder().code(409).body("""{"error": "A run is already active for this conversation"}""").build(),
+        )
+        viewModel.switchModel(ModelRef.Local("vllm-qwen3-6-27b-fp8"))
+
+        val failed = viewModel.awaitState { it.actionError != null }
+        assertEquals("A run is already active for this conversation", failed.actionError)
+        assertTrue(failed.modelPicker != null) // the sheet is not dismissed on failure
+    }
+
     private companion object {
         const val CONVERSATION_ID = "39dc7f47-91da-4a0f-b731-59f507a12c1b"
+        const val SNAPSHOT_ONE_SERVICE = """{"type":"snapshot","data":{"services":[
+            {"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301,"favorite":false}
+        ],"total":1,"running":1,"stopped":0}}"""
         const val RUN_STARTED = """{"type": "run_started", "run_id": "run-1"}"""
         const val DONE = "[DONE]"
         const val MESSAGE_SAVED = """{"type": "message_saved", "message_id": "m2", "seq": 2}"""

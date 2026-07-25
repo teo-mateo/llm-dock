@@ -81,3 +81,11 @@ data class ConversationIdResponseDto(val id: String = "")
  */
 @Serializable
 data class UpdateMcpServersRequestDto(@SerialName("mcp_servers_json") val mcpServersJson: String)
+
+/**
+ * `PUT /api/chat/conversations/<id>` body for switching a thread's model
+ * mid-conversation (F07-R4). Earlier messages are untouched — each already
+ * carries its own `model_service` — only the next turn is affected.
+ */
+@Serializable
+data class UpdateMainServiceRequestDto(@SerialName("main_service") val mainService: String)

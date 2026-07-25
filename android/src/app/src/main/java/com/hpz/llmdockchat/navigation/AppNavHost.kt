@@ -124,6 +124,8 @@ fun AppNavHost(
                             conversationId = conversationId,
                             repository = container.chatRepository,
                             drafts = container.draftStore,
+                            servicesStreamRepository = container.servicesStreamRepository,
+                            openRouterModelsRepository = container.openRouterModelsRepository,
                         )
                     }
                 },
@@ -142,6 +144,7 @@ fun AppNavHost(
                             openRouterModelsRepository = container.openRouterModelsRepository,
                             conversationsRepository = container.conversationsRepository,
                             preferences = container.newChatPreferences,
+                            servicesStreamRepository = container.servicesStreamRepository,
                         )
                     }
                 },

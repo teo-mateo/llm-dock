@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -47,6 +46,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
+import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
 
 /**
  * Screen 03 · New chat sheet (F03). A pushed screen rather than a modal, as
@@ -205,9 +205,10 @@ private fun NewChatSheetBody(
 
     if (showModelPicker) {
         ModelPickerSheet(
-            localServices = state.localServices,
+            services = state.services,
             remoteModels = state.remoteModels,
             remoteModelsConfigured = state.remoteModelsConfigured,
+            selectedRef = state.selectedModel?.ref,
             onSelect = {
                 onSelectModel(it)
                 showModelPicker = false
@@ -353,61 +354,6 @@ private fun ToolsFailureBanner(
                     Text("Open anyway", color = colors.muted)
                 }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelPickerSheet(
-    localServices: List<ModelOption.LocalService>,
-    remoteModels: List<ModelOption.Remote>,
-    remoteModelsConfigured: Boolean,
-    onSelect: (ModelOption) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LlmTheme.colors
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = colors.surface,
-        modifier = Modifier.testTag("model_picker_sheet"),
-    ) {
-        // C3: the sheet draws behind the navigation bar, so without
-        // this its last row is unreachable under the 44 dp button bar.
-        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            item { PickerSectionHeader("Local services") }
-            if (localServices.isEmpty()) {
-                item {
-                    Text(
-                        "No chat-capable services found.",
-                        color = colors.muted,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-            }
-            items(localServices, key = { "local:${it.serviceName}" }) { option ->
-                PickerRow(
-                    title = option.serviceName,
-                    subtitle = if (option.isRunning) "Running" else "Not running",
-                    subtitleColor = if (option.isRunning) colors.green else colors.subtle,
-                    onClick = { onSelect(option) },
-                    testTag = "model_option_${option.serviceName}",
-                )
-            }
-            if (remoteModelsConfigured && remoteModels.isNotEmpty()) {
-                item { PickerSectionHeader("OpenRouter") }
-                items(remoteModels, key = { "remote:${it.modelId}" }) { option ->
-                    PickerRow(
-                        title = option.label,
-                        subtitle = option.modelId,
-                        onClick = { onSelect(option) },
-                        testTag = "model_option_${option.modelId}",
-                    )
-                }
-            }
-            item { Spacer(Modifier.height(16.dp)) }
         }
     }
 }

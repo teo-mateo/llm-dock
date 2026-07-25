@@ -124,3 +124,51 @@ None.
 - Editing the curated OpenRouter list (dashboard only).
 - Typing an arbitrary `openrouter:` model id by hand. The picker is the
   only path in v1, even though the server would accept any id.
+
+## Verification notes
+
+**Two R1 criteria are outstanding, both needing a container transition
+this project's agents are forbidden to make.** Everything else in R1, R2,
+R4 and R6 is verified on device; R3 and R5 are verified apart from the
+sub-criteria named below.
+
+| Outstanding | Why it could not be closed |
+|---|---|
+| R1 · live add on start elsewhere | No agent may start or stop a container. JVM evidence only: `ServicesStreamRepositoryTest` (merge + reconnect) and `NewChatViewModelTest`'s delta-updates-the-list test. |
+| R1 · "nothing is running" empty state | `llamacpp-mimo-v2-5-q4` is the rig's only running chat-capable service and cannot be stopped to force the branch. **No test at all** — a Compose `if (running.isEmpty())` branch with no Compose UI test infrastructure in this project. |
+| R3 · group hidden when unconfigured | Needs a dashboard with no `OPENROUTER_API_KEY`. |
+
+**One owner action closes both R1 items:** open the model picker, stop
+`llamacpp-mimo-v2-5-q4`, watch the row grey out and the empty state
+appear, then start it again and watch it return — all without touching
+refresh.
+
+**The engine-prefix filter is load-bearing, not redundant with `kind`.**
+`open-webui` is genuinely `running` with `kind: "chat"` on this rig, so
+`kind` alone would put Open WebUI in the model picker. `isChatCapable` is
+`engine != Engine.UNKNOWN && (kind.isBlank() || kind == "chat")`; the
+`Engine.UNKNOWN` half is what excludes it. Verified end to end on device,
+and pinned by a named unit test. Do not "simplify" it away.
+
+**`kind` is defaulted, not required.** `isChatCapable` treats blank as
+chat, matching the web's `(kind || 'chat') === 'chat'` in
+`useRunningServices.js`. An earlier stricter `kind == "chat"` rejected
+services whose `kind` the dashboard omits.
+
+**`mergeServiceEvent` ignores a delta naming a service not already in the
+list.** Accepted, not a bug: a stopped or `not-created` service is
+already in the snapshot, so start/stop deltas update it in place. Only a
+service added to `services.json` *after* the snapshot is missed, and the
+delta frame carries no `kind`/`host_port`, so a new row could not be
+built from it without a refetch. It resolves on the next reconnect.
+
+**The delta frame shape is flat, and `favorite` is nested.**
+`dashboard/routes/services.py:services_stream` emits
+`{"type":"delta","service_name","status","action","container_id","timestamp"}`
+with `favorite` only ever inside an optional `metadata` object — not a
+top-level field. Keepalives are `: keepalive` SSE comments, already
+dropped by `SseFrameParser`.
+
+**The port field is `host_port`.** `GET /api/services` has no `port` key;
+reading one yields null. `services.json` is the opposite shape. See
+`android/CLAUDE.md`.

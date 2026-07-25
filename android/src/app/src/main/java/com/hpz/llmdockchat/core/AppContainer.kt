@@ -37,6 +37,7 @@ import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
 import com.hpz.llmdockchat.data.ServicesRepository
+import com.hpz.llmdockchat.data.ServicesStreamRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
@@ -110,6 +111,7 @@ class AppContainer(
     val conversationsRepository = ConversationsRepository(apiClient)
     val chatRepository = ChatRepository(apiClient, sseTransport)
     val servicesRepository = ServicesRepository(apiClient)
+    val servicesStreamRepository = ServicesStreamRepository(sseTransport)
     val promptsRepository = PromptsRepository(apiClient)
     val mcpServersRepository = McpServersRepository(apiClient)
     val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)
