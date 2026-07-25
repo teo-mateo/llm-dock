@@ -1,0 +1,540 @@
+package com.hpz.llmdockchat.feature.conversations
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.core.time.Timestamps
+import com.hpz.llmdockchat.core.ui.theme.ChipColors
+import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
+import com.hpz.llmdockchat.core.ui.theme.LlmColors
+import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.data.model.ActiveRun
+import com.hpz.llmdockchat.data.model.ConversationSummary
+import com.hpz.llmdockchat.data.model.Engine
+import com.hpz.llmdockchat.data.model.ModelRef
+import com.hpz.llmdockchat.data.model.displayName
+import java.time.Instant
+import java.time.ZoneId
+
+/**
+ * Screen 02 · Conversations — the app's home screen (F02). Deviates from the
+ * mockup as recorded in `F02-conversation-list.md`'s *Deviations*: no
+ * last-line preview, no search, no project groups.
+ */
+@Composable
+fun ConversationListScreen(
+    viewModel: ConversationListViewModel,
+    onOpenConversation: (ConversationSummary) -> Unit,
+    onNewConversation: () -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    modifier: Modifier = Modifier,
+) {
+    val state by viewModel.state.collectAsState()
+
+    // Fires on every (re)composition of this screen — cold start, and every
+    // return to it after a tab switch or popping back from a thread, because
+    // Navigation Compose disposes and re-invokes the destination's content
+    // each time it stops being current (F02-R1's first and fourth criteria).
+    LaunchedEffect(Unit) { viewModel.refresh() }
+
+    ConversationListContent(
+        state = state,
+        listState = listState,
+        onOpenConversation = onOpenConversation,
+        onNewConversation = onNewConversation,
+        onRetry = viewModel::refresh,
+        onDelete = viewModel::delete,
+        onEnterSelection = viewModel::enterSelection,
+        onToggleSelection = viewModel::toggleSelection,
+        onClearSelection = viewModel::clearSelection,
+        onDeleteSelected = viewModel::deleteSelected,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConversationListContent(
+    state: ConversationListUiState,
+    listState: LazyListState,
+    onOpenConversation: (ConversationSummary) -> Unit,
+    onNewConversation: () -> Unit,
+    onRetry: () -> Unit,
+    onDelete: (String) -> Unit,
+    onEnterSelection: (String) -> Unit,
+    onToggleSelection: (String) -> Unit,
+    onClearSelection: () -> Unit,
+    onDeleteSelected: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LlmTheme.colors
+    val loaded = state as? ConversationListUiState.Loaded
+
+    var pendingDelete by remember { mutableStateOf<ConversationSummary?>(null) }
+    var pendingBatchDelete by remember { mutableStateOf(false) }
+
+    val snackbarHost = remember { SnackbarHostState() }
+    LaunchedEffect(loaded?.actionError) {
+        loaded?.actionError?.let { snackbarHost.showSnackbar(it) }
+    }
+
+    Scaffold(
+        modifier = modifier.testTag("conversation_list_screen"),
+        containerColor = colors.app,
+        snackbarHost = { SnackbarHost(snackbarHost) { Snackbar(it, containerColor = colors.surfaceElevated, contentColor = colors.fg) } },
+        topBar = {
+            if (loaded?.selectionMode == true) {
+                SelectionTopBar(
+                    count = loaded.selection.size,
+                    onClose = onClearSelection,
+                    onDelete = { pendingBatchDelete = true },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Chats", color = colors.fg) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
+                )
+            }
+        },
+        floatingActionButton = {
+            if (loaded?.selectionMode != true) {
+                ExtendedFloatingActionButton(
+                    onClick = onNewConversation,
+                    containerColor = colors.accent,
+                    contentColor = colors.onAccent,
+                    modifier = Modifier.testTag("new_conversation_fab"),
+                ) {
+                    Text("New chat")
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (state) {
+                is ConversationListUiState.Loading -> LoadingState()
+                is ConversationListUiState.Failed -> FailedState(state.message, onRetry)
+                is ConversationListUiState.Loaded -> {
+                    if (state.isEmpty) {
+                        EmptyState()
+                    } else {
+                        Column(Modifier.fillMaxSize()) {
+                            if (state.refreshing) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().testTag("conversation_list_refreshing"),
+                                    color = colors.accent,
+                                    trackColor = colors.surface,
+                                )
+                            }
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize().testTag("conversation_list"),
+                            ) {
+                                items(state.conversations, key = { it.id }) { item ->
+                                    ConversationRow(
+                                        item = item,
+                                        selected = item.id in state.selection,
+                                        selectionMode = state.selectionMode,
+                                        onOpen = {
+                                            if (state.selectionMode) onToggleSelection(item.id) else onOpenConversation(item)
+                                        },
+                                        onLongPress = {
+                                            if (state.selectionMode) onToggleSelection(item.id) else onEnterSelection(item.id)
+                                        },
+                                        onRequestDelete = { pendingDelete = item },
+                                    )
+                                    HorizontalDivider(color = colors.line)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pendingDelete?.let { target ->
+        ConfirmDialog(
+            title = "Delete conversation?",
+            message = "“${target.title}” will be deleted. This can't be undone.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                onDelete(target.id)
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+
+    if (pendingBatchDelete) {
+        val count = loaded?.selection?.size ?: 0
+        ConfirmDialog(
+            title = "Delete $count conversations?",
+            message = "This can't be undone.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                onDeleteSelected()
+                pendingBatchDelete = false
+            },
+            onDismiss = { pendingBatchDelete = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Unit) {
+    val colors = LlmTheme.colors
+    TopAppBar(
+        title = { Text("$count selected", color = colors.fg) },
+        navigationIcon = {
+            IconButton(onClick = onClose, modifier = Modifier.testTag("selection_close")) {
+                Text("✕", color = colors.fg)
+            }
+        },
+        actions = {
+            TextButton(onClick = onDelete, modifier = Modifier.testTag("selection_delete")) {
+                Text("Delete", color = colors.red)
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceElevated),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConversationRow(
+    item: ConversationSummary,
+    selected: Boolean,
+    selectionMode: Boolean,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    if (selectionMode) {
+        ConversationRowBody(item, selected, selectionMode, onOpen, onLongPress)
+        return
+    }
+
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            // Never let the library commit the dismiss itself — a swipe only
+            // opens the confirm dialog (F02-R4); the row always springs back
+            // (F00-R9's "cancelling leaves state untouched" applies to the
+            // gesture too, not just the dialog).
+            if (value != SwipeToDismissBoxValue.Settled) onRequestDelete()
+            false
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = Modifier.testTag("conversation_row_swipe_${item.id}"),
+        backgroundContent = { DeleteSwipeBackground() },
+    ) {
+        ConversationRowBody(item, selected = false, selectionMode = false, onOpen, onLongPress)
+    }
+}
+
+@Composable
+private fun DeleteSwipeBackground() {
+    val colors = LlmTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.red.copy(alpha = 0.85f))
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Delete", color = Color.White, fontFamily = FontFamily.Monospace)
+    }
+}
+
+@Composable
+private fun ConversationRowBody(
+    item: ConversationSummary,
+    selected: Boolean,
+    selectionMode: Boolean,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val colors = LlmTheme.colors
+    val now = remember { Instant.now() }
+    val zone = remember { ZoneId.systemDefault() }
+    val time = remember(item.updatedAt) { item.updatedAt?.let { Timestamps.relative(it, now, zone) }.orEmpty() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) colors.accentDeep.copy(alpha = 0.25f) else colors.app)
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .testTag("conversation_row_${item.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (selectionMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onOpen() },
+                colors = CheckboxDefaults.colors(checkedColor = colors.accent, uncheckedColor = colors.subtle),
+            )
+        }
+
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                item.title,
+                color = colors.fg,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                EngineChip(item.modelRef, item.engine)
+                if (item.isGenerating) GeneratingIndicator(item.activeRun)
+            }
+        }
+
+        Text(time, color = colors.subtle, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+private fun EngineChip(modelRef: ModelRef, engine: Engine) {
+    val chip = LlmTheme.colors.chipColors(engine)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(chip.background)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .testTag("engine_chip_${engine.name}"),
+    ) {
+        Text(
+            modelRef.displayName,
+            color = chip.foreground,
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
+    Engine.LLAMA_CPP -> engineLlamaCpp
+    Engine.VLLM -> engineVllm
+    Engine.DS4 -> engineDs4
+    Engine.OPEN_ROUTER -> engineOpenRouter
+    Engine.UNKNOWN -> engineUnknown
+}
+
+/** The live "generating" dot (F02-R3) — any thread with a non-terminal run. */
+@Composable
+private fun GeneratingIndicator(run: ActiveRun?) {
+    val colors = LlmTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier.testTag("generating_indicator"),
+    ) {
+        Box(Modifier.size(7.dp).background(colors.green, CircleShape))
+        Text(
+            run?.activeStep?.takeIf { it.isNotBlank() } ?: "Generating…",
+            color = colors.green,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun LoadingState() {
+    Box(Modifier.fillMaxSize().testTag("conversation_list_loading"), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = LlmTheme.colors.accent)
+    }
+}
+
+@Composable
+private fun EmptyState() {
+    val colors = LlmTheme.colors
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp).testTag("conversation_list_empty"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("No conversations yet", color = colors.fg, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Tap New chat to start one.",
+            color = colors.muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun FailedState(message: String, onRetry: () -> Unit) {
+    val colors = LlmTheme.colors
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp).testTag("conversation_list_failed"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Couldn't load conversations", color = colors.red, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(message, color = colors.muted, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(16.dp))
+        TextButton(onClick = onRetry, modifier = Modifier.testTag("conversation_list_retry")) {
+            Text("Retry", color = colors.accent)
+        }
+    }
+}
+
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LlmTheme.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        title = { Text(title, color = colors.fg) },
+        text = { Text(message, color = colors.muted) },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm_dialog_confirm")) {
+                Text(confirmLabel, color = colors.red)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("confirm_dialog_dismiss")) {
+                Text("Cancel", color = colors.muted)
+            }
+        },
+    )
+}
+
+@Preview
+@Composable
+private fun ConversationListPopulatedPreview() {
+    LLMDockChatTheme(darkTheme = true) {
+        ConversationListContent(
+            state = ConversationListUiState.Loaded(
+                conversations = listOf(
+                    ConversationSummary(
+                        id = "1",
+                        title = "Speculative decoding on Laguna",
+                        modelRef = ModelRef.Local("llamacpp-laguna-s-2.1-q4"),
+                        updatedAt = Instant.now().toString(),
+                        activeRun = ActiveRun("r1", "running", "Thinking…", Instant.now().toString()),
+                    ),
+                    ConversationSummary(
+                        id = "2",
+                        title = "Xorg watchdog vs. deep context",
+                        modelRef = ModelRef.Local("vllm-qwen3.6-35b-a3b-fp8"),
+                        updatedAt = Instant.now().minusSeconds(3600).toString(),
+                        activeRun = null,
+                    ),
+                    ConversationSummary(
+                        id = "3",
+                        title = "Rewriting compose_manager tests",
+                        modelRef = ModelRef.OpenRouter("anthropic/claude-sonnet-5"),
+                        updatedAt = Instant.now().minusSeconds(90_000).toString(),
+                        activeRun = null,
+                    ),
+                    ConversationSummary(
+                        id = "4",
+                        title = "Old thread on a decommissioned service",
+                        modelRef = ModelRef.Local("llamacpp-retired-model"),
+                        updatedAt = Instant.now().minusSeconds(500_000).toString(),
+                        activeRun = null,
+                    ),
+                ),
+            ),
+            listState = rememberLazyListState(),
+            onOpenConversation = {}, onNewConversation = {}, onRetry = {},
+            onDelete = {}, onEnterSelection = {}, onToggleSelection = {}, onClearSelection = {}, onDeleteSelected = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ConversationListEmptyPreview() {
+    LLMDockChatTheme(darkTheme = false) {
+        ConversationListContent(
+            state = ConversationListUiState.Loaded(conversations = emptyList()),
+            listState = rememberLazyListState(),
+            onOpenConversation = {}, onNewConversation = {}, onRetry = {},
+            onDelete = {}, onEnterSelection = {}, onToggleSelection = {}, onClearSelection = {}, onDeleteSelected = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ConversationListFailedPreview() {
+    LLMDockChatTheme(darkTheme = true) {
+        ConversationListContent(
+            state = ConversationListUiState.Failed("Could not reach the server."),
+            listState = rememberLazyListState(),
+            onOpenConversation = {}, onNewConversation = {}, onRetry = {},
+            onDelete = {}, onEnterSelection = {}, onToggleSelection = {}, onClearSelection = {}, onDeleteSelected = {},
+        )
+    }
+}

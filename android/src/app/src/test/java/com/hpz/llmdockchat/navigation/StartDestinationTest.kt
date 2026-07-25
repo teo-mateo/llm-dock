@@ -20,7 +20,7 @@ class StartDestinationTest {
     @Test
     fun `a stored credential is enough on its own`() {
         assertEquals(
-            Destinations.HOME,
+            Destinations.TABS,
             startDestination(server = server, token = null, hasCredential = true),
         )
     }
@@ -29,7 +29,7 @@ class StartDestinationTest {
     @Test
     fun `a stored token is enough on its own`() {
         assertEquals(
-            Destinations.HOME,
+            Destinations.TABS,
             startDestination(server = server, token = "totp-abc", hasCredential = false),
         )
     }

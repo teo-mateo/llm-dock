@@ -16,6 +16,11 @@ object Endpoints {
     /** Authenticated, unlike the two above — it is a probe, not a way in. */
     const val AUTH_VERIFY = "/api/auth/verify"
 
+    /** F02 — the conversation list and its deletes. */
+    const val CONVERSATIONS = "/api/chat/conversations"
+    const val CONVERSATIONS_DELETE_BATCH = "/api/chat/conversations/delete"
+    fun conversation(id: String): String = "/api/chat/conversations/$id"
+
     /**
      * Requests that establish a session, and so cannot depend on one.
      *

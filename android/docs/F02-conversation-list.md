@@ -141,6 +141,26 @@ A primary action opens the new-chat sheet (F03).
   conversation search either. See Dropped-Features.
 - **No project groups.** Screen 02 draws collapsible project headers.
   Decision 3 removed projects from the phone entirely — the list is flat.
+- **`limit=-1`, not offset paging.** Both are supported by
+  `GET /api/chat/conversations`; this client always requests the whole
+  list as one consistent snapshot. Offset paging over the mutable
+  `updated_at DESC` ordering can skip or duplicate rows as threads are
+  touched between page fetches (e.g. a message arrives mid-scroll and
+  reorders a row across a page boundary). This is a single-user dashboard
+  with a modest thread count (dozens, not thousands), so the one-shot
+  request's simplicity outweighs the memory/bandwidth cost paging would
+  save. Revisit if the thread count grows into the thousands.
+- **A placeholder Thread screen, not named as a placeholder in the Two
+  decisions already made section.** F02-R3's third criterion ("tapping
+  such a row opens the thread already streaming, mid-answer") and
+  F02-R8's action both need somewhere to navigate a row tap to, and F04
+  (the real thread screen) does not exist yet. Treated the same as the
+  brief's two named placeholders (F10 Models, F03 new-chat sheet):
+  `ThreadPlaceholderScreen` shows the conversation id and "Coming in
+  F04", carries no bottom bar, and does not attempt streaming, replay or
+  reattach. The other two F02-R3 criteria (indicator appears/clears) are
+  verified here; the mid-stream-open criterion is carried forward to F04,
+  the same way F00's screen-level criteria were carried forward to F02.
 
 ## Out of scope
 
@@ -148,3 +168,21 @@ A primary action opens the new-chat sheet (F03).
   project names anywhere in the UI.
 - Spin-off threads as a distinct concept — they render as ordinary
   threads if one was created on the desktop.
+
+## Verification notes
+
+**F02-R5 batch delete (Should) — the batch delete itself is unit-tested,
+not device-verified.** Selection mode was driven live (long-press,
+checkboxes, "N selected" bar, styled in both themes), but confirming the
+delete would have destroyed real conversations on the owner's dashboard.
+The unit test asserts the call goes to
+`POST /api/chat/conversations/delete` as one request rather than N
+per-item `DELETE`s, which is the part worth proving.
+
+**F00-R5's empty state** is Preview-verified and unit-tested rather than
+driven on device: forcing it would mean deleting all 35 real
+conversations. It is static text behind an `isEmpty` flag.
+
+**A deprecation warning** on `SwipeToDismissBox`'s `confirmValueChange`
+compiles clean today. There is no documented replacement yet, so a future
+Compose Foundation bump is where this bites.
