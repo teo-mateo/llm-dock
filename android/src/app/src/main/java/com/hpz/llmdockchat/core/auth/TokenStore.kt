@@ -12,8 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
  * the dashboard, so this is disposable: losing it costs one re-authentication,
  * not any user data.
  *
- * F01 owns the *credential* (password or TOTP secret) behind [Reauthenticator];
- * this holds only the short-lived token derived from it.
+ * [CredentialStore] owns the long-lived *credential* the token is derived from.
  */
 interface TokenStore {
     val token: StateFlow<Stored<String>>
@@ -24,21 +23,30 @@ interface TokenStore {
     fun clear()
 }
 
+/**
+ * Encrypted at rest alongside the credential (F01-R5). The token is disposable,
+ * but it is a working bearer for eight sliding hours, so it gets the same
+ * treatment rather than sitting in plain preferences.
+ */
 class DataStoreTokenStore(
     dataStore: DataStore<Preferences>,
     scope: CoroutineScope,
+    cipher: SecretCipher,
 ) : TokenStore {
 
     private val pref = ValuePreference(
         dataStore = dataStore,
         name = "session_token",
         scope = scope,
-        decode = { it.takeIf(String::isNotBlank) },
-        encode = { it },
+        decode = { stored -> cipher.decrypt(stored)?.takeIf(String::isNotBlank) },
+        encode = { token -> cipher.encrypt(token).orEmpty() },
     )
 
     override val token: StateFlow<Stored<String>> get() = pref.flow
     override fun current(): String? = pref.get()
     override fun update(token: String) = pref.set(token)
     override fun clear() = pref.clear()
+
+    /** Test support: writes are enqueued, so "on disk yet?" needs a join. */
+    internal suspend fun awaitPendingWrites() = pref.awaitPendingWrites()
 }

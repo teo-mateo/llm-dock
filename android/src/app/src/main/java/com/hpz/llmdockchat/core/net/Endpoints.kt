@@ -13,6 +13,9 @@ object Endpoints {
     const val AUTH_LOGIN = "/api/auth/login"
     const val AUTH_SESSION = "/api/auth/session"
 
+    /** Authenticated, unlike the two above — it is a probe, not a way in. */
+    const val AUTH_VERIFY = "/api/auth/verify"
+
     /**
      * Requests that establish a session, and so cannot depend on one.
      *

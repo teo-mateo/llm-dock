@@ -193,6 +193,49 @@ yet", not "no".
 - Disabling TOTP server-side.
 - Multiple saved servers. One address at a time.
 
+## Deviations
+
+**F01-R5 — the TOTP secret is not stored, and cannot be.** R5 offers
+"the password, or the TOTP secret if the user chooses to store it" as the
+credential. Only the password is implemented.
+
+Storing the secret would mean shipping an RFC 6238 code generator *and* a
+way to get the secret onto the phone — and no endpoint this app is
+permitted to call hands it out. `/api/totp/setup` returns it, but that is
+enrollment, which `Plan_TOC.md` and this file both put out of scope, and
+F00-R10 forbids the app writing configuration. A user who could paste the
+secret in by hand would in effect be pasting a permanent credential, which
+is the password path with extra steps and a second code generator to get
+wrong.
+
+So silent re-authentication is delivered for the password path, which
+F01-R6 itself identifies as the fully-deliverable one. R6's last criterion
+— telling TOTP-only users plainly that they will be asked again — is met
+twice over: the Connect screen's Auth-code tab says so before they sign in
+("An authenticator code cannot be saved, so when this session ends you will
+be asked for a new one"), and when the session does end the app returns to
+Connect saying why rather than silently.
+
+**F00-R2 — a request with no stored token may now reach the network.** As
+written, R2 requires that any call other than the three session-establishing
+ones "never reaches the network" without a stored token, and that the app
+routes to Connect instead. F01-R6 makes that wrong in the ordinary case: a
+dashboard restart 401s the first request, the transport discards the dead
+token, and every request queued behind it would then be failed locally and
+send a signed-in user to Connect — precisely what R6 forbids.
+
+The transport therefore mints a token from the stored credential before
+sending, through the same single-flight exchange the 401 path uses, and
+fails the request locally only when that cannot produce one. Requests still
+never go out unauthenticated; F00-R2's mechanism is unchanged, only the
+"no token stored" branch gained a step in front of it.
+
+**Signing in lands on a placeholder, not the conversation list.** R3 and R4
+both say a valid credential "lands on the conversation list". F02 builds
+that screen; until then the signed-in destination shows the server, a live
+session check and Sign out. No requirement changes — the criterion is
+verified as far as F01 can reach it and re-verified in F02.
+
 ## Backend findings from F00
 
 Discovered while building the foundation, confirmed independently against
@@ -239,3 +282,29 @@ F01 should be built; none of them were known when this file was written.
 7. **`allowBackup` is still on with the stock rules.** A session token in
    DataStore lands in cloud backup. Tolerable for a disposable 8 h token;
    decide it deliberately before storing the long-lived credential.
+
+**Mockup screen 01's "Stay signed in" toggle is not implemented.** F01-R6
+makes staying signed in unconditional, so a toggle would offer a choice
+the requirement has already made. Nothing else on screen 01 changed.
+
+## Outstanding and carried-forward criteria
+
+F01 is **not** marked `[DONE]`: one Must criterion is unverified, and it
+needs the dashboard owner.
+
+| Criterion | State |
+|---|---|
+| **R3 · "A valid code signs in and lands on the conversation list"** | **Outstanding.** Generating a valid TOTP code requires the server's secret; reading it is blocked by policy, and `/api/totp/setup` is enrollment and forbidden by F00-R10. The *rejection* path is verified live — the dashboard's verbatim "Invalid TOTP code" after an auto-submitted six-digit code, address untouched. **Closing this needs one code typed from the owner's authenticator app.** |
+
+Carried forward to a later feature, as their screens do not exist yet:
+
+| Criterion | Verify in |
+|---|---|
+| R3 / R4 · "lands on the conversation list" — F01 lands on a placeholder | F02 |
+| R6 · "a 401 during a streaming turn re-authenticates and the turn is recoverable; the user's message is not lost" | F04, with F09 |
+| R6 · "after a week of not opening the app, it works with no login prompt" | Not directly testable. The mechanism — stored credential plus `startDestination` — is verified; treat the elapsed-time criterion as satisfied by that. |
+
+Verified live and complete in F01: R1, R2, R3's rejection path and input
+handling, R4's password path, R5 in full (including a Backup Manager
+backup/restore cycle proving `files/datastore/` is excluded), R6's silent
+re-auth and its bounded-retry cap, and R7.

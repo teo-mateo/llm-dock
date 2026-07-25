@@ -100,13 +100,36 @@ class AuthInterceptorTest {
     }
 
     @Test
-    fun `with no token stored the request never reaches the network`() {
+    fun `with no token and nothing to mint one from, the request never reaches the network`() {
         tokenStore.clear()
         val thrown = runCatching { get("/api/chat/conversations") }.exceptionOrNull()
         assertTrue(thrown is ApiException)
         assertEquals(AppError.Unauthenticated, (thrown as ApiException).error)
         assertEquals(0, server.requestCount)
         assertTrue(sessionState.authenticationRequired.value)
+    }
+
+    /**
+     * F01-R6 narrows the rule above. A dashboard restart 401s the first
+     * request, which discards the dead token; failing everything queued behind
+     * it would take a signed-in user to Connect for no reason.
+     */
+    @Test
+    fun `with no token but a credential, one is minted before sending`() {
+        tokenStore.clear()
+        server.enqueue(MockResponse.Builder().body("{}").build())
+        val minted = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(tokenStore, sessionState) { "totp-minted" })
+            .build()
+
+        val code = minted.newCall(
+            Request.Builder().url(server.url("/api/chat/conversations")).build(),
+        ).execute().use { it.code }
+
+        assertEquals(200, code)
+        assertEquals("Bearer totp-minted", server.takeRequest().headers["Authorization"])
+        assertEquals("totp-minted", tokenStore.current())
+        assertFalse(sessionState.authenticationRequired.value)
     }
 
     @Test
