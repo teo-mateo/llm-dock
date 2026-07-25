@@ -25,14 +25,18 @@ work, including the SSE endpoints.
 
 ## F00-R2 · Authorization on every request (Must)
 
-Every call except `GET /api/health` carries
-`Authorization: Bearer <token>`. If a response carries an `X-TOTP-Token`
-header, the app replaces its stored token with that value.
+Every call carries `Authorization: Bearer <token>`, except the three that
+establish a session and so cannot depend on one: `GET /api/health`,
+`POST /api/auth/login` (which authenticates with an `X-TOTP-Code` header)
+and `POST /api/auth/session` (which carries the dashboard password as its
+own bearer). A caller-supplied `Authorization` header is never overwritten.
+If a response carries an `X-TOTP-Token` header, the app replaces its stored
+token with that value. See *Deviations* for why those three are exempt.
 
 **Acceptance criteria**
 
-- [ ] A request made with no stored token never reaches the network; the
-      app routes to Connect instead.
+- [ ] A request made with no stored token — other than those three — never
+      reaches the network; the app routes to Connect instead.
 - [ ] After a response carrying `X-TOTP-Token`, the next request uses the
       new token.
 
@@ -195,3 +199,66 @@ Fall back to the one-shot GET only when a stream cannot be established.
 ## Deviations from the mockups
 
 None. These requirements are additive to the screens.
+
+## Deviations
+
+**F00-R2 — two more endpoints go out without a session token.** As written,
+`GET /api/health` is the only call that does not carry
+`Authorization: Bearer <token>`. Implementing it that literally makes signing in
+impossible, because neither login route is decorated with `require_auth` in
+`dashboard/routes/system.py`:
+
+- `POST /api/auth/login` authenticates with an `X-TOTP-Code` header and no
+  `Authorization` at all. On a cold install there is no token to attach, so
+  requiring one would reject the request before it left the device.
+- `POST /api/auth/session` authenticates with the dashboard password as its
+  bearer. Overwriting that with a session token — the very thing the call
+  exists to obtain — would break it.
+
+So the rule the transport implements is: a request that already carries an
+`Authorization` header is left untouched, and `GET /api/health`,
+`POST /api/auth/login` and `POST /api/auth/session` are exempt from needing a
+stored token (`Endpoints.establishesSession`). Every other call is unchanged.
+The same three are exempt from the 401 re-authentication path, so a wrong
+password reports itself rather than looping through the credential exchange.
+
+**F00-R2 — `X-TOTP-Token` cannot be exercised against the real dashboard.**
+`require_auth` emits that header only when a request authenticates via the
+`X-TOTP-Code` header, and the two login routes bypass `require_auth` entirely
+and return their token in the JSON body. No request this app is permitted to
+make will therefore ever receive an `X-TOTP-Token`. The handling is implemented
+and tested against MockWebServer, and is best read as insurance against a
+future server change rather than a live code path.
+
+---
+
+## Carried-forward criteria
+
+F00 is marked `[DONE]`: every Must requirement's **mechanism** is
+implemented and tested. But many of F00's acceptance criteria are
+screen-level, and F00 deliberately builds no screens — so they cannot be
+verified here. Per `WORK_INSTRUCTIONS.md` §7 they are carried forward,
+recorded below, and must be verified in the feature that introduces the
+screen. **Do not treat this table as optional.**
+
+| Criterion | Verify in |
+|---|---|
+| R1 · changing the URL *in Settings* retargets calls with no restart | F13 |
+| R3 · all three — server URL, open conversation and draft preserved across a 401; user's message not lost mid-stream | F01 (routing to Connect), F04 / F06 (draft, thread) |
+| R4 · all three — readable failure state with a retry affordance; the server's own 409 message shown; error visually distinct from empty | F02 first, then every list/detail screen |
+| R5 · loading / populated / empty / failed on every list and detail screen | F02, F10, F12 — each, not one owner |
+| R6 · a stream quiet for >30 s stays connected; a visible reconnecting state | F09 (chat runs), F12 (logs) |
+| R7 · theme switch preserves screen state | F02 or later, once a screen holds state |
+| R8 · Settings text-size control changes message bodies and survives restart | F13, against F05 message bodies |
+| R9 · every destructive action confirms, naming its target | F06 (delete message, edit-and-resend), F11 (stop container) |
+| R11 · a recently-updated conversation shows a relative local time | F02 |
+| R12 · no repeated `GET /api/services` while the Models tab idles | F10 |
+
+Verified and complete in F00, needing no later confirmation: R1
+normalisation and resolution, R2, R6's framing behaviour (split reads,
+comment keepalives, opaque payloads, cancellation and socket teardown),
+R7's palettes and live theme switching, R10, and R11's formatter.
+
+R8's first criterion is **partly satisfied already**: typography is `sp`
+throughout and the review confirmed at 1.5x system font scale that text
+reflows with nothing clipped or overlapped.

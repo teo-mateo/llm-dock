@@ -239,7 +239,7 @@ coroutines-test and turbine runs green.
 | JSON | `org.jetbrains.kotlinx:kotlinx-serialization-json` | 1.11.0 |
 | Coroutines | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.11.0 |
 | Preferences | `androidx.datastore:datastore-preferences` | 1.2.1 |
-| Credential storage | `androidx.security:security-crypto` | 1.1.0 — **see U1** |
+| Credential storage | ~~`androidx.security:security-crypto`~~ | **Do not use — deprecated. See U1.** |
 | Navigation | `androidx.navigation:navigation-compose` | 2.9.8 |
 | ViewModel in Compose | `androidx.lifecycle:lifecycle-viewmodel-compose` | 2.11.0 |
 | Images | `io.coil-kt.coil3:coil-compose` + `coil-network-okhttp` | 3.5.0 |
@@ -391,13 +391,18 @@ or a screenshot** — not by an assertion that it works.
 
 Honest list. Each is isolated so being wrong is survivable.
 
-**U1 · `androidx.security:security-crypto` status.** It resolves at
-stable 1.1.0 and builds. I have a recollection that Jetpack Security was
-deprecated in favour of platform Keystore APIs, and I could not confirm
-that from here — so treat it as unverified either way. **Mitigation:** all
-credential access goes through a `CredentialStore` interface with a
-single implementation. If the library is deprecated, one file changes and
-nothing else. Confirm before F01 lands.
+**U1 · `androidx.security:security-crypto` status. RESOLVED 2026-07-25 —
+the library is deprecated; do not use it.** The release notes for
+1.1.0-beta01 (4 June 2025) say: *"Deprecated all APIs in favour of
+existing platform APIs and direct use of Android Keystore."* That covers
+`EncryptedSharedPreferences`, `EncryptedFile`, `MasterKey` and
+`MasterKeys`. Version 1.1.0 stable (30 July 2025) ships the deprecation,
+so resolving and building says nothing about whether it should be used.
+
+**Consequence for F01:** back `CredentialStore` with the platform
+Keystore directly — a Keystore-held AES/GCM key, ciphertext in DataStore.
+The interface mitigation held: F00 added no dependency on the library, so
+nothing has to be unwound.
 
 **U2 · Emulator-only verification.** No physical device. Layout at other
 densities, real camera input and real network transitions are unverified
