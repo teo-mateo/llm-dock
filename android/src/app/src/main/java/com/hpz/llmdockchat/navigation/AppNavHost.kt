@@ -29,7 +29,8 @@ import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
 import com.hpz.llmdockchat.feature.models.ModelsPlaceholderScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
-import com.hpz.llmdockchat.feature.thread.ThreadPlaceholderScreen
+import com.hpz.llmdockchat.feature.thread.ThreadScreen
+import com.hpz.llmdockchat.feature.thread.ThreadViewModel
 
 /**
  * The app's navigation graph (Architecture D12). Connect is a destination like
@@ -110,10 +111,22 @@ fun AppNavHost(
 
         composable(Destinations.THREAD) { backStackEntry ->
             val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
-            ThreadPlaceholderScreen(
-                title = "Conversation $conversationId",
-                onBack = { navController.popBackStack() },
+            val viewModel: ThreadViewModel = viewModel(
+                // Keyed by conversation so two threads visited in a row never
+                // share a ViewModel — and so its stream, which is scoped to
+                // this destination, dies with the destination (Architecture D5).
+                key = "thread_$conversationId",
+                factory = viewModelFactory {
+                    initializer {
+                        ThreadViewModel(
+                            conversationId = conversationId,
+                            repository = container.chatRepository,
+                            drafts = container.draftStore,
+                        )
+                    }
+                },
             )
+            ThreadScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
 
         composable(Destinations.NEW_CHAT) {

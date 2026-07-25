@@ -1,0 +1,15 @@
+{
+  "id": "4595d04e-c03e-4fd8-97bf-df2381e0f0e6",
+  "title": "New Conversation",
+  "main_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+  "sidekick_service": null,
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [],
+  "active_run": null,
+  "last_run": null,
+  "created_at": "2026-07-25T06:18:50Z",
+  "updated_at": "2026-07-25T06:18:50Z",
+  "messages": []
+}

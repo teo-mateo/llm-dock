@@ -1,0 +1,55 @@
+{
+  "id": "57a084b9-13af-48dd-ae62-f14067408450",
+  "title": "F04-TEST tools",
+  "main_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+  "sidekick_service": null,
+  "parent_conversation_id": null,
+  "selected_text": null,
+  "project_id": null,
+  "mcp_servers": [
+    "sympy-math"
+  ],
+  "active_run": null,
+  "last_run": {
+    "id": "db553778-a0f7-4c86-9d90-23abedd2c958",
+    "status": "completed",
+    "error": null
+  },
+  "created_at": "2026-07-25T05:55:48Z",
+  "updated_at": "2026-07-25T05:55:51Z",
+  "messages": [
+    {
+      "id": "03b9e6a8-f091-491f-8260-183dfacf2e3c",
+      "conversation_id": "57a084b9-13af-48dd-ae62-f14067408450",
+      "role": "user",
+      "content": "Use the sympy tool to compute the derivative of x**3 * sin(x). Then state the result.",
+      "reasoning_content": null,
+      "model_service": null,
+      "images": [],
+      "seq": 1,
+      "created_at": "2026-07-25T05:55:48Z"
+    },
+    {
+      "id": "f1842f81-f08e-41f9-aeb6-7732d066aa7f",
+      "conversation_id": "57a084b9-13af-48dd-ae62-f14067408450",
+      "role": "assistant",
+      "content": "The derivative of $x^3 \\sin(x)$ is:\n\n`x**3*cos(x) + 3*x**2*sin(x)`",
+      "reasoning_content": null,
+      "model_service": "llamacpp-gemma-4-26b-a4b-it-q8",
+      "images": [],
+      "seq": 2,
+      "created_at": "2026-07-25T05:55:51Z",
+      "tool_calls": [
+        {
+          "name": "differentiate",
+          "arguments": {
+            "expression": "x**3 * sin(x)",
+            "variable": "x"
+          },
+          "server_id": "sympy-math",
+          "result": "x**3*cos(x) + 3*x**2*sin(x)"
+        }
+      ]
+    }
+  ]
+}

@@ -7,12 +7,19 @@ import com.hpz.llmdockchat.core.auth.TokenStore
 import com.hpz.llmdockchat.core.net.BaseUrl
 import com.hpz.llmdockchat.core.net.BaseUrlResult
 import com.hpz.llmdockchat.core.net.ServerUrlStore
+import com.hpz.llmdockchat.core.net.SseTransport
+import com.hpz.llmdockchat.core.net.StreamRequest
+import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
@@ -97,6 +104,60 @@ class FakeNewChatPreferences(
     override fun rememberModel(mainService: String) { rememberedModel = mainService }
     override suspend fun lastMcpServerIds(): List<String> = rememberedMcpServerIds
     override fun rememberMcpServerIds(ids: List<String>) { rememberedMcpServerIds = ids }
+}
+
+/**
+ * In-memory [DraftStore] — the same shape as the DataStore-backed one without
+ * the disk, so a test can assert what was remembered and when it was cleared.
+ */
+class FakeDraftStore(initial: Map<String, String> = emptyMap()) : DraftStore {
+    val saved = initial.toMutableMap()
+    override suspend fun draft(conversationId: String): String = saved[conversationId].orEmpty()
+    override fun save(conversationId: String, text: String) {
+        if (text.isBlank()) saved.remove(conversationId) else saved[conversationId] = text
+    }
+    override fun clear(conversationId: String) { saved.remove(conversationId) }
+}
+
+/**
+ * A driveable [SseTransport]. The real one is covered end to end by
+ * `OkHttpSseTransportTest`; what a ViewModel test needs instead is control over
+ * *when* each payload lands, so delta coalescing and cancellation can be
+ * asserted without racing a socket.
+ */
+class FakeSseTransport : SseTransport {
+    val requests = mutableListOf<StreamRequest>()
+
+    /** Payloads emitted, in order, as soon as the flow is collected. */
+    var payloads: List<String> = emptyList()
+
+    /** Thrown instead of emitting anything — how a 409 arrives (the POST *is* the stream). */
+    var failWith: Throwable? = null
+
+    /** Kept open after the payloads run out, so a test can cancel mid-run. */
+    var stayOpen: Boolean = false
+
+    /** Completed once a collector has been cancelled — proof the run was abandoned, not stopped. */
+    val cancelled = CompletableDeferred<Unit>()
+
+    /** Completed once every payload has been delivered and the stream has gone quiet. */
+    val parked = CompletableDeferred<Unit>()
+
+    override fun open(request: StreamRequest): Flow<String> = flow {
+        requests += request
+        failWith?.let { throw it }
+        payloads.forEach { emit(it) }
+        if (stayOpen) {
+            try {
+                parked.complete(Unit)
+                awaitCancellation()
+            } finally {
+                cancelled.complete(Unit)
+            }
+        } else {
+            parked.complete(Unit)
+        }
+    }
 }
 
 fun baseUrl(raw: String): BaseUrl = (BaseUrl.normalize(raw) as BaseUrlResult.Valid).baseUrl

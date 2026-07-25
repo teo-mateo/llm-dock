@@ -1,0 +1,18 @@
+data: {"type":"run_started","run_id":"91492264-1158-4384-bcef-e14bc56160ae"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"History"}}],"created":1784959039,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" of"}}],"created":1784959039,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" the"}}],"created":1784959039,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" transistor"}}],"created":1784959039,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" of"}}],"created":1784959042,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" $"}}],"created":1784959042,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"SiO"}}],"created":1784959042,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"_"}}],"created":1784959042,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+

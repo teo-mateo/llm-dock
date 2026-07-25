@@ -147,7 +147,7 @@ empty slots.
 
 | Criterion | Verify in |
 |---|---|
-| R5 · "…then shows the generated one without a manual refresh" | **F04.** The auto-title arrives on a `conversation_updated` frame during the first turn (F04-R7). F03 verified only the placeholder-title half. |
+| R5 · "…then shows the generated one without a manual refresh" | **CLOSED in F04** — seen live on device. Note the server-side race behind it: issue #111. F04 carries a bounded client backstop until that is fixed. |
 
 Unit-tested rather than device-verified, deliberately: the
 remembered-model-not-running branch (would need a container stopped), and

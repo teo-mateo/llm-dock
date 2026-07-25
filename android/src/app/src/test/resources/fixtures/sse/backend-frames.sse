@@ -1,0 +1,16 @@
+data: {"type":"run_started","run_id":"11111111-2222-3333-4444-555555555555"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"Hi"}}],"model":"llamacpp-gemma-4-26b-a4b-it-q8","object":"chat.completion.chunk"}
+
+data: {"type":"parse_warning","kind":"silent_drop","snippet":"","description":"Model emitted reasoning but no content and no tool calls. Parser may have silently dropped a malformed tool call."}
+
+data: {"type":"artifact","artifact_type":"svg","title":"RC divider","content":"<svg width=\"10\" height=\"10\"></svg>"}
+
+data: {"type":"heartbeat","elapsed_s":6.0}
+
+data: [DONE]
+
+data: {"type":"message_saved","message_id":"66666666-7777-8888-9999-000000000000","seq":4}
+
+data: {"type":"conversation_updated","id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","title":"Transistor history"}
+

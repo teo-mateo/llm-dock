@@ -177,7 +177,7 @@ Mark completed features `[DONE]` in the Status column.
 | F01 | Connection and authentication | [F01-connection-and-auth.md](F01-connection-and-auth.md) | 01 | [WIP] — one Must criterion outstanding, see the feature file |
 | F02 | Conversation list | [F02-conversation-list.md](F02-conversation-list.md) | 02 | [DONE] |
 | F03 | Starting a conversation | [F03-new-conversation.md](F03-new-conversation.md) | 03 | [DONE] |
-| F04 | Sending a turn and streaming the reply | [F04-chat-turn-and-streaming.md](F04-chat-turn-and-streaming.md) | 04, 06a | [ ] |
+| F04 | Sending a turn and streaming the reply | [F04-chat-turn-and-streaming.md](F04-chat-turn-and-streaming.md) | 04, 06a | [DONE] |
 | F05 | Rendering assistant output | [F05-message-rendering.md](F05-message-rendering.md) | 05 | [ ] |
 | F06 | Message actions | [F06-message-actions.md](F06-message-actions.md) | 06b | [ ] |
 | F07 | Model selection | [F07-model-selection.md](F07-model-selection.md) | 07a | [ ] |

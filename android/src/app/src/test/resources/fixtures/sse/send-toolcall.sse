@@ -1,0 +1,28 @@
+data: {"type":"run_started","run_id":"db553778-a0f7-4c86-9d90-23abedd2c958"}
+
+data: {"type":"tool_call_pending","index":0,"name":"sympy-math__differentiate"}
+
+data: {"type":"tool_call","name":"differentiate","arguments":{"expression":"x**3 * sin(x)","variable":"x"},"server_id":"sympy-math"}
+
+data: {"type":"tool_result","name":"differentiate","result":"x**3*cos(x) + 3*x**2*sin(x)","server_id":"sympy-math"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"The"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" derivative"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" of"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" $"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"sin"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"("}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"x"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":")`"}}],"created":1784958951,"id":"chatcmpl-fixture","model":"llamacpp-gemma-4-26b-a4b-it-q8","system_fingerprint":"b1-cf51256","object":"chat.completion.chunk"}
+
+data: [DONE]
+
+data: {"type":"message_saved","message_id":"f1842f81-f08e-41f9-aeb6-7732d066aa7f","seq":2}
+

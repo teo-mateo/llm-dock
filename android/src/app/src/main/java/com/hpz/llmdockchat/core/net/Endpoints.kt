@@ -21,6 +21,12 @@ object Endpoints {
     const val CONVERSATIONS_DELETE_BATCH = "/api/chat/conversations/delete"
     fun conversation(id: String): String = "/api/chat/conversations/$id"
 
+    /** F04 — sending a turn, stopping it, and reattaching to it. */
+    fun conversationMessages(id: String): String = "${conversation(id)}/messages"
+    fun conversationMessage(id: String, messageId: String): String = "${conversation(id)}/messages/$messageId"
+    fun cancelActiveRun(id: String): String = "${conversation(id)}/cancel-active-run"
+    fun runStream(runId: String): String = "/api/chat/runs/$runId/stream"
+
     /** F03 — sources for the new-chat sheet's model/prompt/tools rows. */
     const val SERVICES = "/api/services"
     const val PROMPTS = "/api/chat/prompts"
