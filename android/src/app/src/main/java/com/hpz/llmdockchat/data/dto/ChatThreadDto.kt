@@ -55,6 +55,20 @@ data class LastRunDto(
     val error: String? = null,
 )
 
+/**
+ * One row of `chat/models.py:Artifact.to_dict()` — the wire key is `type`,
+ * not `artifact_type` (that spelling is only used on the SSE frame, see
+ * `RunEvent.Artifact`).
+ */
+@Serializable
+data class ArtifactDto(
+    val id: String = "",
+    val type: String = "",
+    val content: String = "",
+    val title: String? = null,
+    val language: String? = null,
+)
+
 /** `GET /api/chat/conversations/<id>` — `to_dict(include_messages=True)`. */
 @Serializable
 data class ConversationDetailDto(
@@ -66,6 +80,9 @@ data class ConversationDetailDto(
     @SerialName("last_run") val lastRun: LastRunDto? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     val messages: List<ChatMessageDto> = emptyList(),
+    // `{message_id: [Artifact, …]}` — a sibling of `messages`, not nested
+    // inside each one (`chat/routes.py`: `result["artifacts"] = …`).
+    val artifacts: Map<String, List<ArtifactDto>> = emptyMap(),
 )
 
 /** `POST /api/chat/conversations/<id>/messages` body. */

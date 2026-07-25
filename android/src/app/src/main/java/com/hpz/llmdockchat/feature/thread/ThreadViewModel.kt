@@ -7,6 +7,7 @@ import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ChatRepository
+import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.ParseWarning
 import kotlinx.coroutines.CancellationException
@@ -379,6 +380,7 @@ private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
     private val content = StringBuilder()
     private val reasoning = StringBuilder()
     private val toolCalls = mutableListOf<StreamingToolCall>()
+    private val artifacts = mutableListOf<ArtifactRecord>()
     private var runId: String? = null
     private var parseWarning: ParseWarning? = null
     private var dirty = false
@@ -415,6 +417,8 @@ private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
             is RunEvent.ToolResult -> completeCall(event)
             is RunEvent.ParseWarning ->
                 parseWarning = ParseWarning(event.kind, event.description, event.snippet)
+            is RunEvent.Artifact ->
+                artifacts += ArtifactRecord(event.artifactType, event.title, event.content, language = null)
             else -> Unit
         }
     }
@@ -443,6 +447,7 @@ private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
         reasoning = reasoning.toString(),
         toolCalls = toolCalls.toList(),
         parseWarning = parseWarning,
+        artifacts = artifacts.toList(),
         stopping = stopping,
     )
 

@@ -32,6 +32,19 @@ data class ParseWarning(
 }
 
 /**
+ * A tool-produced artifact (F05-R6/R8) — `svg`, `image`, `html` or `code`.
+ * Persisted ones arrive out of band, in `GET /api/chat/conversations/<id>`'s
+ * top-level `artifacts: {message_id: [...]}` map (`chat/db.py:get_artifacts_for_conversation`),
+ * not nested on the message itself; the mapper folds them in by id.
+ */
+data class ArtifactRecord(
+    val type: String,
+    val title: String?,
+    val content: String,
+    val language: String?,
+)
+
+/**
  * A message as the **server** has it. The client never fabricates one of these
  * from streamed text — that is Architecture D3, and it is what keeps a
  * cancelled run from inventing an assistant turn that does not exist.
@@ -48,6 +61,7 @@ data class ChatMessage(
     val toolCalls: List<ToolCallRecord>,
     val parseWarning: ParseWarning?,
     val error: String?,
+    val artifacts: List<ArtifactRecord> = emptyList(),
 )
 
 /** The most recent run on a thread, whatever its status. */

@@ -147,3 +147,21 @@ web parity would have allowed them.
 - Exporting a thread to a file.
 - Syntax highlighting inside code blocks is not required for v1 — a
   monospace block with a language label satisfies F05-R2.
+
+## Carried forward
+
+| Criterion | Verify in |
+|---|---|
+| R4 · the Settings toggle switching assistant prose to a sans face, persisting | **F13.** The serif/mono split itself is built and verified; only the toggle is outstanding. |
+
+Verified on device, both themes: every R1 construct in a live stream,
+code blocks with language label and exact-code copy, both copy
+behaviours through a clipboard round-trip, text selection in rendered
+prose, tables scrolling in their own box, an `svg` artifact from
+schemdraw rendering as a picture with tap-to-fullscreen and pinch-zoom,
+an `html` artifact as the R8 placeholder, and LaTeX passing through with
+underscores, backslashes and braces intact.
+
+Artifact decode-failure fallbacks are code-level only — neither a
+malformed `image` nor a malformed `svg` artifact could be provoked from
+the live tools.

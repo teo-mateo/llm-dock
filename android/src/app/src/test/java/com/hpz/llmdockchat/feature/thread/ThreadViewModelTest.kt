@@ -312,6 +312,30 @@ class ThreadViewModelTest {
         assertEquals("Parser dropped a malformed tool call", warning.displayText)
     }
 
+    // -- F05-R6/R8 · artifact frames land on the streaming turn --------------
+
+    @Test
+    fun `an artifact frame is carried on the streaming turn as it arrives`() = threadTest {
+        conversation()
+        transport.payloads = listOf(
+            RUN_STARTED,
+            """{"type": "artifact", "artifact_type": "svg", "title": "Circuit Diagram", "content": "<svg></svg>"}""",
+        )
+        transport.stayOpen = true
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("draw it")
+        viewModel.send()
+
+        val artifacts = viewModel.awaitState { it.thread.streaming?.artifacts?.isNotEmpty() == true }
+            .thread.streaming!!.artifacts
+        assertEquals(1, artifacts.size)
+        assertEquals("svg", artifacts.single().type)
+        assertEquals("Circuit Diagram", artifacts.single().title)
+        assertEquals("<svg></svg>", artifacts.single().content)
+    }
+
     // -- F04-R7 · completion and title ---------------------------------------
 
     @Test

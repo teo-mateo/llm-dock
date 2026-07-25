@@ -300,6 +300,7 @@ private fun StreamingBubble(turn: StreamingTurn) {
         // Set only when the turn is being held over because that refetch
         // failed, so a failure is never shown without its cause.
         error = turn.error,
+        artifacts = turn.artifacts,
         modifier = Modifier.testTag("streaming_turn"),
         trailing = {
             turn.toolCalls.forEach { ToolCallCard(it) }
