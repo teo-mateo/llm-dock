@@ -16,6 +16,10 @@ object Destinations {
     const val CHATS = "chats"
     const val MODELS = "models"
 
+    /** Design-lab gallery (experiment, not a shipped feature) — cycles the
+     * `feature/designlab` mockups the owner asked for. */
+    const val DESIGN = "design"
+
     private const val THREAD_ROUTE = "thread"
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"

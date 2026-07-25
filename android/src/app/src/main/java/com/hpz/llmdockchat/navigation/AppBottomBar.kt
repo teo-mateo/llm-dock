@@ -19,13 +19,15 @@ private data class Tab(val route: String, val label: String, val glyph: String)
 private val TABS = listOf(
     Tab(Destinations.CHATS, "Chats", "💬"),
     Tab(Destinations.MODELS, "Models", "▦"),
+    Tab(Destinations.DESIGN, "Design", "✦"),
 )
 
 /**
- * The two-tab bottom bar (Architecture D12, F02-R7): present on the
- * conversation list and the models list, and on those two screens only —
- * pushed destinations (thread, new chat, model detail, logs) render without
- * it.
+ * The bottom bar (Architecture D12, F02-R7): present on the conversation
+ * list and the models list, and on those screens only — pushed destinations
+ * (thread, new chat, model detail, logs) render without it. The third
+ * "Design" tab is the design-lab gallery (`feature/designlab`), a visual
+ * proposal to compare against these screens — not a shipped feature.
  */
 @Composable
 fun AppBottomBar(currentRoute: String, onSelect: (String) -> Unit) {
