@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -373,7 +374,9 @@ private fun ModelPickerSheet(
         containerColor = colors.surface,
         modifier = Modifier.testTag("model_picker_sheet"),
     ) {
-        LazyColumn(Modifier.fillMaxWidth()) {
+        // C3: the sheet draws behind the navigation bar, so without
+        // this its last row is unreachable under the 44 dp button bar.
+        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
             item { PickerSectionHeader("Local services") }
             if (localServices.isEmpty()) {
                 item {
@@ -425,7 +428,9 @@ private fun PromptPickerSheet(
         containerColor = colors.surface,
         modifier = Modifier.testTag("prompt_picker_sheet"),
     ) {
-        LazyColumn(Modifier.fillMaxWidth()) {
+        // C3: the sheet draws behind the navigation bar, so without
+        // this its last row is unreachable under the 44 dp button bar.
+        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
             item {
                 PickerRow(
                     title = "Server default",
@@ -465,7 +470,9 @@ private fun ToolsPickerSheet(
         containerColor = colors.surface,
         modifier = Modifier.testTag("tools_picker_sheet"),
     ) {
-        LazyColumn(Modifier.fillMaxWidth()) {
+        // C3: the sheet draws behind the navigation bar, so without
+        // this its last row is unreachable under the 44 dp button bar.
+        LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
             items(servers, key = { it.id }) { server ->
                 Row(
                     modifier = Modifier

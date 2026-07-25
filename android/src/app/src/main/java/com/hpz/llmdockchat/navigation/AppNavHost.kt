@@ -1,6 +1,8 @@
 package com.hpz.llmdockchat.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -167,6 +169,12 @@ fun AppNavHost(
  * `saveState`/`restoreState`, the standard bottom-nav idiom: each tab's
  * ViewModel and `rememberSaveable` state (including scroll position) survive
  * switching away and back.
+ *
+ * Insets (fix pass A2): this Scaffold applies none of its own
+ * ([WindowInsets] of zero) — [AppBottomBar] is a `NavigationBar`, which pads
+ * itself clear of the navigation bar while keeping its background behind it.
+ * `consumeWindowInsets` then tells the tab's own Scaffold that the bottom is
+ * already spoken for, so it applies only the top.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -176,6 +184,7 @@ private fun TabScaffold(navController: NavHostController, content: @Composable (
 
     Scaffold(
         containerColor = LlmTheme.colors.app,
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             AppBottomBar(currentRoute = currentRoute) { route ->
                 if (route != currentRoute) {
@@ -188,7 +197,12 @@ private fun TabScaffold(navController: NavHostController, content: @Composable (
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) { content() }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding),
+        ) { content() }
     }
 }
 

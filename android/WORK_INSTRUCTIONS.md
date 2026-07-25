@@ -108,6 +108,19 @@ State these in the brief; do not assume they are inferred:
   explicitly assign it to you, do not install to it, do not clear its app
   data (that destroys their stored credential and signs them out), and do
   not touch their real conversations.
+- **One agent per device, and the owner outranks every agent.** A device
+  is assigned to exactly one agent at a time; the orchestrator hands it
+  over explicitly and never to two at once. The moment the owner starts
+  using a device themselves, every agent is off it — a `uiautomator dump`
+  or a stray `input tap` while a human is mid-gesture wastes their time
+  and corrupts both sets of observations. When a device is withdrawn
+  mid-run, do not wait for it: write the device-dependent checks down as
+  line items for the owner and carry on with everything else.
+- **Prefer the owner for anything about feel.** Scroll behaviour, gesture
+  conflicts, keyboard handling and animation are judged far better by a
+  thumb than by injected single-pointer events. Hand those over as a
+  short list in plain language rather than burning device time on
+  synthetic approximations of them.
 - **Never** call the dashboard's configuration endpoints — see F00-R10.
 - **Never** edit a requirements file except to add to its *Deviations*
   section, and only with a reason.

@@ -4,9 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,15 +36,21 @@ class MainActivity : ComponentActivity() {
         val container = (application as LlmDockApplication).container
         setContent {
             LLMDockChatTheme {
-                Scaffold(
+                // Deliberately edge-to-edge and inset-free: window insets are
+                // owned by each screen's own Scaffold, which is the only layer
+                // that can put a bar's *background* behind the system bar while
+                // padding that bar's *content* clear of it. Consuming them here
+                // as well is what produced the grey bands under every screen
+                // (fix pass A2), so this layer contributes nothing but a colour.
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .background(LlmTheme.colors.app)
                         // Surfaces Compose test tags as resource ids, so a
                         // `uiautomator` dump can name what it is tapping.
                         .semantics { testTagsAsResourceId = true },
-                    containerColor = LlmTheme.colors.app,
-                ) { innerPadding ->
-                    AppRoot(container, Modifier.padding(innerPadding))
+                ) {
+                    AppRoot(container)
                 }
             }
         }
