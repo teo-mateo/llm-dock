@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -68,6 +69,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -643,7 +645,9 @@ private fun JumpToLatest(modifier: Modifier = Modifier, onClick: () -> Unit) {
             .testTag("jump_to_latest"),
         contentAlignment = Alignment.Center,
     ) {
-        IconButton(onClick = onClick) { Text("↓", color = colors.fg) }
+        IconButton(onClick = onClick) {
+            Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.fg, modifier = Modifier.size(20.dp))
+        }
     }
 }
 

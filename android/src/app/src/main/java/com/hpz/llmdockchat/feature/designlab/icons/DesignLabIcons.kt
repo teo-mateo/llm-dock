@@ -47,8 +47,30 @@ object DesignLabIcons {
 
     val Camera: ImageVector by lazy {
         strokeIcon("Camera") {
-            moveTo(4f, 8f); lineTo(8f, 8f); lineTo(9.5f, 5.5f); lineTo(14.5f, 5.5f); lineTo(16f, 8f); lineTo(20f, 8f); lineTo(20f, 19f); lineTo(4f, 19f); close()
-            moveTo(15.2f, 13.2f); moveTo(12f, 16.3f)
+            // The body, then the viewfinder bump, then the lens as a real
+            // circle. The first version left the lens as two bare moveTo calls,
+            // which draw nothing — it rendered as a plain blob.
+            moveTo(3f, 8.5f); lineTo(7.5f, 8.5f); lineTo(9f, 6f); lineTo(15f, 6f); lineTo(16.5f, 8.5f); lineTo(21f, 8.5f)
+            lineTo(21f, 19f); lineTo(3f, 19f); close()
+            moveTo(15.2f, 13.6f)
+            curveTo(15.2f, 15.37f, 13.77f, 16.8f, 12f, 16.8f)
+            curveTo(10.23f, 16.8f, 8.8f, 15.37f, 8.8f, 13.6f)
+            curveTo(8.8f, 11.83f, 10.23f, 10.4f, 12f, 10.4f)
+            curveTo(13.77f, 10.4f, 15.2f, 11.83f, 15.2f, 13.6f)
+            close()
+        }
+    }
+
+    val Paperclip: ImageVector by lazy {
+        strokeIcon("Paperclip") {
+            moveTo(16.5f, 8f)
+            lineTo(9.2f, 15.3f)
+            curveTo(8.2f, 16.3f, 8.2f, 17.9f, 9.2f, 18.9f)
+            curveTo(10.2f, 19.9f, 11.8f, 19.9f, 12.8f, 18.9f)
+            lineTo(19.2f, 12.5f)
+            curveTo(21f, 10.7f, 21f, 7.8f, 19.2f, 6f)
+            curveTo(17.4f, 4.2f, 14.5f, 4.2f, 12.7f, 6f)
+            lineTo(6.3f, 12.4f)
         }
     }
 
@@ -127,6 +149,10 @@ object DesignLabIcons {
 
     val ChevronRight: ImageVector by lazy {
         strokeIcon("ChevronRight") { moveTo(9f, 5f); lineTo(16f, 12f); lineTo(9f, 19f) }
+    }
+
+    val ChevronDown: ImageVector by lazy {
+        strokeIcon("ChevronDown") { moveTo(5f, 9f); lineTo(12f, 16f); lineTo(19f, 9f) }
     }
 
     val Plus: ImageVector by lazy {
