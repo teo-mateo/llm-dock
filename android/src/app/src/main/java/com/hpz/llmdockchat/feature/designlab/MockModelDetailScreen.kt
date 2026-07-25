@@ -2,6 +2,7 @@ package com.hpz.llmdockchat.feature.designlab
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,12 +20,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 
@@ -37,6 +43,9 @@ fun MockModelDetailScreen() {
     val colors = DesignLabTheme.colors
     val model = MOCK_MODEL_DETAIL
     val (chipBg, chipFg) = engineChipColors(model.engine)
+    // Stopping is destructive to whatever's mid-generation on that model, so
+    // it gets a confirmation popup instead of firing on the first tap.
+    var showStopConfirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().background(colors.app)) {
         Row(
@@ -44,7 +53,17 @@ fun MockModelDetailScreen() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = {}) { Icon(DesignLabIcons.Back, contentDescription = "Back", tint = colors.fg) }
-            Text("Model detail", style = MaterialTheme.typography.titleMedium, color = colors.fg)
+            Text(
+                "Model detail",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.fg,
+                modifier = Modifier.weight(1f),
+            )
+            // Logs are one tap away from anywhere on the screen, not just at
+            // the bottom of a scroll — the owner flagged logs as too buried.
+            IconButton(onClick = {}) {
+                Icon(DesignLabIcons.Terminal, contentDescription = "View logs", tint = colors.accent)
+            }
         }
 
         Column(
@@ -103,12 +122,15 @@ fun MockModelDetailScreen() {
                 Modifier.fillMaxWidth().padding(vertical = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Logs promoted to the primary (filled, accent) action — the
+                // owner's second note. Stop stays reachable but demoted, since
+                // it's destructive and shouldn't be the thing the eye lands on.
                 ActionButton(
                     label = "View logs",
                     icon = DesignLabIcons.Terminal,
-                    background = colors.surfaceHigh,
-                    foreground = colors.fg,
-                    modifier = Modifier.weight(1f),
+                    background = colors.accent,
+                    foreground = colors.onAccent,
+                    modifier = Modifier.weight(2f),
                 )
                 ActionButton(
                     label = "Stop",
@@ -116,6 +138,64 @@ fun MockModelDetailScreen() {
                     background = colors.red.copy(alpha = 0.16f),
                     foreground = colors.red,
                     modifier = Modifier.weight(1f),
+                    onClick = { showStopConfirm = true },
+                )
+            }
+        }
+    }
+
+    if (showStopConfirm) {
+        StopConfirmDialog(
+            modelName = model.name,
+            onDismiss = { showStopConfirm = false },
+            onConfirm = { showStopConfirm = false },
+        )
+    }
+}
+
+@Composable
+private fun StopConfirmDialog(modelName: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val colors = DesignLabTheme.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.lineStrong, RoundedCornerShape(20.dp))
+                .padding(20.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DlIconBadge(
+                    icon = DesignLabIcons.Power,
+                    tint = colors.red,
+                    background = colors.red.copy(alpha = 0.16f),
+                    modifier = Modifier.size(40.dp),
+                )
+                Text("Stop this model?", style = MaterialTheme.typography.titleMedium, color = colors.fg)
+            }
+            Text(
+                "$modelName will stop accepting requests. Any conversation using it will need it started again before it can reply.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.muted,
+                modifier = Modifier.padding(top = 12.dp, bottom = 20.dp),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActionButton(
+                    label = "Cancel",
+                    icon = null,
+                    background = colors.surfaceHigh,
+                    foreground = colors.fg,
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                )
+                ActionButton(
+                    label = "Stop",
+                    icon = DesignLabIcons.Power,
+                    background = colors.red,
+                    foreground = colors.onAccent,
+                    modifier = Modifier.weight(1f),
+                    onClick = onConfirm,
                 )
             }
         }
@@ -137,21 +217,27 @@ private fun StatRow(label: String, value: String) {
 @Composable
 private fun ActionButton(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
     background: androidx.compose.ui.graphics.Color,
     foreground: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
 ) {
     Row(
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(background)
+            .clickable(onClick = onClick)
             .padding(vertical = 13.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(16.dp))
-        Text(label, color = foreground, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 8.dp))
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(16.dp))
+            Text(label, color = foreground, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 8.dp))
+        } else {
+            Text(label, color = foreground, style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 

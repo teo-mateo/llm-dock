@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.designlab
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,10 +59,10 @@ fun MockChatListScreen() {
                 }
             }
 
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            // Flat rows, not cards — the owner flagged cards as burning too
+            // much vertical space for a list this dense. A hairline divider
+            // does the separating instead of a border + gap per row.
+            LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp)) {
                 items(MOCK_CONVERSATIONS) { convo -> ConversationRow(convo) }
             }
         }
@@ -81,18 +83,24 @@ fun MockChatListScreen() {
 private fun ConversationRow(convo: MockConversation) {
     val colors = DesignLabTheme.colors
     val (chipBg, chipFg) = engineChipColors(convo.engine)
-    DlCard {
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             DlIconBadge(
                 icon = DesignLabIcons.ChatBubble,
                 tint = if (convo.pinned) colors.accent else colors.muted,
                 background = if (convo.pinned) colors.accentSoft else colors.surfaceHigh,
+                modifier = Modifier.size(36.dp),
             )
             Column(Modifier.weight(1f)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         convo.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
                         color = colors.fg,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -102,11 +110,11 @@ private fun ConversationRow(convo: MockConversation) {
                 }
                 Text(
                     convo.preview,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 5.dp),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     DlChip(convo.engine, chipBg, chipFg)
@@ -114,6 +122,13 @@ private fun ConversationRow(convo: MockConversation) {
                 }
             }
         }
+        Box(
+            Modifier
+                .padding(start = 48.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.line),
+        )
     }
 }
 
