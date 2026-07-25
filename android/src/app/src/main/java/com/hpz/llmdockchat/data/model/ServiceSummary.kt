@@ -9,6 +9,12 @@ data class ServiceSummary(
     val port: Int = 0,
     /** Set on the dashboard; the phone only ever reads it (F07-R5). */
     val favorite: Boolean = false,
+    /** Only set when [status] is `"exited"` (F10-R1's third criterion). */
+    val exitCode: Int? = null,
+    /** Weights-on-disk size, pre-formatted server-side (e.g. `"25.74 GB"`). Null when unknown. */
+    val modelSizeStr: String? = null,
+    /** The container's creation time, ISO-8601 UTC. Not a start time — see [[F10-models-list.md]]'s Deviations. */
+    val createdAt: String? = null,
 ) {
     val engine: Engine get() = ModelRef.Local(name).engine
 
@@ -27,4 +33,6 @@ data class ServiceSummary(
     val isChatCapable: Boolean get() = engine != Engine.UNKNOWN && (kind.isBlank() || kind == "chat")
 
     val isRunning: Boolean get() = status == "running"
+    val isExited: Boolean get() = status == "exited"
+    val isNotCreated: Boolean get() = status == "not-created"
 }

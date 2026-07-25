@@ -20,8 +20,20 @@ object Destinations {
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
 
-    /** F02-R8's primary action, built out in F03. */
-    const val NEW_CHAT = "new_chat"
+    /**
+     * F02-R8's primary action, built out in F03. [NEW_CHAT] is the route
+     * *pattern* registered with `composable(...)` — it must be the string
+     * passed there and to `popUpTo(...)`, never navigated to directly (its
+     * `{service}` is a literal placeholder, not a real path segment). Callers
+     * navigate with [newChat] (no preselected model, F02/F03's original path)
+     * or [newChatWithService] (F10-R6 — the query argument is optional and
+     * nullable, so [newChat]'s plain route still matches the same
+     * destination with `service` defaulting to null).
+     */
+    private const val NEW_CHAT_ROUTE = "new_chat"
+    const val NEW_CHAT = "$NEW_CHAT_ROUTE?service={service}"
+    fun newChat() = NEW_CHAT_ROUTE
+    fun newChatWithService(serviceName: String) = "$NEW_CHAT_ROUTE?service=$serviceName"
 }
 
 /**

@@ -1,6 +1,7 @@
 # F11 · Model detail, start and stop
 
-**Mockup:** screens 10b (detail) and 10d (start conflict) · **Depends on:** F10
+**Mockup:** screen 10b (detail). Screen 10d (start conflict) is not
+implemented — see the dropped F11-R5. · **Depends on:** F10
 
 The one place the app touches the rig. Everything shares one GPU, so a
 start that does not fit is the app's single genuinely dangerous action.
@@ -72,38 +73,29 @@ it. The confirm's job is to make sure they know, not to argue.
 - [ ] The button shows a pending state while the request is in flight and
       cannot be double-fired.
 
-## F11-R5 · The VRAM guard (Must)
+## F11-R5 · The VRAM guard (DROPPED)
 
-Everything shares one ~96 GB GPU. Before starting a service, the app
-checks whether it plausibly fits:
+**Dropped at the owner's direction, 2026-07-25:** *"no vram guard. let it
+fail if it fails. i'll see it in the logs."*
 
-- free VRAM from `GET /api/gpu` (`memory.free`), and
-- the target's `model_size` from the services payload.
+The guard was to compare `memory.free` from `GET /api/gpu` against the
+target's `model_size` and show screen 10d's conflict dialog before
+starting. It is not built.
 
-If it does not plausibly fit, show the conflict dialog from screen 10d.
-It must name **what is currently running**, **what stopping each would
-free**, and **that in-flight chats on those models will die**. It offers
-the compound action: stop the named services, then start the target.
+The reasoning holds up: the estimate was necessarily rough — `model_size`
+is weights on disk, with KV cache and CUDA graphs extra — so it would
+have blocked starts that would have fit and waved through starts that did
+not. On a single-user rig the owner watches, a failed start is visible in
+`docker logs` within seconds and costs nothing but a retry. A dialog that
+guesses wrong in both directions is worse than the honest failure.
 
-The estimate is necessarily rough — `model_size` is weights on disk, and
-KV cache and CUDA graphs are extra (see F10-R4). The dialog must be
-framed as a warning based on an estimate, not a guarantee either way.
-The server has no admission control; nothing stops an oversubscribed
-start except this dialog.
+**Consequence to keep in mind:** the server has no admission control, so
+nothing now prevents an oversubscribed start. Starting a large model
+while another large one runs will fail at the container, not in the app.
+The app must surface that failure clearly (F11-R4) rather than appearing
+to succeed.
 
-**Acceptance criteria**
-
-- [ ] Starting a large model while another large one runs shows the
-      conflict dialog before any request is sent.
-- [ ] The dialog lists the running services by name with what each would
-      free.
-- [ ] "Stop both, then start" performs the stops, waits for them, then
-      starts the target — and reports which step failed if one does.
-- [ ] Cancelling sends no request at all.
-- [ ] Starting a small service when there is plenty of free VRAM does not
-      show the dialog.
-- [ ] If GPU stats are unavailable, the start is still possible, with a
-      warning that the check could not run.
+Screen 10d (the start-conflict dialog) is therefore not implemented.
 
 ## F11-R6 · Restart (Should)
 
@@ -163,8 +155,9 @@ app must not call them. A bad tap must not be able to corrupt
 
 ## Deviations from the mockup
 
-- **The VRAM guard is an estimate**, not a measurement — see F11-R5 and
-  F10-R4. Screen 10d reads as though the numbers are exact.
+- **No start-conflict dialog.** Screen 10d reads as though the VRAM
+  numbers are exact; they never could be (F10-R4). The guard was dropped
+  outright rather than shipped as a confident-looking guess — see F11-R5.
 
 ## Out of scope
 

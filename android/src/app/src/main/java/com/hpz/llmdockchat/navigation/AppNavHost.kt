@@ -17,18 +17,21 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.hpz.llmdockchat.core.AppContainer
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.connect.ConnectScreen
 import com.hpz.llmdockchat.feature.connect.ConnectViewModel
 import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
 import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
-import com.hpz.llmdockchat.feature.models.ModelsPlaceholderScreen
+import com.hpz.llmdockchat.feature.models.ModelsScreen
+import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
@@ -101,13 +104,31 @@ fun AppNavHost(
                         onOpenConversation = { conversation ->
                             navController.navigate(Destinations.thread(conversation.id))
                         },
-                        onNewConversation = { navController.navigate(Destinations.NEW_CHAT) },
+                        onNewConversation = { navController.navigate(Destinations.newChat()) },
                     )
                 }
             }
 
             composable(Destinations.MODELS) {
-                TabScaffold(navController) { ModelsPlaceholderScreen() }
+                TabScaffold(navController) {
+                    val viewModel: ModelsViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer {
+                                ModelsViewModel(
+                                    servicesRepository = container.servicesRepository,
+                                    servicesStreamRepository = container.servicesStreamRepository,
+                                    gpuStreamRepository = container.gpuStreamRepository,
+                                )
+                            }
+                        },
+                    )
+                    ModelsScreen(
+                        viewModel = viewModel,
+                        onNewChatFromModel = { serviceName ->
+                            navController.navigate(Destinations.newChatWithService(serviceName))
+                        },
+                    )
+                }
             }
         }
 
@@ -135,7 +156,11 @@ fun AppNavHost(
             ThreadScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
 
-        composable(Destinations.NEW_CHAT) {
+        composable(
+            Destinations.NEW_CHAT,
+            arguments = listOf(navArgument("service") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { backStackEntry ->
+            val preselectedServiceName = backStackEntry.arguments?.getString("service")
             val viewModel: NewChatViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -147,6 +172,7 @@ fun AppNavHost(
                             conversationsRepository = container.conversationsRepository,
                             preferences = container.newChatPreferences,
                             servicesStreamRepository = container.servicesStreamRepository,
+                            preselectedServiceName = preselectedServiceName,
                         )
                     }
                 },

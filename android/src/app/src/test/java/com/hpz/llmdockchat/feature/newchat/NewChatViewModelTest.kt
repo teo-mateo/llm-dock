@@ -85,7 +85,7 @@ class NewChatViewModelTest {
         server.close()
     }
 
-    private fun viewModel() = NewChatViewModel(
+    private fun viewModel(preselectedServiceName: String? = null) = NewChatViewModel(
         servicesRepository = servicesRepository,
         promptsRepository = promptsRepository,
         mcpServersRepository = mcpServersRepository,
@@ -93,6 +93,7 @@ class NewChatViewModelTest {
         conversationsRepository = conversationsRepository,
         preferences = preferences,
         servicesStreamRepository = servicesStreamRepository,
+        preselectedServiceName = preselectedServiceName,
     )
 
     /** Load order in [NewChatViewModel.load]: services, openrouter, prompts, mcp-servers. */
@@ -236,6 +237,44 @@ class NewChatViewModelTest {
         val selected = state.selectedModel as ModelOption.Remote
         assertEquals("someone/retired-model", selected.modelId)
         assertFalse(state.rememberedModelUnavailable)
+    }
+
+    /**
+     * F10-R6: the Models tab's "New chat" action passes a specific running
+     * service, which must win over whatever [preferences] remembered from
+     * last time — that is the entire point of tapping it from a particular row.
+     */
+    @Test
+    fun `a preselected running service wins over whatever was remembered`() {
+        preferences = FakeNewChatPreferences(initialModel = "vllm-qwen3-6-27b-fp8") // exited in the fixture
+        enqueueLoadResponses()
+        val viewModel = viewModel(preselectedServiceName = "llamacpp-gemma-4-26b-a4b-it-q8")
+
+        viewModel.load()
+        val state = settled(viewModel) as NewChatUiState.Loaded
+
+        val selected = state.selectedModel as ModelOption.LocalService
+        assertEquals("llamacpp-gemma-4-26b-a4b-it-q8", selected.serviceName)
+        assertFalse(state.rememberedModelUnavailable) // the preselect resolved cleanly; nothing here was "unavailable"
+    }
+
+    /**
+     * If the tapped service stopped running between the tap and the sheet
+     * loading, the preselect must not land on a dead service — it falls
+     * through to the ordinary remembered-model resolution instead of
+     * crashing or silently picking a stopped row.
+     */
+    @Test
+    fun `a preselected service that stopped running falls back to the remembered-model resolution`() {
+        preferences = FakeNewChatPreferences(initialModel = "llamacpp-gemma-4-26b-a4b-it-q8")
+        enqueueLoadResponses()
+        val viewModel = viewModel(preselectedServiceName = "vllm-qwen3-6-27b-fp8") // exited in the fixture
+
+        viewModel.load()
+        val state = settled(viewModel) as NewChatUiState.Loaded
+
+        val selected = state.selectedModel as ModelOption.LocalService
+        assertEquals("llamacpp-gemma-4-26b-a4b-it-q8", selected.serviceName)
     }
 
     @Test

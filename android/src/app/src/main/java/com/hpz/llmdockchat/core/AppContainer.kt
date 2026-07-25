@@ -31,6 +31,7 @@ import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
+import com.hpz.llmdockchat.data.GpuStreamRepository
 import com.hpz.llmdockchat.data.HealthRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
@@ -112,6 +113,7 @@ class AppContainer(
     val chatRepository = ChatRepository(apiClient, sseTransport)
     val servicesRepository = ServicesRepository(apiClient)
     val servicesStreamRepository = ServicesStreamRepository(sseTransport)
+    val gpuStreamRepository = GpuStreamRepository(sseTransport)
     val promptsRepository = PromptsRepository(apiClient)
     val mcpServersRepository = McpServersRepository(apiClient)
     val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)

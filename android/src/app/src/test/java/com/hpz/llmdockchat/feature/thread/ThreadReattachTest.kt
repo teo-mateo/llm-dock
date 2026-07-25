@@ -27,6 +27,7 @@ import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.ScriptedSseTransport
 import com.hpz.llmdockchat.testing.baseUrl
 import com.hpz.llmdockchat.testing.readFixture
+import com.hpz.llmdockchat.testing.quiesceAndRelease
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -107,8 +108,8 @@ class ThreadReattachTest {
     fun tearDown() {
         store.clear()
         server.close()
+        mainExecutor.quiesceAndRelease()
         Dispatchers.resetMain()
-        mainExecutor.shutdownNow()
     }
 
     private fun conversation(fixture: String) =
