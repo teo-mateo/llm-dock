@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.conversations
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,8 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
@@ -63,6 +66,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.hpz.llmdockchat.core.time.Timestamps
+import com.hpz.llmdockchat.core.ui.ConfirmDialog
 import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
@@ -104,6 +108,8 @@ fun ConversationListScreen(
         onNewConversation = onNewConversation,
         onRetry = viewModel::refresh,
         onDelete = viewModel::delete,
+        onSwipeDelete = viewModel::deleteWithUndo,
+        onUndoDelete = viewModel::undoDelete,
         onEnterSelection = viewModel::enterSelection,
         onToggleSelection = viewModel::toggleSelection,
         onClearSelection = viewModel::clearSelection,
@@ -121,6 +127,8 @@ private fun ConversationListContent(
     onNewConversation: () -> Unit,
     onRetry: () -> Unit,
     onDelete: (String) -> Unit,
+    onSwipeDelete: (ConversationSummary) -> Unit = {},
+    onUndoDelete: () -> Unit = {},
     onEnterSelection: (String) -> Unit,
     onToggleSelection: (String) -> Unit,
     onClearSelection: () -> Unit,
@@ -138,6 +146,22 @@ private fun ConversationListContent(
         loaded?.actionError?.let { snackbarHost.showSnackbar(it) }
     }
 
+    // Indefinite on purpose: the window is the ViewModel's to time, and when it
+    // expires `pendingUndo` goes null, this effect is cancelled, and the
+    // snackbar goes with it. A duration here would be a second clock to keep
+    // in sync with that one.
+    val pendingUndo = loaded?.pendingUndo
+    LaunchedEffect(pendingUndo?.id) {
+        val pending = pendingUndo ?: return@LaunchedEffect
+        val result = snackbarHost.showSnackbar(
+            message = "Deleted \u201c${pending.title}\u201d",
+            actionLabel = "Undo",
+            withDismissAction = false,
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndoDelete()
+    }
+
     FollowNewConversations(loaded?.conversations, listState)
 
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
@@ -146,7 +170,17 @@ private fun ConversationListContent(
         // Transparent so the gradient behind the Scaffold shows through; the
         // opaque `app` fill is what made every screen sit in one flat band.
         containerColor = Color.Transparent,
-        snackbarHost = { SnackbarHost(snackbarHost) { Snackbar(it, containerColor = colors.surfaceElevated, contentColor = colors.fg) } },
+        snackbarHost = {
+            SnackbarHost(snackbarHost) { data ->
+                Snackbar(
+                    data,
+                    containerColor = colors.surfaceElevated,
+                    contentColor = colors.fg,
+                    actionColor = colors.accent,
+                    shape = RoundedCornerShape(14.dp),
+                )
+            }
+        },
         topBar = {
             if (loaded?.selectionMode == true) {
                 SelectionTopBar(
@@ -197,7 +231,7 @@ private fun ConversationListContent(
                                 // unreachable — there is no further scroll.
                                 contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
                             ) {
-                                items(state.conversations, key = { it.id }) { item ->
+                                items(state.visible, key = { it.id }) { item ->
                                     ConversationRow(
                                         item = item,
                                         selected = item.id in state.selection,
@@ -208,7 +242,7 @@ private fun ConversationListContent(
                                         onLongPress = {
                                             if (state.selectionMode) onToggleSelection(item.id) else onEnterSelection(item.id)
                                         },
-                                        onRequestDelete = { pendingDelete = item },
+                                        onRequestDelete = { onSwipeDelete(item) },
                                     )
                                 }
                             }
@@ -222,6 +256,8 @@ private fun ConversationListContent(
 
     pendingDelete?.let { target ->
         ConfirmDialog(
+            icon = DesignLabIcons.Trash,
+            tint = colors.red,
             title = "Delete conversation?",
             message = "“${target.title}” will be deleted. This can't be undone.",
             confirmLabel = "Delete",
@@ -236,7 +272,9 @@ private fun ConversationListContent(
     if (pendingBatchDelete) {
         val count = loaded?.selection?.size ?: 0
         ConfirmDialog(
-            title = "Delete $count conversations?",
+            icon = DesignLabIcons.Trash,
+            tint = colors.red,
+            title = if (count == 1) "Delete this conversation?" else "Delete $count conversations?",
             message = "This can't be undone.",
             confirmLabel = "Delete",
             onConfirm = {
@@ -350,8 +388,16 @@ private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Uni
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = onDelete, modifier = Modifier.testTag("selection_delete")) {
-                Icon(DesignLabIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(20.dp))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(colors.red.copy(alpha = 0.12f))
+                    .clickable(onClick = onDelete)
+                    .testTag("selection_delete"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(DesignLabIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -615,33 +661,6 @@ private fun FailedState(message: String, onRetry: () -> Unit) {
             Text("Retry", color = colors.accent)
         }
     }
-}
-
-@Composable
-private fun ConfirmDialog(
-    title: String,
-    message: String,
-    confirmLabel: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LlmTheme.colors
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        title = { Text(title, color = colors.fg) },
-        text = { Text(message, color = colors.muted) },
-        confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm_dialog_confirm")) {
-                Text(confirmLabel, color = colors.red)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.testTag("confirm_dialog_dismiss")) {
-                Text("Cancel", color = colors.muted)
-            }
-        },
-    )
 }
 
 @Preview

@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
@@ -464,6 +465,12 @@ private fun LoadedThread(
     var selectionModeMessageId by remember { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize()) {
+        // A thread created but not yet spoken in. Without this the screen is a
+        // blank sheet between the header and the composer, which reads as a
+        // thread that failed to load rather than one with nothing in it yet.
+        if (state.thread.messages.isEmpty() && state.thread.streaming == null) {
+            EmptyThread(state.conversation.modelRef.displayName)
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -671,6 +678,43 @@ private fun JumpToLatest(modifier: Modifier = Modifier, onClick: () -> Unit) {
         IconButton(onClick = onClick) {
             Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.onAccent, modifier = Modifier.size(20.dp))
         }
+    }
+}
+
+@Composable
+private fun EmptyThread(modelName: String) {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxSize().padding(40.dp).testTag("thread_empty"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.accentSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(DesignLabIcons.ChatBubble, contentDescription = null, tint = colors.accent, modifier = Modifier.size(28.dp))
+        }
+        Text(
+            "Ask it anything",
+            color = colors.fg,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Text(
+            // Naming the model is the useful half: it is the one thing about a
+            // brand-new thread that is already decided, and the one thing worth
+            // changing before the first turn.
+            "$modelName is answering. The cog changes the model and its tools.",
+            color = colors.subtle,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 

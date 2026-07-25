@@ -1,12 +1,15 @@
 package com.hpz.llmdockchat.feature.logs
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
@@ -26,19 +30,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,15 +56,12 @@ import com.hpz.llmdockchat.data.model.LogLevel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Sharing a buffer this large (F12-R5's second criterion) truncates with an explicit marker instead. */
-private const val MAX_SHARE_CHARS = 200_000
-private const val TRUNCATION_MARKER = "[... earlier lines truncated ...]\n"
-
 /**
- * F12: streaming container logs, follow-tail, and share (screens 10c).
+ * F12: streaming container logs and follow-tail (screens 10c). F12-R5's
+ * "share the buffer" was dropped as unwanted — see the feature file.
  *
  * A pane rather than a screen: it is the second tab of the model detail
- * screen, which owns the header, the back affordance and the share action.
+ * screen, which owns the header and the back affordance.
  * Because the tab is only composed while it is selected, the log stream opens
  * when you switch to it and is torn down when you switch away — the same
  * composition-scoped ownership the two streams on the models list use.
@@ -105,16 +110,14 @@ fun LogsPane(
     }
 }
 
-/** F12-R5 — share the buffer as text, offered from the hosting screen's header. */
-fun shareLogsFrom(context: Context, state: LogsUiState?) {
-    val loaded = state as? LogsUiState.Loaded ?: return
-    if (loaded.lines.isEmpty()) return
-    shareLogs(context, loaded.lines)
-}
-
 @Composable
 private fun LoadedLogs(state: LogsUiState.Loaded) {
     val colors = LlmTheme.colors
+    // Kept here rather than in the ViewModel: they are how this pane is being
+    // read right now, not anything about the container, and they should reset
+    // when the pane goes away.
+    var fontSize by rememberSaveable { mutableFloatStateOf(LOG_FONT_DEFAULT) }
+    var wrap by rememberSaveable { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -144,19 +147,33 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
         }
     }
 
+    // Off-wrap scrolls the whole column sideways rather than each line
+    // separately, so the lines stay aligned with one another — per-row
+    // horizontal scroll would let two rows sit at different offsets.
+    val horizontal = rememberScrollState()
+
     Column(Modifier.fillMaxSize()) {
-        StatusBar(state.connection)
+        LogToolbar(
+            connection = state.connection,
+            wrap = wrap,
+            onToggleWrap = { wrap = !wrap },
+            fontSize = fontSize,
+            onFontSize = { fontSize = it.coerceIn(LOG_FONT_MIN, LOG_FONT_MAX) },
+        )
         Box(Modifier.fillMaxSize().nestedScroll(stopFollowingOnDragBack)) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().testTag("logs_body"),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (wrap) Modifier else Modifier.horizontalScroll(horizontal))
+                    .testTag("logs_body"),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 itemsIndexed(state.lines) { index, line ->
                     if (state.boundaryIndex == index && index != 0) {
                         SnapshotBoundary()
                     }
-                    LogRow(line.text, colorFor(line.level, colors))
+                    LogRow(line.text, colorFor(line.level, colors), fontSize, wrap)
                 }
             }
             if (!following) {
@@ -172,8 +189,15 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
     }
 }
 
+/** Connection state on the left, the two reading controls on the right. */
 @Composable
-private fun StatusBar(connection: LogsConnection) {
+private fun LogToolbar(
+    connection: LogsConnection,
+    wrap: Boolean,
+    onToggleWrap: () -> Unit,
+    fontSize: Float,
+    onFontSize: (Float) -> Unit,
+) {
     val colors = LlmTheme.colors
     val (label, color) = when (connection) {
         LogsConnection.CONNECTING -> "Connecting…" to colors.subtle
@@ -181,12 +205,76 @@ private fun StatusBar(connection: LogsConnection) {
         LogsConnection.ENDED -> "Stream ended — container stopped" to colors.muted
         LogsConnection.FALLBACK -> "Not live — showing last fetched tail" to colors.amber
     }
-    Text(
-        label,
-        color = color,
-        style = MaterialTheme.typography.labelMedium,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).testTag("logs_status"),
-    )
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            label,
+            color = color,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            modifier = Modifier.weight(1f).testTag("logs_status"),
+        )
+        ToolbarChip(
+            label = "wrap",
+            active = wrap,
+            onClick = onToggleWrap,
+            testTag = "logs_wrap_toggle",
+        )
+        ToolbarChip(
+            label = "A",
+            fontSize = 10.sp,
+            enabled = fontSize > LOG_FONT_MIN,
+            onClick = { onFontSize(fontSize - LOG_FONT_STEP) },
+            testTag = "logs_font_smaller",
+        )
+        ToolbarChip(
+            label = "A",
+            fontSize = 15.sp,
+            enabled = fontSize < LOG_FONT_MAX,
+            onClick = { onFontSize(fontSize + LOG_FONT_STEP) },
+            testTag = "logs_font_larger",
+        )
+    }
+}
+
+@Composable
+private fun ToolbarChip(
+    label: String,
+    onClick: () -> Unit,
+    testTag: String,
+    active: Boolean = false,
+    enabled: Boolean = true,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+) {
+    val colors = LlmTheme.colors
+    Box(
+        Modifier
+            .size(width = 40.dp, height = 30.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (active) colors.accentSoft else colors.surfaceHigh)
+            .clickable(enabled = enabled, onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = when {
+                !enabled -> colors.subtle
+                active -> colors.accent
+                else -> colors.muted
+            },
+            fontSize = fontSize,
+            style = if (fontSize == androidx.compose.ui.unit.TextUnit.Unspecified) {
+                MaterialTheme.typography.labelSmall
+            } else {
+                MaterialTheme.typography.labelMedium
+            },
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }
 
 @Composable
@@ -203,20 +291,30 @@ private fun SnapshotBoundary() {
 }
 
 @Composable
-private fun LogRow(text: String, color: Color) {
+private fun LogRow(text: String, color: Color, fontSize: Float, wrap: Boolean) {
     Text(
         text,
         color = color,
         // Explicit and small rather than a body style: container output is
         // long unwrapped lines, and at bodySmall a single llama.cpp timing
         // line wrapped four times. Fitting more of a line matters more here
-        // than matching the app's reading sizes.
-        fontSize = 9.sp,
-        lineHeight = 12.sp,
+        // than matching the app's reading sizes — and A-/A+ move this, not the
+        // chat text scale, which would be the wrong knob for a log.
+        fontSize = fontSize.sp,
+        lineHeight = (fontSize * 1.34f).sp,
         fontFamily = FontFamily.Monospace,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        softWrap = wrap,
+        maxLines = if (wrap) Int.MAX_VALUE else 1,
+        modifier = Modifier
+            .then(if (wrap) Modifier.fillMaxWidth() else Modifier)
+            .padding(horizontal = 12.dp),
     )
 }
+
+const val LOG_FONT_DEFAULT = 9f
+private const val LOG_FONT_MIN = 6f
+private const val LOG_FONT_MAX = 16f
+private const val LOG_FONT_STEP = 1f
 
 private fun colorFor(level: LogLevel, colors: LlmColors): Color = when (level) {
     LogLevel.ERROR -> colors.logError
@@ -265,16 +363,3 @@ private fun MessageBox(testTag: String, title: String, message: String, onRetry:
 }
 
 /** F12-R5: the whole visible buffer, in order; truncated with an explicit marker rather than failing silently. */
-private fun shareLogs(context: Context, lines: List<LogLine>) {
-    val full = lines.joinToString("\n") { it.text }
-    val text = if (full.length > MAX_SHARE_CHARS) {
-        TRUNCATION_MARKER + full.takeLast(MAX_SHARE_CHARS)
-    } else {
-        full
-    }
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
-    }
-    context.startActivity(Intent.createChooser(intent, "Share logs"))
-}

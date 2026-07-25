@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -266,7 +267,8 @@ private fun ModelsList(
         val stopped = state.visibleStopped
         if (running.isNotEmpty()) {
             item(key = "running_header") { SectionHeader("Running", running.size) }
-            items(running, key = { "running_${it.name}" }) { service ->
+            itemsIndexed(running, key = { _, it -> "running_${it.name}" }) { index, service ->
+                FavouriteGap(running, index)
                 ServiceRow(
                     service, now, zone, onNewChatFromModel, onOpenDetail, onOpenLogs,
                     pending = actionState.pendingFor(service.name),
@@ -276,7 +278,8 @@ private fun ModelsList(
         }
         if (stopped.isNotEmpty()) {
             item(key = "stopped_header") { SectionHeader("Stopped", stopped.size) }
-            items(stopped, key = { "stopped_${it.name}" }) { service ->
+            itemsIndexed(stopped, key = { _, it -> "stopped_${it.name}" }) { index, service ->
+                FavouriteGap(stopped, index)
                 ServiceRow(
                     service, now, zone, onNewChatFromModel = null, onOpenDetail = onOpenDetail,
                     onOpenLogs = onOpenLogs,
@@ -286,6 +289,21 @@ private fun ModelsList(
             }
         }
     }
+}
+
+/**
+ * The break between the favourites and everything else inside a section.
+ *
+ * `splitByRunning` already sorts favourites first, but with a uniform row
+ * height and an identical divider on each there was nothing to say where the
+ * favourites stopped — the ordering was there and invisible. Drawn before the
+ * first non-favourite rather than after the last favourite, so a section with
+ * no favourites at all gets no stray gap at its head.
+ */
+@Composable
+private fun FavouriteGap(services: List<ServiceSummary>, index: Int) {
+    if (index == 0 || services[index].favorite || !services[index - 1].favorite) return
+    Spacer(Modifier.height(14.dp))
 }
 
 /** Whether an action on [name] is mid-flight — the row's pending state

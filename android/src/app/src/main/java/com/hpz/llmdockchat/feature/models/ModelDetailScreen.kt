@@ -40,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,9 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.logs.LogsPane
-import com.hpz.llmdockchat.feature.logs.LogsUiState
 import com.hpz.llmdockchat.feature.logs.LogsViewModel
-import com.hpz.llmdockchat.feature.logs.shareLogsFrom
 import com.hpz.llmdockchat.data.model.ServiceSummary
 
 /**
@@ -75,7 +72,6 @@ fun ModelDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val actionState by viewModel.actionState.collectAsState()
-    val logsState by logsViewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.start() }
 
     // Same ownership split as ModelsScreen's two LaunchedEffects: this stream
@@ -87,7 +83,6 @@ fun ModelDetailScreen(
     }
 
     var tab by rememberSaveable { mutableStateOf(initialTab) }
-    val context = LocalContext.current
 
     ModelDetailContent(
         state = state,
@@ -95,8 +90,6 @@ fun ModelDetailScreen(
         tab = tab,
         onTabChange = { tab = it },
         logsPane = { LogsPane(logsViewModel) },
-        canShareLogs = (logsState as? LogsUiState.Loaded)?.lines?.isNotEmpty() == true,
-        onShareLogs = { shareLogsFrom(context, logsState) },
         onBack = onBack,
         onRetry = viewModel::retry,
         onRequestStart = viewModel::requestStart,
@@ -119,8 +112,6 @@ private fun ModelDetailContent(
     tab: ModelTab,
     onTabChange: (ModelTab) -> Unit,
     logsPane: @Composable () -> Unit,
-    canShareLogs: Boolean,
-    onShareLogs: () -> Unit,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onRequestStart: () -> Unit,
@@ -143,16 +134,10 @@ private fun ModelDetailContent(
                     // below, and saying it twice on one screen is noise.
                     subtitle = summary?.let { engineLabel(it.engine) },
                     onBack = onBack,
-                    action = {
-                        // Only on the logs tab, and only with something to
-                        // send — an always-present share button on the
-                        // configuration tab would have nothing to share.
-                        if (tab == ModelTab.LOGS && canShareLogs) {
-                            IconButton(onClick = onShareLogs, modifier = Modifier.testTag("logs_share")) {
-                                Icon(DesignLabIcons.Send, contentDescription = "Share logs", tint = colors.fg, modifier = Modifier.size(19.dp))
-                            }
-                        }
-                    },
+                    // No trailing action. Sharing the log buffer (F12-R5) was
+                    // dropped as unwanted; the logs tab has its own toolbar for
+                    // the controls that earn their place.
+                    action = {},
                 )
                 ModelTabRow(tab, onTabChange)
             }
