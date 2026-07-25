@@ -20,6 +20,7 @@ LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference se
 | Backend | Flask 3.0, Python 3.10+ |
 | Frontend (v2) | React 19, Vite 7, Tailwind CSS 4 |
 | Frontend (legacy) | Vanilla JS + Jinja2 templates |
+| Android client | Kotlin + Jetpack Compose, AGP 9 / Gradle 9 |
 | Orchestration | Docker Compose v2 |
 | Database | SQLite (benchmark results, chat history) |
 | GPU | NVIDIA Container Toolkit, nvidia-ml-py3 |
@@ -105,6 +106,21 @@ llm-dock/
 │   ├── tests/                   # Pytest suite
 │   └── requirements.txt         # Python dependencies
 │
+├── android/                     # Android chat client (see android/CLAUDE.md)
+│   ├── CLAUDE.md                # Project facts + how to drive the emulator
+│   ├── docs/                    # Requirements & architecture (start here)
+│   │   ├── Plan_TOC.md          # Entry point: scope, rules, feature index
+│   │   ├── F00…F13-*.md         # One file per feature, with acceptance criteria
+│   │   ├── Architecture.md      # Technical foundation, verified dep set
+│   │   └── Dropped-Features.md  # What was cut, and why
+│   ├── scripts/dev.sh           # build/install/screenshot/logs/token/emulator
+│   └── src/                     # Gradle root — open THIS in Android Studio
+│
+├── docs/
+│   └── android/                 # Mockups the Android app is built to
+│       ├── chat-app-mockups.html
+│       └── README.md            # Screen → API endpoint mapping
+│
 ├── llama.cpp/Dockerfile         # Custom llama.cpp build
 └── vllm/Dockerfile              # Custom vLLM build
 ```
@@ -180,11 +196,37 @@ cd dashboard && pytest tests/
 6. `chat_bp` - Chat functionality
 
 ### Authentication
-All API routes use the `@require_auth` decorator from `auth.py`. Clients must send:
+All API routes use the `@require_auth` decorator from `auth.py` (except
+`GET /api/health`). Clients send:
 ```
-Authorization: Bearer <DASHBOARD_TOKEN>
+Authorization: Bearer <token>
 ```
-Token comparison uses `secrets.compare_digest()` for constant-time safety.
+where `<token>` is either the static `DASHBOARD_TOKEN` or a short-lived
+session token. Comparison uses `secrets.compare_digest()` for
+constant-time safety.
+
+**Two ways to obtain a session token**, both returning
+`{token: "totp-…", expires_in: 28800}`:
+
+| Endpoint | Credential | Used by |
+|---|---|---|
+| `POST /api/auth/session` | `Authorization: Bearer <DASHBOARD_TOKEN>` | the login page's "password" field |
+| `POST /api/auth/login` | `X-TOTP-Code: <6 digits>` header | the login page's TOTP tab |
+
+What the login UI calls a **password is `DASHBOARD_TOKEN`** from
+`dashboard/.env` — the page posts it as a bearer to `/api/auth/session`
+and stores only the session token it gets back.
+
+Gotchas:
+
+- **`POST /api/totp/verify` is NOT login.** It is TOTP *enrollment*
+  (`routes/totp.py`), requires an existing valid token, and writes the
+  secret to config. Using it to sign in is impossible.
+- Session tokens live in a **process-memory dict** (`auth._totp_sessions`),
+  so restarting the dashboard invalidates every one of them.
+- Expiry **slides**: each authenticated request pushes it out another 8 h.
+- `require_auth` also accepts a raw `X-TOTP-Code` header on any route,
+  answering with a fresh token in the `X-TOTP-Token` response header.
 
 ### Docker Compose Management (`compose_manager.py`)
 - Services are defined in `services.json` (the source of truth)
@@ -604,13 +646,20 @@ prefixes).
 
 ## Chat run architecture
 
-Full documentation of the background execution model: how a user message becomes
-a streaming response, how cancellation works, how clients reattach to in-flight
-runs, and how the system survives process restarts. Covers the EventBus,
-ChatRunner, PersistencePolicy seam, tool loop, SSE wire format, and frontend
-useChat hook.
+The background execution model: how a user message becomes a streaming
+response, how cancellation works, how clients reattach to in-flight runs,
+and how the system survives process restarts. The EventBus, ChatRunner,
+PersistencePolicy seam, tool loop, SSE wire format and the frontend
+`useChat` hook.
 
-**See:** `docs/chat-run-architecture.md`
+> **`docs/chat-run-architecture.md` does not exist** — it was referenced
+> here but never written or committed. Read the source instead:
+> `chat/runtime.py` (the runner and its event types), `chat/run_manager.py`
+> (`_sse_frames_for` is the authoritative wire format, `observe()` the
+> replay/heartbeat logic), `chat/event_codec.py` (framing),
+> `chat/persistence.py` (the durable/ephemeral seam). The SSE frame table
+> in `android/docs/F04-chat-turn-and-streaming.md` documents the wire
+> format as it actually is.
 
 Key gotchas summarized here:
 - **Navigation is not cancellation** -- closing the SSE stream unsubscribes
@@ -623,6 +672,14 @@ Key gotchas summarized here:
   scales with text length, not token count.
 - **Raw delta wire format** -- model deltas forwarded verbatim (not wrapped
   in `{"type": "delta"}`) for frontend compatibility.
+- **Cancel and fail persist differently** -- a *cancelled* run saves NO
+  assistant message (`persistence.cancel()` marks the row and returns; the
+  partial exists only in the client's buffer and vanishes on refetch). A
+  *failed* run DOES persist its accumulated partial plus the error
+  (`ChatRunner._fail`). Clients must not treat the two alike.
+- **A cancelled run emits no terminal frame** -- `_sse_frames_for` maps
+  `run_cancelled` to nothing, so the stream just ends. Don't wait for a
+  closing frame that never comes.
 - **Drain phase** -- after `message_saved`, frontend keeps SSE alive for the
   trailing `conversation_updated` (auto-title). `loadConversation` won't abort.
 - **Persistence policy seam** -- same runner works with `DbPersistencePolicy`
@@ -715,3 +772,50 @@ purposes:
   run object.
 - **MCP project-files server** is a built-in (id: `project-files`).
   External MCP servers cannot override it.
+
+## Android client
+
+A native chat client for the phone, talking to this dashboard's existing
+API — conversations stay server-side in `chat.db`, so threads are shared
+with the React frontend. Scope is chat plus a read-and-switch Models tab
+(start/stop/logs); no service configuration, no critic/sidekick, no
+benchmarks.
+
+- **Requirements** — `android/docs/Plan_TOC.md` is the entry point: scope,
+  ground rules, the endpoint surface the app may call, and the feature
+  index (F00–F13, each with acceptance criteria). `Architecture.md` holds
+  the technical decisions and the dependency set that was verified to
+  build against AGP 9.3.1. `Dropped-Features.md` records what was cut.
+- **Design** — `docs/android/chat-app-mockups.html` (16 annotated screens,
+  open in a browser). `docs/android/README.md` maps every screen to an
+  endpoint, but **its login endpoint is wrong** — see below.
+- **Code** — `android/`, with the Gradle root one level down at
+  `android/src/`. Package `com.hpz.llmdockchat`.
+- **Working in it** — read `android/CLAUDE.md` first. It carries the
+  toolchain facts (builds need `JAVA_HOME=/opt/android-studio/jbr`; system
+  `java` is 11 and AGP 9 needs 17), the AGP 9 breaking changes,
+  `scripts/dev.sh`, and how to drive the emulator over `adb`.
+
+### How work proceeds
+
+Serialized, one feature at a time in `F00 → F13` order, **one commit per
+completed feature**, marked `[DONE]` in the feature index in
+`Plan_TOC.md`. A feature is complete when its Must requirements are
+implemented and their acceptance criteria verified on a device.
+
+### Authentication
+
+Same as any other client (see [Authentication](#authentication) above):
+either the password (`DASHBOARD_TOKEN`) via `POST /api/auth/session`, or a
+TOTP code via `POST /api/auth/login`, exchanged for an 8 h sliding bearer
+token. **Not `POST /api/totp/verify`** — that is enrollment, and earlier
+revisions of this file and of `docs/android/README.md` got it wrong.
+
+Because sessions die when the dashboard restarts and the app must stay
+signed in until an explicit sign-out, the client stores the credential
+itself and silently re-authenticates on a 401 (F01-R6).
+
+**Not served by the API:** notifying the phone when a background run
+finishes, or when a starting model becomes ready. Both were dropped from
+scope rather than deferred — see `Dropped-Features.md`. Everything else
+the app does maps to an endpoint that exists today.
