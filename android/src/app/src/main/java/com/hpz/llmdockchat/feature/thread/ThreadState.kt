@@ -43,6 +43,19 @@ data class StreamingTurn(
     /** Stop has been requested; the server cancels cooperatively, so this lingers a moment. */
     val stopping: Boolean = false,
     /**
+     * The connection to this run dropped and the app is trying to get it back
+     * (F09-R4). The text already on screen stays — it is real, the server is
+     * still generating — but nothing may present it as finished, because it is
+     * not: the run's outcome is unknown until a reattach lands.
+     */
+    val reconnecting: Boolean = false,
+    /**
+     * This turn was picked up from a run that was already going — started on
+     * the desktop, or left behind when the app was closed (F09-R2). Screen 08a
+     * says so above the answer.
+     */
+    val reattached: Boolean = false,
+    /**
      * The run is over, but the refetch that should have replaced this turn with
      * the server's copy failed. The text is held over so the answer does not
      * vanish; it is not a live run, and the next successful load discards it.

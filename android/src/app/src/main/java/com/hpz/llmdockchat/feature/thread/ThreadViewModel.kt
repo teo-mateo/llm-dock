@@ -2,7 +2,9 @@ package com.hpz.llmdockchat.feature.thread
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hpz.llmdockchat.core.error.AppError
 import com.hpz.llmdockchat.core.error.displayMessage
+import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
@@ -19,6 +21,7 @@ import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.wireValue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +50,8 @@ class ThreadViewModel(
     private val mcpServersRepository: McpServersRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
+    private val reconnectInitialMs: Long = ReconnectBackoff.DEFAULT_INITIAL_MS,
+    private val reconnectMaxMs: Long = ReconnectBackoff.DEFAULT_MAX_MS,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ThreadUiState>(ThreadUiState.Loading)
@@ -85,7 +90,10 @@ class ThreadViewModel(
         viewModelScope.launch {
             val draft = drafts.draft(conversationId)
             repository.load(conversationId).fold(
-                onSuccess = { conversation -> _state.value = loadedFrom(conversation, draft) },
+                onSuccess = { conversation ->
+                    _state.value = loadedFrom(conversation, draft)
+                    reattachIfRunning(conversation)
+                },
                 onFailure = { failure ->
                     // A reload that fails mid-thread must not throw away a
                     // thread already on screen; only a cold load goes to Failed.
@@ -117,6 +125,45 @@ class ThreadViewModel(
         )
     }
 
+    /**
+     * F09-R1/R2 — the thread was opened on a run that is already going: started
+     * here and left behind, or started on the desktop. Two things happen, in
+     * this order and for two different reasons.
+     *
+     * The turn is put on screen **first**, empty. `active_run` is enough to know
+     * the thread is generating, and the criterion is that it reads that way
+     * *before any stream data arrives* — the alternative, waiting for the first
+     * replayed frame, shows an idle thread with a live composer for as long as
+     * the subscribe takes, and invites a send that would earn a 409.
+     *
+     * Then the reader is pointed at `GET /api/chat/runs/<id>/stream`, which is
+     * the same reader the send path uses (Architecture D2) because it is the
+     * same frames. The replay it opens with rebuilds the turn from nothing, so
+     * there is no dedup step anywhere — see [collectAttempt].
+     */
+    private fun reattachIfRunning(conversation: ConversationDetail) {
+        if (!conversation.isGenerating) return
+        val run = conversation.activeRun ?: return
+        // Already streaming — either this client's own send, or a reattach from
+        // an earlier load(). A second subscription would be a second replay.
+        if (streamJob?.isActive == true) return
+        val current = loaded() ?: return
+
+        _state.value = current.copy(
+            thread = current.thread.copy(
+                streaming = current.thread.streaming
+                    ?: StreamingTurn(userMessage = null, runId = run.id, reattached = true),
+            ),
+        )
+        collectRun(
+            first = repository.reattach(run.id),
+            restoreOnEarlyFailure = null,
+            titleBefore = conversation.title,
+            initialRunId = run.id,
+            reattach = true,
+        )
+    }
+
     fun onComposerChange(text: String) {
         val current = loaded() ?: return
         _state.value = current.copy(composer = text)
@@ -142,7 +189,7 @@ class ThreadViewModel(
         drafts.clear(conversationId)
 
         collectRun(
-            flow = repository.send(conversationId, pending.content, pending.images),
+            first = repository.send(conversationId, pending.content, pending.images),
             restoreOnEarlyFailure = pending,
             titleBefore = current.conversation.title,
         )
@@ -453,7 +500,7 @@ class ThreadViewModel(
         drafts.clear(conversationId)
 
         collectRun(
-            flow = repository.editAndResend(conversationId, edit.message.id, pending.content, pending.images),
+            first = repository.editAndResend(conversationId, edit.message.id, pending.content, pending.images),
             restoreOnEarlyFailure = pending,
             titleBefore = current.conversation.title,
             messagesBeforeEdit = messagesBeforeEdit,
@@ -462,86 +509,182 @@ class ThreadViewModel(
 
     // -- the stream ----------------------------------------------------------
 
+    /**
+     * One run, however many connections it takes (F04 + F09-R4).
+     *
+     * [first] is the stream the run arrived on — a send's POST, an edit's PUT,
+     * or a reattach's GET. If the *connection* breaks while the run is still
+     * going, the run itself is untouched: it is executing on a worker thread on
+     * the dashboard and will persist its reply whether anyone is listening or
+     * not. So a broken connection is retried, and **always** by reattaching.
+     * Re-issuing the POST would create a second run and a second copy of the
+     * user's message, which is the one failure mode here that damages the
+     * thread rather than the screen.
+     *
+     * A stream that *ends* is not retried. There is no frame that distinguishes
+     * a cancelled run from any other clean close — `_sse_frames_for` maps
+     * `run_cancelled` to nothing at all — so "the server closed it" is the
+     * signal that the run is over, and what actually happened comes from the
+     * refetch in [finishRun] (Architecture D3).
+     */
     private fun collectRun(
-        flow: Flow<RunEvent>,
+        first: Flow<RunEvent>,
         restoreOnEarlyFailure: PendingUserMessage?,
         titleBefore: String,
         messagesBeforeEdit: List<ChatMessage>? = null,
+        initialRunId: String? = null,
+        reattach: Boolean = false,
     ) {
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
-            val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage)
+            var source: Flow<RunEvent> = first
+            var runId: String? = initialRunId
             var titleFrameSeen = false
             var failureMessage: String? = null
+            var sawAnyFrame = false
+            var error: Throwable?
+            val backoff = ReconnectBackoff(reconnectInitialMs, reconnectMaxMs)
 
-            // Deltas arrive faster than the display refreshes, so they are
-            // folded into the accumulator and published on a timer rather than
-            // one state copy per token (Architecture P1). One timer per burst,
-            // not a ticker: nothing is scheduled while the stream is quiet.
-            var pendingFlush: Job? = null
-            val scheduleFlush = {
-                if (pendingFlush?.isActive != true) {
-                    pendingFlush = launch {
-                        delay(coalesceWindowMs)
-                        if (accumulator.takeDirty()) publishTurn(accumulator)
-                    }
-                }
+            while (true) {
+                val attempt = collectAttempt(source, runId)
+                runId = attempt.runId ?: runId
+                titleFrameSeen = titleFrameSeen || attempt.titleFrameSeen
+                failureMessage = attempt.failureMessage ?: failureMessage
+                sawAnyFrame = sawAnyFrame || attempt.sawAnyFrame
+                error = attempt.error
+
+                val id = runId
+                if (error == null || id == null || error.appError !is AppError.Network) break
+
+                // Only a *failed* attempt earns a longer wait. One that
+                // connected and then dropped starts the schedule over, so a
+                // flaky link is not punished with the delay a previous outage
+                // worked its way up to.
+                if (attempt.sawAnyFrame) backoff.reset()
+                setReconnecting(true)
+                delay(backoff.next())
+                source = repository.reattach(id)
             }
-
-            val error: Throwable? = try {
-                flow.collect { event ->
-                    accumulator.sawFrame()
-                    when (event) {
-                        is RunEvent.Delta -> {
-                            accumulator.append(event)
-                            scheduleFlush()
-                        }
-                        is RunEvent.Failed -> failureMessage = event.message
-                        is RunEvent.RunStatus -> {
-                            if (event.status == "failed") failureMessage = event.error ?: failureMessage
-                        }
-                        is RunEvent.ConversationUpdated -> {
-                            titleFrameSeen = true
-                            applyTitle(event.title)
-                        }
-                        // [DONE] and message_saved are NOT the end of the
-                        // stream: the auto-title frame can still follow, so the
-                        // loop keeps reading until the server closes it.
-                        RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
-                        is RunEvent.Unknown -> Unit
-                        else -> {
-                            accumulator.apply(event)
-                            publishTurn(accumulator)
-                        }
-                    }
-                }
-                null
-            } catch (e: CancellationException) {
-                // The screen went away. Not a run outcome — no cleanup, no
-                // refetch, and above all no cancel request (F04-R10).
-                throw e
-            } catch (e: Throwable) {
-                e
-            } finally {
-                pendingFlush?.cancel()
-            }
-
-            // A burst that ended inside the coalescing window leaves text the
-            // cancelled timer will never publish. Flushing here is what makes
-            // the turn on screen complete for the whole refetch that follows —
-            // without it the tail of every answer blinks in only when the
-            // saved message arrives.
-            if (accumulator.takeDirty()) publishTurn(accumulator)
 
             finishRun(
                 error = error,
-                sawAnyFrame = accumulator.sawAnyFrame,
+                sawAnyFrame = sawAnyFrame,
                 failureMessage = failureMessage,
                 restoreOnEarlyFailure = restoreOnEarlyFailure,
                 expectTitle = !titleFrameSeen && titleBefore == UNTITLED,
                 messagesBeforeEdit = messagesBeforeEdit,
+                reattach = reattach,
             )
         }
+    }
+
+    /**
+     * One connection's worth of frames.
+     *
+     * The accumulator is built here, per attempt, and that is the whole of
+     * F09-R2's no-duplication rule. `GET /api/chat/runs/<id>/stream` replays the
+     * run **from its first token every time it is subscribed to** — verified
+     * against the dashboard: two consecutive reattaches to one run returned
+     * 8,168 and 12,304 characters, the second containing the first in full. An
+     * accumulator carried across attempts would therefore append the replay to
+     * text it already had. Rebuilding instead is Architecture D3's reattach
+     * corollary: the client holds no authoritative copy, so replay is
+     * idempotent and there is no dedup logic anywhere.
+     *
+     * Nothing is blanked in the gap: the previous snapshot stays in `streaming`
+     * until this attempt's first publish replaces it wholesale.
+     */
+    private suspend fun CoroutineScope.collectAttempt(
+        source: Flow<RunEvent>,
+        knownRunId: String?,
+    ): RunAttempt {
+        // Per attempt, deliberately. Do not hoist this into collectRun: every
+        // reattach replays the run from its first token, so an accumulator
+        // shared across attempts appends the replay to text it already has and
+        // the answer appears twice. Pinned by ThreadReattachTest's `reattaching
+        // twice does not duplicate…`, which fails at 20,472 characters for a
+        // 12,304-character answer against the shared version.
+        val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage, knownRunId)
+        var titleFrameSeen = false
+        var failureMessage: String? = null
+
+        // Deltas arrive faster than the display refreshes, so they are
+        // folded into the accumulator and published on a timer rather than
+        // one state copy per token (Architecture P1). One timer per burst,
+        // not a ticker: nothing is scheduled while the stream is quiet.
+        var pendingFlush: Job? = null
+        val scheduleFlush = {
+            if (pendingFlush?.isActive != true) {
+                pendingFlush = launch {
+                    delay(coalesceWindowMs)
+                    if (accumulator.takeDirty()) publishTurn(accumulator)
+                }
+            }
+        }
+
+        val error: Throwable? = try {
+            source.collect { event ->
+                // Frames are flowing again, whatever this attempt turns out to
+                // deliver — so the screen stops saying it is reconnecting.
+                if (!accumulator.sawAnyFrame) setReconnecting(false)
+                accumulator.sawFrame()
+                when (event) {
+                    is RunEvent.Delta -> {
+                        accumulator.append(event)
+                        scheduleFlush()
+                    }
+                    is RunEvent.Failed -> failureMessage = event.message
+                    is RunEvent.RunStatus -> {
+                        if (event.status == "failed") failureMessage = event.error ?: failureMessage
+                    }
+                    is RunEvent.ConversationUpdated -> {
+                        titleFrameSeen = true
+                        applyTitle(event.title)
+                    }
+                    // [DONE] and message_saved are NOT the end of the
+                    // stream: the auto-title frame can still follow, so the
+                    // loop keeps reading until the server closes it.
+                    RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
+                    is RunEvent.Unknown -> Unit
+                    else -> {
+                        accumulator.apply(event)
+                        publishTurn(accumulator)
+                    }
+                }
+            }
+            null
+        } catch (e: CancellationException) {
+            // The screen went away. Not a run outcome — no cleanup, no
+            // refetch, and above all no cancel request (F04-R10).
+            throw e
+        } catch (e: Throwable) {
+            e
+        } finally {
+            pendingFlush?.cancel()
+        }
+
+        // A burst that ended inside the coalescing window leaves text the
+        // cancelled timer will never publish. Flushing here is what makes
+        // the turn on screen complete for the whole refetch that follows —
+        // without it the tail of every answer blinks in only when the
+        // saved message arrives.
+        if (accumulator.takeDirty()) publishTurn(accumulator)
+
+        return RunAttempt(
+            error = error,
+            runId = accumulator.runId,
+            failureMessage = failureMessage,
+            titleFrameSeen = titleFrameSeen,
+            sawAnyFrame = accumulator.sawAnyFrame,
+        )
+    }
+
+    /** The connection dropped and the app is trying to get it back (F09-R4). */
+    private fun setReconnecting(value: Boolean) {
+        val current = loaded() ?: return
+        val turn = current.thread.streaming ?: return
+        if (turn.reconnecting == value) return
+        _state.value = current.copy(thread = current.thread.copy(streaming = turn.copy(reconnecting = value)))
     }
 
     /**
@@ -556,10 +699,16 @@ class ThreadViewModel(
         restoreOnEarlyFailure: PendingUserMessage?,
         expectTitle: Boolean,
         messagesBeforeEdit: List<ChatMessage>? = null,
+        reattach: Boolean = false,
     ) {
         val current = loaded()
 
-        if (error != null && !sawAnyFrame) {
+        // Not on the reattach path. "The run never started" is a statement
+        // about a turn this client was trying to *send*; a reattach that never
+        // connected — an unknown run id, say — says nothing about the thread,
+        // and the refetch below is what corrects the `active_run` that sent us
+        // looking for it (F09-R2's last criterion: an error, not a hang).
+        if (error != null && !sawAnyFrame && !reattach) {
             // The run never started — a 409 because one is already active, or
             // the request never connected. The server rolled the user message
             // back, so dropping `streaming` leaves no phantom turn behind, and
@@ -606,11 +755,17 @@ class ThreadViewModel(
             _state.value = latest.copy(
                 sending = false,
                 thread = latest.thread.copy(
-                    streaming = latest.thread.streaming?.copy(
-                        unconfirmed = true,
-                        stopping = false,
-                        error = failureMessage,
-                    ),
+                    // Nothing to hold over when the turn is the empty placeholder
+                    // a reattach put up: an unconfirmed blank bubble is noise, and
+                    // the error is reported below either way.
+                    streaming = latest.thread.streaming
+                        ?.takeIf { it.hasVisibleOutput || it.userMessage != null }
+                        ?.copy(
+                            unconfirmed = true,
+                            stopping = false,
+                            reconnecting = false,
+                            error = failureMessage,
+                        ),
                 ),
                 actionError = failureMessage
                     ?: error?.appError?.displayMessage
@@ -662,7 +817,16 @@ class ThreadViewModel(
         val existing = current.thread.streaming
         _state.value = current.copy(
             sending = false,
-            thread = current.thread.copy(streaming = accumulator.snapshot(stopping = existing?.stopping == true)),
+            thread = current.thread.copy(
+                streaming = accumulator.snapshot(
+                    stopping = existing?.stopping == true,
+                    // A snapshot replaces the turn wholesale, so the flags that
+                    // belong to the *turn* rather than to the accumulated text
+                    // have to be carried across it.
+                    reconnecting = existing?.reconnecting == true,
+                    reattached = existing?.reattached == true,
+                ),
+            ),
         )
     }
 
@@ -680,18 +844,43 @@ class ThreadViewModel(
 }
 
 /**
+ * What one connection's worth of frames turned out to be. Everything here
+ * except [error] survives into the next attempt when there is one, so a title
+ * frame or an error frame seen before a drop is not lost by reconnecting.
+ */
+private class RunAttempt(
+    /** Null when the server closed the stream — which means the run is over. */
+    val error: Throwable?,
+    val runId: String?,
+    val failureMessage: String?,
+    val titleFrameSeen: Boolean,
+    /** False means this attempt never got a byte: nothing to reset the backoff for. */
+    val sawAnyFrame: Boolean,
+)
+
+/**
  * Mutable accumulation of one streaming turn, kept out of UI state so that
  * appending a token costs an `append` rather than a whole state copy and a
  * recomposition (Architecture P1).
  */
-private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
+private class TurnAccumulator(
+    private val userMessage: PendingUserMessage?,
+    /**
+     * The run this attempt is reattaching to, known before its `run_started`
+     * frame arrives — so Stop has a guard to send even in a reconnect gap
+     * (F09-R3).
+     */
+    seedRunId: String? = null,
+) {
     private val content = StringBuilder()
     private val reasoning = StringBuilder()
     private val toolCalls = mutableListOf<StreamingToolCall>()
     private val artifacts = mutableListOf<ArtifactRecord>()
-    private var runId: String? = null
     private var parseWarning: ParseWarning? = null
     private var dirty = false
+
+    var runId: String? = seedRunId
+        private set
 
     var sawAnyFrame = false
         private set
@@ -748,7 +937,7 @@ private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
         }
     }
 
-    fun snapshot(stopping: Boolean) = StreamingTurn(
+    fun snapshot(stopping: Boolean, reconnecting: Boolean = false, reattached: Boolean = false) = StreamingTurn(
         userMessage = userMessage,
         runId = runId,
         content = content.toString(),
@@ -757,6 +946,8 @@ private class TurnAccumulator(private val userMessage: PendingUserMessage?) {
         parseWarning = parseWarning,
         artifacts = artifacts.toList(),
         stopping = stopping,
+        reconnecting = reconnecting,
+        reattached = reattached,
     )
 
     private companion object {

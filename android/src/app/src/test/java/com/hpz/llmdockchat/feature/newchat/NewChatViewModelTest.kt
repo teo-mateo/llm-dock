@@ -19,6 +19,7 @@ import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.MainDispatcherRule
 import com.hpz.llmdockchat.testing.readFixture
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -313,14 +314,16 @@ class NewChatViewModelTest {
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-1"}""").build())
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-1"}""").build()) // setMcpServers PUT
 
-        var createdId: String? = null
-        viewModel.create { createdId = it }
+        val created = CompletableDeferred<String>()
+        viewModel.create { created.complete(it) }
 
-        val finalState = runBlocking {
-            withTimeout(10_000) {
-                viewModel.state.first { (it as? NewChatUiState.Loaded)?.creating == false && createdId != null }
-            }
-        }
+        // Await the callback, not a state emission. `applyTools` emits its
+        // final state *before* invoking onCreated, so a `state.first { … &&
+        // createdId != null }` can only pass when the collector happens to
+        // start after the whole coroutine has finished — a scheduling
+        // coin-flip that failed in CI at the 10 s timeout.
+        val createdId = runBlocking { withTimeout(10_000) { created.await() } }
+        val finalState = viewModel.state.value
         assertFalse((finalState as NewChatUiState.Loaded).creating)
         assertEquals("new-conv-1", createdId)
         assertEquals("llamacpp-gemma-4-26b-a4b-it-q8", preferences.rememberedModel)
@@ -407,12 +410,15 @@ class NewChatViewModelTest {
 
         // create() was NOT called again — only setMcpServers — so a single response is enough.
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-3"}""").build())
-        var createdId: String? = null
-        viewModel.retryTools { createdId = it }
+        val retried = CompletableDeferred<String>()
+        viewModel.retryTools { retried.complete(it) }
 
-        val finalState = runBlocking {
-            withTimeout(10_000) { viewModel.state.first { createdId != null } }
-        }
+        // As above: await the callback itself. `state.first { createdId !=
+        // null }` is racy here because the callback fires after the last
+        // emission, so the predicate is only ever true on the value the
+        // collector starts with.
+        val createdId = runBlocking { withTimeout(10_000) { retried.await() } }
+        val finalState = viewModel.state.value
         assertEquals("new-conv-3", createdId)
         assertNull((finalState as NewChatUiState.Loaded).toolsFailure)
         // 4 load GETs + POST create + failed PUT + retried PUT — never a second POST create.
