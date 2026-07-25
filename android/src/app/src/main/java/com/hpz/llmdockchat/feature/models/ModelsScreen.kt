@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.models
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,19 +16,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,7 +39,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +51,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.GpuState
 import com.hpz.llmdockchat.data.model.GpuSummary
@@ -115,13 +121,17 @@ private fun ModelsContent(
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
+    val loaded = state as? ModelsUiState.Loaded
+    Box(Modifier.fillMaxSize().background(colors.appGradient)) {
     Scaffold(
         modifier = modifier.testTag("models_screen"),
-        containerColor = colors.app,
+        // Transparent so the page gradient shows through — see the same note
+        // on the conversation list.
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = { Text("Models", color = colors.fg) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.app),
+            ListHeader(
+                running = loaded?.running?.size,
+                stopped = loaded?.stopped?.size,
             )
         },
     ) { padding ->
@@ -141,6 +151,41 @@ private fun ModelsContent(
             }
         }
         ServiceActionDialog(actionState, onDismiss = onDismissAction, onConfirm = onConfirmAction)
+    }
+    }
+}
+
+/**
+ * Same shell as the conversation list's header, for the same reasons: a
+ * two-line block a `TopAppBar` cannot express at a sane height, and matching
+ * geometry so the two tabs do not jump when you switch between them.
+ */
+@Composable
+private fun ListHeader(running: Int?, stopped: Int?) {
+    val colors = LlmTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .height(76.dp)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Column {
+            Text(
+                "Models",
+                color = colors.fg,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            if (running != null && stopped != null) {
+                Text(
+                    "$running running · $stopped stopped",
+                    color = colors.subtle,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 }
 
@@ -277,9 +322,10 @@ private fun GpuHeaderCard(gpu: GpuState) {
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(colors.surface)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
             .padding(16.dp)
             .testTag("gpu_header"),
     ) {
@@ -319,12 +365,18 @@ private fun GpuCard(gpu: GpuSummary) {
     // the number off the edge and left it wrapping one character per line.
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            DesignLabIcons.Chip,
+            contentDescription = null,
+            tint = colors.accent,
+            modifier = Modifier.size(17.dp),
+        )
         Text(
             gpu.shortName,
-            color = colors.subtle,
+            color = colors.muted,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -334,6 +386,7 @@ private fun GpuCard(gpu: GpuSummary) {
             "${mibToGb(gpu.memoryUsedMiB)} / ${mibToGb(gpu.memoryTotalMiB)} GB",
             color = colors.fg,
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             softWrap = false,
         )
@@ -342,15 +395,15 @@ private fun GpuCard(gpu: GpuSummary) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
+            .height(8.dp)
+            .clip(RoundedCornerShape(4.dp))
             .background(colors.sunken),
     ) {
         Box(
             Modifier
                 .fillMaxWidth(usedFraction)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
                 .background(if (usedFraction > 0.9f) colors.red else colors.accent),
         )
     }
@@ -392,8 +445,9 @@ private fun SectionHeader(title: String, count: Int) {
     Text(
         "$title · $count",
         color = colors.subtle,
-        style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp),
     )
 }
 
@@ -409,64 +463,117 @@ private fun ServiceRow(
     onRequestStop: (String) -> Unit,
 ) {
     val colors = LlmTheme.colors
-    // F11: the row body opens detail; the trailing icon is F10-R5's row
+    // F11: the row body opens detail; the trailing control is F10-R5's row
     // start/stop, sharing the same confirm dialog as the detail screen.
-    Row(
+    //
+    // Flat rows with a hairline divider rather than the design lab's one card
+    // per row: this rig lists ~20 services, and a card plus a 10 dp gap each
+    // turns that into three screens of scrolling. The conversation list made
+    // the same trade for the same reason.
+    Column(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = { onOpenDetail(service.name) })
-            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
             .testTag("service_row_${service.name}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        EngineChip(service.engine, isRunning = service.isRunning, modifier = Modifier.testTag("service_dot_${service.name}"))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                service.name,
-                color = colors.fg,
-                style = MaterialTheme.typography.bodyMedium,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                service.subtitle(now, zone),
-                color = colors.muted,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        // F10-R6: offered only for a running, chat-capable service.
-        if (onNewChatFromModel != null && service.isRunning && service.isChatCapable) {
-            TextButton(
-                onClick = { onNewChatFromModel(service.name) },
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                modifier = Modifier.testTag("new_chat_from_model_${service.name}"),
-            ) {
-                Text("New chat", color = colors.accent, style = MaterialTheme.typography.labelMedium)
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            EngineChip(service.engine, isRunning = service.isRunning, modifier = Modifier.testTag("service_dot_${service.name}"))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    service.name,
+                    color = colors.fg,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    service.subtitle(now, zone),
+                    color = colors.subtle,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // F10-R6: offered only for a running, chat-capable service.
+            if (onNewChatFromModel != null && service.isRunning && service.isChatCapable) {
+                RoundAction(
+                    icon = DesignLabIcons.ChatBubble,
+                    description = "New chat with ${service.name}",
+                    tint = colors.accent,
+                    background = colors.accentSoft,
+                    testTag = "new_chat_from_model_${service.name}",
+                    onClick = { onNewChatFromModel(service.name) },
+                )
+            }
+            if (pending) {
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        color = colors.accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp).testTag("service_row_pending_${service.name}"),
+                    )
+                }
+            } else if (service.isRunning) {
+                RoundAction(
+                    icon = DesignLabIcons.Power,
+                    description = "Stop ${service.name}",
+                    tint = colors.red,
+                    background = colors.red.copy(alpha = 0.12f),
+                    testTag = "service_row_stop_${service.name}",
+                    onClick = { onRequestStop(service.name) },
+                )
+            } else {
+                RoundAction(
+                    icon = DesignLabIcons.Play,
+                    description = "Start ${service.name}",
+                    tint = colors.green,
+                    background = colors.green.copy(alpha = 0.12f),
+                    testTag = "service_row_start_${service.name}",
+                    onClick = { onRequestStart(service.name) },
+                )
             }
         }
-        if (pending) {
-            CircularProgressIndicator(
-                color = colors.accent,
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(20.dp).testTag("service_row_pending_${service.name}"),
-            )
-        } else if (service.isRunning) {
-            TextButton(
-                onClick = { onRequestStop(service.name) },
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                modifier = Modifier.testTag("service_row_stop_${service.name}"),
-            ) { Text("Stop", color = colors.red, style = MaterialTheme.typography.labelMedium) }
-        } else {
-            TextButton(
-                onClick = { onRequestStart(service.name) },
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                modifier = Modifier.testTag("service_row_start_${service.name}"),
-            ) { Text("Start", color = colors.accent, style = MaterialTheme.typography.labelMedium) }
-        }
+        Box(
+            Modifier
+                .padding(start = 20.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.line),
+        )
+    }
+}
+
+/**
+ * Start, stop and new-chat as icons rather than the words they used to be.
+ * Three text buttons on a row this narrow left the model name — the thing
+ * being read — a few characters wide; `contentDescription` keeps them
+ * announced.
+ */
+@Composable
+private fun RoundAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    tint: androidx.compose.ui.graphics.Color,
+    background: androidx.compose.ui.graphics.Color,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(background)
+            .clickable(onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -564,25 +671,50 @@ private fun LoadingState() {
     }
 }
 
+/**
+ * Not in the design lab's mockup — the filter was asked for afterwards — so it
+ * borrows the composer's shape rather than inventing a third input style, and
+ * drops the stock `OutlinedTextField`, whose floating label and magnifying-glass
+ * emoji were the two loudest things on the screen.
+ */
 @Composable
 private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
     val colors = LlmTheme.colors
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        singleLine = true,
-        placeholder = { Text("Filter by name or port", color = colors.muted) },
-        leadingIcon = { Text("  \uD83D\uDD0D", color = colors.muted) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                TextButton(onClick = { onQueryChange("") }) { Text("Clear", color = colors.accent) }
-            }
-        },
-        modifier = Modifier
+    Row(
+        Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(colors.sunken)
+            .border(1.dp, colors.line, RoundedCornerShape(22.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
             .testTag("models_search"),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(DesignLabIcons.Search, contentDescription = null, tint = colors.subtle, modifier = Modifier.size(16.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) {
+                Text("Filter by name or port", color = colors.subtle, style = MaterialTheme.typography.bodyMedium)
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.fg),
+                cursorBrush = SolidColor(colors.accent),
+                modifier = Modifier.fillMaxWidth().testTag("models_search_input"),
+            )
+        }
+        if (query.isNotEmpty()) {
+            Icon(
+                DesignLabIcons.Close,
+                contentDescription = "Clear filter",
+                tint = colors.muted,
+                modifier = Modifier.size(15.dp).clickable { onQueryChange("") },
+            )
+        }
+    }
 }
 
 @Composable
