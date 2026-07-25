@@ -45,6 +45,23 @@ yarn-error.log*
 dashboard/frontend/dist/
 dashboard/frontend/.vite/
 
+# Android / Gradle
+# Studio also writes android/src/.gitignore and android/src/app/.gitignore;
+# these cover what those miss, and survive Studio regenerating them.
+.gradle/
+.kotlin/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+*.apk
+*.aab
+*.ap_
+*.dex
+*.keystore
+*.jks
+
 # IDE
 .idea/
 .vscode/
