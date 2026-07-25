@@ -25,6 +25,7 @@ import com.hpz.llmdockchat.core.net.OkHttpSseTransport
 import com.hpz.llmdockchat.core.net.ServerUrlStore
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
 import com.hpz.llmdockchat.core.net.SseTransport
+import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.HealthRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
 import kotlinx.coroutines.CoroutineScope
@@ -97,6 +98,7 @@ class AppContainer(
         ApiClient(probeClient, serverUrlStore, ApiJson, dispatchers.io),
     )
     val reachabilityRepository = ReachabilityRepository(healthRepository)
+    val conversationsRepository = ConversationsRepository(apiClient)
 
     private val reauthenticator = CredentialReauthenticator(
         credentials = credentialStore,

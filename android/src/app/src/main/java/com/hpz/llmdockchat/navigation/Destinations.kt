@@ -3,12 +3,25 @@ package com.hpz.llmdockchat.navigation
 import com.hpz.llmdockchat.core.net.BaseUrl
 
 /**
- * The app's destinations (Architecture D12). F01 has two; the two-tab scaffold
- * arrives with the list screens it is meant to switch between.
+ * The app's destinations (Architecture D12). F02 replaces F01's placeholder
+ * Home screen with the two-tab scaffold: [CHATS] and [MODELS] carry the
+ * bottom bar (F02-R7), [THREAD] and [NEW_CHAT] are pushed on top of it
+ * without one.
  */
 object Destinations {
     const val CONNECT = "connect"
-    const val HOME = "home"
+
+    /** The nested graph both tabs live in; navigating to it lands on [CHATS]. */
+    const val TABS = "tabs"
+    const val CHATS = "chats"
+    const val MODELS = "models"
+
+    private const val THREAD_ROUTE = "thread"
+    const val THREAD = "$THREAD_ROUTE/{conversationId}"
+    fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
+
+    /** F03's placeholder (F02-R8) — the real new-chat sheet is not built yet. */
+    const val NEW_CHAT = "new_chat"
 }
 
 /**
@@ -22,7 +35,7 @@ object Destinations {
  */
 fun startDestination(server: BaseUrl?, token: String?, hasCredential: Boolean): String =
     if (server != null && (!token.isNullOrBlank() || hasCredential)) {
-        Destinations.HOME
+        Destinations.TABS
     } else {
         Destinations.CONNECT
     }

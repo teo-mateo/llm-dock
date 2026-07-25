@@ -1,5 +1,10 @@
 package com.hpz.llmdockchat.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -8,21 +13,32 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.hpz.llmdockchat.core.AppContainer
+import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.connect.ConnectScreen
 import com.hpz.llmdockchat.feature.connect.ConnectViewModel
-import com.hpz.llmdockchat.feature.home.HomeScreen
-import com.hpz.llmdockchat.feature.home.HomeViewModel
+import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
+import com.hpz.llmdockchat.feature.conversations.ConversationListViewModel
+import com.hpz.llmdockchat.feature.models.ModelsPlaceholderScreen
+import com.hpz.llmdockchat.feature.newchat.NewChatPlaceholderScreen
+import com.hpz.llmdockchat.feature.thread.ThreadPlaceholderScreen
 
 /**
  * The app's navigation graph (Architecture D12). Connect is a destination like
  * any other rather than a modal in front of the app, so returning to it clears
  * the back stack — a back press from Connect leaves the app instead of walking
  * into a screen the session can no longer load.
+ *
+ * [Destinations.CHATS] and [Destinations.MODELS] live in the nested
+ * [Destinations.TABS] graph and share [AppBottomBar]; [Destinations.THREAD]
+ * and [Destinations.NEW_CHAT] are pushed on top of it without one (F02-R7).
  */
 @Composable
 fun AppNavHost(
@@ -60,7 +76,7 @@ fun AppNavHost(
             ConnectScreen(
                 viewModel = viewModel,
                 onSignedIn = {
-                    navController.navigate(Destinations.HOME) {
+                    navController.navigate(Destinations.TABS) {
                         popUpTo(Destinations.CONNECT) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -68,23 +84,72 @@ fun AppNavHost(
             )
         }
 
-        composable(Destinations.HOME) {
-            val viewModel: HomeViewModel = viewModel(
-                factory = viewModelFactory {
-                    initializer {
-                        HomeViewModel(
-                            authService = container.authService,
-                            sessionManager = container.sessionManager,
-                            serverUrlStore = container.serverUrlStore,
-                        )
-                    }
-                },
-            )
-            // Sign-out also raises the session signal, so the effect above would
-            // route here anyway; navigating directly keeps the transition
-            // immediate rather than waiting a frame for the flow to settle.
-            HomeScreen(viewModel = viewModel, onSignedOut = { navController.toConnect() })
+        navigation(startDestination = Destinations.CHATS, route = Destinations.TABS) {
+            composable(Destinations.CHATS) { backStackEntry ->
+                TabScaffold(navController) {
+                    val viewModel: ConversationListViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { ConversationListViewModel(container.conversationsRepository) }
+                        },
+                    )
+                    ConversationListScreen(
+                        viewModel = viewModel,
+                        onOpenConversation = { conversation ->
+                            navController.navigate(Destinations.thread(conversation.id))
+                        },
+                        onNewConversation = { navController.navigate(Destinations.NEW_CHAT) },
+                    )
+                }
+            }
+
+            composable(Destinations.MODELS) {
+                TabScaffold(navController) { ModelsPlaceholderScreen() }
+            }
         }
+
+        composable(Destinations.THREAD) { backStackEntry ->
+            val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
+            ThreadPlaceholderScreen(
+                title = "Conversation $conversationId",
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Destinations.NEW_CHAT) {
+            NewChatPlaceholderScreen(onBack = { navController.popBackStack() })
+        }
+    }
+}
+
+/**
+ * Wraps a tab's content in the shared bottom bar (F02-R7). Tab switches
+ * `popUpTo` [Destinations.CHATS] — the [Destinations.TABS] graph's own,
+ * fixed start route, not the outer [NavHost]'s (which may be Connect) — with
+ * `saveState`/`restoreState`, the standard bottom-nav idiom: each tab's
+ * ViewModel and `rememberSaveable` state (including scroll position) survive
+ * switching away and back.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TabScaffold(navController: NavHostController, content: @Composable () -> Unit) {
+    val backStackEntry: NavBackStackEntry? by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route ?: Destinations.CHATS
+
+    Scaffold(
+        containerColor = LlmTheme.colors.app,
+        bottomBar = {
+            AppBottomBar(currentRoute = currentRoute) { route ->
+                if (route != currentRoute) {
+                    navController.navigate(route) {
+                        popUpTo(Destinations.CHATS) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) { content() }
     }
 }
 

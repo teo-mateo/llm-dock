@@ -253,13 +253,13 @@ screen. **Do not treat this table as optional.**
 |---|---|
 | R1 · changing the URL *in Settings* retargets calls with no restart | F13 |
 | R3 · all three — server URL, open conversation and draft preserved across a 401; user's message not lost mid-stream | F01 (routing to Connect), F04 / F06 (draft, thread) |
-| R4 · all three — readable failure state with a retry affordance; the server's own 409 message shown; error visually distinct from empty | F02 first, then every list/detail screen |
-| R5 · loading / populated / empty / failed on every list and detail screen | F02, F10, F12 — each, not one owner |
+| R4 · readable failure state with a retry affordance, distinct from empty | **CLOSED in F02** — verified on device with the network down. The 409-specific wording lands with F04's concurrent-send path. |
+| R5 · loading / populated / empty / failed | **CLOSED for the conversation list in F02.** Still to check on each further list/detail screen: F10, F12. |
 | R6 · a stream quiet for >30 s stays connected; a visible reconnecting state | F09 (chat runs), F12 (logs) |
-| R7 · theme switch preserves screen state | F02 or later, once a screen holds state |
+| R7 · theme switch preserves screen state | **CLOSED in F02** — scroll position survives a live `dev.sh theme` switch. |
 | R8 · Settings text-size control changes message bodies and survives restart | F13, against F05 message bodies |
 | R9 · every destructive action confirms, naming its target | F06 (delete message, edit-and-resend), F11 (stop container) |
-| R11 · a recently-updated conversation shows a relative local time | F02 |
+| R11 · a recently-updated conversation shows a relative local time | **CLOSED in F02** — "just now", "yesterday", "Wed", "14 Jul" seen live. |
 | R12 · no repeated `GET /api/services` while the Models tab idles | F10 |
 
 Verified and complete in F00, needing no later confirmation: R1
