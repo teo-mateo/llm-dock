@@ -1,0 +1,1708 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llm-dock for Android — screen mockups</title>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V6M6 12l6-6 6 6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M5 17l4.5-4.5L14 17l3-3 2 2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9.5" y="3" width="5" height="10" rx="2.5"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 6H6a2 2 0 00-2 2v9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20l4-1 10-10-3-3L5 16l-1 4z"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="17" cy="6" r="2.4"/><circle cx="17" cy="18" r="2.4"/><circle cx="7" cy="12" r="2.4"/><path d="M9.2 10.8l5.6-3.2M9.2 13.2l5.6 3.2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.5 4.5a4.5 4.5 0 00-5.9 5.7L4 14.8 6.2 17l4.6-4.6a4.5 4.5 0 005.7-5.9L14 9l-2-2z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7h5l2 2h9v10H4z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l8 15H4z"/><path d="M12 10v4M12 16.5v.5"/></symbol>
+  <symbol id="i-select" viewBox="0 0 24 24"><path d="M5 5h4M15 5h4M5 19h4M15 19h4M5 9v6M19 9v6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5l10 6.5-10 6.5z"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1010.8 0"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.6-5.9M20 4v4h-4"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H9l-5 4z"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v13M6 13l6 6 6-6"/></symbol>
+</svg>
+
+<style>
+  :root {
+    --page-bg: #f5f6f8;
+    --page-panel: #ffffff;
+    --page-fg: #12161d;
+    --page-muted: #56606f;
+    --page-subtle: #7b8695;
+    --page-rule: rgba(18, 22, 29, 0.12);
+    --page-rule-soft: rgba(18, 22, 29, 0.07);
+    --page-accent: #2563eb;
+    --page-accent-fg: #1d4ed8;
+    --tag-core-bg: rgba(37, 99, 235, 0.12);
+    --tag-core-fg: #1d4ed8;
+    --tag-ask-bg: rgba(217, 119, 6, 0.14);
+    --tag-ask-fg: #a35a05;
+    --tag-cut-bg: rgba(100, 116, 139, 0.16);
+    --tag-cut-fg: #4b5666;
+
+    --sans: "Roboto", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --serif: "Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Device tokens — fixed. The app itself commits to one dark identity,
+       lifted from the llm-dock dashboard palette. */
+    --d-app: #0b0f15;
+    --d-surface: #161c27;
+    --d-surface-2: #1e2634;
+    --d-sunken: #11161f;
+    --d-fg: #f3f4f6;
+    --d-muted: #9ca3af;
+    --d-subtle: #6b7280;
+    --d-line: rgba(148, 163, 184, 0.13);
+    --d-line-strong: rgba(148, 163, 184, 0.24);
+    --d-accent: #3b82f6;
+    --d-accent-deep: #1e3a8a;
+    --d-green: #22c55e;
+    --d-amber: #f59e0b;
+    --d-red: #ef4444;
+    --d-purple: #a855f7;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page-bg: #0d1117;
+      --page-panel: #151b24;
+      --page-fg: #e8ecf2;
+      --page-muted: #9aa5b4;
+      --page-subtle: #737e8d;
+      --page-rule: rgba(148, 163, 184, 0.18);
+      --page-rule-soft: rgba(148, 163, 184, 0.09);
+      --page-accent: #60a5fa;
+      --page-accent-fg: #93c5fd;
+      --tag-core-bg: rgba(59, 130, 246, 0.18);
+      --tag-core-fg: #93c5fd;
+      --tag-ask-bg: rgba(245, 158, 11, 0.16);
+      --tag-ask-fg: #fbbf24;
+      --tag-cut-bg: rgba(148, 163, 184, 0.14);
+      --tag-cut-fg: #9aa5b4;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --page-bg: #f5f6f8;
+    --page-panel: #ffffff;
+    --page-fg: #12161d;
+    --page-muted: #56606f;
+    --page-subtle: #7b8695;
+    --page-rule: rgba(18, 22, 29, 0.12);
+    --page-rule-soft: rgba(18, 22, 29, 0.07);
+    --page-accent: #2563eb;
+    --page-accent-fg: #1d4ed8;
+    --tag-core-bg: rgba(37, 99, 235, 0.12);
+    --tag-core-fg: #1d4ed8;
+    --tag-ask-bg: rgba(217, 119, 6, 0.14);
+    --tag-ask-fg: #a35a05;
+    --tag-cut-bg: rgba(100, 116, 139, 0.16);
+    --tag-cut-fg: #4b5666;
+  }
+
+  :root[data-theme="dark"] {
+    --page-bg: #0d1117;
+    --page-panel: #151b24;
+    --page-fg: #e8ecf2;
+    --page-muted: #9aa5b4;
+    --page-subtle: #737e8d;
+    --page-rule: rgba(148, 163, 184, 0.18);
+    --page-rule-soft: rgba(148, 163, 184, 0.09);
+    --page-accent: #60a5fa;
+    --page-accent-fg: #93c5fd;
+    --tag-core-bg: rgba(59, 130, 246, 0.18);
+    --tag-core-fg: #93c5fd;
+    --tag-ask-bg: rgba(245, 158, 11, 0.16);
+    --tag-ask-fg: #fbbf24;
+    --tag-cut-bg: rgba(148, 163, 184, 0.14);
+    --tag-cut-fg: #9aa5b4;
+  }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sprite { display: none; }
+  svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.i.sm { width: 16px; height: 16px; }
+  svg.i.xs { width: 13px; height: 13px; stroke-width: 2; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- page head ---------- */
+  .head { padding: 72px 0 40px; border-bottom: 1px solid var(--page-rule); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--page-accent-fg); margin: 0 0 18px;
+  }
+  .head h1 {
+    font-family: var(--sans); font-weight: 800; font-size: clamp(34px, 5.5vw, 56px);
+    line-height: 1.03; letter-spacing: -0.03em; margin: 0 0 20px; text-wrap: balance;
+  }
+  .lede { max-width: 62ch; font-size: 19px; color: var(--page-muted); margin: 0 0 28px; }
+  .lede strong { color: var(--page-fg); font-weight: 600; }
+
+  .facts { display: flex; flex-wrap: wrap; gap: 10px 28px; font-family: var(--mono); font-size: 12.5px; color: var(--page-subtle); }
+  .facts b { color: var(--page-fg); font-weight: 500; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center;
+    padding: 20px 0 0; margin: 28px 0 0; font-size: 14.5px; color: var(--page-muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+
+  .tag {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em;
+    text-transform: uppercase; padding: 3px 7px; border-radius: 4px; font-weight: 500;
+    white-space: nowrap;
+  }
+  .tag.core { background: var(--tag-core-bg); color: var(--tag-core-fg); }
+  .tag.ask  { background: var(--tag-ask-bg);  color: var(--tag-ask-fg); }
+  .tag.cut  { background: var(--tag-cut-bg);  color: var(--tag-cut-fg); }
+  .tag.fix  { background: #b91c1c; color: #fff; }
+
+  .superseded {
+    margin: 28px 0 0; padding: 18px 20px; border-radius: 8px;
+    border: 1px solid var(--page-rule); border-left: 4px solid #b91c1c;
+    background: var(--page-card, transparent);
+  }
+  .superseded p { margin: 0 0 10px; font-size: 15px; line-height: 1.55; color: var(--page-muted); max-width: 78ch; }
+  .superseded p:last-child { margin-bottom: 0; }
+  .superseded b { color: var(--page-fg); }
+  .superseded .tag { vertical-align: baseline; }
+
+  /* ---------- screens ---------- */
+  .band { border-bottom: 1px solid var(--page-rule-soft); padding: 56px 0; }
+  .band-head { display: flex; align-items: baseline; gap: 16px; margin: 0 0 8px; }
+  .band-num { font-family: var(--mono); font-size: 13px; color: var(--page-subtle); letter-spacing: 0.06em; }
+  .band h2 { font-family: var(--sans); font-weight: 700; font-size: 27px; letter-spacing: -0.02em; margin: 0; }
+  .band-sub { max-width: 60ch; color: var(--page-muted); margin: 0 0 34px; font-size: 16.5px; }
+
+  .row { display: flex; gap: 44px; align-items: flex-start; flex-wrap: wrap; }
+  .notes { flex: 1 1 380px; min-width: 300px; }
+  .notes h3 { font-family: var(--sans); font-size: 15px; font-weight: 700; letter-spacing: 0.02em; margin: 0 0 14px; }
+  .notes ul { list-style: none; margin: 0 0 22px; padding: 0; }
+  .notes li {
+    display: grid; grid-template-columns: 74px 1fr; gap: 12px; align-items: start;
+    padding: 9px 0; border-top: 1px solid var(--page-rule-soft); font-size: 15.5px; line-height: 1.5;
+  }
+  .notes li:first-child { border-top: none; }
+  .notes li b { font-weight: 600; }
+  .notes code, .api {
+    font-family: var(--mono); font-size: 12.5px;
+    background: var(--page-rule-soft); padding: 1px 5px; border-radius: 4px;
+  }
+  .aside {
+    border-left: 2px solid var(--page-accent); padding: 4px 0 4px 16px;
+    color: var(--page-muted); font-size: 15.5px; margin: 22px 0 0;
+  }
+  .aside b { color: var(--page-fg); }
+
+  /* ---------- device ---------- */
+  .phones { display: flex; gap: 26px; flex-wrap: wrap; }
+  .device { flex: none; }
+  .device figcaption {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--page-subtle); margin: 12px 0 0; text-align: center;
+  }
+  .phone {
+    width: 340px; height: 706px; border-radius: 30px; overflow: hidden;
+    background: var(--d-app); color: var(--d-fg);
+    border: 1px solid var(--d-line-strong);
+    box-shadow: 0 24px 50px -24px rgba(0, 0, 0, 0.55), 0 0 0 7px rgba(120, 130, 145, 0.10);
+    display: flex; flex-direction: column;
+    font-family: var(--sans); font-size: 13.5px; line-height: 1.45;
+    position: relative;
+  }
+
+  .statusbar {
+    height: 26px; flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; font-family: var(--mono); font-size: 10.5px; color: var(--d-muted);
+  }
+  .sig { display: flex; align-items: flex-end; gap: 2px; height: 9px; }
+  .sig i { display: block; width: 2px; background: var(--d-muted); border-radius: 1px; }
+  .sig i:nth-child(1) { height: 3px; }
+  .sig i:nth-child(2) { height: 5px; }
+  .sig i:nth-child(3) { height: 7px; }
+  .sig i:nth-child(4) { height: 9px; }
+  .batt { width: 18px; height: 9px; border: 1px solid var(--d-muted); border-radius: 2px; position: relative; }
+  .batt::after { content: ""; position: absolute; inset: 1.5px; right: 6px; background: var(--d-muted); border-radius: 1px; }
+  .sb-right { display: flex; align-items: center; gap: 6px; }
+
+  .appbar {
+    flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    border-bottom: 1px solid var(--d-line); background: var(--d-app);
+  }
+  .appbar .ttl { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+  .appbar .ttl small { display: block; font-family: var(--mono); font-size: 10px; color: var(--d-subtle); font-weight: 400; letter-spacing: 0.02em; margin-top: 2px; }
+  .appbar .grow { flex: 1; min-width: 0; }
+  .icobtn { color: var(--d-muted); display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; flex: none; }
+
+  .screen { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .scroll { flex: 1; overflow: hidden; }
+  .gesture { flex: none; height: 18px; display: flex; align-items: center; justify-content: center; }
+  .gesture::before { content: ""; width: 108px; height: 3.5px; border-radius: 2px; background: var(--d-line-strong); }
+
+  /* generic in-device pieces */
+  .p-sec {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--d-subtle); padding: 14px 16px 7px;
+  }
+  .p-row { display: flex; gap: 12px; padding: 11px 16px; align-items: center; }
+  .p-row .grow { flex: 1; min-width: 0; }
+  .p-row .lbl { font-weight: 500; font-size: 14px; }
+  .p-row .sub { color: var(--d-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .p-div { height: 1px; background: var(--d-line); margin: 0 16px; }
+
+  .mono { font-family: var(--mono); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
+    font-size: 10px; padding: 3px 7px; border-radius: 999px;
+    background: var(--d-surface); color: var(--d-muted); border: 1px solid var(--d-line);
+    white-space: nowrap;
+  }
+  .chip.blue { color: #93c5fd; border-color: rgba(59, 130, 246, 0.35); background: rgba(37, 99, 235, 0.16); }
+  .chip.green { color: #86efac; border-color: rgba(34, 197, 94, 0.32); background: rgba(22, 163, 74, 0.14); }
+  .chip.purple { color: #d8b4fe; border-color: rgba(168, 85, 247, 0.32); background: rgba(147, 51, 234, 0.14); }
+  .chip.amber { color: #fcd34d; border-color: rgba(245, 158, 11, 0.32); background: rgba(217, 119, 6, 0.14); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--d-green); flex: none; }
+  .dot.off { background: var(--d-subtle); }
+  .dot.live { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dot.live { animation: none; }
+    .caret { animation: none; }
+  }
+
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--d-accent); color: #fff; font-weight: 600; font-size: 14.5px;
+    padding: 13px; border-radius: 14px;
+  }
+  .btn.ghost { background: transparent; color: var(--d-muted); border: 1px solid var(--d-line-strong); font-weight: 500; }
+  .btn.danger { background: transparent; color: #fca5a5; }
+
+  .field {
+    background: var(--d-sunken); border: 1px solid var(--d-line); border-radius: 12px;
+    padding: 11px 13px;
+  }
+  .field .cap { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-subtle); }
+  .field .val { font-family: var(--mono); font-size: 13.5px; margin-top: 4px; }
+  .field.focus { border-color: var(--d-accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14); }
+
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--d-surface-2); border: 1px solid var(--d-line-strong); position: relative; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--d-subtle); }
+  .switch.on { background: rgba(59, 130, 246, 0.45); border-color: transparent; }
+  .switch.on::after { left: auto; right: 2px; background: #fff; }
+
+  .fab {
+    position: absolute; right: 18px; bottom: 30px; height: 52px; padding: 0 20px;
+    border-radius: 17px; background: var(--d-accent); color: #fff;
+    display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14.5px;
+    box-shadow: 0 10px 22px -8px rgba(59, 130, 246, 0.7);
+  }
+
+  /* conversation list */
+  .conv { display: flex; gap: 12px; padding: 12px 16px; align-items: flex-start; }
+  .conv .body { flex: 1; min-width: 0; }
+  .conv .t { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv .s { color: var(--d-subtle); font-size: 12.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .conv .meta { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .conv .when { font-family: var(--mono); font-size: 10px; color: var(--d-subtle); flex: none; padding-top: 2px; }
+  .grouphead {
+    display: flex; align-items: center; gap: 9px; padding: 12px 16px 8px;
+    color: var(--d-muted); font-size: 12.5px; font-weight: 600;
+  }
+  .grouphead .count { font-family: var(--mono); font-size: 10px; color: var(--d-subtle); }
+
+  /* chat */
+  .thread { padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 16px; }
+  .msg-u {
+    align-self: flex-end; max-width: 82%; background: rgba(37, 99, 235, 0.20);
+    border: 1px solid rgba(59, 130, 246, 0.28); border-radius: 16px 16px 5px 16px;
+    padding: 9px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: #e5edfb;
+  }
+  .msg-a { max-width: 100%; font-family: var(--serif); font-size: 14.5px; line-height: 1.62; color: #e7eaef; }
+  .msg-a p { margin: 0 0 10px; }
+  .msg-a p:last-child { margin-bottom: 0; }
+  .fold {
+    display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px;
+    color: var(--d-subtle); background: var(--d-sunken); border: 1px solid var(--d-line);
+    border-radius: 9px; padding: 7px 10px; margin-bottom: 10px;
+  }
+  .fold .grow { flex: 1; }
+  .toolcall {
+    border: 1px solid rgba(34, 197, 94, 0.28); background: rgba(22, 163, 74, 0.10);
+    border-radius: 9px; padding: 8px 10px; margin-bottom: 10px; font-family: var(--mono); font-size: 11px; color: #a7f3c4;
+  }
+  .toolcall .args { color: var(--d-muted); margin-top: 5px; font-size: 10.5px; }
+  .code {
+    background: var(--d-sunken); border: 1px solid var(--d-line); border-radius: 10px;
+    margin: 10px 0; overflow: hidden;
+  }
+  .code .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; border-bottom: 1px solid var(--d-line);
+    font-family: var(--mono); font-size: 10px; color: var(--d-subtle); letter-spacing: 0.06em;
+  }
+  .code pre { margin: 0; padding: 9px 10px; font-family: var(--mono); font-size: 10.8px; line-height: 1.55; color: #cbd5e1; overflow-x: auto; }
+  .k { color: #93c5fd; }
+  .st { color: #86efac; }
+  .cm { color: var(--d-subtle); }
+  .num { color: #fcd34d; }
+  .caret { display: inline-block; width: 7px; height: 15px; background: var(--d-accent); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .acts { display: flex; gap: 14px; color: var(--d-subtle); margin-top: 4px; }
+
+  .composer { flex: none; border-top: 1px solid var(--d-line); padding: 9px 12px 4px; background: var(--d-app); }
+  .cbox {
+    display: flex; align-items: flex-end; gap: 10px; background: var(--d-surface);
+    border: 1px solid var(--d-line); border-radius: 20px; padding: 9px 10px 9px 13px;
+  }
+  .cbox .ph { flex: 1; color: var(--d-subtle); font-size: 13.5px; padding-bottom: 2px; }
+  .cbox .typed { flex: 1; font-family: var(--mono); font-size: 12.5px; color: var(--d-fg); }
+  .sendbtn { width: 34px; height: 34px; border-radius: 50%; background: var(--d-accent); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+  .sendbtn.idle { background: var(--d-surface-2); color: var(--d-subtle); }
+  .stopbar {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    border: 1px solid var(--d-line-strong); border-radius: 20px; padding: 11px;
+    color: var(--d-muted); font-size: 13.5px; font-weight: 500;
+  }
+
+  /* sheets & overlay */
+  .overlay { position: absolute; inset: 0; background: rgba(4, 7, 12, 0.62); }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; background: var(--d-surface);
+    border-radius: 22px 22px 0 0; border-top: 1px solid var(--d-line-strong);
+    padding-bottom: 18px; box-shadow: 0 -20px 40px -20px rgba(0, 0, 0, 0.8);
+  }
+  .sheet .grab { width: 34px; height: 4px; border-radius: 2px; background: var(--d-line-strong); margin: 9px auto 4px; }
+  .sheet h4 { font-family: var(--sans); font-size: 15px; font-weight: 600; margin: 6px 16px 4px; }
+  .sheet .hint { color: var(--d-subtle); font-size: 12px; margin: 0 16px 8px; }
+
+  .banner {
+    display: flex; gap: 10px; align-items: flex-start; margin: 12px 14px;
+    border: 1px solid rgba(245, 158, 11, 0.32); background: rgba(217, 119, 6, 0.12);
+    border-radius: 12px; padding: 10px 12px; color: #fcd34d; font-size: 12.5px; line-height: 1.45;
+  }
+  .banner.blue { border-color: rgba(59, 130, 246, 0.32); background: rgba(37, 99, 235, 0.12); color: #bfdbfe; }
+  .banner b { display: block; color: var(--d-fg); font-weight: 600; margin-bottom: 2px; }
+
+  .notif {
+    margin: 10px 12px; border-radius: 16px; background: var(--d-surface);
+    border: 1px solid var(--d-line); padding: 11px 12px; display: flex; gap: 10px;
+  }
+  .notif .app { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-subtle); }
+  .notif .t { font-weight: 600; font-size: 13.5px; margin-top: 3px; }
+  .notif .b { color: var(--d-muted); font-size: 12.3px; margin-top: 2px; line-height: 1.4; }
+
+  .lock { padding: 46px 20px 0; text-align: center; }
+  .mark {
+    width: 54px; height: 54px; border-radius: 15px; margin: 0 auto 18px;
+    background: linear-gradient(150deg, #1e3a8a, #0b0f15 70%);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 19px; font-weight: 600; color: #93c5fd;
+  }
+  .otp { display: flex; gap: 8px; justify-content: center; }
+  .otp span {
+    width: 36px; height: 46px; border-radius: 10px; background: var(--d-sunken);
+    border: 1px solid var(--d-line); display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 19px;
+  }
+  .otp span.on { border-color: var(--d-accent); color: var(--d-fg); }
+  .otp span.cur { border-color: var(--d-accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14); }
+
+  .stack { display: flex; flex-direction: column; gap: 11px; padding: 0 20px; }
+  .foot { color: var(--d-subtle); font-size: 11.5px; text-align: center; padding: 16px 26px 0; line-height: 1.5; }
+
+  /* bottom navigation */
+  .navbar {
+    flex: none; display: flex; border-top: 1px solid var(--d-line);
+    background: var(--d-app); padding: 6px 0 2px;
+  }
+  .navtab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    color: var(--d-subtle); font-size: 10.5px; padding: 4px 0;
+  }
+  .navtab.on { color: var(--d-accent); }
+  .navtab .pill {
+    width: 52px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  }
+  .navtab.on .pill { background: rgba(59, 130, 246, 0.18); }
+
+  /* GPU header */
+  .gpu {
+    margin: 10px 14px 4px; border: 1px solid var(--d-line); border-radius: 14px;
+    background: var(--d-sunken); padding: 11px 13px;
+  }
+  .gpu .top { display: flex; align-items: baseline; gap: 8px; }
+  .gpu .nm { font-size: 12.5px; font-weight: 600; flex: 1; }
+  .gpu .big { font-family: var(--mono); font-size: 13px; color: var(--d-fg); font-variant-numeric: tabular-nums; }
+  .gpu .big span { color: var(--d-subtle); font-size: 11px; }
+  .meter { height: 7px; border-radius: 4px; background: var(--d-surface-2); margin: 9px 0 8px; display: flex; overflow: hidden; }
+  .meter i { display: block; height: 100%; }
+  .meter i.a { background: var(--d-accent); }
+  .meter i.b { background: #a855f7; }
+  .meter i.c { background: var(--d-amber); }
+  .gpu .stats { display: flex; gap: 14px; font-family: var(--mono); font-size: 10.5px; color: var(--d-subtle); font-variant-numeric: tabular-nums; }
+  .gpu .stats b { color: var(--d-muted); font-weight: 500; }
+
+  /* service rows */
+  .svc { display: flex; gap: 11px; padding: 11px 16px; align-items: center; }
+  .svc .body { flex: 1; min-width: 0; }
+  .svc .nm { font-family: var(--mono); font-size: 12.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .svc .sub { color: var(--d-subtle); font-size: 11px; margin-top: 3px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .svc .act {
+    width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--d-line-strong);
+    display: flex; align-items: center; justify-content: center; color: var(--d-muted); flex: none;
+  }
+  .svc .act.go { color: #86efac; border-color: rgba(34, 197, 94, 0.35); }
+
+  /* logs */
+  .logs { background: #070a0f; padding: 8px 10px; font-family: var(--mono); font-size: 9.6px; line-height: 1.62; }
+  .logs div { display: flex; gap: 7px; white-space: pre; overflow: hidden; }
+  .logs .ts { color: #475569; flex: none; }
+  .logs .lv { flex: none; width: 30px; color: #64748b; }
+  .logs .lv.i { color: #60a5fa; }
+  .logs .lv.w { color: #fbbf24; }
+  .logs .lv.e { color: #f87171; }
+  .logs .tx { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; }
+  .logs .tx.ok { color: #86efac; }
+  .logbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+    border-bottom: 1px solid var(--d-line); background: var(--d-sunken);
+    font-family: var(--mono); font-size: 10.5px; color: var(--d-subtle);
+  }
+
+  .dialog {
+    position: absolute; left: 18px; right: 18px; top: 50%; transform: translateY(-50%);
+    background: var(--d-surface); border: 1px solid var(--d-line-strong); border-radius: 20px;
+    padding: 18px 18px 12px; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.9);
+  }
+  .dialog h5 { font-family: var(--sans); font-size: 16px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .dialog p { color: var(--d-muted); font-size: 12.8px; line-height: 1.5; margin: 0 0 12px; }
+  .dialog .who {
+    border: 1px solid var(--d-line); border-radius: 10px; background: var(--d-sunken);
+    padding: 9px 11px; font-family: var(--mono); font-size: 11px; margin-bottom: 14px;
+  }
+  .dialog .who .l { display: flex; gap: 8px; align-items: center; color: var(--d-muted); }
+  .dialog .who .l + .l { margin-top: 6px; }
+
+  .table-wrap { overflow-x: auto; margin: 26px 0 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15.5px; }
+  th, td { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--page-rule-soft); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--page-subtle); font-weight: 500; border-bottom: 1px solid var(--page-rule);
+  }
+  td.f { font-family: var(--sans); font-weight: 600; font-size: 14.5px; white-space: nowrap; }
+  td.w { color: var(--page-muted); font-size: 14.5px; }
+  td.a { font-family: var(--mono); font-size: 11.5px; color: var(--page-subtle); white-space: nowrap; }
+
+  .close-out { padding: 56px 0 0; }
+  .close-out h2 { font-family: var(--sans); font-size: 27px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 14px; }
+  .close-out p { max-width: 66ch; color: var(--page-muted); margin: 0 0 14px; }
+  .close-out ol { max-width: 66ch; color: var(--page-muted); padding-left: 22px; }
+  .close-out li { margin-bottom: 9px; }
+  .close-out strong { color: var(--page-fg); }
+
+  a { color: var(--page-accent-fg); }
+  :focus-visible { outline: 2px solid var(--page-accent); outline-offset: 3px; }
+
+  @media (max-width: 700px) {
+    .wrap { padding: 0 16px 64px; }
+    .phone { width: 100%; max-width: 340px; }
+    .row { gap: 30px; }
+    .head { padding: 48px 0 32px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Design proposal · v0 · signed off, superseded on specifics</p>
+    <h1>llm-dock, in your pocket</h1>
+    <p class="lede">A plain chat client for Android that talks to the dashboard's existing API. Conversations live on the server, not on the phone — <strong>the same threads you see at <span class="mono">:3399/v2</span></strong>. Two tabs: chats, and a read-and-switch view of the rig itself. No critic, no sidekick, no configuration. Sixteen screens below. The keep/cut decisions have since been taken — see the note under the legend.</p>
+    <div class="facts">
+      <span><b>Auth</b> password or TOTP → 8 h session</span>
+      <span><b>Storage</b> server-side <span class="mono">chat.db</span></span>
+      <span><b>Streaming</b> SSE, reattachable</span>
+      <span><b>Nothing new server-side</b> — every screen maps to an endpoint that exists today</span>
+    </div>
+    <div class="legend">
+      <span><i class="tag core">core</i> the app is pointless without it</span>
+      <span><i class="tag ask">your call</i> works today, costs effort — keep or cut</span>
+      <span><i class="tag cut">proposed cut</i> exists in v2, left out here</span>
+      <span><i class="tag fix">corrected</i> this page was wrong; see the note</span>
+    </div>
+
+    <div class="superseded">
+      <p><b>Status: validated design, superseded on specifics.</b> These screens were reviewed and signed off, and remain the reference for layout and visual language. The <em>requirements</em> now live in <span class="mono">android/docs/Plan_TOC.md</span> — scope, ground rules, the endpoint surface, and one file per feature with acceptance criteria. <b>Where this page and the requirements disagree, the requirements win.</b></p>
+      <p>Corrections are marked <i class="tag fix">corrected</i> inline below. In short: the login endpoint named on screen 01 was wrong; Stop does <em>not</em> keep partial text (screen 04); the conversation list carries no message preview (02); and the GPU API exposes no per-container VRAM or true uptime (10a).</p>
+      <p>Decisions taken since sign-off: <b>no projects on the phone at all</b>, follow the system theme, bottom navigation, stopping a container is always allowed, no maths rendering in v1, and <b>no notifications</b> — screen 08b's headline feature needs server code that does not exist, so it is cut rather than deferred, along with search, the tok/s readout and the offline cache. Full register with reasons: <span class="mono">android/docs/Dropped-Features.md</span>.</p>
+    </div>
+  </header>
+
+  <!-- ============ 1 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">01</span><h2>Getting in</h2></div>
+    <p class="band-sub">The dashboard already accepts a TOTP code and hands back an 8-hour sliding session token. The phone does the same and keeps the token in the Android Keystore, so you type six digits roughly once a day.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:14</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="lock">
+                  <div class="mark">▮▯</div>
+                  <div style="font-size:19px;font-weight:600;letter-spacing:-0.01em;">llm-dock</div>
+                  <div style="color:var(--d-muted);font-size:13px;margin-top:5px;">Connect to your rig</div>
+                </div>
+                <div class="stack" style="margin-top:30px;">
+                  <div class="field">
+                    <div class="cap">Server</div>
+                    <div class="val">https://dock.bardici.ro</div>
+                  </div>
+                </div>
+                <div style="padding:26px 20px 0;">
+                  <div class="cap mono" style="font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--d-subtle);text-align:center;margin-bottom:12px;">Authenticator code</div>
+                  <div class="otp">
+                    <span class="on">4</span><span class="on">1</span><span class="on">9</span><span class="cur"></span><span></span><span></span>
+                  </div>
+                </div>
+                <div style="padding:24px 20px 0;">
+                  <div class="p-row" style="padding:0;">
+                    <div class="grow"><div class="lbl">Stay signed in</div><div class="sub">Renews while you use the app</div></div>
+                    <div class="switch on"></div>
+                  </div>
+                </div>
+                <div class="stack" style="margin-top:24px;">
+                  <div class="btn">Connect</div>
+                  <div class="btn ghost">Paste an API token instead</div>
+                </div>
+                <p class="foot">Reachable over Tailscale or your reverse proxy. The app never stores the dashboard token in plain text.</p>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>01 · Connect</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Server address.</b> Typed once, remembered. Needed because the same app should work on LAN and over the proxy.</span></li>
+          <li><i class="tag core">core</i><span><b>Six-digit TOTP.</b> Sent as <span class="api">X-TOTP-Code</span>; the reply carries a <span class="api">totp-…</span> bearer token good for 8 h, extended on every request.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Raw API token entry.</b> Handy on a device you trust, one less screen to hit. Slightly worse if the phone is lost.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Biometric unlock</b> in front of the stored token. Not drawn — say the word and it becomes a fingerprint prompt on launch.</span></li>
+        </ul>
+        <p class="aside"><i class="tag fix">corrected</i> <b>The endpoint named here was wrong.</b> <span class="api">POST /api/totp/verify</span> is TOTP <em>enrollment</em> — it requires an already-valid token and writes the secret to config, so it cannot be used to sign in. The two real ways in, both returning an 8 h sliding session: <span class="api">POST /api/auth/session</span> with the password as a bearer (what the login page calls a password is <span class="mono">DASHBOARD_TOKEN</span>), or <span class="api">POST /api/auth/login</span> with an <span class="mono">X-TOTP-Code</span> header. Still nothing to build server-side.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">02</span><h2>Your conversations</h2></div>
+    <p class="band-sub">One list, newest first. Threads started on the desktop show up here and vice versa — it's the same <span class="mono">chat.db</span>. A thread that is <em>still generating on the server</em> gets a live dot, which is the one thing a phone client can do that the browser tab can't: walk away and come back.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:14</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="grow"><div class="ttl">Chats</div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+              <div class="icobtn"><svg class="i"><use href="#i-gear"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">Speculative decoding on Laguna</div>
+                    <div class="s">Writing to a small ngram map with k4v…</div>
+                    <div class="meta"><span class="dot live"></span><span class="chip green">generating</span><span class="chip">llamacpp-laguna-s-2.1-q4</span></div>
+                  </div>
+                  <div class="when">now</div>
+                </div>
+                <div class="p-div"></div>
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">Xorg watchdog vs. deep context</div>
+                    <div class="s">Setting Interactive false on the Blackwell…</div>
+                    <div class="meta"><span class="chip blue">vllm-qwen3.6-35b-a3b-fp8</span></div>
+                  </div>
+                  <div class="when">18:40</div>
+                </div>
+                <div class="p-div"></div>
+
+                <div class="grouphead">
+                  <svg class="i sm"><use href="#i-folder"/></svg>
+                  <span class="grow">llm-dock</span>
+                  <span class="count">4</span>
+                  <svg class="i sm" style="transform:rotate(90deg);"><use href="#i-chev"/></svg>
+                </div>
+                <div class="conv" style="padding-left:22px;">
+                  <div class="body">
+                    <div class="t">Rewriting compose_manager tests</div>
+                    <div class="s">The atomic-write path needs a fixture that…</div>
+                    <div class="meta"><span class="chip purple">openrouter · Claude Sonnet 5</span></div>
+                  </div>
+                  <div class="when">Tue</div>
+                </div>
+                <div class="p-div"></div>
+                <div class="conv" style="padding-left:22px;">
+                  <div class="body">
+                    <div class="t">MCP registry reload semantics</div>
+                    <div class="s">Reload is idempotent, but the stdio child…</div>
+                    <div class="meta"><span class="chip">llamacpp-qwen3.6-27b-mtp-q8</span></div>
+                  </div>
+                  <div class="when">Tue</div>
+                </div>
+                <div class="p-div"></div>
+
+                <div class="grouphead">
+                  <svg class="i sm"><use href="#i-folder"/></svg>
+                  <span class="grow">Home lab</span>
+                  <span class="count">2</span>
+                  <svg class="i sm"><use href="#i-chev"/></svg>
+                </div>
+                <div class="p-div"></div>
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">Q8 vs Q6 for the 27B MTP build</div>
+                    <div class="s">At ub=2048 prefill peaks around 450 t/s…</div>
+                    <div class="meta"><span class="chip">llamacpp-qwen3.6-27b-mtp-q8</span></div>
+                  </div>
+                  <div class="when">Mon</div>
+                </div>
+                <div class="p-div"></div>
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">ds4 VRAM residency</div>
+                    <div class="s">DS4_CUDA_COPY_MODEL=1 took it from 1.5…</div>
+                    <div class="meta"><span class="chip amber">ds4-deepseek-v4-flash</span></div>
+                  </div>
+                  <div class="when">Sun</div>
+                </div>
+              </div>
+              <div class="fab" style="bottom:82px;"><svg class="i"><use href="#i-plus"/></svg>New chat</div>
+              <div class="navbar">
+                <div class="navtab on"><span class="pill"><svg class="i sm"><use href="#i-chat"/></svg></span>Chats</div>
+                <div class="navtab"><span class="pill"><svg class="i sm"><use href="#i-chip"/></svg></span>Models</div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>02 · Conversations</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Flat, newest-first list</b> with title, model chip and time. <span class="api">GET /api/chat/conversations</span>, paged.</span></li>
+          <li><i class="tag fix">corrected</i><span><b>No last-line preview</b>, though the frame draws one. The list endpoint returns conversation rows without messages, so a preview would cost one extra request per visible row.</span></li>
+          <li><i class="tag core">core</i><span><b>Model chip per thread</b> — colour-coded the way the dashboard badges engines: blue vLLM, grey llama.cpp, amber ds4, purple OpenRouter. Tells you what a thread costs before you open it.</span></li>
+          <li><i class="tag core">core</i><span><b>Live "generating" dot.</b> Any thread with an active run. Tap it to reattach mid-stream — see screen 08.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Project groups.</b> Collapsible headers, same grouping as the sidebar. Cutting them makes this a single flat list; threads in projects still appear, just unsorted.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Swipe to delete</b> and long-press multi-select. <span class="api">POST /api/chat/conversations/delete</span> takes a batch.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Search.</b> The API has no search endpoint — this would filter titles client-side over the loaded page unless you want one added.</span></li>
+          <li><i class="tag core">core</i><span><b>The bottom bar.</b> Chats and Models — the second tab is screen 10. It appears only on the two list screens; open a thread and it gets out of the way.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Spin-off threads.</b> A desktop reading gesture; the taskbar of floating windows has no phone equivalent. Spin-offs made on the desktop still open here as normal threads.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">03</span><h2>Starting one</h2></div>
+    <p class="band-sub">A sheet, not a screen — three lines you can ignore. Everything is prefilled from your last chat, so the fast path is tap <em>New chat</em>, tap <em>Start</em>, type.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:15</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="grow"><div class="ttl">Chats</div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+              <div class="icobtn"><svg class="i"><use href="#i-gear"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll" style="position:relative;">
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">Speculative decoding on Laguna</div>
+                    <div class="s">Writing to a small ngram map with k4v…</div>
+                    <div class="meta"><span class="chip">llamacpp-laguna-s-2.1-q4</span></div>
+                  </div>
+                  <div class="when">now</div>
+                </div>
+                <div class="p-div"></div>
+                <div class="conv">
+                  <div class="body">
+                    <div class="t">Xorg watchdog vs. deep context</div>
+                    <div class="s">Setting Interactive false on the Blackwell…</div>
+                    <div class="meta"><span class="chip blue">vllm-qwen3.6-35b-a3b-fp8</span></div>
+                  </div>
+                  <div class="when">18:40</div>
+                </div>
+                <div class="overlay"></div>
+                <div class="sheet">
+                  <div class="grab"></div>
+                  <h4>New chat</h4>
+                  <p class="hint">Carried over from your last conversation.</p>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow">
+                      <div class="lbl">Model</div>
+                      <div class="sub mono" style="color:#93c5fd;">llamacpp-qwen3.6-27b-mtp-q8</div>
+                    </div>
+                    <span class="dot"></span>
+                    <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow">
+                      <div class="lbl">System prompt</div>
+                      <div class="sub">Server default</div>
+                    </div>
+                    <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow">
+                      <div class="lbl">Tools</div>
+                      <div class="sub">Web search, SymPy Math</div>
+                    </div>
+                    <span class="chip green">2</span>
+                    <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow">
+                      <div class="lbl">Project</div>
+                      <div class="sub">None</div>
+                    </div>
+                    <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                  </div>
+                  <div style="padding:14px 16px 4px;"><div class="btn">Start</div></div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>03 · New chat sheet</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Model.</b> The only required field — <span class="api">main_service</span> on <span class="api">POST /api/chat/conversations</span>.</span></li>
+          <li><i class="tag ask">your call</i><span><b>System prompt picker.</b> Your managed prompts from <span class="api">/api/chat/prompts</span>. Cutting it means every phone thread uses the server default, which you can still edit from the dashboard.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Tools.</b> Which MCP servers this thread may call. See screen 07.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Project.</b> Only meaningful if you keep project grouping. It also decides whether the model gets the file tools.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Critic / sidekick model.</b> Gone, as asked. Threads created on the phone send <span class="api">sidekick_service: null</span>; critiques you ran on the desktop simply don't render here.</span></li>
+        </ul>
+        <p class="aside"><b>The stripped-down version</b> of this sheet is one row — Model — and a Start button. Say so and I'll cut the other three.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">04</span><h2>The thread, mid-answer</h2></div>
+    <p class="band-sub">The heart of it. Your message in mono, the model's in serif — the same split the dashboard uses, and it earns its keep on a small screen: you can tell who's talking without looking for an avatar. Reasoning and tool calls collapse to one line each so they never bury the answer.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:16</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow">
+                <div class="ttl">Speculative decoding on Laguna<small>llamacpp-laguna-s-2.1-q4 · 3304</small></div>
+              </div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="thread">
+                  <div class="msg-u">Does Laguna have an MTP head I can point llama.cpp at, or do I need the poolside fork for DFlash?</div>
+                  <div class="msg-a">
+                    <div class="fold">
+                      <svg class="i xs"><use href="#i-chev"/></svg>
+                      <span class="grow">Thought for 6s</span>
+                      <span>1.2k tok</span>
+                    </div>
+                    <div class="toolcall">
+                      <div style="display:flex;align-items:center;gap:7px;">
+                        <svg class="i xs"><use href="#i-tool"/></svg>
+                        <span class="grow">web_search</span>
+                        <svg class="i xs"><use href="#i-check"/></svg>
+                      </div>
+                      <div class="args">"laguna s 2.1 multi token prediction head" → 5 results</div>
+                    </div>
+                    <p>No MTP head ships with Laguna S 2.1 — the checkpoint has a single LM head, so <span class="mono" style="font-size:12px;">--spec-decoding mtp</span> has nothing to attach to.</p>
+                    <p>DFlash does work, but only on the poolside fork; upstream llama.cpp hasn't merged the kernel yet. The cheap alternative is the ngram map:<span class="caret"></span></p>
+                  </div>
+                </div>
+              </div>
+              <div class="composer">
+                <div class="stopbar">
+                  <svg class="i sm"><use href="#i-stop"/></svg>
+                  Stop · 68 tok/s
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>04 · Streaming</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Token-by-token streaming</b> over the run's SSE stream, with the model name pinned under the title so you always know who's answering.</span></li>
+          <li><i class="tag core">core</i><span><b>Stop.</b> Cooperative cancel. Prefer <span class="api">POST /api/chat/conversations/&lt;id&gt;/cancel-active-run</span> with <span class="mono">expected_run_id</span> — the server can always find a conversation's active run, and the guard stops a stale tap killing a newer one.</span></li>
+          <li><i class="tag fix">corrected</i><span><b>Partial text is NOT kept.</b> A cancelled run marks itself cancelled and saves no assistant message — what's on screen is client-side only and vanishes on refetch. A <em>failed</em> run is the opposite: it persists its partial plus the error. Don't treat the two alike.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Live tok/s readout</b> in the stop bar. You care about this number on the desktop; it costs nothing to compute here.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Collapsed reasoning block.</b> Tap to expand. Cutting it means thinking output is dropped silently on the phone.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Tool-call cards.</b> Name, arguments, result, expandable. Only matters if you keep MCP tools on mobile at all.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Critique overlay</b> — the yellow annotated spans. No sidekick, no overlay.</span></li>
+        </ul>
+        <p class="aside"><b>Leaving the screen does not stop the run.</b> The server keeps generating and persists the reply; the app just unsubscribes. That's already how <span class="api">ChatRunner</span> behaves — it's what makes the phone client pleasant.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">05</span><h2>What the model can put on screen</h2></div>
+    <p class="band-sub">Markdown, code with a copy button, tables, math, and images returned by tools. Every one of these already comes down the same stream — the question is how much of the renderer is worth writing for a 6-inch screen.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:18</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">Compose rebuild step<small>vllm-qwen3-6-27b-fp8 · 3302</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="thread">
+                  <div class="msg-u">Give me the exact snippet to rebuild docker-compose.yml from services.json.</div>
+                  <div class="msg-a">
+                    <p>Run it from <span class="mono" style="font-size:12px;">dashboard/</span> with the venv interpreter — never edit the generated block by hand:</p>
+                    <div class="code">
+                      <div class="bar"><span>PYTHON</span><svg class="i xs"><use href="#i-copy"/></svg></div>
+                      <pre><span class="k">from</span> compose_manager <span class="k">import</span> ComposeManager
+
+mgr = ComposeManager(
+    <span class="st">"../docker-compose.yml"</span>,
+    <span class="st">"../services.json"</span>,
+)
+mgr.rebuild_compose_file()</pre>
+                    </div>
+                    <p>Then <span class="mono" style="font-size:12px;">docker compose up -d &lt;name&gt;</span>. Ports currently taken:</p>
+                    <div style="border:1px solid var(--d-line);border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:11px;">
+                      <div style="display:flex;background:var(--d-sunken);color:var(--d-subtle);padding:6px 10px;"><span style="flex:1;">SERVICE</span><span style="width:52px;">PORT</span></div>
+                      <div style="display:flex;padding:6px 10px;border-top:1px solid var(--d-line);"><span style="flex:1;">llamacpp-qwen3.6-27b-mtp-q8</span><span style="width:52px;">3301</span></div>
+                      <div style="display:flex;padding:6px 10px;border-top:1px solid var(--d-line);"><span style="flex:1;">vllm-qwen3-6-27b-fp8</span><span style="width:52px;">3302</span></div>
+                      <div style="display:flex;padding:6px 10px;border-top:1px solid var(--d-line);"><span style="flex:1;">ds4-deepseek-v4-flash</span><span style="width:52px;">3315</span></div>
+                    </div>
+                    <p style="margin-top:10px;">Throughput scales as <span class="mono" style="font-size:12px;">T ∝ B/(L·d)</span> until the KV cache saturates.</p>
+                    <div class="acts">
+                      <svg class="i sm"><use href="#i-copy"/></svg>
+                      <svg class="i sm"><use href="#i-select"/></svg>
+                      <svg class="i sm"><use href="#i-share"/></svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="composer">
+                <div class="cbox">
+                  <div class="ph">Message…</div>
+                  <div class="icobtn"><svg class="i sm"><use href="#i-image"/></svg></div>
+                  <div class="sendbtn idle"><svg class="i sm"><use href="#i-send"/></svg></div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>05 · Rendered answer</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Markdown + fenced code</b> with a language label and a copy button. Non-negotiable for how you use these models.</span></li>
+          <li><i class="tag core">core</i><span><b>Copy / select / share</b> under each answer. Share hands the text to any other Android app.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Tables.</b> They scroll sideways inside their own box. Cheap to keep, ugly to cut.</span></li>
+          <li><i class="tag ask">your call</i><span><b>KaTeX math.</b> Real cost on Android — either a WebView per formula or a maths renderer. Worth it only if you actually ask these models for maths on the phone.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Tool images</b> — Schemdraw circuits, rendered HTML artifacts. Circuits are a picture and work fine; HTML artifacts need a WebView.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Serif for answers, mono for your own text.</b> A borrow from the dashboard. Some people hate serif on phones — settings has a toggle.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">06</span><h2>Writing, and fixing what you wrote</h2></div>
+    <p class="band-sub">Two states of the same bar. The composer grows to about five lines and then scrolls; long-press on your own message opens the edit path, which truncates the thread from that point and re-runs — the same destructive-but-useful behaviour as the desktop.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:20</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">GPU watchdog<small>llamacpp-gemma-4-31b-it-q8 · 3303</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="thread">
+                  <div class="msg-a"><p>Xorg's <span class="mono" style="font-size:12px;">Interactive</span> option controls whether the kernel arms the 2-second GPU watchdog on that device.</p></div>
+                </div>
+              </div>
+              <div class="composer">
+                <div style="display:flex;gap:8px;padding:0 2px 9px;">
+                  <div style="position:relative;width:58px;height:58px;border-radius:11px;background:linear-gradient(140deg,#1e2634,#0b0f15);border:1px solid var(--d-line);display:flex;align-items:center;justify-content:center;color:var(--d-subtle);">
+                    <svg class="i sm"><use href="#i-image"/></svg>
+                    <span style="position:absolute;top:-6px;right:-6px;width:19px;height:19px;border-radius:50%;background:var(--d-surface-2);border:1px solid var(--d-line-strong);display:flex;align-items:center;justify-content:center;color:var(--d-muted);"><svg class="i xs"><use href="#i-close"/></svg></span>
+                  </div>
+                  <div style="align-self:center;font-family:var(--mono);font-size:10.5px;color:var(--d-subtle);line-height:1.5;">xorg-log.png<br>1 image · 412 KB</div>
+                </div>
+                <div class="cbox">
+                  <div class="typed">Here's the tail of Xorg.0.log after the crash — is the watchdog the thing killing the session, or is it the driver reset?<span class="caret" style="height:13px;"></span></div>
+                  <div class="icobtn"><svg class="i sm"><use href="#i-mic"/></svg></div>
+                  <div class="sendbtn"><svg class="i sm"><use href="#i-send"/></svg></div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>06a · Composer</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:21</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">GPU watchdog<small>llamacpp-gemma-4-31b-it-q8 · 3303</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll" style="position:relative;">
+                <div class="thread">
+                  <div class="msg-u" style="box-shadow:0 0 0 2px rgba(59,130,246,0.45);">Is the watchdog the thing killing the session, or is it the driver reset?</div>
+                  <div class="msg-a"><p>Xorg's <span class="mono" style="font-size:12px;">Interactive</span> option controls whether the kernel arms the 2-second GPU watchdog on that device.</p></div>
+                </div>
+                <div class="overlay"></div>
+                <div class="sheet">
+                  <div class="grab"></div>
+                  <h4>Your message</h4>
+                  <div class="p-div" style="margin-top:8px;"></div>
+                  <div class="p-row"><svg class="i sm" style="color:var(--d-muted);"><use href="#i-copy"/></svg><div class="grow"><div class="lbl">Copy text</div></div></div>
+                  <div class="p-row"><svg class="i sm" style="color:var(--d-muted);"><use href="#i-select"/></svg><div class="grow"><div class="lbl">Select text</div></div></div>
+                  <div class="p-row">
+                    <svg class="i sm" style="color:var(--d-muted);"><use href="#i-edit"/></svg>
+                    <div class="grow"><div class="lbl">Edit and resend</div><div class="sub">Discards everything after it</div></div>
+                  </div>
+                  <div class="p-row"><svg class="i sm" style="color:var(--d-muted);"><use href="#i-share"/></svg><div class="grow"><div class="lbl">Share</div></div></div>
+                  <div class="p-div"></div>
+                  <div class="p-row" style="color:#fca5a5;">
+                    <svg class="i sm"><use href="#i-trash"/></svg>
+                    <div class="grow"><div class="lbl" style="color:#fca5a5;">Delete message</div></div>
+                  </div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>06b · Long-press</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On these screens</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Multi-line composer</b> with send. Enter inserts a newline; the button sends — the opposite of the desktop, because thumbs.</span></li>
+          <li><i class="tag core">core</i><span><b>Long-press menu</b> — copy, select, share, delete. <span class="api">DELETE …/messages/&lt;id&gt;</span> already exists and refuses while a run is active.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Edit and resend.</b> <span class="api">PUT …/messages/&lt;id&gt;</span> truncates from that turn and re-runs. Powerful, and easy to fat-finger on a phone — it gets a confirm.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Image attachments</b> from camera or gallery. The API takes them; on a phone this is the single most natural input you have — a photo of a screen, a whiteboard, an error.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Voice input.</b> Drawn as a mic. Android's own dictation is free; a Whisper round-trip to the server is not, and there's no endpoint for it today.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">07</span><h2>Picking a model, picking tools</h2></div>
+    <p class="band-sub">The model list is <em>what is running right now</em>, straight from the dashboard. Stopped containers are shown greyed so you know why your favourite isn't there — whether the phone may start one is a real decision, not a UI detail.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:22</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-close"/></svg></div>
+              <div class="grow"><div class="ttl">Choose model</div></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div style="padding:8px 14px 4px;">
+                  <div class="field" style="display:flex;align-items:center;gap:9px;padding:9px 12px;">
+                    <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-search"/></svg>
+                    <span style="color:var(--d-subtle);font-size:13px;">Filter…</span>
+                  </div>
+                </div>
+                <div class="p-sec">Running · 3 of 20</div>
+                <div class="p-row" style="background:rgba(37,99,235,0.10);">
+                  <span class="dot"></span>
+                  <div class="grow">
+                    <div class="lbl mono" style="font-size:12.5px;">llamacpp-qwen3.6-27b-mtp-q8</div>
+                    <div class="sub">llama.cpp · :3301 · 26 GB VRAM</div>
+                  </div>
+                  <svg class="i sm" style="color:var(--d-accent);"><use href="#i-check"/></svg>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <span class="dot"></span>
+                  <div class="grow">
+                    <div class="lbl mono" style="font-size:12.5px;">vllm-qwen3.6-35b-a3b-fp8</div>
+                    <div class="sub">vLLM · :3310 · 35 GB VRAM</div>
+                  </div>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <span class="dot"></span>
+                  <div class="grow">
+                    <div class="lbl mono" style="font-size:12.5px;">ds4-deepseek-v4-flash</div>
+                    <div class="sub">ds4 · :3315 · 61 GB VRAM</div>
+                  </div>
+                </div>
+                <div class="p-sec">Stopped</div>
+                <div class="p-row" style="opacity:0.5;">
+                  <span class="dot off"></span>
+                  <div class="grow">
+                    <div class="lbl mono" style="font-size:12.5px;">llamacpp-gemma-4-31b-it-q8</div>
+                    <div class="sub">llama.cpp · :3303</div>
+                  </div>
+                  <span class="chip">start</span>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row" style="opacity:0.5;">
+                  <span class="dot off"></span>
+                  <div class="grow">
+                    <div class="lbl mono" style="font-size:12.5px;">llamacpp-mimo-v2-5-q4</div>
+                    <div class="sub">llama.cpp · :3307</div>
+                  </div>
+                  <span class="chip">start</span>
+                </div>
+                <div class="p-sec">OpenRouter</div>
+                <div class="p-row">
+                  <span class="dot" style="background:var(--d-purple);"></span>
+                  <div class="grow"><div class="lbl">Claude Sonnet 5</div><div class="sub mono" style="font-size:11px;">anthropic/claude-sonnet-5</div></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <span class="dot" style="background:var(--d-purple);"></span>
+                  <div class="grow"><div class="lbl">GPT-5.5</div><div class="sub mono" style="font-size:11px;">openai/gpt-5.5</div></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <span class="dot" style="background:var(--d-purple);"></span>
+                  <div class="grow"><div class="lbl">Gemini 3.5 Flash</div><div class="sub mono" style="font-size:11px;">google/gemini-3.5-flash</div></div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>07a · Model picker</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:23</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">Speculative decoding<small>llamacpp-laguna-s-2.1-q4 · 3304</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll" style="position:relative;">
+                <div class="thread"><div class="msg-a"><p>No MTP head ships with Laguna S 2.1 — the checkpoint has a single LM head.</p></div></div>
+                <div class="overlay"></div>
+                <div class="sheet">
+                  <div class="grab"></div>
+                  <h4>Tools for this chat</h4>
+                  <p class="hint">Changes apply to the next message you send.</p>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow"><div class="lbl">Web search</div><div class="sub">Live pages, prices, current specs</div></div>
+                    <div class="switch on"></div>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow"><div class="lbl">SymPy Math</div><div class="sub">Solve, differentiate, integrate</div></div>
+                    <div class="switch on"></div>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow"><div class="lbl">Schemdraw Circuits</div><div class="sub">Returns a circuit diagram image</div></div>
+                    <div class="switch"></div>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row">
+                    <div class="grow"><div class="lbl">RagFlow</div><div class="sub">Your knowledge base</div></div>
+                    <div class="switch"></div>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row" style="opacity:0.45;">
+                    <div class="grow"><div class="lbl">Project files</div><div class="sub">Needs a project on this chat</div></div>
+                    <div class="switch"></div>
+                  </div>
+                  <div class="p-div"></div>
+                  <div class="p-row" style="opacity:0.45;">
+                    <div class="grow"><div class="lbl">Render HTML</div><div class="sub">Output opens in a browser</div></div>
+                    <div class="switch"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>07b · Tools</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On these screens</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Running models, grouped by engine</b> with port and VRAM. Straight from the services API the dashboard already polls.</span></li>
+          <li><i class="tag core">core</i><span><b>Switch model mid-thread</b> — same list, reached from the ⋮ menu. The next turn goes to the new model.</span></li>
+          <li><i class="tag ask">your call</i><span><b>OpenRouter models.</b> Keep them and the phone works when the rig is off or busy; cut them and the app is purely local.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Start a stopped container from the phone.</b> Genuinely useful — and one mistap swaps 60 GB of VRAM out from under whatever is running. If you keep it, it gets a confirm and it is the <em>only</em> dashboard control in the app.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Per-chat tool toggles.</b> If tools are always the same set for you, this becomes one line in settings instead of a sheet.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 8 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">08</span><h2>Coming back to it</h2></div>
+    <p class="band-sub">The mobile-specific case, and the reason this is worth building rather than bookmarking <span class="mono">/v2</span>. Runs live on the server: lock the phone mid-answer, lose signal on the train, come back — the reply finished without you and the app catches up from the replay buffer.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:29</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">Speculative decoding<small>llamacpp-laguna-s-2.1-q4 · 3304</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="banner blue">
+                  <svg class="i sm" style="flex:none;margin-top:1px;"><use href="#i-check"/></svg>
+                  <div><b>Picked up where you left off</b>This answer kept generating while the app was closed.</div>
+                </div>
+                <div class="thread" style="padding-top:4px;">
+                  <div class="msg-u">Does Laguna have an MTP head, or do I need the poolside fork?</div>
+                  <div class="msg-a">
+                    <div class="fold"><svg class="i xs"><use href="#i-chev"/></svg><span class="grow">Thought for 6s</span></div>
+                    <p>No MTP head ships with Laguna S 2.1. DFlash needs the poolside fork; upstream hasn't merged the kernel.</p>
+                    <p>The cheap alternative is <span class="mono" style="font-size:12px;">ngram-map-k4v</span> with default settings — on code-edit workloads it lands +43–87%. Don't touch min-hits or size-m; raising either kills the win.<span class="caret"></span></p>
+                  </div>
+                </div>
+              </div>
+              <div class="composer">
+                <div class="stopbar"><svg class="i sm"><use href="#i-stop"/></svg>Stop · 71 tok/s</div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>08a · Reattached</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:31</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="screen" style="justify-content:space-between;">
+              <div>
+                <div style="text-align:center;padding:26px 0 8px;font-family:var(--mono);font-size:44px;letter-spacing:-0.02em;color:var(--d-fg);">21:31</div>
+                <div style="text-align:center;font-size:12.5px;color:var(--d-muted);padding-bottom:14px;">Friday, 24 July</div>
+                <div class="notif">
+                  <div style="width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#1e3a8a,#0b0f15);border:1px solid rgba(59,130,246,0.4);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:#93c5fd;flex:none;">▮▯</div>
+                  <div class="grow">
+                    <div class="app">llm-dock · now</div>
+                    <div class="t">Speculative decoding on Laguna</div>
+                    <div class="b">Answer ready — 1,840 tokens in 27 s.</div>
+                  </div>
+                </div>
+                <div class="notif" style="opacity:0.55;">
+                  <div style="width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,#7f1d1d,#0b0f15);border:1px solid rgba(239,68,68,0.4);display:flex;align-items:center;justify-content:center;color:#fca5a5;flex:none;"><svg class="i xs"><use href="#i-warn"/></svg></div>
+                  <div class="grow">
+                    <div class="app">llm-dock · 21:04</div>
+                    <div class="t">Run failed</div>
+                    <div class="b">vllm-qwen3-6-27b-nvfp4 stopped responding.</div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="banner" style="margin-bottom:18px;">
+                  <svg class="i sm" style="flex:none;margin-top:1px;"><use href="#i-warn"/></svg>
+                  <div><b>Can't reach dock.bardici.ro</b>Retrying every 5 s. Your draft is saved.</div>
+                </div>
+                <div class="gesture"></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>08b · Notification &amp; offline</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On these screens</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Reattach on open.</b> If the thread has an active run, resubscribe to its stream and replay what you missed. <span class="api">GET /api/chat/runs/&lt;id&gt;/stream</span> does this today.</span></li>
+          <li><i class="tag core">core</i><span><b>Honest offline state.</b> Retry with backoff, keep the draft, never silently lose a message.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Notification when an answer lands</b> while the app is closed. This is the killer feature and the biggest single build item — a foreground service polling, or a small push endpoint on the dashboard. Nothing exists server-side today.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Failure notifications</b> — a run that dies because a container fell over. Same machinery as above, near-zero extra cost once it exists.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Read threads offline.</b> Cache the last N conversations so a dead link still shows you yesterday's answer. Sending obviously still needs the server.</span></li>
+        </ul>
+        <p class="aside"><b>Be blunt with me about the notification.</b> Everything else here is a client over an API that already exists. That one needs a small amount of new server code, and it's the difference between an app and a bookmark.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 9 ============ -->
+  <section class="band" style="border-bottom:none;">
+    <div class="band-head"><span class="band-num">09</span><h2>Settings</h2></div>
+    <p class="band-sub">Short on purpose. Anything that belongs to the server — the default system prompt, the OpenRouter list, MCP registry — stays on the dashboard; the phone only holds what's about this phone.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:34</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl">Settings</div></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="p-sec">Server</div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">dock.bardici.ro</div><div class="sub">Connected · session ends in 7 h 41 m</div></div>
+                  <span class="dot"></span>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row"><div class="grow"><div class="lbl">Sign out</div><div class="sub">Forgets the stored token</div></div></div>
+
+                <div class="p-sec">Defaults for new chats</div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Model</div><div class="sub mono" style="font-size:11px;">llamacpp-qwen3.6-27b-mtp-q8</div></div>
+                  <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">System prompt</div><div class="sub">Server default</div></div>
+                  <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Tools</div><div class="sub">Web search, SymPy Math</div></div>
+                  <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                </div>
+
+                <div class="p-sec">Reading</div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Text size</div><div class="sub">Medium</div></div>
+                  <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Serif for answers</div><div class="sub">Off uses the system font</div></div>
+                  <div class="switch on"></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Show reasoning blocks</div></div>
+                  <div class="switch on"></div>
+                </div>
+
+                <div class="p-sec">While generating</div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Keep screen on</div></div>
+                  <div class="switch"></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl">Notify when an answer lands</div><div class="sub">Only when the app is closed</div></div>
+                  <div class="switch on"></div>
+                </div>
+
+                <div class="p-sec">About</div>
+                <div class="p-row"><div class="grow"><div class="lbl">Version</div><div class="sub mono" style="font-size:11px;">0.1.0 · dashboard 3399</div></div></div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>09 · Settings</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On this screen</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Server + session state</b> and a sign-out that actually clears the token.</span></li>
+          <li><i class="tag core">core</i><span><b>Text size.</b> The one accessibility knob that matters when you read model output on a phone in bed.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Defaults for new chats.</b> Only needed if the new-chat sheet keeps more than the model row.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Keep screen on while generating.</b> Nice for watching a long answer; costs battery.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Editing the server's default system prompt, the OpenRouter list, the MCP registry.</b> All dashboard territory. The phone reads them, never writes them.</span></li>
+          <li><i class="tag cut">cut</i><span><b>GPU monitor, container start/stop, benchmarks, project file editing.</b> This is a chat app.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section class="band">
+    <div class="band-head"><span class="band-num">10</span><h2>The rig</h2></div>
+    <p class="band-sub">A second tab: see what's loaded, start and stop it, read the logs. Deliberately not a dashboard — there is no way to create a service, edit flags, change ports or rotate keys from the phone. You can only turn on what already exists and watch it come up.</p>
+    <div class="row">
+      <div class="phones">
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:40</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="grow"><div class="ttl">Models</div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="gpu">
+                  <div class="top">
+                    <span class="nm">RTX PRO 6000 Blackwell</span>
+                    <span class="big">61.4<span> / 96 GB</span></span>
+                  </div>
+                  <div class="meter"><i class="a" style="width:27%;"></i><i class="b" style="width:37%;"></i></div>
+                  <div class="stats"><span><b>util</b> 84%</span><span><b>temp</b> 71 °C</span><span><b>power</b> 318 W</span></div>
+                </div>
+
+                <div class="p-sec">Running · 2</div>
+                <div class="svc">
+                  <span class="dot"></span>
+                  <div class="body">
+                    <div class="nm">llamacpp-qwen3.6-27b-mtp-q8</div>
+                    <div class="sub">:3301 · 26.1 GB · up 4 h 12 m</div>
+                  </div>
+                  <div class="act"><svg class="i sm"><use href="#i-power"/></svg></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="svc">
+                  <span class="dot"></span>
+                  <div class="body">
+                    <div class="nm">vllm-qwen3.6-35b-a3b-fp8</div>
+                    <div class="sub">:3310 · 35.3 GB · up 51 m</div>
+                  </div>
+                  <div class="act"><svg class="i sm"><use href="#i-power"/></svg></div>
+                </div>
+
+                <div class="p-sec">Stopped · 18</div>
+                <div class="svc">
+                  <span class="dot off"></span>
+                  <div class="body">
+                    <div class="nm">ds4-deepseek-v4-flash</div>
+                    <div class="sub">:3315 · needs ~61 GB</div>
+                  </div>
+                  <div class="act go"><svg class="i sm"><use href="#i-play"/></svg></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="svc">
+                  <span class="dot off"></span>
+                  <div class="body">
+                    <div class="nm">llamacpp-gemma-4-31b-it-q8</div>
+                    <div class="sub">:3303 · needs ~33 GB</div>
+                  </div>
+                  <div class="act go"><svg class="i sm"><use href="#i-play"/></svg></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="svc">
+                  <span class="dot off"></span>
+                  <div class="body">
+                    <div class="nm">llamacpp-laguna-s-2.1-q4</div>
+                    <div class="sub">:3304 · needs ~18 GB</div>
+                  </div>
+                  <div class="act go"><svg class="i sm"><use href="#i-play"/></svg></div>
+                </div>
+                <div class="p-div"></div>
+                <div class="svc">
+                  <span class="dot off"></span>
+                  <div class="body">
+                    <div class="nm">vllm-nomic-embed-text-v1.5</div>
+                    <div class="sub">:3380 · needs ~2 GB</div>
+                  </div>
+                  <div class="act go"><svg class="i sm"><use href="#i-play"/></svg></div>
+                </div>
+              </div>
+              <div class="navbar">
+                <div class="navtab"><span class="pill"><svg class="i sm"><use href="#i-chat"/></svg></span>Chats</div>
+                <div class="navtab on"><span class="pill"><svg class="i sm"><use href="#i-chip"/></svg></span>Models</div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>10a · Models</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:41</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl" style="font-size:14px;">vllm-qwen3.6-35b-a3b-fp8<small>vLLM · port 3310</small></div></div>
+            </div>
+            <div class="screen">
+              <div class="scroll">
+                <div class="gpu" style="border-color:rgba(34,197,94,0.28);background:rgba(22,163,74,0.08);">
+                  <div class="top">
+                    <span class="dot" style="margin-right:2px;"></span>
+                    <span class="nm">Running · up 51 m</span>
+                    <span class="big">35.3<span> GB</span></span>
+                  </div>
+                  <div class="stats" style="margin-top:9px;"><span><b>health</b> ok</span><span><b>ctx</b> 163 840</span><span><b>started</b> 20:50</span></div>
+                </div>
+
+                <div style="display:flex;gap:9px;padding:12px 14px 4px;">
+                  <div class="btn" style="flex:1;"><svg class="i sm"><use href="#i-chat"/></svg>New chat</div>
+                  <div class="btn ghost" style="flex:none;width:52px;padding:13px 0;"><svg class="i sm"><use href="#i-refresh"/></svg></div>
+                  <div class="btn ghost" style="flex:none;width:52px;padding:13px 0;color:#fca5a5;border-color:rgba(239,68,68,0.35);"><svg class="i sm"><use href="#i-power"/></svg></div>
+                </div>
+
+                <div class="p-sec">Model</div>
+                <div class="p-row">
+                  <div class="grow"><div class="lbl mono" style="font-size:12px;">Qwen/Qwen3.6-35B-A3B-FP8</div><div class="sub">35.2 GB on disk · FP8 checkpoint</div></div>
+                </div>
+
+                <div class="p-sec">Flags</div>
+                <div style="margin:0 14px;border:1px solid var(--d-line);border-radius:11px;background:var(--d-sunken);padding:10px 12px;font-family:var(--mono);font-size:10.6px;line-height:1.75;color:#cbd5e1;">
+                  <div>--max-model-len <span class="num">163840</span></div>
+                  <div>--gpu-memory-utilization <span class="num">0.55</span></div>
+                  <div>--max-num-seqs <span class="num">1</span></div>
+                  <div>--dtype auto</div>
+                  <div class="cm">--enable-prefix-caching</div>
+                </div>
+                <div style="padding:7px 16px 0;font-size:11px;color:var(--d-subtle);">Read-only. Edit flags on the dashboard.</div>
+
+                <div class="p-sec">Logs</div>
+                <div class="p-row">
+                  <svg class="i sm" style="color:var(--d-muted);"><use href="#i-term"/></svg>
+                  <div class="grow"><div class="lbl">Live output</div><div class="sub">Last line 21:40:58 · no errors</div></div>
+                  <svg class="i sm" style="color:var(--d-subtle);"><use href="#i-chev"/></svg>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>10b · Model detail</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:42</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+              <div class="grow"><div class="ttl" style="font-size:15px;">Logs<small>vllm-qwen3.6-35b-a3b-fp8</small></div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-share"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="logbar">
+                <span class="dot live" style="width:6px;height:6px;"></span>
+                <span class="grow" style="flex:1;">streaming · tail 200</span>
+                <span class="chip">wrap</span>
+                <span class="chip">copy</span>
+              </div>
+              <div class="scroll" style="position:relative;">
+                <div class="logs">
+                  <div><span class="ts">21:38:14</span><span class="lv i">INFO</span><span class="tx">api_server.py:1487 vLLM API server version 0.24.0</span></div>
+                  <div><span class="ts">21:38:14</span><span class="lv i">INFO</span><span class="tx">args: model=Qwen/Qwen3.6-35B-A3B-FP8</span></div>
+                  <div><span class="ts">21:38:15</span><span class="lv i">INFO</span><span class="tx">config.py:1892 quantization=fp8 detected from HF</span></div>
+                  <div><span class="ts">21:38:21</span><span class="lv i">INFO</span><span class="tx">Loading safetensors shards:  33% 3/9</span></div>
+                  <div><span class="ts">21:38:29</span><span class="lv i">INFO</span><span class="tx">Loading safetensors shards:  77% 7/9</span></div>
+                  <div><span class="ts">21:38:34</span><span class="lv i">INFO</span><span class="tx">Loading safetensors shards: 100% 9/9</span></div>
+                  <div><span class="ts">21:38:36</span><span class="lv i">INFO</span><span class="tx">Model loading took 34.8 GiB and 21.4s</span></div>
+                  <div><span class="ts">21:38:41</span><span class="lv w">WARN</span><span class="tx">cudagraph capture may add ~1.2 GiB</span></div>
+                  <div><span class="ts">21:39:02</span><span class="lv i">INFO</span><span class="tx">backends.py:530 torch.compile cache hit</span></div>
+                  <div><span class="ts">21:39:44</span><span class="lv i">INFO</span><span class="tx">Capturing cudagraphs:  60% 21/35</span></div>
+                  <div><span class="ts">21:40:11</span><span class="lv i">INFO</span><span class="tx">gpu_worker.py:298 KV cache: 18.4 GiB</span></div>
+                  <div><span class="ts">21:40:12</span><span class="lv i">INFO</span><span class="tx">core.py:214 init engine took 118.2s</span></div>
+                  <div><span class="ts">21:40:13</span><span class="lv i">INFO</span><span class="tx ok">Uvicorn running on http://0.0.0.0:8000</span></div>
+                  <div><span class="ts">21:40:58</span><span class="lv i">INFO</span><span class="tx">POST /v1/chat/completions 200 OK</span></div>
+                  <div><span class="ts">21:40:59</span><span class="lv i">INFO</span><span class="tx">Avg prompt tp: 1421.3 tok/s, gen: 74.2</span></div>
+                  <div><span class="ts">21:41:07</span><span class="lv i">INFO</span><span class="tx">Running: 1 reqs, waiting: 0, KV 3.1%</span></div>
+                </div>
+                <div style="position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;">
+                  <span class="chip blue" style="padding:6px 12px;font-size:10.5px;"><svg class="i xs"><use href="#i-down"/></svg>Jump to latest</span>
+                </div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>10c · Logs</figcaption>
+        </figure>
+
+        <figure class="device">
+          <div class="phone">
+            <div class="statusbar"><span>21:43</span><span class="sb-right"><span class="sig"><i></i><i></i><i></i><i></i></span><span class="batt"></span></span></div>
+            <div class="appbar">
+              <div class="grow"><div class="ttl">Models</div></div>
+              <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+            </div>
+            <div class="screen">
+              <div class="scroll" style="position:relative;">
+                <div class="gpu">
+                  <div class="top">
+                    <span class="nm">RTX PRO 6000 Blackwell</span>
+                    <span class="big">61.4<span> / 96 GB</span></span>
+                  </div>
+                  <div class="meter"><i class="a" style="width:27%;"></i><i class="b" style="width:37%;"></i></div>
+                  <div class="stats"><span><b>util</b> 84%</span><span><b>temp</b> 71 °C</span><span><b>power</b> 318 W</span></div>
+                </div>
+                <div class="p-sec">Running · 2</div>
+                <div class="svc">
+                  <span class="dot"></span>
+                  <div class="body"><div class="nm">llamacpp-qwen3.6-27b-mtp-q8</div><div class="sub">:3301 · 26.1 GB · up 4 h 12 m</div></div>
+                </div>
+
+                <div class="overlay"></div>
+                <div class="dialog">
+                  <h5>Not enough VRAM</h5>
+                  <p><span class="mono" style="font-size:12px;">ds4-deepseek-v4-flash</span> needs about 61 GB. Only 34.6 GB is free.</p>
+                  <div class="who">
+                    <div class="l"><span class="dot"></span><span style="flex:1;">llamacpp-qwen3.6-27b…</span><span>26.1 GB</span></div>
+                    <div class="l"><span class="dot"></span><span style="flex:1;">vllm-qwen3.6-35b-a3b…</span><span>35.3 GB</span></div>
+                  </div>
+                  <p style="margin-bottom:14px;">Stopping both frees 61.4 GB. Any chat running on them will fail mid-answer.</p>
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div class="btn">Stop both, then start</div>
+                    <div class="btn ghost">Start anyway</div>
+                    <div class="btn ghost" style="border:none;">Cancel</div>
+                  </div>
+                </div>
+              </div>
+              <div class="navbar">
+                <div class="navtab"><span class="pill"><svg class="i sm"><use href="#i-chat"/></svg></span>Chats</div>
+                <div class="navtab on"><span class="pill"><svg class="i sm"><use href="#i-chip"/></svg></span>Models</div>
+              </div>
+              <div class="gesture"></div>
+            </div>
+          </div>
+          <figcaption>10d · Start conflict</figcaption>
+        </figure>
+      </div>
+      <div class="notes">
+        <h3>On these screens</h3>
+        <ul>
+          <li><i class="tag core">core</i><span><b>Live GPU header.</b> One card: VRAM used of 96 GB, plus util, temp and watts. <span class="api">GET /api/gpu/stream</span> pushes it.</span></li>
+          <li><i class="tag fix">corrected</i><span><b>The per-container VRAM split isn't available.</b> <span class="mono">nvidia-smi</span> is queried for device totals only — no per-process breakdown reaches the API, and the sole per-service number is weights-on-disk size, not resident VRAM. Draw one total bar, or label the segments as estimates; never present them as measured.</span></li>
+          <li><i class="tag core">core</i><span><b>Running / stopped split</b> with port and model size. <span class="api">GET /api/services</span> for the snapshot, <span class="api">/api/services/stream</span> to keep it live without polling.</span></li>
+          <li><i class="tag fix">corrected</i><span><b>Uptime is really "created ago".</b> The payload carries the container's creation time, not its last start, so the figure is wrong for anything that has been restarted.</span></li>
+          <li><i class="tag core">core</i><span><b>Start and stop</b> from the row or the detail screen — <span class="api">POST /api/services/&lt;name&gt;/start|stop</span>. Restart is stop-then-start, same as the dashboard.</span></li>
+          <li><i class="tag core">core</i><span><b>Streaming logs</b> with level colouring and follow-tail. <span class="api">GET /api/services/&lt;name&gt;/logs/stream</span>, already SSE. Share hands the buffer to any app — useful for pasting a startup failure somewhere.</span></li>
+          <li><i class="tag core">core</i><span><b>VRAM guard before starting.</b> Everything shares one GPU, so a start that doesn't fit is the app's one genuinely dangerous action. It names what is running, what stopping frees, and warns that in-flight chats die. <em>Stop both, then start</em> is a compound action the phone performs for you.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Read-only flags</b> on the detail screen — the rendered CLI from <span class="api">GET /api/services/&lt;name&gt;</span>. Useful when you're deciding whether to start something; cut it and the detail screen is status plus logs.</span></li>
+          <li><i class="tag ask">your call</i><span><b>"New chat" straight from a model.</b> Opens the chat tab with that service preselected. Cheap, and it's how you'd actually use this tab.</span></li>
+          <li><i class="tag ask">your call</i><span><b>Readiness watching.</b> vLLM takes 1–3 min to come up. The app can watch for <span class="api">Uvicorn running</span> / <span class="api">HTTP server is listening</span> and notify you when the model is actually usable, instead of you re-opening the logs.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Everything configuration.</b> No create, no flag editing, no port or key changes, no delete, no compose rebuild. The phone starts, stops and observes — nothing that can corrupt <span class="mono">services.json</span> from a bad tap.</span></li>
+          <li><i class="tag cut">cut</i><span><b>Benchmarks.</b> Running <span class="mono">llama-bench</span> from a phone helps nobody.</span></li>
+        </ul>
+        <p class="aside"><b>This tab is why the app gets a bottom bar.</b> Two tabs, Chats and Models — see screen 02. The alternative is no nav bar at all and a small GPU chip in the chat list's app bar that opens Models as a pushed screen; that keeps the app feeling like one thing. Tell me which you prefer.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ decisions ============ -->
+  <section class="close-out">
+    <h2>What I need from you</h2>
+    <p>Go down this list and say keep or cut. Everything marked <em>exists</em> is already served by the dashboard API — the cost is client-side only. Two rows need new server code and I've flagged them.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>Where</th><th>Server side</th><th>My take</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="f">TOTP login, 8 h session</td><td class="a">01</td><td class="a">exists</td><td class="w">Keep — it's the only way in.</td></tr>
+          <tr><td class="f">Project grouping in the list</td><td class="a">02, 03</td><td class="a">exists</td><td class="w">Keep the grouping, cut the file browser.</td></tr>
+          <tr><td class="f">Search over conversations</td><td class="a">02</td><td class="a">client-side only</td><td class="w">Cut for v1. Titles-only filtering is half a feature.</td></tr>
+          <tr><td class="f">Swipe / batch delete</td><td class="a">02</td><td class="a">exists</td><td class="w">Keep swipe, cut multi-select.</td></tr>
+          <tr><td class="f">System-prompt picker</td><td class="a">03</td><td class="a">exists</td><td class="w">Keep — you use managed prompts.</td></tr>
+          <tr><td class="f">Per-chat MCP tools</td><td class="a">03, 07b</td><td class="a">exists</td><td class="w">Keep web search; the rest are desktop work.</td></tr>
+          <tr><td class="f">Reasoning blocks</td><td class="a">04</td><td class="a">exists</td><td class="w">Keep, collapsed by default.</td></tr>
+          <tr><td class="f">Tool-call cards</td><td class="a">04</td><td class="a">exists</td><td class="w">Keep, one line unless tapped.</td></tr>
+          <tr><td class="f">tok/s readout</td><td class="a">04</td><td class="a">derived</td><td class="w">Keep. Free, and you look at it.</td></tr>
+          <tr><td class="f">KaTeX math</td><td class="a">05</td><td class="a">exists</td><td class="w">Cut for v1 unless you say otherwise.</td></tr>
+          <tr><td class="f">HTML artifacts in a WebView</td><td class="a">05</td><td class="a">exists</td><td class="w">Cut. Open them on the desktop.</td></tr>
+          <tr><td class="f">Image attachments</td><td class="a">06a</td><td class="a">exists</td><td class="w">Keep — best reason to chat from a phone.</td></tr>
+          <tr><td class="f">Edit and resend</td><td class="a">06b</td><td class="a">exists</td><td class="w">Keep, behind a confirm.</td></tr>
+          <tr><td class="f">Voice input</td><td class="a">06a</td><td class="a">Android built-in</td><td class="w">Keep the system dictation. No Whisper round-trip.</td></tr>
+          <tr><td class="f">OpenRouter models</td><td class="a">07a</td><td class="a">exists</td><td class="w">Keep. Works when the rig is busy.</td></tr>
+          <tr><td class="f">Start a stopped container</td><td class="a">07a, 10a</td><td class="a">exists</td><td class="w">In, with the VRAM guard from 10d in front of it.</td></tr>
+          <tr><td class="f">Models tab + GPU header</td><td class="a">10a</td><td class="a">exists</td><td class="w">Keep. Live over the services + GPU SSE streams.</td></tr>
+          <tr><td class="f">Model detail with flags</td><td class="a">10b</td><td class="a">exists</td><td class="w">Keep, read-only. Flags are dashboard territory.</td></tr>
+          <tr><td class="f">Streaming container logs</td><td class="a">10c</td><td class="a">exists</td><td class="w">Keep. Best reason to reach for the phone when something won't come up.</td></tr>
+          <tr><td class="f">VRAM guard on start</td><td class="a">10d</td><td class="a">client-side only</td><td class="w">Keep. One GPU, one mistap.</td></tr>
+          <tr><td class="f">Notify when a model is ready</td><td class="a">10c</td><td class="a">NEW</td><td class="w">Same machinery as the answer notification. Free once that exists.</td></tr>
+          <tr><td class="f">Create / edit / delete services</td><td class="a">—</td><td class="a">exists</td><td class="w">Cut, as you asked. No configuration on the phone.</td></tr>
+          <tr><td class="f">Reattach to a live run</td><td class="a">08a</td><td class="a">exists</td><td class="w">Keep. This is the whole point.</td></tr>
+          <tr><td class="f">Notify when an answer lands</td><td class="a">08b</td><td class="a">NEW</td><td class="w">Keep if you'll accept a small dashboard change.</td></tr>
+          <tr><td class="f">Offline reading cache</td><td class="a">08b</td><td class="a">client-side only</td><td class="w">Cut for v1.</td></tr>
+          <tr><td class="f">Critic / sidekick</td><td class="a">—</td><td class="a">exists</td><td class="w">Cut, as you asked.</td></tr>
+          <tr><td class="f">Spin-off conversations</td><td class="a">—</td><td class="a">exists</td><td class="w">Cut. No room for the gesture.</td></tr>
+          <tr><td class="f">Project file browser / editor</td><td class="a">—</td><td class="a">exists</td><td class="w">Cut. Desktop work on a phone screen.</td></tr>
+          <tr><td class="f">GPU monitor, benchmarks</td><td class="a">—</td><td class="a">exists</td><td class="w">Cut. Different app.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 style="margin-top:52px;">Open questions</h2>
+    <ol>
+      <li><strong>Notifications.</strong> Worth a small server change, or do you only ever chat with the app open?</li>
+      <li><strong>Stopping a model that a chat is mid-answer on.</strong> Screen 10d warns you. Should it also refuse — or is a warning enough on a single-user rig?</li>
+      <li><strong>Bottom bar, or Models as a pushed screen</strong> off the chat list? Two tabs is the discoverable answer; one screen is the honest one if you'll open Models once a week.</li>
+      <li><strong>Dark only, or follow the system theme?</strong> The mockups commit to dark, matching the dashboard. A light theme is a second palette to maintain.</li>
+      <li><strong>How the app gets built.</strong> Native Kotlin/Compose, or a thin wrapper — the answer changes what's cheap. KaTeX and HTML artifacts, for instance, are nearly free in a WebView and expensive natively.</li>
+      <li><strong>Does the phone ever need to see projects at all,</strong> or is that purely desktop work?</li>
+    </ol>
+  </section>
+
+</div>
