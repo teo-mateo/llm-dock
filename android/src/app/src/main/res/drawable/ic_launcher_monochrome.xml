@@ -5,11 +5,8 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#3B82F6"
-        android:pathData="M34,28H74C80.63,28 86,33.37 86,40V66C86,72.63 80.63,78 74,78H50L38,88V78H34C27.37,78 22,72.63 22,66V40C22,33.37 27.37,28 34,28Z" />
-    <path
         android:fillColor="#00000000"
-        android:pathData="M40,44L49,53L40,62M57,62H69"
+        android:pathData="M34,28H74C80.63,28 86,33.37 86,40V66C86,72.63 80.63,78 74,78H50L38,88V78H34C27.37,78 22,72.63 22,66V40C22,33.37 27.37,28 34,28ZM40,44L49,53L40,62M57,62H69"
         android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
