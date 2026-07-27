@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.ConfirmDialog
+import com.hpz.llmdockchat.core.ui.BrandMark
 import com.hpz.llmdockchat.core.ui.NoticeDialog
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
@@ -208,19 +209,25 @@ private fun ListHeader(running: Int?, stopped: Int?) {
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Column {
-            Text(
-                "Models",
-                color = colors.fg,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            if (running != null && stopped != null) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BrandMark(Modifier.size(44.dp))
+            Column {
                 Text(
-                    "$running running · $stopped stopped",
-                    color = colors.subtle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    "Models",
+                    color = colors.fg,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
                 )
+                if (running != null && stopped != null) {
+                    Text(
+                        "$running running · $stopped stopped",
+                        color = colors.subtle,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }

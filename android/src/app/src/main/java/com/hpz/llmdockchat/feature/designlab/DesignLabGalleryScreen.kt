@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.core.ui.BrandMark
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 import kotlinx.coroutines.launch
@@ -63,14 +64,20 @@ fun DesignLabGalleryScreen() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text("Design lab", style = MaterialTheme.typography.titleLarge, color = colors.fg)
-                    Text(
-                        MOCK_SCREENS[pagerState.currentPage].label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.accent,
-                        modifier = Modifier.testTag("design_lab_current_label"),
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BrandMark(Modifier.size(40.dp))
+                    Column {
+                        Text("Design lab", style = MaterialTheme.typography.titleLarge, color = colors.fg)
+                        Text(
+                            MOCK_SCREENS[pagerState.currentPage].label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.accent,
+                            modifier = Modifier.testTag("design_lab_current_label"),
+                        )
+                    }
                 }
                 ThemeToggle(darkPreview) { darkPreview = it }
             }

@@ -66,6 +66,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.hpz.llmdockchat.core.time.Timestamps
+import com.hpz.llmdockchat.core.ui.BrandMark
 import com.hpz.llmdockchat.core.ui.ConfirmDialog
 import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
@@ -174,9 +175,9 @@ private fun ConversationListContent(
             SnackbarHost(snackbarHost) { data ->
                 Snackbar(
                     data,
-                    containerColor = colors.surfaceElevated,
-                    contentColor = colors.fg,
-                    actionColor = colors.accent,
+                    containerColor = colors.accent,
+                    contentColor = colors.onAccent,
+                    actionColor = colors.onAccent,
                     shape = RoundedCornerShape(14.dp),
                 )
             }
@@ -327,20 +328,26 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
 private fun ListHeader(count: Int?) {
     val colors = LlmTheme.colors
     HeaderShell {
-        Column {
-        Text(
-            "Chats",
-            color = colors.fg,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        if (count != null) {
-            Text(
-                if (count == 1) "1 conversation" else "$count conversations",
-                color = colors.subtle,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BrandMark(Modifier.size(44.dp))
+            Column {
+                Text(
+                    "Chats",
+                    color = colors.fg,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (count != null) {
+                    Text(
+                        if (count == 1) "1 conversation" else "$count conversations",
+                        color = colors.subtle,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }
