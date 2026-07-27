@@ -54,6 +54,8 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                         for i, tc in enumerate(tool_calls)
                     ],
                 }
+                if data.get("reasoning_content"):
+                    assistant_tool_msg["reasoning_content"] = data["reasoning_content"]
                 messages_array.append(assistant_tool_msg)
 
                 # Execute each tool call

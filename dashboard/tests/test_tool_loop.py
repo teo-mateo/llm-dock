@@ -132,3 +132,29 @@ def test_normal_completion_before_cap_unaffected(monkeypatch):
     assert [e[0] for e in events] == ["done"]
     assert len(record) == 1
     assert record[0]["tool_choice"] is None  # default auto-choice path
+
+
+def test_reasoning_preserved_between_tool_rounds(monkeypatch):
+    requests = []
+
+    def _stream(service_name, messages_array, tools=None, tool_choice=None):
+        requests.append([dict(message) for message in messages_array])
+        if len(requests) == 1:
+            yield _tool_calls_event()[0], {
+                **_tool_calls_event()[1],
+                "reasoning_content": "The search tool can answer this.",
+            }
+        else:
+            yield ("done", {"content": "Found it.", "reasoning_content": None})
+
+    monkeypatch.setattr(tool_loop, "stream_chat_completion", _stream)
+    events = list(tool_loop.stream_with_tools(
+        "svc",
+        [{"role": "user", "content": "find it"}],
+        tools=[{"type": "function"}],
+        mcp_manager=_MCP(),
+    ))
+
+    assert events[-1][0] == "done"
+    assert requests[1][1]["role"] == "assistant"
+    assert requests[1][1]["reasoning_content"] == "The search tool can answer this."

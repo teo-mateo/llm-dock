@@ -121,7 +121,7 @@ def _extract_error_message(resp) -> str:
 
 def build_messages_array(system_prompt: str, messages: list) -> list:
     """Build the messages array for the OpenAI-compatible API.
-    Only includes role and content (no reasoning_content).
+    Includes stored reasoning_content for assistant messages.
     Messages with images use the multipart content format."""
     arr = []
     if system_prompt:
@@ -137,9 +137,12 @@ def build_messages_array(system_prompt: str, messages: list) -> list:
                     "type": "image_url",
                     "image_url": {"url": data_url},
                 })
-            arr.append({"role": msg.role, "content": content_parts})
+            message = {"role": msg.role, "content": content_parts}
         else:
-            arr.append({"role": msg.role, "content": msg.content})
+            message = {"role": msg.role, "content": msg.content}
+        if msg.role == "assistant" and msg.reasoning_content:
+            message["reasoning_content"] = msg.reasoning_content
+        arr.append(message)
     return arr
 
 
@@ -150,7 +153,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     Yields (event_type, data) tuples:
       - ("delta", {"content": ..., "reasoning_content": ..., "raw": ...})
       - ("done", {"content": full_content, "reasoning_content": full_reasoning})
-      - ("tool_calls", {"tool_calls": [{"id": ..., "function": {"name": ..., "arguments": ...}}]})
+      - ("tool_calls", {"tool_calls": [...], "reasoning_content": ...})
       - ("error", {"message": ...})
 
     `tool_choice` overrides the default. When `tools` are supplied it defaults to
@@ -273,7 +276,10 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
 
         # Stream ended — determine what happened
         if finish_reason == "tool_calls" or (collected_tool_calls and not collected_content):
-            yield ("tool_calls", {"tool_calls": collected_tool_calls})
+            yield ("tool_calls", {
+                "tool_calls": collected_tool_calls,
+                "reasoning_content": collected_reasoning or None,
+            })
         else:
             # Format-drift detection — surface known wrong-format failure
             # modes before the `done` event so the UI can render a chip on
