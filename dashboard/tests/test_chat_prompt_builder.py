@@ -26,6 +26,17 @@ def _user(content="hi", images_json=None):
     )
 
 
+def _assistant(content="hello", reasoning_content=None):
+    return Message(
+        id=str(uuid.uuid4()),
+        conversation_id="c",
+        role="assistant",
+        content=content,
+        reasoning_content=reasoning_content,
+        seq=1,
+    )
+
+
 def _system_text(arr):
     assert arr[0]["role"] == "system"
     return arr[0]["content"]
@@ -88,3 +99,22 @@ def test_images_delegated_to_multipart(monkeypatch):
     content = arr[0]["content"]
     assert {"type": "text", "text": "look"} in content
     assert {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}} in content
+
+
+def test_assistant_reasoning_preserved_in_history(monkeypatch):
+    monkeypatch.setattr(prompt_builder, "get_tool_hints", lambda s: "")
+    arr = prompt_builder.build_chat_messages(
+        "",
+        [_user(), _assistant(reasoning_content="Consider the alternatives."), _user("continue")],
+        [],
+        include_date_line=False,
+    )
+    assert arr == [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "hello",
+            "reasoning_content": "Consider the alternatives.",
+        },
+        {"role": "user", "content": "continue"},
+    ]

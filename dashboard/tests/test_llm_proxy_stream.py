@@ -95,3 +95,20 @@ def test_default_tool_choice_auto_with_tools(monkeypatch):
 
     list(llm_proxy.stream_chat_completion("svc", [], tools=[{"type": "function"}]))
     assert captured["tool_choice"] == "auto"
+
+
+def test_tool_call_event_preserves_accumulated_reasoning(monkeypatch):
+    resp = _FakeResp([
+        'data: {"choices":[{"delta":{"reasoning_content":"I should search. "}}]}',
+        'data: {"choices":[{"delta":{"reasoning_content":"Now calling it.","tool_calls":[{"index":0,"id":"call_1","function":{"name":"srv__search","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+        'data: [DONE]',
+    ])
+    _patch(monkeypatch, resp)
+
+    events = list(llm_proxy.stream_chat_completion(
+        "svc",
+        [],
+        tools=[{"type": "function"}],
+    ))
+    tool_calls = next(data for event_type, data in events if event_type == "tool_calls")
+    assert tool_calls["reasoning_content"] == "I should search. Now calling it."
