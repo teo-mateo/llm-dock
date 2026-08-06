@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS } from './navItems'
+import { logout } from '../api'
 
 const STORAGE_KEY = 'llmdock.sidebar.collapsed'
 
@@ -96,6 +97,18 @@ function Sidebar() {
         ))}
       </nav>
 
+      {/* Back to v1 — subtle footer link, above the Admin section */}
+      <a
+        href="/"
+        title={collapsed ? 'Back to v1 UI' : undefined}
+        className={`flex items-center gap-3 py-2 text-xs text-fg-subtle hover:text-fg-muted border-t border-border-subtle ${
+          collapsed ? 'justify-center px-0' : 'px-4'
+        }`}
+      >
+        <i className="fa-solid fa-arrow-left w-5 text-center"></i>
+        {!collapsed && <span>Back to v1 UI</span>}
+      </a>
+
       {/* User section */}
       <div
         className={`border-t border-border-subtle ${
@@ -119,9 +132,10 @@ function Sidebar() {
                 <p className="text-sm font-medium truncate text-fg">Admin</p>
               </div>
               <button
-                className="text-fg-subtle hover:text-fg-muted"
+                className="text-fg-subtle hover:text-fg hover:bg-surface/60 rounded p-1.5 cursor-pointer transition-colors"
                 aria-label="Log out"
                 title="Log out"
+                onClick={logout}
               >
                 <i className="fa-solid fa-right-from-bracket"></i>
               </button>

@@ -37,6 +37,17 @@ export function handleAuthFailure() {
   window.location.href = buildLoginRedirectUrl(window.location.pathname + window.location.search)
 }
 
+/**
+ * Explicit logout: drop the token and send the user to the login page,
+ * preserving the current path so re-login returns them to where they were.
+ * Unlike handleAuthFailure, this is a deliberate user action, so it always
+ * navigates regardless of the redirect-once guard.
+ */
+export function logout() {
+  localStorage.removeItem(TOKEN_KEY)
+  window.location.href = buildLoginRedirectUrl(window.location.pathname + window.location.search)
+}
+
 export async function fetchAPI(endpoint, options = {}) {
   const token = getToken()
   if (!token) {

@@ -4,7 +4,7 @@ import TokenSparkline from './TokenSparkline'
 import RequestStrip from './RequestStrip'
 import GaugesRow from './GaugesRow'
 import SpecDecodeBar from './SpecDecodeBar'
-import { getValue, totalValue, timeAgo } from '../utils'
+import { getValue, totalValue } from '../utils'
 
 function fmt(n) {
   if (n == null) return '—'
@@ -12,7 +12,7 @@ function fmt(n) {
 }
 
 export default function MetricsPanel({ serviceName, enabled }) {
-  const { metrics, history, loading, error, lastScraped } = useServiceMetrics({ serviceName, enabled })
+  const { metrics, history, loading, error } = useServiceMetrics({ serviceName, enabled })
 
   const latest = history.length > 0 ? history[history.length - 1] : {}
 
@@ -30,15 +30,16 @@ export default function MetricsPanel({ serviceName, enabled }) {
 
   if (!enabled) {
     return (
-      <div className="bg-surface rounded-lg border border-border p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-2 h-2 rounded-full bg-surface-muted" />
-          <h3 className="text-base font-semibold text-fg">Live Metrics</h3>
+      <div className="bg-surface rounded-lg border border-border">
+        <div className="px-5 py-4 border-b border-border flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-fg">Live Metrics</h3>
           <span className="text-fg-subtle text-sm">(disabled)</span>
         </div>
-        <p className="text-fg-muted text-sm">
-          Metrics are only available for running services. Start the service to see live metrics.
-        </p>
+        <div className="p-5">
+          <p className="text-fg-muted text-sm">
+            Metrics are only available for running services. Start the service to see live metrics.
+          </p>
+        </div>
       </div>
     )
   }
@@ -46,14 +47,13 @@ export default function MetricsPanel({ serviceName, enabled }) {
   const hasHistory = history.length > 0
 
   return (
-    <div className="bg-surface rounded-lg border border-border p-5">
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`w-2 h-2 rounded-full ${error ? 'bg-danger' : 'bg-success animate-pulse'}`} />
-        <h3 className="text-base font-semibold text-fg">Live Metrics</h3>
-        <span className="text-fg-subtle text-xs">{loading ? 'Initial fetch...' : timeAgo(lastScraped)}</span>
+    <div className="bg-surface rounded-lg border border-border">
+      <div className="px-5 py-4 border-b border-border flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-fg">Live Metrics</h3>
         {error && <span className="text-danger-fg text-xs ml-auto">{error}</span>}
       </div>
 
+      <div className="p-5">
       {showCumulative && (
         <div className="flex items-center gap-6 mb-4 px-1 text-xs font-mono">
           <div className="flex items-center gap-1.5">
@@ -99,6 +99,7 @@ export default function MetricsPanel({ serviceName, enabled }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

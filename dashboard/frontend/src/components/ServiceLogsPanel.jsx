@@ -93,15 +93,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
       {/* Header */}
       <div className="px-5 py-3 border-b border-border flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-fg-muted uppercase tracking-wider">
-            Container Logs
+          <h2 className="text-lg font-semibold text-fg">
+            Logs
           </h2>
-          {hasContainer && !paused && connected && (
-            <span className="w-2.5 h-2.5 rounded-full bg-success animate-pulse" />
-          )}
-          {hasContainer && !paused && !connected && !streamEnded && (
-            <span className="w-2.5 h-2.5 rounded-full bg-warning animate-pulse" />
-          )}
           {streamEnded && (
             <span className="text-xs text-fg-subtle italic">stopped</span>
           )}

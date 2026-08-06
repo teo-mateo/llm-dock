@@ -56,19 +56,6 @@ describe('MetricsPanel', () => {
     expect(screen.getByText('Active KV')).toBeTruthy()
   })
 
-  it('render green pulse dot when polling active', () => {
-    useServiceMetrics.mockReturnValue({
-      metrics: { 'vllm:kv_cache_usage_perc': { 'gpu_id=0': 0.5 } },
-      history: [{ kvCache: 0.5, running: 0, waiting: 0, preemptRate: 0, promptTokensRate: 0, generationTokensRate: 0 }],
-      loading: false,
-      error: null,
-      lastScraped: new Date().toISOString()
-    })
-    const { container } = render(<MetricsPanel serviceName="test" enabled={true} />)
-    const dot = container.querySelector('.bg-success')
-    expect(dot).toBeTruthy()
-  })
-
   it('shows disabled state when enabled is false', () => {
     useServiceMetrics.mockReturnValue({
       metrics: {},
@@ -81,7 +68,7 @@ describe('MetricsPanel', () => {
     expect(screen.getByText('(disabled)')).toBeTruthy()
   })
 
-  it('shows red dot and error message when error present', () => {
+  it('shows error message when error present', () => {
     useServiceMetrics.mockReturnValue({
       metrics: {},
       history: [],
@@ -89,8 +76,7 @@ describe('MetricsPanel', () => {
       error: 'Connection refused',
       lastScraped: null
     })
-    const { container } = render(<MetricsPanel serviceName="test" enabled={true} />)
-    expect(container.querySelector('.bg-danger')).toBeTruthy()
+    render(<MetricsPanel serviceName="test" enabled={true} />)
     expect(screen.getByText('Connection refused')).toBeTruthy()
   })
 })

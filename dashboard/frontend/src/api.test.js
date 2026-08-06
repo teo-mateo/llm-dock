@@ -94,3 +94,29 @@ describe('auth failure redirect', () => {
     expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
   })
 })
+
+// Explicit logout: clears the token and navigates to the login page carrying
+// the current path back.
+describe('logout', () => {
+  it('clears the token and navigates to login with the current path', async () => {
+    const api = await import('./api')
+    localStorage.setItem(api.TOKEN_KEY, 'test-token')
+
+    // jsdom can't read back a real navigation, so swap in a plain fake
+    // location object and read back the href assignment.
+    const fakeLocation = {
+      pathname: '/v2/chat/abc123',
+      search: '',
+      href: 'http://localhost:3399/v2/chat/abc123',
+    }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: fakeLocation,
+    })
+
+    api.logout()
+
+    expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
+    expect(fakeLocation.href).toBe('http://localhost:3399/?redirect=%2Fv2%2Fchat%2Fabc123')
+  })
+})
