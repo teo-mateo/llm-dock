@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useReducer } from 'react'
-import { fetchAPI, getToken, API_BASE, TOKEN_KEY } from '../api'
+import { fetchAPI, getToken, API_BASE, TOKEN_KEY, handleAuthFailure } from '../api'
 
 const RECONNECT_DELAY = 3000
 
@@ -163,9 +163,9 @@ export default function useServicesSSE() {
   const processStream = useCallback(async (response, controller) => {
     if (!response.ok) {
       if (response.status === 401) {
+        handleAuthFailure()
         if (mountedRef.current) {
           setError('Authentication failed')
-          localStorage.removeItem(TOKEN_KEY)
           setConnected(false)
           setLoading(false)
         }

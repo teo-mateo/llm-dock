@@ -56,3 +56,41 @@ describe('fetchAPI error-code transport', () => {
     await expect(fetchAPI('/x')).resolves.toEqual({ ok: true })
   })
 })
+
+// Auth-failure redirect (regression: v2 frontend must bounce to login when the
+// token is rejected). The redirect URL is a pure helper (buildLoginRedirectUrl)
+// so it's tested directly; fetchAPI's 401/no-token paths are asserted via their
+// observable side effect (token cleared) — jsdom can't read back a navigation.
+describe('auth failure redirect', () => {
+  it('builds a login URL carrying the current path back', async () => {
+    const api = await import('./api')
+    expect(api.buildLoginRedirectUrl('/v2/chat/abc123'))
+      .toBe('http://localhost:3399/?redirect=%2Fv2%2Fchat%2Fabc123')
+    expect(api.buildLoginRedirectUrl('/v2/services/foo'))
+      .toBe('http://localhost:3399/?redirect=%2Fv2%2Fservices%2Ffoo')
+  })
+
+  it('clears the token and throws on 401', async () => {
+    const api = await import('./api')
+    localStorage.setItem(api.TOKEN_KEY, 'test-token')
+
+    stubFetch({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ error: 'Authentication failed' }),
+    })
+
+    const err = await api.fetchAPI('/x').catch(e => e)
+    expect(err.message).toBe('Authentication failed')
+    expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
+  })
+
+  it('clears the token and throws when no token is present', async () => {
+    const api = await import('./api')
+    localStorage.removeItem(api.TOKEN_KEY)
+
+    const err = await api.fetchAPI('/x').catch(e => e)
+    expect(err.message).toBe('Not authenticated')
+    expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
+  })
+})

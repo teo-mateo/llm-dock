@@ -17,6 +17,18 @@ function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
 }
 
+// Where to send the user after login. Honors a ?redirect= query param (set by
+// the v2 app when it bounces an expired/rejected token) so the user returns to
+// the page they were on, falling back to the v2 root. Only /v2 paths are
+// accepted to avoid an open redirect.
+function postLoginDestination() {
+    const redirect = new URLSearchParams(window.location.search).get('redirect');
+    if (redirect && redirect.startsWith('/v2')) {
+        return redirect;
+    }
+    return '/v2';
+}
+
 async function fetchAPI(endpoint, options = {}) {
     const token = getToken();
 
@@ -125,7 +137,7 @@ async function handleLogin(event) {
         // Store the short-lived session token, not the raw password
         setToken(data.token);
         document.getElementById('token-input').value = '';
-        window.location.href = '/v2';
+        window.location.href = postLoginDestination();
     } catch (error) {
         errorEl.textContent = `Login failed: ${error.message}`;
         errorEl.classList.remove('hidden');
@@ -197,7 +209,7 @@ async function handleTOTPLogin() {
         if (data.token) {
             setToken(data.token);
             totpInput.value = '';
-            window.location.href = '/v2';
+            window.location.href = postLoginDestination();
         }
     } catch (error) {
         if (errorEl) {

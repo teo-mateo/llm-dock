@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getToken, API_BASE } from '../api'
+import { getToken, API_BASE, handleAuthFailure } from '../api'
 
 const RECONNECT_DELAY = 3000
 
@@ -50,6 +50,7 @@ export default function useGpuSSE() {
     })
       .then(async response => {
         if (!response.ok) {
+          if (response.status === 401) handleAuthFailure()
           if (mountedRef.current) {
             setError(`HTTP ${response.status}`)
             setConnected(false)

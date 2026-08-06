@@ -1,4 +1,4 @@
-import { fetchAPI, API_BASE, getToken } from '../api'
+import { fetchAPI, API_BASE, getToken, handleAuthFailure } from '../api'
 
 export async function createConversation(data) {
   return fetchAPI('/chat/conversations', {
@@ -95,6 +95,7 @@ export async function uploadProjectFile(projectId, file, { dir = '', overwrite =
       msg = data.error || msg
       if (typeof data.code === 'string') code = data.code
     } catch { /* not JSON */ }
+    if (response.status === 401) handleAuthFailure()
     const err = new Error(msg)
     if (code) err.code = code
     throw err
@@ -155,6 +156,7 @@ export async function downloadProjectFile(projectId, path) {
   if (!response.ok) {
     let msg = `HTTP ${response.status}`
     try { msg = (await response.json()).error || msg } catch { /* not JSON */ }
+    if (response.status === 401) handleAuthFailure()
     throw new Error(msg)
   }
   return URL.createObjectURL(await response.blob())

@@ -1,4 +1,4 @@
-import { API_BASE, getToken } from '../api'
+import { API_BASE, getToken, handleAuthFailure } from '../api'
 
 async function request(path, options = {}) {
   const token = getToken()
@@ -14,6 +14,7 @@ async function request(path, options = {}) {
   const text = await res.text()
   let body = null
   try { body = text ? JSON.parse(text) : null } catch { body = { error: text } }
+  if (res.status === 401) handleAuthFailure()
   if (!res.ok) {
     // Surface structured validation errors from PUT /json so the editor
     // can render per-entry messages. Generic Error.message keeps the

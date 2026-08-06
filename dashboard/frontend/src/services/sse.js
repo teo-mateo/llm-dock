@@ -1,4 +1,4 @@
-import { getToken } from '../api'
+import { getToken, handleAuthFailure } from '../api'
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? `${window.location.protocol}//${window.location.hostname}:3399/api`
@@ -30,6 +30,10 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
       const data = JSON.parse(text)
       msg = data.error || msg
     } catch { /* not JSON */ }
+    if (response.status === 401) {
+      handleAuthFailure()
+      return
+    }
     onError?.(msg)
     return
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getToken, API_BASE } from '../api'
+import { getToken, API_BASE, handleAuthFailure } from '../api'
 
 const RECONNECT_DELAY = 3000
 const MAX_LINES = 2000
@@ -58,6 +58,7 @@ export default function useServiceLogsSSE(serviceName, { enabled = true, tail = 
           const text = await response.text()
           let msg = `HTTP ${response.status}`
           try { msg = JSON.parse(text).error || msg } catch { /* not JSON */ }
+          if (response.status === 401) handleAuthFailure()
           if (mountedRef.current) { setError(msg); setLoading(false); setConnected(false) }
           return
         }
