@@ -8,10 +8,15 @@ import MessageBubble from './MessageBubble'
 import ThinkingBlock from './ThinkingBlock'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
-import { formatArgValue } from './toolCallUtils'
-import ToolResultBlock from './ToolResultBlock'
+import ToolCallBubble from './ToolCallBubble'
 import FormatDriftChip from './FormatDriftChip'
 import useProseClass from '../../hooks/useProseClass'
+
+// Streamed tool-call argument size, kept compact so the pending row stays on
+// one line: 812 chars → "812 chars", 148230 → "148.2k chars".
+function formatArgsLen(n) {
+  return n < 1000 ? `${n} chars` : `${(n / 1000).toFixed(1)}k chars`
+}
 
 const MD_COMPONENTS = {
   pre: CopyablePre,
@@ -71,7 +76,7 @@ export default function MessageList({
       onScroll={handleScroll}
       className="flex-1 overflow-auto p-4 space-y-4"
     >
-      <div className="relative max-w-6xl mx-auto space-y-4">
+      <div className="relative max-w-6xl mx-auto space-y-2">
         {/* Timeline spine — a hairline rule down the left gutter with
             faded ends; per-turn tick nodes sit on it (rendered per turn). */}
         {(messages.length > 0 || streaming) && (
@@ -104,7 +109,7 @@ export default function MessageList({
         {/* Streaming assistant turn — one timeline node for the whole
             in-flight turn, aligned to the shared spine via the gutter. */}
         {streaming && (
-        <div className="relative pl-8 space-y-4">
+        <div className="relative pl-8 space-y-2">
           <span
             aria-hidden="true"
             className="absolute left-[10px] top-[7px] w-[9px] h-[9px] rounded-full bg-elevated border border-accent"
@@ -127,31 +132,18 @@ export default function MessageList({
 
         {/* Tool events during streaming */}
         {streaming && toolEvents.length > 0 && (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {toolEvents.map((evt, i) => (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[90%]">
-                  <div className="rounded px-3 py-2 text-xs border bg-surface-muted border-border space-y-1">
-                    <div className={'result' in evt ? 'text-success-fg' : 'text-warning-fg'}>
-                      <i className={`fa-solid ${'result' in evt ? 'fa-check' : 'fa-wrench fa-fade'} mr-1.5`}></i>
-                      <span className="font-mono">{evt.name}</span>
-                      {!('result' in evt) && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wide text-fg-subtle">running…</span>
-                      )}
-                    </div>
-                    {evt.arguments && Object.keys(evt.arguments).length > 0 && (
-                      <div className="text-fg-muted font-mono pl-5">
-                        {Object.entries(evt.arguments).map(([k, v]) => (
-                          <div key={k} className="truncate"><span className="text-fg-subtle">{k}:</span> {formatArgValue(v)}</div>
-                        ))}
-                      </div>
-                    )}
-                    {'result' in evt && (
-                      <div className="pl-5">
-                        <ToolResultBlock text={evt.result} />
-                      </div>
-                    )}
-                  </div>
+                <div className="max-w-[90%] min-w-0">
+                  <ToolCallBubble
+                    name={evt.name}
+                    args={evt.arguments}
+                    result={evt.result}
+                    hasResult={'result' in evt}
+                    running
+                    progress={evt.progress_messages}
+                  />
                 </div>
               </div>
             ))}
@@ -179,6 +171,14 @@ export default function MessageList({
                     <i className="fa-solid fa-wrench fa-fade"></i>
                     <span className="font-mono">{p.name || 'tool'}</span>
                     <span className="text-fg-subtle">assembling call…</span>
+                    {/* Argument size, ticking upward as the model streams the
+                        call. A large write_file is minutes of JSON; without
+                        this the row looks frozen. */}
+                    {p.args_len > 0 && (
+                      <span className="font-mono text-fg-subtle tabular-nums">
+                        {formatArgsLen(p.args_len)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

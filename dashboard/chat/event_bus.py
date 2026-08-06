@@ -10,6 +10,7 @@ run_id and get a Queue they drain; publishers push events to every current
 subscriber of that run. Thread-safe: the background runner publishes from a
 worker thread while SSE generators drain from request threads.
 """
+import collections
 import json
 import queue
 import threading
@@ -29,6 +30,15 @@ SUBSCRIBER_QUEUE_MAX = 2048
 # run_completed/run_failed/run_cancelled and never emits the manager-only
 # stream_end, still frees its history — as well as stream_end itself.
 _TERMINAL_TYPES = frozenset({"run_completed", "run_failed", "run_cancelled", "stream_end"})
+
+# Run ids that have already ended, remembered just long enough to recognize a
+# late event. Progress notifications are published from the MCP manager's
+# event-loop thread, so a tool whose call timed out (mcp_client._run_async
+# cancels the future, but teardown is asynchronous) can emit after its run
+# already published a terminal event. Without this, publish() would resurrect a
+# replay buffer that nothing will ever drop. Bounded — the late-arrival window
+# is seconds, so a small ring is ample and cannot itself grow unboundedly.
+_RECENT_TERMINAL_MAX = 256
 
 # A duck-typed stand-in for runtime.ChatRuntimeEvent, used only for the
 # coalesced delta a reattach replay emits. Has .type / .data like the real
@@ -94,6 +104,8 @@ class EventBus:
         # memory scales with text length, not token count; the buffer lives only
         # while its run is in flight and is freed as soon as the run finishes.
         self._replay = {}
+        # Ring of recently-terminated run ids; see _RECENT_TERMINAL_MAX.
+        self._recent_terminal = collections.deque(maxlen=_RECENT_TERMINAL_MAX)
         self._lock = threading.Lock()
 
     def subscribe(self, run_id: str) -> "queue.Queue":
@@ -155,12 +167,21 @@ class EventBus:
             if is_terminal:
                 # Run finished: future reattachers fall back to the DB.
                 self._replay.pop(run_id, None)
+                self._recent_terminal.append(run_id)
             else:
                 buf = self._replay.get(run_id)
                 if buf is None:
-                    buf = _ReplayBuffer()
-                    self._replay[run_id] = buf
-                buf.add(event)
+                    # Don't resurrect history for a run that already ended — a
+                    # late cross-thread event (see _RECENT_TERMINAL_MAX) would
+                    # otherwise leave a buffer nothing ever drops. Still
+                    # delivered to any live subscriber below.
+                    if run_id in self._recent_terminal:
+                        buf = None
+                    else:
+                        buf = _ReplayBuffer()
+                        self._replay[run_id] = buf
+                if buf is not None:
+                    buf.add(event)
         for q in subs:
             while True:
                 try:

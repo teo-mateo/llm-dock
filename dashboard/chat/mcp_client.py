@@ -5,7 +5,7 @@ import contextlib
 import json
 import logging
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 from mcp.client.stdio import StdioServerParameters, get_default_environment, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
@@ -129,13 +129,20 @@ class MCPClientManager:
             return []
 
     def call_tool(self, server_id: str, tool_name: str, arguments: dict,
-                  extra_env: Optional[dict] = None) -> tuple:
+                  extra_env: Optional[dict] = None,
+                  progress_callback: Optional[Callable] = None) -> tuple:
         """Execute a tool on an MCP server. Returns (result_text, artifacts).
 
         extra_env, when given, is merged into the environment of a
         stdio server's subprocess for THIS call only — per-call scope
         (e.g. the project-files server's project directory) without
         mutating the shared registry config.
+
+        progress_callback, when given, is invoked on the manager's event-loop
+        thread for each MCP `notifications/progress` the server emits during
+        the call — so live progress can be streamed out even while the worker
+        thread is blocked awaiting the result. The MCP SDK awaits it with the
+        signature `await cb(progress, total, message)`.
         """
         config = get_server_config(server_id)
         if not config:
@@ -144,7 +151,9 @@ class MCPClientManager:
             config = {**config, "env": {**(config.get("env") or {}), **extra_env}}
 
         try:
-            return self._run_async(self._execute_tool(config, tool_name, arguments))
+            return self._run_async(
+                self._execute_tool(config, tool_name, arguments,
+                                   progress_callback=progress_callback))
         except Exception as e:
             logger.exception(f"Failed to call tool {tool_name} on {server_id}")
             return (f"Error executing tool: {str(e)}", [])
@@ -171,12 +180,14 @@ class MCPClientManager:
                 result = await session.list_tools()
                 return [_tool_to_openai_format(server_id, t) for t in result.tools]
 
-    async def _execute_tool(self, config: dict, tool_name: str, arguments: dict) -> tuple:
+    async def _execute_tool(self, config: dict, tool_name: str, arguments: dict,
+                            progress_callback: Optional[Callable] = None) -> tuple:
         """Connect to server, call tool, return (result_text, artifacts)."""
         async with _open_streams(config) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
+                result = await session.call_tool(tool_name, arguments,
+                                                 progress_callback=progress_callback)
                 parts = []
                 for block in result.content:
                     if hasattr(block, 'text'):

@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_ROUNDS = 5
 
 
-def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_manager: MCPClientManager):
+def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_manager: MCPClientManager,
+                      progress_callback=None):
     """Stream a chat completion with tool-calling support.
 
     Yields (event_type, data) tuples:
@@ -20,6 +21,12 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
       - ("tool_result", {"name": ..., "result": ..., "server_id": ...})
       - ("done", {"content": ..., "reasoning_content": ...})
       - ("error", {"message": ...})
+
+    progress_callback, when given, is awaited as
+    `cb(progress, total, message, tool_name)` for each MCP progress
+    notification a tool emits during execution. It runs on the MCP manager's
+    event-loop thread (NOT the worker thread), so it can stream progress out
+    even while call_tool blocks.
     """
     for round_num in range(MAX_TOOL_ROUNDS):
         tool_calls_received = False
@@ -76,7 +83,12 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
 
                     # Execute the tool
                     if server_id:
-                        result_text, artifacts = mcp_manager.call_tool(server_id, tool_name, arguments)
+                        async def _progress(progress, total, message, _tool_name=tool_name):
+                            if progress_callback:
+                                await progress_callback(progress, total, message, _tool_name)
+                        result_text, artifacts = mcp_manager.call_tool(
+                            server_id, tool_name, arguments,
+                            progress_callback=_progress)
                     else:
                         result_text = f"Error: Could not determine server for tool '{namespaced_name}'"
                         artifacts = []

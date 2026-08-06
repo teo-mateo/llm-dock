@@ -27,6 +27,10 @@ import kotlinx.serialization.encodeToString
  * touched between page fetches; this is a single-user dashboard with a modest
  * thread count, so the simplicity of one request wins (see F02's
  * *Deviations*).
+ *
+ * It also always passes `unfiled=true`: the phone has no project concept, so
+ * desktop-created project threads must not appear in the flat list. The
+ * server does the filtering (F02-R6).
  */
 open class ConversationsRepository(private val api: ApiClient) {
 
@@ -34,7 +38,7 @@ open class ConversationsRepository(private val api: ApiClient) {
         api.get(
             Endpoints.CONVERSATIONS,
             ConversationListResponseDto.serializer(),
-            query = mapOf("limit" to "-1"),
+            query = mapOf("limit" to "-1", "unfiled" to "true"),
         ).conversations.map { it.toDomain() }
     }
 

@@ -70,6 +70,15 @@ class ConversationsRepositoryTest {
     }
 
     @Test
+    fun `list requests unfiled=true so project threads never appear`() = runTest {
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        repository.list().getOrThrow()
+
+        val request: RecordedRequest = server.takeRequest()
+        assertEquals("true", request.url.queryParameter("unfiled"))
+    }
+
+    @Test
     fun `delete calls DELETE on the conversation's own path`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"ok": true}""").build())
 

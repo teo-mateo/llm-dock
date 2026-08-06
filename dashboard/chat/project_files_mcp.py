@@ -56,12 +56,16 @@ class ProjectScopedMCPManager:
     def get_all_tools(self, server_ids: list) -> list:
         return self._inner.get_all_tools(server_ids)
 
-    def call_tool(self, server_id: str, tool_name: str, arguments: dict) -> tuple:
+    def call_tool(self, server_id: str, tool_name: str, arguments: dict,
+                  progress_callback=None) -> tuple:
         if server_id != SERVER_ID:
-            return self._inner.call_tool(server_id, tool_name, arguments)
+            return self._inner.call_tool(server_id, tool_name, arguments,
+                                         progress_callback=progress_callback)
         extra_env = {PROJECT_ROOT_ENV: self._project_root}
         try:
-            return self._inner.call_tool(server_id, tool_name, arguments, extra_env=extra_env)
+            return self._inner.call_tool(server_id, tool_name, arguments,
+                                         extra_env=extra_env,
+                                         progress_callback=progress_callback)
         finally:
             # Also on error/timeout paths: the subprocess may have written
             # before dying.

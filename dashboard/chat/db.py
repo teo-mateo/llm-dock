@@ -379,24 +379,30 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
-    def list_conversations(self, limit: int = 50, offset: int = 0) -> Tuple[List[Conversation], int]:
+    def list_conversations(self, limit: int = 50, offset: int = 0, unfiled: bool = False) -> Tuple[List[Conversation], int]:
         """List conversations, newest-updated first.
 
         A negative limit returns the ENTIRE list in one statement — a
         consistent snapshot (offset pagination over the mutable
         updated_at ordering can skip or duplicate rows when conversations
         are touched between page fetches).
+
+        When [unfiled] is true, only conversations with no project are
+        returned — clients that don't support projects (the Android app)
+        ask for this so desktop-created project threads never leak into
+        their flat list.
         """
         conn = self._get_conn()
         try:
-            total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            where = "WHERE project_id IS NULL " if unfiled else ""
+            total = conn.execute(f"SELECT COUNT(*) FROM conversations {where}").fetchone()[0]
             if limit is None or limit < 0:
                 rows = conn.execute(
-                    "SELECT * FROM conversations ORDER BY updated_at DESC"
+                    f"SELECT * FROM conversations {where}ORDER BY updated_at DESC"
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                    f"SELECT * FROM conversations {where}ORDER BY updated_at DESC LIMIT ? OFFSET ?",
                     (limit, offset),
                 ).fetchall()
             convs = [self._row_to_conversation(row) for row in rows]

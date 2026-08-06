@@ -11,6 +11,7 @@ Three layers:
      actual server subprocess with the env injected — proves the
      stdio env plumbing works against the installed MCP SDK.
 """
+import asyncio
 import json
 import os
 import sys
@@ -33,6 +34,17 @@ from chat.project_files_mcp import (
 from chat.mcp_servers import project_files_server as srv
 from chat.models import Conversation
 from chat.runtime import ChatRunner
+
+
+def _search(*args, **kwargs):
+    """Call the async search_files tool from a sync test.
+
+    search_files is the one file tool that reports MCP progress while it
+    runs, which makes it a coroutine. Driving it with asyncio.run keeps the
+    suite free of a pytest-asyncio dependency (no test dependency is declared
+    in requirements.txt).
+    """
+    return asyncio.run(srv.search_files(*args, **kwargs))
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +78,7 @@ class TestUnscoped:
         assert "not part of a project" in srv.read_file("notes.md")
 
     def test_search_files(self):
-        assert "not part of a project" in srv.search_files("x")
+        assert "not part of a project" in _search("x")
 
     def test_create_file(self):
         assert "not part of a project" in srv.create_file("a.md", "x")
@@ -177,40 +189,65 @@ class TestReadFile:
 
 class TestSearchFiles:
     def test_content_match_case_insensitive_with_line_numbers(self, proj_root):
-        out = srv.search_files("NEEDLE")
+        out = _search("NEEDLE")
         assert "docs/plan.txt:1: the needle is here" in out
         assert "notes.md:2: second LINE with Needle" in out
 
     def test_name_match(self, proj_root):
-        out = srv.search_files("plan")
+        out = _search("plan")
         assert "docs/plan.txt (name match)" in out
 
     def test_binary_files_skipped(self, proj_root):
-        out = srv.search_files("binary")
+        out = _search("binary")
         assert "image.bin:" not in out
 
     def test_scoped_to_subdirectory(self, proj_root):
-        out = srv.search_files("needle", path="docs")
+        out = _search("needle", path="docs")
         assert "docs/plan.txt:1:" in out
         assert "notes.md" not in out
 
+    def test_reports_progress_with_matches_as_they_are_found(self, proj_root):
+        # search is the one file tool whose work is spread over time, so it is
+        # the one that reports progress. Matches must stream out as they are
+        # discovered, not arrive in one lump at the end.
+        reports = []
+
+        class FakeCtx:
+            async def report_progress(self, progress, total, message):
+                reports.append((progress, total, message))
+
+        out = asyncio.run(srv.search_files("needle", ctx=FakeCtx()))
+
+        assert reports, "search reported no progress"
+        assert all(0 < p <= t for p, t, _ in reports)  # monotone within the tree
+        streamed = "".join(m for _, _, m in reports if m)
+        matches = [l for l in out.splitlines() if not l.startswith("(")]
+        assert matches
+        for line in matches:
+            assert line in streamed  # every match was streamed before the result
+
+    def test_progress_is_silent_without_a_context(self, proj_root):
+        # Called directly (no FastMCP), there is nobody to report to — the
+        # search must still work rather than blow up on ctx=None.
+        assert "docs/plan.txt:1:" in _search("needle")
+
     def test_no_matches(self, proj_root):
-        assert srv.search_files("zzz-not-there") == "No matches."
+        assert _search("zzz-not-there") == "No matches."
 
     def test_empty_query_rejected(self, proj_root):
-        assert srv.search_files("  ").startswith("Error:")
+        assert _search("  ").startswith("Error:")
 
     def test_traversal_rejected(self, proj_root):
-        assert srv.search_files("x", path="../..").startswith("Error:")
+        assert _search("x", path="../..").startswith("Error:")
 
     def test_missing_root(self, tmp_path, monkeypatch):
         monkeypatch.setenv(PROJECT_ROOT_ENV, str(tmp_path / "never-created"))
-        assert "no files yet" in srv.search_files("x")
+        assert "no files yet" in _search("x")
 
     def test_truncation_cap(self, proj_root, monkeypatch):
         monkeypatch.setattr(srv, "MAX_SEARCH_RESULTS", 2)
         (proj_root / "many.txt").write_text("needle\n" * 10)
-        out = srv.search_files("needle")
+        out = _search("needle")
         assert "truncated at 2 matches" in out
         # cap counts matches, not lines scanned: 2 matches + the notice
         assert len(out.splitlines()) == 3
@@ -224,7 +261,7 @@ class TestSearchFiles:
         monkeypatch.setattr(srv, "MAX_SEARCH_RESULTS", 2)
         (root / "aaa.txt").write_text("needle\n")            # content match 1
         (root / "needle-b.txt").write_text("needle inside\n")  # name match 2, content would be 3
-        out = srv.search_files("needle")
+        out = _search("needle")
         lines = out.splitlines()
         assert len(lines) == 3  # exactly cap + notice, no overshoot
         assert "needle-b.txt (name match)" in lines
@@ -240,7 +277,7 @@ class TestSearchFiles:
         monkeypatch.setattr(srv, "MAX_SEARCH_SCAN_BYTES", 10)
         (root / "aaa.txt").write_text("needle A\n")  # 9 bytes: within budget
         (root / "bbb.txt").write_text("needle B\n")  # would exceed: not scanned
-        out = srv.search_files("needle")
+        out = _search("needle")
         assert "aaa.txt:1:" in out
         assert "bbb.txt" not in out
         assert "scan budget reached" in out
@@ -251,7 +288,7 @@ class TestSearchFiles:
         monkeypatch.setenv(PROJECT_ROOT_ENV, str(root))
         monkeypatch.setattr(srv, "MAX_SEARCH_SCAN_BYTES", 1)
         (root / "aaa.txt").write_text("nothing here\n")
-        out = srv.search_files("zzz-not-there")
+        out = _search("zzz-not-there")
         assert out.startswith("No matches.")
         assert "scan budget reached" in out
 
@@ -264,7 +301,7 @@ class TestSearchFiles:
         big = "x" * (pf.MAX_TEXT_EDIT_BYTES + 1)
         (root / "aaa-big.txt").write_text(big)
         (root / "bbb.txt").write_text("needle\n")
-        out = srv.search_files("needle")
+        out = _search("needle")
         assert "bbb.txt:1: needle" in out
         assert "scan budget" not in out
 
@@ -452,8 +489,8 @@ class FakeManager:
         self.calls.append(("get_all_tools", list(server_ids)))
         return [{"id": sid} for sid in server_ids]
 
-    def call_tool(self, server_id, tool_name, arguments, extra_env=None):
-        self.calls.append(("call_tool", server_id, tool_name, arguments, extra_env))
+    def call_tool(self, server_id, tool_name, arguments, extra_env=None, progress_callback=None):
+        self.calls.append(("call_tool", server_id, tool_name, arguments, extra_env, progress_callback))
         return ("ok", [])
 
 
@@ -465,9 +502,31 @@ class TestScopedManager:
         scoped.call_tool("sympy-math", "solve_equation", {"equation": "x"})
         assert inner.calls[0] == (
             "call_tool", SERVER_ID, "list_files", {},
-            {PROJECT_ROOT_ENV: "/data/projects/p1"},
+            {PROJECT_ROOT_ENV: "/data/projects/p1"}, None,
         )
         assert inner.calls[1][4] is None
+        assert inner.calls[1][5] is None
+
+    def test_forwards_progress_callback(self):
+        # Regression: the project-scoped wrapper must accept and forward the
+        # live tool-progress callback to the inner manager, exactly like the
+        # plain manager — otherwise project conversations crash on the first
+        # write_file/create_file with "unexpected keyword argument
+        # 'progress_callback'" (caught IRL, not by the suite).
+        inner = FakeManager()
+        scoped = ProjectScopedMCPManager(inner, "/data/projects/p1")
+
+        def cb(progress, total, message, tool_name):
+            pass
+
+        scoped.call_tool(SERVER_ID, "write_file",
+                         {"path": "big.txt", "content": "x"},
+                         progress_callback=cb)
+        assert inner.calls[0] == (
+            "call_tool", SERVER_ID, "write_file",
+            {"path": "big.txt", "content": "x"},
+            {PROJECT_ROOT_ENV: "/data/projects/p1"}, cb,
+        )
 
     def test_delegates_tool_listing(self):
         inner = FakeManager()
@@ -583,7 +642,7 @@ class TestSnapshotThreading:
         captured = {}
 
         class CapturingRunner(ChatRunner):
-            def _build_stream(self, conv, mcp_manager, effective_project_id=None):
+            def _build_stream(self, conv, mcp_manager, effective_project_id=None, run_id=None):
                 captured["project_id"] = effective_project_id
                 yield ("done", {"content": "ok", "reasoning_content": None})
 
@@ -671,7 +730,7 @@ class TestDeletedProjectSweep:
             self.root = root
             self.raise_after_write = raise_after_write
 
-        def call_tool(self, server_id, tool_name, arguments, extra_env=None):
+        def call_tool(self, server_id, tool_name, arguments, extra_env=None, progress_callback=None):
             os.makedirs(self.root, exist_ok=True)
             with open(os.path.join(self.root, "late.md"), "w") as fh:
                 fh.write("resurrected")

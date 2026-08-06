@@ -455,6 +455,33 @@ def test_subscribe_with_replay_snapshot_excludes_later_events(ctx):
     assert any("after" in f for f in queued)
 
 
+def test_late_event_after_terminal_does_not_resurrect_replay(ctx):
+    """A cross-thread event arriving after the run ended must not re-create the
+    run's replay buffer — nothing would ever drop it again.
+
+    Reachable via tool progress: the callback fires on the MCP manager's
+    event-loop thread, and a timed-out call (mcp_client._run_async cancels the
+    future, but teardown is asynchronous) can emit after the run's terminal
+    event. It must still reach a live subscriber, just not be retained.
+    """
+    app, db, manager = ctx
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    bus = manager.event_bus
+
+    bus.publish(run.id, _delta_evt("partial"))
+    bus.publish(run.id, runtime.ChatRuntimeEvent(run_manager_module.STREAM_END, {}))
+    assert run.id not in bus._replay
+
+    q = bus.subscribe(run.id)
+    late = runtime.ChatRuntimeEvent("tool_progress", {
+        "tool_name": "search_files", "progress": 1, "total": 2, "message": "late\n"})
+    bus.publish(run.id, late)
+
+    assert run.id not in bus._replay          # history stays dropped
+    assert q.get_nowait() is late             # but live observers still see it
+
+
 def test_run_started_emitted_first_even_when_workers_saturated(tmp_path, monkeypatch):
     """run_started reaches the client immediately even if the run's worker is
     still queued behind a saturated pool (the observer synthesizes it)."""

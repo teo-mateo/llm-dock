@@ -9,7 +9,7 @@ FROM nvidia/cuda:12.9.0-devel-ubuntu24.04 AS builder
 
 # Pinned to the commit verified to build on this host (== origin/main at the
 # time of writing, no local diffs).
-ARG DS4_COMMIT=e34a8086693ba7ca5cfabd2b9028ee52f0bfac2e
+ARG DS4_COMMIT=54b36ed9ba42da31b24f2d1a5feb075c2475dbb1
 
 # Target GPU arch. Defaults to sm_120 (RTX PRO 6000 Blackwell); override via
 # build-ds4.sh for other GPUs. NOT cuda-generic/-arch=native, which needs the
@@ -26,6 +26,21 @@ RUN apt-get update && \
 RUN git clone https://github.com/antirez/ds4.git /src && \
     git -C /src checkout "${DS4_COMMIT}"
 
+# Upstream 54b36ed uses FLT_MAX in ds4_cuda.cu without including float.h;
+# nvcc 12.9 on ubuntu24.04 doesn't pull it in transitively. Drop this once
+# fixed upstream.
+RUN sed -i '1i #include <float.h>' /src/ds4_cuda.cu
+
+# Upstream 54b36ed regression: ds4_gpu_set_model_map_range host-registers the
+# whole model first (g_model_registered=1), which makes cuda_model_copy_chunked
+# early-return before copying — so DS4_CUDA_COPY_MODEL_CHUNKED can never reach
+# VRAM residency and decode runs at PCIe zero-copy speed (~0.7 t/s on this
+# host, no HMM). Let the chunked copy proceed when only the host registration
+# exists; on copy failure it still falls back to the registered zero-copy
+# mapping. Drop once fixed upstream.
+RUN sed -i '/^static int cuda_model_copy_chunked/,+10 s/if (g_model_device_owned || g_model_registered) return 1;/if (g_model_device_owned) return 1;/' /src/ds4_cuda.cu && \
+    grep -A9 '^static int cuda_model_copy_chunked' /src/ds4_cuda.cu | grep -q 'if (g_model_device_owned) return 1;'
+
 RUN make -C /src cuda CUDA_ARCH="${CUDA_ARCH}"
 
 # ---- Runtime stage ---------------------------------------------------------
@@ -36,7 +51,7 @@ FROM nvidia/cuda:12.9.0-runtime-ubuntu24.04
 # Build metadata
 ARG BUILD_DATE
 ARG BUILD_COMMIT
-ARG DS4_COMMIT=e34a8086693ba7ca5cfabd2b9028ee52f0bfac2e
+ARG DS4_COMMIT=54b36ed9ba42da31b24f2d1a5feb075c2475dbb1
 LABEL org.llm-dock.build.date="${BUILD_DATE}" \
       org.llm-dock.build.commit="${BUILD_COMMIT}" \
       org.llm-dock.ds4.commit="${DS4_COMMIT}"

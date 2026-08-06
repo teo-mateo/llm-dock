@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
+import DebugOverlay from './DebugOverlay'
 import ModelSelector from './ModelSelector'
 import PromptSelector from './PromptSelector'
 import CritiquePanel from './CritiquePanel'
@@ -51,6 +52,7 @@ export default function ChatArea({
   }, [currentPrompt, prompts])
   const [critiqueTarget, setCritiqueTarget] = useState(null)
   const [pendingInserts, setPendingInserts] = useState([])
+  const [debugOpen, setDebugOpen] = useState(false)
   const [spinoffs, setSpinoffs] = useState([]) // [{id, text, minimized, zIndex}]
   const topZRef = useRef(100)
   const composerRef = useRef(null)
@@ -268,6 +270,7 @@ export default function ChatArea({
           disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
+          onDebug={() => setDebugOpen(true)}
         />
       </div>
 
@@ -314,6 +317,11 @@ export default function ChatArea({
         onRestore={restoreSpinoff}
         onClose={closeSpinoff}
       />
+
+      {/* Low-level conversation viewer (debugging) */}
+      {debugOpen && (
+        <DebugOverlay messages={messages} onClose={() => setDebugOpen(false)} />
+      )}
     </div>
   )
 }

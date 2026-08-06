@@ -128,7 +128,7 @@ class ChatRunner:
         if self.event_bus is not None:
             self.event_bus.publish(run_id, ChatRuntimeEvent(type, data or {}))
 
-    def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None):
+    def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None, run_id=None):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
         # Project conversations always get the project-files tools —
@@ -141,7 +141,21 @@ class ChatRunner:
         messages_array = build_chat_messages(conv.main_system_prompt, messages, enabled_servers)
         tools = mcp_manager.get_all_tools(enabled_servers) if mcp_manager and enabled_servers else None
         if tools:
-            return stream_with_tools(conv.main_service, messages_array, tools, mcp_manager)
+            # Live tool-progress streaming: the callback runs on the MCP
+            # manager's event-loop thread (NOT this worker thread), so it can
+            # publish tool_progress events to the bus even while call_tool
+            # blocks below. The SSE observer picks them up and streams them.
+            # The MCP SDK invokes it as `await cb(progress, total, message)`.
+            async def _progress(progress, total, message, tool_name):
+                if self.event_bus is not None:
+                    self.event_bus.publish(run_id, ChatRuntimeEvent("tool_progress", {
+                        "tool_name": tool_name,
+                        "progress": progress,
+                        "total": total,
+                        "message": message,
+                    }))
+            return stream_with_tools(conv.main_service, messages_array, tools, mcp_manager,
+                                     progress_callback=_progress)
         return stream_chat_completion(conv.main_service, messages_array)
 
     def run(self, run, request: ChatTurnRequest, cancel_check=None) -> Optional[Message]:
@@ -193,7 +207,7 @@ class ChatRunner:
         last_parse_warning = None
 
         try:
-            stream = self._build_stream(conv, mcp_manager, request.effective_project_id)
+            stream = self._build_stream(conv, mcp_manager, request.effective_project_id, run_id)
             for event_type, data in stream:
                 if cancel_check is not None and cancel_check():
                     # Stop the model/tool loop promptly: closing the generator
@@ -211,7 +225,11 @@ class ChatRunner:
                     accumulated_reasoning += data.get("reasoning_content", "") or ""
                     self._emit(run_id, "delta", data)
                 elif event_type == "tool_call_pending":
-                    self._emit(run_id, "tool_call_pending", {"index": data["index"], "name": data["name"]})
+                    self._emit(run_id, "tool_call_pending", {
+                        "index": data["index"],
+                        "name": data["name"],
+                        "args_len": data.get("args_len", 0),
+                    })
                 elif event_type == "parse_warning":
                     last_parse_warning = data
                     self._emit(run_id, "parse_warning", data)

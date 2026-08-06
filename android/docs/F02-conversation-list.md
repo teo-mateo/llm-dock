@@ -87,16 +87,18 @@ takes `{ids: [...]}` in one call.
 
 Decision 3: the phone has no project concept. The list is flat.
 
-Threads that belong to a project — created on the desktop — still appear
-in the list and open normally; they are simply not grouped, and nothing
-in the app names their project. `GET /api/chat/projects` is never called.
+Threads that belong to a project — created on the desktop — are **hidden
+from the list**. The conversation list is fetched with `unfiled=true`, so
+the server only returns unfiled threads; a project thread reached by
+direct id still opens and works normally, and nothing in the app names
+its project. `GET /api/chat/projects` is never called.
 
 **Acceptance criteria**
 
-- [ ] A thread belonging to a project appears in the flat list alongside
-      every other thread, in `updated_at` order.
-- [ ] Opening and using such a thread works exactly like any other,
+- [ ] A thread belonging to a project does **not** appear in the list.
+- [ ] Opening a project thread by direct id works exactly like any other,
       including its model's project file tools (F08-R5).
+- [ ] The list request carries `unfiled=true`.
 - [ ] The app never calls `/api/chat/projects`.
 
 ## F02-R7 · Navigation to Models (Must)

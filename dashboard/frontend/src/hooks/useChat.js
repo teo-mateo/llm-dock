@@ -222,7 +222,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         setHeartbeat(null)
         setPendingToolCalls(prev => {
           const others = prev.filter(p => p.index !== evt.index)
-          return [...others, { index: evt.index, name: evt.name }]
+          return [...others, { index: evt.index, name: evt.name, args_len: evt.args_len || 0 }]
         })
       },
       onToolCall: (evt) => {
@@ -245,6 +245,21 @@ export default function useChat({ onConversationUpdated } = {}) {
         })
         // New round begins after a tool result — reset the visible content.
         setStreamingContent('')
+      },
+      onToolProgress: (evt) => {
+        if (!evt.message) return
+        setHeartbeat(null)
+        setToolEvents(prev => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            const e = prev[i]
+            if (e.type === 'call' && e.name === evt.tool_name && !('result' in e)) {
+              const next = [...prev]
+              next[i] = { ...e, progress_messages: [...(e.progress_messages || []), evt.message] }
+              return next
+            }
+          }
+          return prev
+        })
       },
       onArtifact: (evt) => setStreamingArtifacts(prev => [...prev, evt]),
       onConversationUpdated: handleConversationUpdated,
@@ -410,7 +425,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           setHeartbeat(null)
           setPendingToolCalls(prev => {
             const others = prev.filter(p => p.index !== evt.index)
-            return [...others, { index: evt.index, name: evt.name }]
+            return [...others, { index: evt.index, name: evt.name, args_len: evt.args_len || 0 }]
           })
         },
         onToolCall: (evt) => {
@@ -441,6 +456,21 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Reset streaming content — model will start a new response
           setStreamingContent('')
           fullContent = ''
+        },
+        onToolProgress: (evt) => {
+          if (!evt.message) return
+          setHeartbeat(null)
+          setToolEvents(prev => {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const e = prev[i]
+              if (e.type === 'call' && e.name === evt.tool_name && !('result' in e)) {
+                const next = [...prev]
+                next[i] = { ...e, progress_messages: [...(e.progress_messages || []), evt.message] }
+                return next
+              }
+            }
+            return prev
+          })
         },
         onArtifact: (evt) => {
           setStreamingArtifacts(prev => [...prev, evt])
@@ -560,7 +590,7 @@ export default function useChat({ onConversationUpdated } = {}) {
             setHeartbeat(null)
             setPendingToolCalls(prev => {
               const others = prev.filter(p => p.index !== evt.index)
-              return [...others, { index: evt.index, name: evt.name }]
+              return [...others, { index: evt.index, name: evt.name, args_len: evt.args_len || 0 }]
             })
           },
           onToolCall: (evt) => {
@@ -582,6 +612,21 @@ export default function useChat({ onConversationUpdated } = {}) {
               return [...prev, { type: 'call', name: evt.name, server_id: evt.server_id, result: evt.result }]
             })
             setStreamingContent('')
+          },
+          onToolProgress: (evt) => {
+            if (!evt.message) return
+            setHeartbeat(null)
+            setToolEvents(prev => {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const e = prev[i]
+                if (e.type === 'call' && e.name === evt.tool_name && !('result' in e)) {
+                  const next = [...prev]
+                  next[i] = { ...e, progress_messages: [...(e.progress_messages || []), evt.message] }
+                  return next
+                }
+              }
+              return prev
+            })
           },
           onArtifact: (evt) => {
             setStreamingArtifacts(prev => [...prev, evt])

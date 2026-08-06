@@ -26,6 +26,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.fastmcp import Context  # noqa: E402
 from chat import project_files as pf  # noqa: E402
 from chat.project_files_mcp import PROJECT_ROOT_ENV  # noqa: E402
 
@@ -44,6 +45,11 @@ NO_PROJECT_ERROR = (
     "Error: this conversation is not part of a project, so there are no "
     "project files to access."
 )
+
+# How often search_files reports scan progress, in files examined. A report is
+# also forced whenever new matches were found, so results stream into the chat
+# bubble as they are discovered rather than only on this cadence.
+PROGRESS_SCAN_INTERVAL = 25
 
 
 def _project_root():
@@ -146,7 +152,7 @@ def read_file(path: str, offset: int = 0) -> str:
 
 
 @mcp.tool()
-def search_files(query: str, path: str = "") -> str:
+async def search_files(query: str, path: str = "", ctx: Context = None) -> str:
     """Search the project's files for a substring (case-insensitive).
 
     Matches file names and the contents of text files (binary and
@@ -180,39 +186,68 @@ def search_files(query: str, path: str = "") -> str:
     truncated = False
     scan_capped = False
     scanned_bytes = 0
-    for node in _flatten(tree):
+
+    # Progress reporting. The scan is the one file tool whose work is genuinely
+    # spread over time (walk the tree, read every eligible file), so it is the
+    # one that has something to report while it runs. ctx is None when the tool
+    # is called directly rather than through FastMCP (unit tests) — then there
+    # is nobody to report to.
+    nodes = list(_flatten(tree))
+    total = len(nodes)
+    reported = 0        # matches already sent as progress
+    last_report = 0     # nodes examined at the last report
+
+    async def _report(examined):
+        """Stream newly-found matches, then remember what has been sent."""
+        nonlocal reported, last_report
+        last_report = examined
+        new, reported = matches[reported:], len(matches)
+        message = "".join(f"{m}\n" for m in new) or None
+        await ctx.report_progress(examined, total, message)
+
+    examined = 0
+    for examined, node in enumerate(nodes, start=1):
         if needle in node["name"].lower():
             suffix = "/" if node["type"] == "dir" else ""
             matches.append(f"{node['path']}{suffix} (name match)")
             if len(matches) >= MAX_SEARCH_RESULTS:
                 truncated = True
                 break
-        if node["type"] != "file":
-            continue
         # Total read budget: a no-match query over a big-but-legitimate
         # project must stop scanning instead of grinding past the MCP
         # call timeout. Only count files read_text will actually accept.
         size = node.get("size", 0)
-        if size > pf.MAX_TEXT_EDIT_BYTES:
-            continue  # read_text would reject it anyway — skip the call
-        if scanned_bytes + size > MAX_SEARCH_SCAN_BYTES:
-            scan_capped = True
-            break
-        scanned_bytes += size
-        try:
-            content = pf.read_text(root, node["path"])["content"]
-        except pf.ProjectFilesError:
-            continue  # binary or a symlink — not searchable
-        for lineno, line in enumerate(content.splitlines(), start=1):
-            if needle in line.lower():
-                matches.append(
-                    f"{node['path']}:{lineno}: {line.strip()[:MAX_MATCH_LINE_CHARS]}"
-                )
-                if len(matches) >= MAX_SEARCH_RESULTS:
-                    truncated = True
-                    break
-        if truncated:
-            break
+        # Skipped nodes (dirs, oversized files, binaries) still tick the
+        # progress counter below — they are cheap, but a project made mostly of
+        # them would otherwise look stalled.
+        if node["type"] == "file" and size <= pf.MAX_TEXT_EDIT_BYTES:
+            if scanned_bytes + size > MAX_SEARCH_SCAN_BYTES:
+                scan_capped = True
+                break
+            scanned_bytes += size
+            try:
+                content = pf.read_text(root, node["path"])["content"]
+            except pf.ProjectFilesError:
+                content = None  # binary or a symlink — not searchable
+            for lineno, line in enumerate((content or "").splitlines(), start=1):
+                if needle in line.lower():
+                    matches.append(
+                        f"{node['path']}:{lineno}: {line.strip()[:MAX_MATCH_LINE_CHARS]}"
+                    )
+                    if len(matches) >= MAX_SEARCH_RESULTS:
+                        truncated = True
+                        break
+            if truncated:
+                break
+        # Report on the fixed cadence, or immediately when this node produced
+        # matches, so results appear in the chat bubble as they are found.
+        if ctx is not None and (len(matches) > reported
+                                or examined - last_report >= PROGRESS_SCAN_INTERVAL):
+            await _report(examined)
+
+    # Flush whatever the last node found (the loop can exit via break).
+    if ctx is not None and len(matches) > reported:
+        await _report(examined)
 
     if not matches:
         result = "No matches."

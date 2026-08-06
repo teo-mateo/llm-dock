@@ -384,7 +384,11 @@ def create_conversation():
 def list_conversations():
     limit = request.args.get("limit", 50, type=int)
     offset = request.args.get("offset", 0, type=int)
-    convs, total = _get_db().list_conversations(limit=limit, offset=offset)
+    # `unfiled=true` restricts the list to conversations with no project —
+    # clients that don't support projects (the Android app) opt in so
+    # desktop-created project threads never appear in their flat list.
+    unfiled = request.args.get("unfiled", "false").lower() in ("true", "1", "yes")
+    convs, total = _get_db().list_conversations(limit=limit, offset=offset, unfiled=unfiled)
     return jsonify({
         "conversations": [c.to_dict() for c in convs],
         "total": total,

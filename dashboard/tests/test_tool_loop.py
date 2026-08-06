@@ -21,7 +21,7 @@ class _MCP:
     def __init__(self):
         self.calls = 0
 
-    def call_tool(self, server_id, tool_name, arguments):
+    def call_tool(self, server_id, tool_name, arguments, progress_callback=None):
         self.calls += 1
         return ("search result text", [])
 

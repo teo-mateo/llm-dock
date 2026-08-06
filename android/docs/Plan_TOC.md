@@ -246,8 +246,10 @@ reconstructed later.
    derived from it. → F00-R7.
 3. **No projects on the phone.** Chats only: no grouping in the list, no
    project row in the new-chat sheet, no `GET /api/chat/projects` call.
-   Threads that belong to a project (created on the desktop) still open
-   and work normally — they simply appear in the flat list, and their
+   Threads that belong to a project (created on the desktop) are **hidden
+   from the list entirely** — the conversation list is fetched with
+   `unfiled=true`, so the phone only ever sees unfiled threads. A project
+   thread reached by direct id still opens and works normally, and its
    model keeps its project file tools. → F02-R6 and F03-R4 withdrawn,
    F08-R5.
 4. **The phone may stop a container at any time,** including one a chat

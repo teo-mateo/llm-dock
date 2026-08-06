@@ -45,13 +45,16 @@ def _sse_frames_for(event: ChatRuntimeEvent):
     if t == "delta":
         return [encode_sse_delta(d["raw"])]
     if t == "tool_call_pending":
-        return [encode_sse_event("tool_call_pending", {"index": d["index"], "name": d["name"]})]
+        return [encode_sse_event("tool_call_pending", {
+            "index": d["index"], "name": d["name"], "args_len": d.get("args_len", 0)})]
     if t == "parse_warning":
         return [encode_sse_event("parse_warning", d)]
     if t == "tool_call":
         return [encode_sse_event("tool_call", {"name": d["name"], "arguments": d["arguments"], "server_id": d["server_id"]})]
     if t == "tool_result":
         return [encode_sse_event("tool_result", {"name": d["name"], "result": d["result"], "server_id": d["server_id"]})]
+    if t == "tool_progress":
+        return [encode_sse_event("tool_progress", d)]
     if t == "artifact":
         return [encode_sse_event("artifact", {"artifact_type": d["artifact_type"], "title": d.get("title"), "content": d["content"]})]
     if t == "run_completed":

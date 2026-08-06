@@ -4,6 +4,7 @@ Cooperative cancellation closes the generator (GeneratorExit); the streaming
 `requests` response must be released in a finally either way, so a cancelled
 run doesn't leak the model-server socket.
 """
+import json
 import os
 import sys
 
@@ -112,3 +113,64 @@ def test_tool_call_event_preserves_accumulated_reasoning(monkeypatch):
     ))
     tool_calls = next(data for event_type, data in events if event_type == "tool_calls")
     assert tool_calls["reasoning_content"] == "I should search. Now calling it."
+
+
+# -- Streaming tool-call assembly ---------------------------------------
+
+
+def _tool_arg_chunks(args: str, piece: int = 40):
+    """SSE lines delivering `args` as a streamed tool call, piece chars at a time."""
+    lines = []
+    for i in range(0, len(args), piece):
+        name = "project-files__write_file" if i == 0 else ""
+        lines.append(
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":'
+            f'{{"name":"{name}","arguments":{json.dumps(args[i:i + piece])}}}}}]}}}}]}}'
+        )
+    lines.append('data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}')
+    lines.append('data: [DONE]')
+    return lines
+
+
+def test_pending_ticks_upward_while_arguments_stream(monkeypatch):
+    """A big write_file is minutes of streamed JSON. tool_call_pending must keep
+    reporting the growing argument size, or the UI shows one frozen
+    'assembling call…' for the whole assembly (what the user actually saw).
+    """
+    args = json.dumps({"path": "big.txt", "content": "x" * 150_000})
+    _patch(monkeypatch, _FakeResp(_tool_arg_chunks(args)))
+
+    pending = [d for t, d in llm_proxy.stream_chat_completion(
+        "svc", [], tools=[{"type": "function"}]) if t == "tool_call_pending"]
+
+    assert len(pending) > 100, "pending was not re-emitted as arguments grew"
+    assert all(p["name"] == "project-files__write_file" for p in pending)
+    lens = [p["args_len"] for p in pending]
+    assert lens == sorted(lens) and lens[0] < lens[-1]
+    assert lens[-1] >= len(args) - llm_proxy.PENDING_ARGS_STEP_CHARS
+
+
+def test_pending_is_throttled_not_per_token(monkeypatch):
+    """One event per PENDING_ARGS_STEP_CHARS of growth, not one per chunk."""
+    args = json.dumps({"path": "a.txt", "content": "y" * 20_000})
+    _patch(monkeypatch, _FakeResp(_tool_arg_chunks(args, piece=8)))
+
+    pending = [d for t, d in llm_proxy.stream_chat_completion(
+        "svc", [], tools=[{"type": "function"}]) if t == "tool_call_pending"]
+
+    chunks = -(-len(args) // 8)
+    assert len(pending) < chunks / 10  # far fewer events than argument chunks
+    steps = [b["args_len"] - a["args_len"] for a, b in zip(pending, pending[1:])]
+    assert all(s >= llm_proxy.PENDING_ARGS_STEP_CHARS for s in steps)
+
+
+def test_short_tool_call_still_announces_once(monkeypatch):
+    """A small call never crosses the throttle step — it must still emit."""
+    args = json.dumps({"equation": "x+1"})
+    _patch(monkeypatch, _FakeResp(_tool_arg_chunks(args)))
+
+    pending = [d for t, d in llm_proxy.stream_chat_completion(
+        "svc", [], tools=[{"type": "function"}]) if t == "tool_call_pending"]
+
+    assert len(pending) >= 1
+    assert pending[0]["name"] == "project-files__write_file"

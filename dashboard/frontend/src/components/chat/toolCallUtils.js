@@ -1,4 +1,6 @@
-const ARG_VALUE_MAX = 120
+// Argument values are a glance-level summary, not the payload — a write tool
+// puts an entire file body here, and the row is single-line/truncated anyway.
+const ARG_VALUE_MAX = 60
 
 export function formatArgValue(v) {
   if (v == null) return String(v)

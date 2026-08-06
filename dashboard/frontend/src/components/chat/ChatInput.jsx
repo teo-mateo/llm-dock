@@ -54,7 +54,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey }, ref) {
+const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey, onDebug }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
   const [attachments, setAttachments] = useState([]) // [{name, size, type, content, truncated}]
@@ -395,6 +395,20 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           >
             <i className="fa-solid fa-paper-plane"></i>
           </button>
+          {/* Low-level conversation viewer — only shown when the composer is
+              wired to a live conversation (onDebug provided). */}
+          {onDebug && (
+            <button
+              type="button"
+              onClick={onDebug}
+              disabled={disabled}
+              title="Open low-level conversation viewer (raw responses)"
+              aria-label="Open debug viewer"
+              className="ml-auto self-center px-2.5 py-2.5 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-xs transition-colors"
+            >
+              <i className="fa-solid fa-bug mr-1"></i>debug
+            </button>
+          )}
         </div>
       </form>
     </div>

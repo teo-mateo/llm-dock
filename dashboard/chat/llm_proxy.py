@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import re
@@ -5,6 +6,25 @@ import re
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+# How much a streaming tool call's arguments must grow before another
+# tool_call_pending is emitted. Small enough that a big write_file visibly
+# ticks upward, large enough that a normal call emits one or two events.
+PENDING_ARGS_STEP_CHARS = 512
+
+# Cap on a single replayed tool result in the rebuilt history. Results are
+# unbounded (read_file alone can return ~2 MB), and every prior turn's results
+# ride along on every subsequent request — uncapped, a few file reads would
+# crowd out the conversation itself. The model saw the full text when the call
+# actually ran; the replay only has to preserve that the call happened and
+# roughly what came back.
+MAX_REPLAYED_TOOL_RESULT_CHARS = 4000
+
+# Same idea for a replayed call's arguments, per string value. Write tools put
+# the entire file body here, so this is what stops a large create_file from
+# being resent on every subsequent turn of the conversation.
+MAX_REPLAYED_TOOL_ARG_CHARS = 1000
 
 
 # Known wrong-format markers Qwen3.6 (and similar) emit when the structured
@@ -119,14 +139,134 @@ def _extract_error_message(resp) -> str:
     return resp.text
 
 
+def _clip_argument_values(arguments):
+    """Bound long string values inside a replayed tool call's arguments.
+
+    Write tools carry their whole payload in `arguments` — a create_file of a
+    150 KB story would otherwise be resent verbatim on every later turn of the
+    conversation, forever. Clipping the *values* (rather than the serialized
+    JSON) keeps the object well-formed, so the model still sees which tool ran
+    with which path/query, just not the full body again.
+    """
+    if not isinstance(arguments, dict):
+        return arguments
+    out = {}
+    for key, value in arguments.items():
+        if isinstance(value, str) and len(value) > MAX_REPLAYED_TOOL_ARG_CHARS:
+            dropped = len(value) - MAX_REPLAYED_TOOL_ARG_CHARS
+            value = (value[:MAX_REPLAYED_TOOL_ARG_CHARS]
+                     + f"… (truncated {dropped} chars)")
+        out[key] = value
+    return out
+
+
+def _arguments_to_json(arguments) -> str:
+    """Normalize a stored tool-call `arguments` value to a JSON string.
+
+    Storage is inconsistent across the history: the runtime persists the parsed
+    dict (so json.dumps yields real JSON), but older rows hold a Python repr
+    (`"{'path': 'Todo.md'}"`) from a str()'d dict. The OpenAI tool-call format
+    requires a JSON *string*, so coerce every shape into one and fall back to
+    an empty object rather than replaying something a backend will reject.
+    """
+    if isinstance(arguments, str):
+        parsed = None
+        try:
+            parsed = json.loads(arguments)
+        except (json.JSONDecodeError, TypeError):
+            try:
+                parsed = ast.literal_eval(arguments)
+            except (ValueError, SyntaxError):
+                return "{}"
+        arguments = parsed
+    try:
+        return json.dumps(_clip_argument_values(
+            arguments if arguments is not None else {}))
+    except (TypeError, ValueError):
+        return "{}"
+
+
+def _replay_tool_calls(msg) -> list:
+    """Expand one stored assistant message into its OpenAI tool-call exchange.
+
+    Returns [] when the message carries no tool calls, so ordinary turns are
+    untouched.
+
+    A stored assistant row flattens a whole round: the calls it made, their
+    results, and the prose it finally wrote. The wire format needs those as
+    separate messages — an assistant message carrying `tool_calls`, one `tool`
+    message per result, then the prose as its own assistant message. Without
+    this the model only ever sees its own claim ("Created long-joke.txt"), with
+    no evidence a tool was involved, and learns that answering *about* a file
+    write is the same as performing one.
+
+    Tool call ids are synthesized from the message id — stable across replays,
+    which matters because backends match `tool_call_id` to the preceding call.
+    """
+    try:
+        calls = json.loads(msg.tool_calls_json) if msg.tool_calls_json else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not calls:
+        return []
+
+    out = []
+    tool_calls = []
+    for i, call in enumerate(calls):
+        name = call.get("name") or ""
+        server_id = call.get("server_id")
+        # Re-namespace to match the schema the model is offered this turn
+        # (mcp_client advertises tools as `server_id__tool_name`).
+        if server_id and not name.startswith(f"{server_id}__"):
+            name = f"{server_id}__{name}"
+        tool_calls.append({
+            "id": f"{msg.id}-{i}",
+            "type": "function",
+            "function": {"name": name, "arguments": _arguments_to_json(call.get("arguments"))},
+        })
+
+    assistant = {"role": "assistant", "content": None, "tool_calls": tool_calls}
+    if msg.reasoning_content:
+        assistant["reasoning_content"] = msg.reasoning_content
+    out.append(assistant)
+
+    for i, call in enumerate(calls):
+        result = call.get("result")
+        if result is None:
+            # The round ended before this call returned (cancel, crash). Say so
+            # rather than dropping the id — an assistant tool_calls entry with
+            # no matching tool message is a protocol error for some backends.
+            result = "(no result recorded)"
+        result = str(result)
+        if len(result) > MAX_REPLAYED_TOOL_RESULT_CHARS:
+            kept = len(result) - MAX_REPLAYED_TOOL_RESULT_CHARS
+            result = (result[:MAX_REPLAYED_TOOL_RESULT_CHARS]
+                      + f"\n… (truncated {kept} chars of this earlier tool result)")
+        out.append({"role": "tool", "tool_call_id": f"{msg.id}-{i}", "content": result})
+
+    return out
+
+
 def build_messages_array(system_prompt: str, messages: list) -> list:
     """Build the messages array for the OpenAI-compatible API.
     Includes stored reasoning_content for assistant messages.
-    Messages with images use the multipart content format."""
+    Messages with images use the multipart content format.
+    Assistant messages that made tool calls are replayed as the full
+    assistant-tool_calls / tool-result exchange (see _replay_tool_calls)."""
     arr = []
     if system_prompt:
         arr.append({"role": "system", "content": system_prompt})
     for msg in messages:
+        replayed = _replay_tool_calls(msg) if msg.role == "assistant" else []
+        if replayed:
+            arr.extend(replayed)
+            if not msg.content:
+                continue
+            # The prose the model wrote after its tools returned. It follows the
+            # tool messages as its own assistant turn; reasoning already rode
+            # along on the tool_calls message, so don't repeat it here.
+            arr.append({"role": "assistant", "content": msg.content})
+            continue
         images = json.loads(msg.images_json) if msg.images_json else []
         if images:
             content_parts = []
@@ -191,7 +331,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     collected_content = ""
     collected_reasoning = ""
     collected_tool_calls = []  # accumulated from streaming chunks
-    pending_emitted = set()    # tool-call indices we've already announced via tool_call_pending
+    pending_emitted = {}       # tool-call index -> argument length at last tool_call_pending
     finish_reason = None
 
     resp = None
@@ -260,11 +400,24 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
                     # name fragment — the full tool_calls event only fires at
                     # finish_reason, which can leave the UI silent for seconds
                     # while the model assembles the call.
-                    if idx not in pending_emitted:
-                        current_name = collected_tool_calls[idx]["function"]["name"]
-                        if current_name:
-                            pending_emitted.add(idx)
-                            yield ("tool_call_pending", {"index": idx, "name": current_name})
+                    #
+                    # Then keep re-emitting it as the arguments grow. A large
+                    # write_file call is minutes of streamed JSON, and without
+                    # this the UI shows one static "assembling call…" for the
+                    # whole of it with no sign the model is making progress.
+                    # Throttled by argument length so this costs one event per
+                    # PENDING_ARGS_STEP_CHARS, not one per token.
+                    current_name = collected_tool_calls[idx]["function"]["name"]
+                    args_len = len(collected_tool_calls[idx]["function"]["arguments"])
+                    if current_name:
+                        last = pending_emitted.get(idx)
+                        if last is None or args_len - last >= PENDING_ARGS_STEP_CHARS:
+                            pending_emitted[idx] = args_len
+                            yield ("tool_call_pending", {
+                                "index": idx,
+                                "name": current_name,
+                                "args_len": args_len,
+                            })
 
             # Forward content deltas to frontend
             if content_piece or reasoning_piece:

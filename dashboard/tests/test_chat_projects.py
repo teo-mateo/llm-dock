@@ -312,6 +312,36 @@ def test_list_conversations_negative_limit_returns_all(client):
     assert len(r.get_json()["conversations"]) == 50
 
 
+def test_list_conversations_unfiled_excludes_project_threads(client):
+    """unfiled=true drops every conversation that belongs to a project —
+    clients without a project concept (the Android app) opt in so
+    desktop-created project threads never appear in their flat list."""
+    p = _create_project(client)
+    _create_conversation(client, project_id=p["id"])   # in a project
+    _create_conversation(client)                        # unfiled
+    _create_conversation(client)                        # unfiled
+
+    r = client.get(f"{CONVERSATIONS_PATH}?unfiled=true", headers=_auth())
+    body = r.get_json()
+    assert body["total"] == 2
+    assert all(c["project_id"] is None for c in body["conversations"])
+
+    # Without the flag, everything is returned as before.
+    r = client.get(CONVERSATIONS_PATH, headers=_auth())
+    assert r.get_json()["total"] == 3
+
+
+def test_list_conversations_unfiled_false_returns_all(client):
+    """unfiled=false (and absent) keeps the unfiltered behaviour."""
+    p = _create_project(client)
+    _create_conversation(client, project_id=p["id"])
+    _create_conversation(client)
+
+    r = client.get(f"{CONVERSATIONS_PATH}?unfiled=false", headers=_auth())
+    assert r.get_json()["total"] == 2
+    assert {c["project_id"] for c in r.get_json()["conversations"]} == {p["id"], None}
+
+
 def test_list_projects_counts(client):
     p1 = _create_project(client, name="one")
     p2 = _create_project(client, name="two")

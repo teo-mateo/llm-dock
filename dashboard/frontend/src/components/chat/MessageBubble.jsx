@@ -9,8 +9,7 @@ import ThinkingBlock from './ThinkingBlock'
 import CritiqueButton from './CritiqueButton'
 import ArtifactRenderer from './ArtifactRenderer'
 import CopyablePre from './CopyablePre'
-import { formatArgValue } from './toolCallUtils'
-import ToolResultBlock from './ToolResultBlock'
+import ToolCallBubble from './ToolCallBubble'
 import FormatDriftChip from './FormatDriftChip'
 import { detectFormatDrift } from './formatDrift'
 import useProseClass from '../../hooks/useProseClass'
@@ -97,26 +96,15 @@ export default function MessageBubble({ message, critique, critiqueLoading, hasS
 
         {/* Tool calls (persisted) */}
         {!isUser && message.tool_calls && message.tool_calls.length > 0 && (
-          <div className="mb-2 space-y-1.5">
+          <div className="mb-1.5 space-y-1">
             {message.tool_calls.map((tc, i) => (
-              <div key={i} className="rounded px-3 py-2 text-xs border bg-surface-muted border-border space-y-1">
-                <div className="text-warning-fg">
-                  <i className="fa-solid fa-wrench mr-1.5"></i>
-                  <span className="font-mono">{tc.name}</span>
-                </div>
-                {tc.arguments && Object.keys(tc.arguments).length > 0 && (
-                  <div className="text-fg-muted font-mono pl-5">
-                    {Object.entries(tc.arguments).map(([k, v]) => (
-                      <div key={k} className="truncate"><span className="text-fg-subtle">{k}:</span> {formatArgValue(v)}</div>
-                    ))}
-                  </div>
-                )}
-                {tc.result && (
-                  <div className="pl-5">
-                    <ToolResultBlock text={tc.result} />
-                  </div>
-                )}
-              </div>
+              <ToolCallBubble
+                key={i}
+                name={tc.name}
+                args={tc.arguments}
+                result={tc.result}
+                hasResult={tc.result != null}
+              />
             ))}
           </div>
         )}
