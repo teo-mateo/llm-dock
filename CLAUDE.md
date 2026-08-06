@@ -29,7 +29,7 @@ LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference se
 `flask`, `flask-cors`, `docker`, `pyyaml`, `nvidia-ml-py3`, `python-dotenv`, `jinja2`, `requests`, `mcp[cli]`, `sympy`, `schemdraw`
 
 ### Frontend Dependencies (`dashboard/frontend/package.json`)
-`react`, `react-dom`, `react-router-dom`, `react-markdown`, `katex`, `@tailwindcss/vite`, `vite`
+`react`, `react-dom`, `react-router-dom`, `react-markdown`, `remark-gfm`, `remark-math`, `rehype-katex`, `rehype-raw`, `katex`, `@tailwindcss/vite`, `@tailwindcss/typography`, `vite`, `vitest`, `@testing-library/react`
 
 ## Project Structure
 
@@ -56,11 +56,13 @@ llm-dock/
 │   ├── docker_utils.py          # Docker API utilities
 │   │
 │   ├── routes/                  # Flask blueprints
-│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp
+│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp
 │   │   ├── gpu.py               # GPU stats (nvidia-smi), device detection
 │   │   ├── services.py          # CRUD for model services
 │   │   ├── system.py            # System info endpoints
-│   │   └── openwebui.py         # Open WebUI management
+│   │   ├── openwebui.py         # Open WebUI management
+│   │   ├── metrics.py           # Service metrics endpoints
+│   │   └── totp.py              # TOTP enrollment endpoints
 │   │
 │   ├── benchmarking/            # Benchmark subsystem
 │   │   ├── __init__.py          # init_benchmarking() factory
@@ -79,9 +81,24 @@ llm-dock/
 │   │   ├── critique.py          # Response critique/evaluation
 │   │   ├── mcp_client.py        # MCP client protocol
 │   │   ├── mcp_registry.py      # MCP server registration
+│   │   ├── mcp_config.py        # External MCP server config validation
+│   │   ├── mcp_admin_routes.py  # MCP registry admin endpoints
 │   │   ├── tool_loop.py         # Tool execution loop
 │   │   ├── constants.py         # Chat constants
-│   │   └── mcp_servers/         # Built-in MCP servers (sympy, schemdraw)
+│   │   ├── runtime.py           # ChatRunner + runtime event types
+│   │   ├── run_manager.py       # Run manager, SSE wire format
+│   │   ├── runs.py              # Run persistence/query helpers
+│   │   ├── event_bus.py         # EventBus
+│   │   ├── event_codec.py       # SSE framing
+│   │   ├── persistence.py       # Durable/ephemeral persistence seam
+│   │   ├── settings_store.py    # Chat settings singleton (chat_settings.json)
+│   │   ├── openrouter.py        # OpenRouter model resolution
+│   │   ├── prompt_builder.py    # System prompt assembly
+│   │   ├── prompt_seed.py       # Default prompt seeding
+│   │   ├── project_files.py     # Project filesystem layer
+│   │   ├── project_files_mcp.py # Project-scoped MCP manager
+│   │   ├── project_files_routes.py  # Project file endpoints
+│   │   └── mcp_servers/         # Built-in MCP servers (sympy, schemdraw, render-html, project-files)
 │   │
 │   ├── templates/               # Jinja2 service templates
 │   │   ├── llamacpp.j2          # llama.cpp compose template
@@ -193,6 +210,8 @@ cd dashboard && pytest tests/
 4. `openwebui_bp` - Open WebUI integration
 5. `benchmarks_bp` - Benchmarking
 6. `chat_bp` - Chat functionality
+7. `metrics_bp` - Service metrics
+8. `totp_bp` - TOTP enrollment
 
 ### Authentication
 All API routes use the `@require_auth` decorator from `auth.py` (except
@@ -263,12 +282,14 @@ All routes are under the Flask app and require Bearer token auth (except static 
 
 | Blueprint | Key Endpoints | Purpose |
 |-----------|--------------|---------|
-| `system_bp` | `/api/system/info` | System hardware info |
-| `gpu_bp` | `/api/gpu/stats` | Real-time GPU stats via nvidia-smi |
-| `services_bp` | `/api/services`, `/api/services/<name>`, `/api/models` | Service CRUD, model discovery |
-| `openwebui_bp` | `/api/openwebui/*` | Open WebUI integration |
-| `benchmarks_bp` | `/api/benchmarks`, `/api/benchmarks/run` | Benchmark execution & results |
+| `system_bp` | `/api/system/info`, `/api/health` | System hardware info |
+| `gpu_bp` | `/api/gpu`, `/api/gpu/stream` | Real-time GPU stats via nvidia-smi |
+| `services_bp` | `/api/services`, `/api/services/<name>`, `/api/services/stream` | Service CRUD, live SSE state |
+| `openwebui_bp` | `/api/services/<name>/register-openwebui`, `/api/services/<name>/unregister-openwebui`, `/api/openwebui/restart` | Open WebUI integration |
+| `benchmarks_bp` | `/api/benchmarks`, `/api/benchmarks/<run_id>` | Benchmark execution & results (POST starts a run) |
 | `chat_bp` | `/api/chat/*` | Chat conversations & messages |
+| `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Service metrics |
+| `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/disable` | TOTP enrollment |
 
 ## Coding Conventions
 
@@ -718,7 +739,7 @@ purposes:
   MCP manager, injecting `LLM_DOCK_PROJECT_ROOT` into project-files server
   spawns; calls `_revalidate()` after each tool call to detect project
   deletion
-- `chat/mcp_servers/project_files_server.py` — MCP server with 8 file tools
+- `chat/mcp_servers/project_files_server.py` — MCP server with 7 file tools
 - `chat/db.py` — SQLite CRUD + FK triggers for root-only membership
 - `chat/models.py` — `Project` dataclass
 
@@ -767,7 +788,8 @@ benchmarks.
   build against AGP 9.3.1. `Dropped-Features.md` records what was cut.
 - **Design** — `docs/android/chat-app-mockups.html` (16 annotated screens,
   open in a browser). `docs/android/README.md` maps every screen to an
-  endpoint, but **its login endpoint is wrong** — see below.
+  endpoint; its login-endpoint note has been corrected to match the
+  [Authentication](#authentication) section below.
 - **Code** — `android/`, with the Gradle root one level down at
   `android/src/`. Package `com.hpz.llmdockchat`.
 - **Working in it** — read `android/CLAUDE.md` first. It carries the

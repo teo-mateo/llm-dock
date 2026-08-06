@@ -42,7 +42,7 @@ full chat experience. It talks to the Flask dashboard API on port 3399
 ```bash
 npm run dev          # Vite dev server; proxies /api → http://localhost:5000
 npm run build        # Production build → dist/
-npm run lint         # ESLint (react-hooks + react-refresh rules)
+npm run lint         # ESLint over the whole project (`eslint .`; react-hooks + react-refresh rules)
 npm run test         # Vitest run
 npm run test:watch   # Vitest watch
 npm run preview      # Serve the built dist/
@@ -66,7 +66,7 @@ the built `dist/` is served by Flask under `/v2`.
 
 ```bash
 npm run build        # outputs to dist/ (gitignored)
-npm run lint         # ESLint over src/
+npm run lint         # ESLint over the whole project (`eslint .`)
 npm run test         # Vitest (jsdom environment)
 ```
 
@@ -201,7 +201,7 @@ Key mechanics:
 | `useProjects.js` | Project list CRUD |
 | `useChatPrompts.js` | Saved prompts with optimistic create/update/remove/reorder |
 | `useCritique.js` | Request/store per-message critiques |
-| `useRunningServices.js` | Filters running chat-capable services (llama.cpp/vLLM/DS4), excludes embedding-pooling ones; `kind: 'all'` for the dashboard |
+| `useRunningServices.js` | Filters running chat-capable services (llama.cpp/vLLM/DS4/PAIR_), excludes embedding-pooling ones; `kind: 'all'` for the dashboard |
 | `useOpenRouterModels.js` | OpenRouter model list load/save/reset |
 | `useMainSystemPrompt.js` | Default system prompt load/save/reset |
 | `useRegistry.js` | MCP registry load/save/reload |
