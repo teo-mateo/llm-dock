@@ -92,16 +92,9 @@ llm-dock/
 │   │   ├── benchmark.html       # Benchmark page
 │   │   └── js/                  # Vanilla JS modules
 │   │
-│   ├── frontend/                # React v2 SPA (newer UI)
-│   │   ├── vite.config.js       # Vite config, proxy to Flask on :5000
-│   │   ├── eslint.config.js
-│   │   └── src/
-│   │       ├── main.jsx         # Entry point
-│   │       ├── App.jsx          # Root component with React Router
-│   │       ├── api.js           # API client
-│   │       ├── components/      # React components (GpuMonitor, ServicesTable, etc.)
-│   │       ├── hooks/           # Custom hooks (useChat, useServiceDetails, etc.)
-│   │       └── services/        # Service modules (lifecycle, sse, chat)
+│   ├── frontend/                # React v2 SPA (newer UI) — see frontend/AGENTS.md
+│   │   ├── AGENTS.md            # Frontend code map, deps, how to work
+│   │   └── src/                 # Source (details in AGENTS.md)
 │   │
 │   ├── tests/                   # Pytest suite
 │   └── requirements.txt         # Python dependencies
@@ -145,6 +138,12 @@ python app.py                 # Start Flask server on port 3399
 ```
 
 ### React Frontend (v2) Dev Mode
+
+**Working in it — read `dashboard/frontend/AGENTS.md` first.** It carries the
+frontend-specific code map, dependency notes, conventions, and gotchas (auth,
+SSE, `useChat` race discipline, theme system). The repo-root guide below is
+whole-stack; the frontend guide is scoped to this SPA.
+
 ```bash
 cd dashboard/frontend
 npm install
@@ -723,27 +722,7 @@ purposes:
 - `chat/db.py` — SQLite CRUD + FK triggers for root-only membership
 - `chat/models.py` — `Project` dataclass
 
-**Frontend (v2):**
-- `hooks/useProjects.js` — fetch list, create/rename/remove
-- `services/chat.js` — API client for all project + file endpoints
-- `components/chat/ChatSidebar.jsx` — groups conversations by project,
-  bulk move, create-in-project
-- `components/chat/ChatPage.jsx` — resolves effective project (walks parent
-  chain for spin-offs), renders `ProjectChatSplit` or standalone
-  `ProjectPage`
-- `components/chat/ProjectChatSplit.jsx` — resizable split: file strip +
-  chat; strip width persisted to localStorage
-- `components/chat/ProjectExplorerPane.jsx` — read-mostly file tree for
-  chat split
-- `components/chat/ProjectPage.jsx` — full-featured standalone file explorer
-  (DnD, cut/copy/paste, breadcrumbs, context menu)
-- `components/chat/ProjectFileEditor.jsx` — text editor with dirty tracking,
-  Ctrl+S save, optimistic concurrency (base revision SHA256 prefix); 409
-  conflict offers reload or force-overwrite
-- `components/chat/projectTree.jsx` — recursive `TreeFile`/`TreeDir`
-  components
-- `components/chat/projectTreeUtils.js` — pure utilities (`findNode`,
-  `listDir`, `parentDir`, `ancestorsOf`, etc.)
+**Frontend (v2):** see `dashboard/frontend/AGENTS.md` (Projects feature code map).
 
 ### Data model
 
