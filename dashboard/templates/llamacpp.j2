@@ -18,6 +18,9 @@
 
     environment:
       - LLAMA_SERVER_API_KEY={{ api_key }}
+{% for k, v in (extra_env or {}).items() %}
+      - {{ k }}={{ v }}
+{% endfor %}
 
     volumes:
       - ${HOME}/.cache/huggingface:/hf-cache
