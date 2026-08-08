@@ -146,7 +146,7 @@ def get_docker_services():
         engine = template_type_map.get(svc_name, "")
         if not engine:
             return False
-        internal_port = 8080 if engine == "llamacpp" else 8000
+        internal_port = 8080 if engine in ("llamacpp", "ik_llamacpp") else 8000
         expected_url = f"http://{svc_name}:{internal_port}/v1"
         return expected_url in openwebui_urls
 

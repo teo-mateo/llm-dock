@@ -242,8 +242,8 @@ def create_service():
         template_type = data.get("template_type")
         if not template_type:
             return jsonify({"error": "template_type is required"}), 400
-        if template_type not in ["llamacpp", "vllm", "ds4"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "vllm", or "ds4"'}), 400
+        if template_type not in ["llamacpp", "ik_llamacpp", "vllm", "ds4"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "ik_llamacpp", "vllm", or "ds4"'}), 400
 
         # Auto-generate API key if not provided
         if not data.get("api_key"):

@@ -12,8 +12,14 @@ from service_templates import sanitize_service_name
 
 MANDATORY_FIELDS = {
     "llamacpp": ["port", "model_path", "alias", "api_key"],
+    "ik_llamacpp": ["port", "model_path", "alias", "api_key"],
     "vllm": ["port", "model_name", "alias", "api_key"],
     "ds4": ["port", "model_path", "alias", "api_key"],
+}
+
+# Service-name prefix per template type, where it differs from the type itself.
+SERVICE_NAME_PREFIXES = {
+    "ik_llamacpp": "ik",
 }
 
 # ============================================
@@ -1310,7 +1316,7 @@ DS4_VALIDATION = {
 
 def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     """Get flag metadata for template type"""
-    if template_type == "llamacpp":
+    if template_type in ("llamacpp", "ik_llamacpp"):
         return LLAMACPP_LLAMA_SERVER_FLAGS
     elif template_type == "llamacpp_bench":
         return LLAMACPP_LLAMA_BENCH_FLAGS
@@ -1324,7 +1330,7 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
 
 def get_validation_rules(template_type: str) -> Dict[str, Any]:
     """Get validation rules for template type"""
-    if template_type == "llamacpp":
+    if template_type in ("llamacpp", "ik_llamacpp"):
         return LLAMACPP_LLAMA_SERVER_VALIDATION
     elif template_type == "vllm":
         return VLLM_VALIDATION
@@ -1338,17 +1344,19 @@ def generate_service_name(template_type: str, alias: str) -> str:
     """
     Generate service name from template type and alias.
 
-    Convention: {template_type}-{alias}
-    Example: llamacpp-minimax-m2-q2
+    Convention: {prefix}-{alias}, where prefix is the template type unless
+    SERVICE_NAME_PREFIXES overrides it (ik_llamacpp -> "ik").
+    Example: llamacpp-minimax-m2-q2, ik-minimax-m2-q2
 
     Args:
-        template_type: 'llamacpp' or 'vllm'
+        template_type: 'llamacpp', 'ik_llamacpp' or 'vllm'
         alias: Model alias
 
     Returns:
         Sanitized service name
     """
-    return sanitize_service_name(f"{template_type}-{alias}")
+    prefix = SERVICE_NAME_PREFIXES.get(template_type, template_type)
+    return sanitize_service_name(f"{prefix}-{alias}")
 
 
 def render_cli_flag(flag_name: str, flag_value: str) -> Optional[str]:

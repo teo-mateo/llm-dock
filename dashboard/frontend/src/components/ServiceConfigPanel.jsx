@@ -335,7 +335,7 @@ function renderCommandPreview(config, apiKey, params) {
   if (!config) return ''
   const parts = []
 
-  if (config.template_type === 'llamacpp') {
+  if (config.template_type === 'llamacpp' || config.template_type === 'ik_llamacpp') {
     parts.push('llama-server')
     if (config.model_path) parts.push(`-m ${config.model_path}`)
     parts.push(`--port 8080`)

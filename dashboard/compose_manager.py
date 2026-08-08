@@ -545,7 +545,7 @@ class ComposeManager:
         }
 
         # Add mandatory fields based on template type
-        if template_type == "llamacpp":
+        if template_type in ("llamacpp", "ik_llamacpp"):
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]

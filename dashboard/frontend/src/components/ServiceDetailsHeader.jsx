@@ -65,6 +65,7 @@ function StatusBadge({ status, transitioning }) {
 function EngineBadge({ templateType }) {
   const engineMap = {
     llamacpp: { label: 'llama.cpp', classes: 'bg-badge-llamacpp-bg text-badge-llamacpp-fg' },
+    ik_llamacpp: { label: 'ik_llama', classes: 'bg-badge-llamacpp-bg text-badge-llamacpp-fg' },
     vllm: { label: 'vLLM', classes: 'bg-badge-vllm-bg text-badge-vllm-fg' },
     ds4: { label: 'DS4', classes: 'bg-badge-ds4-bg text-badge-ds4-fg' },
   }

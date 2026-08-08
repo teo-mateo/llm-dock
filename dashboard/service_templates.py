@@ -268,7 +268,7 @@ def validate_model_compatibility(model_data: Dict[str, Any], engine: str) -> tup
     has_safetensors = any(f['name'].endswith('.safetensors') for f in files)
     has_bin = any(f['name'].endswith('.bin') for f in files)
 
-    if engine == 'llamacpp':
+    if engine in ('llamacpp', 'ik_llamacpp'):
         if not has_gguf:
             return False, "llama.cpp requires GGUF format models. This model appears to be in safetensors/bin format. Use vllm engine instead."
         return True, None
