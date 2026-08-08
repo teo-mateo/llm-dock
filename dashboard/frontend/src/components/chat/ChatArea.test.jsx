@@ -11,7 +11,12 @@ vi.mock('../../hooks/useRunningServices', () => ({
 }))
 
 // Heavy children that fetch or need extra context — not under test here.
-vi.mock('./ModelSelector', () => ({ default: () => null }))
+// ModelSelector captures its props so the empty-state dropdown wiring can be
+// asserted without rendering the real (hook-fetching) component.
+const { capturedModelSelectorProps } = vi.hoisted(() => ({ capturedModelSelectorProps: { current: null } }))
+vi.mock('./ModelSelector', () => ({
+  default: (props) => { capturedModelSelectorProps.current = props; return null },
+}))
 vi.mock('./McpToggle', () => ({ default: () => null }))
 vi.mock('./MessageList', () => ({ default: () => null }))
 
@@ -40,12 +45,18 @@ vi.mock('../../services/chat', async (importActual) => ({
 afterEach(() => cleanup())
 
 describe('ChatArea no-conversation states', () => {
-  it('shows the create composer when there is no route conversation', () => {
+  beforeEach(() => {
+    capturedModelSelectorProps.current = null
+  })
+
+  it('shows the create composer with a pre-selected model dropdown when there is no route conversation', () => {
     const { container } = render(
       <ChatArea
         conversation={null}
         awaitingConversation={false}
         defaultModelName="vllm-test"
+        selectedModel="vllm-test"
+        onModelChange={() => {}}
         onCreateAndSend={() => {}}
         messages={[]}
         critiques={{}}
@@ -54,6 +65,30 @@ describe('ChatArea no-conversation states', () => {
     )
     expect(container.textContent).toContain('Start a new conversation')
     expect(container.querySelector('textarea')).toBeTruthy()
+    // Empty-state dropdown: single model select, pre-selected with the default.
+    expect(capturedModelSelectorProps.current).not.toBeNull()
+    expect(capturedModelSelectorProps.current.variant).toBe('new-chat')
+    expect(capturedModelSelectorProps.current.mainService).toBe('vllm-test')
+    expect(capturedModelSelectorProps.current.disabled).toBe(false)
+  })
+
+  it('hides the model dropdown and disables the composer when no model is available', () => {
+    const { container } = render(
+      <ChatArea
+        conversation={null}
+        awaitingConversation={false}
+        defaultModelName={null}
+        selectedModel={null}
+        onModelChange={() => {}}
+        onCreateAndSend={() => {}}
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+      />
+    )
+    expect(container.textContent).toContain('No model available. Start a local model or configure OpenRouter.')
+    expect(capturedModelSelectorProps.current).toBeNull()
+    expect(container.querySelector('textarea').disabled).toBe(true)
   })
 
   it('shows a loading state (no composer) while a URL conversation is fetching', () => {

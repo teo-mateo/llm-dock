@@ -10,7 +10,7 @@ import useChat from '../../hooks/useChat'
 import { updateConversation } from '../../services/chat'
 import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
-import { serviceNameForModel, formatModelLabel } from '../../utils/openrouter'
+import { serviceNameForModel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
 
 export default function ChatPage() {
@@ -150,6 +150,14 @@ export default function ChatPage() {
     runningServices[0]?.name ||
     (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null)
 
+  // Model pre-selected in the empty-state composer. Initialized from the
+  // default once it arrives (SSE load is async); a user's explicit choice
+  // is never overridden by a later default change.
+  const [selectedModel, setSelectedModel] = useState(null)
+  useEffect(() => {
+    setSelectedModel(prev => prev ?? defaultModelName)
+  }, [defaultModelName])
+
   // True while the project file editor holds unsaved changes. In-app
   // navigation unmounts the editor without its own close handler, so the
   // navigation entry points below confirm before discarding. (Browser
@@ -225,14 +233,14 @@ export default function ChatPage() {
   // Empty-state composer: create a conversation, then queue the typed
   // message so it sends as soon as the new conversation loads.
   const handleCreateAndSend = useCallback(async (content, images) => {
-    if (!defaultModelName) {
+    if (!selectedModel) {
       window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
-    const conv = await create({ main_service: defaultModelName })
+    const conv = await create({ main_service: selectedModel })
     pendingMsgRef.current = { convId: conv.id, content, images }
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, defaultModelName])
+  }, [create, navigate, selectedModel])
 
   const handleSelect = useCallback((id) => {
     if (!confirmDiscardEdits()) return
@@ -341,7 +349,9 @@ export default function ChatPage() {
       <ChatArea
         conversation={conversation}
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
-        defaultModelName={formatModelLabel(defaultModelName, openRouterModels)}
+        defaultModelName={defaultModelName}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}
         critiques={critiques}

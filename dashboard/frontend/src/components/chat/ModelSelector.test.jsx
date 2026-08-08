@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, fireEvent, cleanup } from '@testing-library/react'
 import ModelSelector from './ModelSelector'
 
 const { mockRunningServices, mockOpenRouterModels } = vi.hoisted(() => ({
@@ -71,5 +71,61 @@ describe('ModelSelector OpenRouter integration', () => {
     const options = container.querySelectorAll('option[value="openrouter:vendor/model-a"]')
     // One per select (Main + Critic), no extra fallback entries.
     expect(options.length).toBe(2)
+  })
+})
+
+describe('ModelSelector new-chat variant', () => {
+  function renderNewChat({ services = LOCAL, configured = true, current = CURATED, mainService = 'vllm-test' } = {}) {
+    mockRunningServices.mockReturnValue({ services, loading: false })
+    mockOpenRouterModels.mockReturnValue({
+      data: { configured, current, builtin: CURATED, customized: false },
+      loading: false,
+    })
+    return render(
+      <ModelSelector
+        variant="new-chat"
+        mainService={mainService}
+        sidekickService={null}
+        onChangeMain={() => {}}
+        onChangeSidekick={() => {}}
+        disabled={false}
+      />
+    )
+  }
+
+  it('renders a single model select pre-selected with the given value', () => {
+    const { container } = renderNewChat()
+    const selects = container.querySelectorAll('select')
+    expect(selects.length).toBe(1)
+    expect(selects[0].value).toBe('vllm-test')
+    // No empty "Select model..." placeholder — the model is always chosen.
+    expect(container.querySelector('option[value=""]')).toBeNull()
+  })
+
+  it('shows Local and OpenRouter optgroups', () => {
+    const { container } = renderNewChat()
+    const groups = [...container.querySelectorAll('optgroup')].map(g => g.label)
+    expect(groups).toEqual(['Local', 'OpenRouter'])
+  })
+
+  it('fires onChangeMain with the new value', () => {
+    const onChangeMain = vi.fn()
+    mockRunningServices.mockReturnValue({ services: LOCAL, loading: false })
+    mockOpenRouterModels.mockReturnValue({
+      data: { configured: true, current: CURATED, builtin: CURATED, customized: false },
+      loading: false,
+    })
+    const { container } = render(
+      <ModelSelector
+        variant="new-chat"
+        mainService="vllm-test"
+        sidekickService={null}
+        onChangeMain={onChangeMain}
+        onChangeSidekick={() => {}}
+        disabled={false}
+      />
+    )
+    fireEvent.change(container.querySelector('select'), { target: { value: 'openrouter:vendor/model-a' } })
+    expect(onChangeMain).toHaveBeenCalledWith('openrouter:vendor/model-a')
   })
 })

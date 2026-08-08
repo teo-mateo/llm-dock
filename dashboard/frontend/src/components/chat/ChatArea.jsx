@@ -19,6 +19,8 @@ export default function ChatArea({
   conversation,
   awaitingConversation,
   defaultModelName,
+  selectedModel,
+  onModelChange,
   onCreateAndSend,
   messages,
   critiques,
@@ -129,11 +131,21 @@ export default function ChatArea({
         <div className="w-full max-w-2xl flex flex-col items-center">
           <i className="fa-solid fa-comments text-6xl mb-5 text-accent-fg/40"></i>
           <h2 className="text-2xl font-semibold text-fg mb-2">Start a new conversation</h2>
-          <p className="text-sm text-fg-subtle mb-6 text-center">
+          <p className="text-sm text-fg-subtle mb-4 text-center">
             {defaultModelName
-              ? <>Type a message below — a chat will be created with <span className="text-fg-muted">{defaultModelName}</span>.</>
+              ? 'Choose a model, then type a message below.'
               : 'No model available. Start a local model or configure OpenRouter.'}
           </p>
+          {defaultModelName && (
+            <div className="mb-4">
+              <ModelSelector
+                variant="new-chat"
+                mainService={selectedModel}
+                onChangeMain={onModelChange}
+                disabled={!defaultModelName}
+              />
+            </div>
+          )}
           <div className="w-full">
             <ChatInput
               focusKey="empty-state"
