@@ -20,12 +20,44 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.LLMDockChat"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- F14: the share target. `singleTask` routes a share to the
+                 existing instance via onNewIntent instead of stacking a second
+                 activity, so one back press from the picker returns to where
+                 the app was (F14-R1). Binary MIME types (PDF, octet-stream)
+                 are deliberately not declared — the web UI excludes them and
+                 appearing for them just to fail at parse time would be worse
+                 (F14's Deviations). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/x-python" />
+                <data android:mimeType="text/x-python" />
+                <data android:mimeType="text/x-java" />
+                <data android:mimeType="text/x-sh" />
+                <data android:mimeType="application/x-sh" />
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="text/javascript" />
             </intent-filter>
         </activity>
 

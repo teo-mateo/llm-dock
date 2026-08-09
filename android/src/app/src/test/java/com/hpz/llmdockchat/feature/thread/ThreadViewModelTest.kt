@@ -621,6 +621,7 @@ class ThreadViewModelTest {
                     CONVERSATION_ID,
                     repository,
                     drafts,
+                    null,
                     servicesStreamRepository,
                     openRouterModelsRepository,
                     conversationsRepository,

@@ -39,6 +39,8 @@ import com.hpz.llmdockchat.feature.models.ModelsScreen
 import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
+import com.hpz.llmdockchat.feature.share.ShareTargetScreen
+import com.hpz.llmdockchat.feature.share.ShareTargetViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
 import com.hpz.llmdockchat.feature.thread.ThreadViewModel
 
@@ -67,6 +69,24 @@ fun AppNavHost(
         if (authenticationRequired) navController.toConnect()
     }
 
+    // F14 — a staged share navigates to the target picker, wherever the app
+    // is: cold start from a share (the store hydrates from disk before the
+    // NavHost composes), a share arriving mid-app, or a re-login round trip
+    // (Connect's onSignedIn checks the store itself). Skipped while on Connect
+    // — the user isn't signed in yet — and while already on the picker, so a
+    // second share while it's open just replaces the staged content.
+    val pendingShare by container.sharedDraftStore.pending.collectAsState()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    LaunchedEffect(pendingShare) {
+        if (pendingShare != null &&
+            currentRoute != Destinations.CONNECT &&
+            currentRoute != Destinations.SHARE_PICKER
+        ) {
+            navController.navigate(Destinations.SHARE_PICKER)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -88,7 +108,12 @@ fun AppNavHost(
             ConnectScreen(
                 viewModel = viewModel,
                 onSignedIn = {
-                    navController.navigate(Destinations.TABS) {
+                    // F14 — a share that arrived while signed out resumes on
+                    // the target picker after sign-in, not on the Chats tab.
+                    val pending = container.sharedDraftStore.pending.value != null
+                    navController.navigate(
+                        if (pending) Destinations.SHARE_PICKER else Destinations.TABS,
+                    ) {
                         popUpTo(Destinations.CONNECT) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -198,6 +223,33 @@ fun AppNavHost(
             )
         }
 
+        composable(Destinations.SHARE_PICKER) {
+            val viewModel: ShareTargetViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer {
+                        ShareTargetViewModel(
+                            repository = container.conversationsRepository,
+                            store = container.sharedDraftStore,
+                        )
+                    }
+                },
+            )
+            ShareTargetScreen(
+                viewModel = viewModel,
+                onPickConversation = { conversation ->
+                    container.sharedDraftStore.reassign(conversation.id, container.draftStore)
+                    navController.navigate(Destinations.thread(conversation.id)) {
+                        popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                    }
+                },
+                onNewConversation = { navController.navigate(Destinations.newChat()) },
+                onDismiss = {
+                    container.sharedDraftStore.clearPending()
+                    navController.popBackStack()
+                },
+            )
+        }
+
         composable(Destinations.THREAD) { backStackEntry ->
             val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
             val viewModel: ThreadViewModel = viewModel(
@@ -211,6 +263,7 @@ fun AppNavHost(
                             conversationId = conversationId,
                             repository = container.chatRepository,
                             drafts = container.draftStore,
+                            attachmentStore = container.sharedDraftStore,
                             servicesStreamRepository = container.servicesStreamRepository,
                             openRouterModelsRepository = container.openRouterModelsRepository,
                             conversationsRepository = container.conversationsRepository,
@@ -248,11 +301,19 @@ fun AppNavHost(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
                 onConversationCreated = { id ->
+                    // F14 — a conversation created from the share picker takes
+                    // the staged content with it; the picker below is popped too
+                    // so Back from the new thread lands on Chats, not on an
+                    // empty picker.
+                    val hadPendingShare = container.sharedDraftStore.pending.value != null
+                    container.sharedDraftStore.reassign(id, container.draftStore)
                     // Replaces the sheet on the back stack — Back from the new
                     // thread returns to the conversation list, not to a sheet
                     // for a chat that already exists.
                     navController.navigate(Destinations.thread(id)) {
-                        popUpTo(Destinations.NEW_CHAT) { inclusive = true }
+                        popUpTo(
+                            if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
+                        ) { inclusive = true }
                     }
                 },
             )

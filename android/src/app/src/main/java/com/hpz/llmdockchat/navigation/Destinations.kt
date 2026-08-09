@@ -20,6 +20,9 @@ object Destinations {
      * `feature/designlab` mockups the owner asked for. */
     const val DESIGN = "design"
 
+    /** F14 — the share-target picker, pushed on top of [TABS] without the bottom bar. */
+    const val SHARE_PICKER = "share_picker"
+
     private const val THREAD_ROUTE = "thread"
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
