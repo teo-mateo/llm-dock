@@ -14,6 +14,14 @@
 #   ./dev.sh theme dark|light
 #   ./dev.sh fontscale <n>  e.g. 1.0, 1.5
 #   ./dev.sh net on|off     airplane mode, for offline testing
+#   ./dev.sh share-text "..." [title]   share text/link into the app (F14)
+#   ./dev.sh share-image <file>          share a local image into the app (F14)
+#   ./dev.sh share-file <file> [mime]    share a local text file into the app (F14)
+#
+# The share helpers go through the system share sheet (the real F14 path). To
+# bypass the chooser and target the app directly, append
+#   -n com.hpz.llmdockchat/.MainActivity
+# to the am start command.
 #
 # Never wipes or factory-resets an emulator. `clear` touches only our package.
 #
@@ -169,6 +177,50 @@ theme)
 fontscale)
   require_writable
   adb_ shell settings put system font_scale "${1:?usage: dev.sh fontscale 1.5}"
+  ;;
+
+share-text)
+  require_writable
+  text="${1:?usage: dev.sh share-text \"hello\"}"
+  title="${2:-}"
+  # adb shell re-joins its arguments and re-parses them on the device, so the
+  # value has to be quoted for the *remote* shell, not the local one.
+  cmd="am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT '$text'"
+  [ -n "$title" ] && cmd="$cmd --es android.intent.extra.TITLE '$title'"
+  adb_ shell $cmd
+  ;;
+
+share-image)
+  require_writable
+  src="${1:?usage: dev.sh share-image <local-file>}"
+  name="llmdock_share_$(basename "$src")"
+  adb_ push "$src" "/sdcard/$name"
+  # `content insert` prints no URI on this Android; the row id is re-queried
+  # by display name instead (the where-clause form chokes on the slash).
+  adb_ shell content insert --uri content://media/external/images/media \
+    --bind mime_type:s:image/png --bind _data:s:"/sdcard/$name" >/dev/null 2>&1 || true
+  id="$(adb_ shell content query --uri content://media/external/images/media \
+    --projection _id:_display_name 2>/dev/null | grep "$name" \
+    | sed 's/.*_id=\([0-9]*\).*/\1/' | tail -1 | tr -d '\r')"
+  [ -n "$id" ] || { echo "could not insert image into MediaStore" >&2; exit 1; }
+  adb_ shell am start -a android.intent.action.SEND -t image/png \
+    --eu android.intent.extra.STREAM "content://media/external/images/media/$id"
+  ;;
+
+share-file)
+  require_writable
+  src="${1:?usage: dev.sh share-file <local-file>}"
+  mime="${2:-text/plain}"
+  name="llmdock_share_$(basename "$src")"
+  adb_ push "$src" "/sdcard/$name"
+  adb_ shell content insert --uri content://media/external/file \
+    --bind mime_type:s:"$mime" --bind _data:s:"/sdcard/$name" >/dev/null 2>&1 || true
+  id="$(adb_ shell content query --uri content://media/external/file \
+    --projection _id:_display_name 2>/dev/null | grep "$name" \
+    | sed 's/.*_id=\([0-9]*\).*/\1/' | tail -1 | tr -d '\r')"
+  [ -n "$id" ] || { echo "could not insert file into MediaStore" >&2; exit 1; }
+  adb_ shell am start -a android.intent.action.SEND -t "$mime" \
+    --eu android.intent.extra.STREAM "content://media/external/file/$id"
   ;;
 
 net)

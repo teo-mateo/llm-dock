@@ -42,10 +42,12 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
+import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import java.io.File
 import java.time.Duration
 
 /**
@@ -125,6 +127,11 @@ class AppContainer(
 
     val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
+
+    /** F14 — staged share content. Cache-dir files, so it survives process death but never a backup. */
+    val sharedDraftStore: SharedDraftStore = SharedDraftStore(
+        File(context.applicationContext.cacheDir, "shared-drafts"),
+    )
 
     private val reauthenticator = CredentialReauthenticator(
         credentials = credentialStore,

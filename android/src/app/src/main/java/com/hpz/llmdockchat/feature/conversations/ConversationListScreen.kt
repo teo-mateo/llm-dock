@@ -464,7 +464,7 @@ private fun DeleteSwipeBackground() {
 }
 
 @Composable
-private fun ConversationRowBody(
+internal fun ConversationRowBody(
     item: ConversationSummary,
     selected: Boolean,
     selectionMode: Boolean,

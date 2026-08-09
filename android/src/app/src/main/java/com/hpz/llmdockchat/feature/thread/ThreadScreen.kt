@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.thread
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
@@ -104,6 +105,17 @@ fun ThreadScreen(
     // carries the streaming turn across.
     LaunchedEffect(Unit) { viewModel.load() }
 
+    // F14 — leaving the thread spends the staged share record, so a later
+    // visit shows no ghost attachment. Both the top-bar back button and the
+    // system back go through here; a 401 teardown pops the graph directly and
+    // does not, which is exactly what keeps the staged content across a forced
+    // re-login round trip (F14-R5).
+    val leaveThread = {
+        viewModel.leaveThread()
+        onBack()
+    }
+    BackHandler { leaveThread() }
+
     val appearance = LocalChatAppearance.current
     val textScale by appearance.textScale.collectAsState()
     val density = LocalDensity.current
@@ -119,7 +131,7 @@ fun ThreadScreen(
     ThreadContent(
         state = state,
         listState = listState,
-        onBack = onBack,
+        onBack = leaveThread,
         onComposerChange = viewModel::onComposerChange,
         onSend = viewModel::send,
         onStop = viewModel::stop,

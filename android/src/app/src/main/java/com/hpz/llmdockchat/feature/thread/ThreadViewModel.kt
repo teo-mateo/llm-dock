@@ -22,6 +22,7 @@ import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.wireValue
+import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -46,6 +47,12 @@ class ThreadViewModel(
     private val conversationId: String,
     private val repository: ChatRepository,
     private val drafts: DraftStore,
+    /**
+     * F14 — staged share attachments for this conversation, read back on load
+     * so a force-stop between the pick and the send does not lose them
+     * (F14-R5). Null in tests that don't exercise the share flow.
+     */
+    private val attachmentStore: SharedDraftStore? = null,
     private val servicesStreamRepository: ServicesStreamRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
@@ -92,9 +99,10 @@ class ThreadViewModel(
     fun load() {
         viewModelScope.launch {
             val draft = drafts.draft(conversationId)
+            val staged = attachmentStore?.attachments(conversationId).orEmpty()
             repository.load(conversationId).fold(
                 onSuccess = { conversation ->
-                    _state.value = loadedFrom(conversation, draft)
+                    _state.value = loadedFrom(conversation, draft, staged)
                     reattachIfRunning(conversation)
                 },
                 onFailure = { failure ->
@@ -111,7 +119,11 @@ class ThreadViewModel(
         }
     }
 
-    private fun loadedFrom(conversation: ConversationDetail, draft: String): ThreadUiState.Loaded {
+    private fun loadedFrom(
+        conversation: ConversationDetail,
+        draft: String,
+        staged: List<String> = emptyList(),
+    ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
         return ThreadUiState.Loaded(
             conversation = conversation,
@@ -122,7 +134,11 @@ class ThreadViewModel(
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
             ),
             composer = current?.composer ?: draft,
-            attachments = current?.attachments.orEmpty(),
+            // F14 — the record is read back on every load (it survives until
+            // send/leave), so a re-entry within the same process would re-add
+            // what `current` already holds; distinct keeps that a no-op while
+            // a process death re-stages the attachments from disk.
+            attachments = (current?.attachments.orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
             actionError = current?.actionError,
         )
@@ -190,6 +206,7 @@ class ThreadViewModel(
             thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
         )
         drafts.clear(conversationId)
+        attachmentStore?.clear(conversationId)
 
         collectRun(
             first = repository.send(conversationId, pending.content, pending.images),
@@ -251,6 +268,19 @@ class ThreadViewModel(
         val current = loaded() ?: return
         if (index !in current.attachments.indices) return
         _state.value = current.copy(attachments = current.attachments.filterIndexed { i, _ -> i != index })
+        // Keep the persisted record aligned so a later re-entry cannot
+        // resurrect a removed attachment (F14-R5's "no ghost").
+        attachmentStore?.removeAttachment(conversationId, index)
+    }
+
+    /**
+     * F14 — leaving the thread spends the staged record. Called from the
+     * screen's back handlers, never from a 401 teardown (which pops the graph
+     * directly), so a forced re-login round trip keeps the staged content
+     * (F14-R5's third criterion) while an ordinary leave produces no ghost.
+     */
+    fun leaveThread() {
+        attachmentStore?.clear(conversationId)
     }
 
     fun reportAttachmentFailure(message: String) {
