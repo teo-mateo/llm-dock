@@ -15,15 +15,70 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-openrouter")
 
 import config
-from chat import critique, llm_proxy, openrouter
+from chat import critique, llm_proxy, openrouter, openrouter_catalog
 from chat.db import ChatDB
 from chat.openrouter import DEFAULT_MODELS
 from chat.routes import chat_bp
 
 TOKEN = "test-token-openrouter"
 SETTINGS_PATH = "/api/chat/settings/openrouter-models"
+CATALOG_PATH = "/api/chat/settings/openrouter-catalog"
 
 MODELS_A = [{"id": "vendor/model-a", "label": "Model A"}]
+
+RAW_CATALOG = {
+    "data": [
+        {
+            "id": "z-ai/glm-5.2:free",
+            "name": "Z.ai: GLM 5.2 (free)",
+            "created": 1780000000,
+            "context_length": 200000,
+            "description": "A free tool-capable model.",
+            "pricing": {"prompt": "0", "completion": "0"},
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "supported_parameters": ["tools"],
+        },
+        {
+            "id": "openrouter/auto",
+            "name": "Auto Router",
+            "pricing": {"prompt": "0.000003", "completion": "0.000009"},
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "supported_parameters": [],
+        },
+    ]
+}
+
+
+class _CatalogFake:
+    """Minimal stand-in for the ``requests`` module inside openrouter_catalog."""
+
+    def __init__(self, exc=None, status=200):
+        self.calls = []
+        self.exc = exc
+        self.status = status
+
+    def get(self, url, headers=None, timeout=None):
+        self.calls.append({"url": url})
+        if self.exc:
+            raise self.exc
+        return _CatalogResponse(RAW_CATALOG, self.status)
+
+
+class _CatalogResponse:
+    def __init__(self, payload, status=200):
+        self._payload = payload
+        self.status_code = status
+
+    def json(self):
+        return self._payload
+
+
+@pytest.fixture(autouse=True)
+def _fresh_catalog_cache():
+    """Keeps the process-wide catalog cache from bleeding between tests."""
+    openrouter_catalog.clear_cache()
+    yield
+    openrouter_catalog.clear_cache()
 
 
 @pytest.fixture
@@ -148,6 +203,119 @@ def test_delete_when_no_customization_is_noop(client):
     r = client.delete(SETTINGS_PATH, headers=_auth())
     assert r.status_code == 200
     assert r.get_json()["customized"] is False
+
+
+# -- Live catalog endpoint ------------------------------------------------
+
+
+def test_catalog_requires_auth(client):
+    assert client.get(CATALOG_PATH).status_code == 401
+
+
+def test_catalog_shape(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    body = client.get(CATALOG_PATH, headers=_auth()).get_json()
+    assert body["count"] == 2
+    assert body["stale"] is False and body["cached"] is False and body["error"] is None
+    assert body["fetched_at"].endswith("Z")
+    assert {"id", "name", "label", "price_in", "chat_model", "tools"} <= set(body["models"][0])
+    assert body["known_ids"] == ["openrouter/auto", "z-ai/glm-5.2:free"]
+
+
+def test_catalog_reports_key_presence(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", None)
+    assert client.get(CATALOG_PATH, headers=_auth()).get_json()["configured"] is False
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "sk-or-test")
+    assert client.get(CATALOG_PATH, headers=_auth()).get_json()["configured"] is True
+
+
+def test_catalog_available_without_api_key(client, monkeypatch):
+    """Upstream is public: authoring the list works before the key exists."""
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", None)
+    assert client.get(CATALOG_PATH, headers=_auth()).status_code == 200
+
+
+def test_catalog_serves_cache_on_second_call(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    client.get(CATALOG_PATH, headers=_auth())
+    second = client.get(CATALOG_PATH, headers=_auth()).get_json()
+    assert len(fake.calls) == 1
+    assert second["cached"] is True
+
+
+def test_catalog_refresh_bypasses_cache(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    client.get(CATALOG_PATH, headers=_auth())
+    client.get(f"{CATALOG_PATH}?refresh=1", headers=_auth())
+    assert len(fake.calls) == 2
+
+
+def test_catalog_detail_adds_descriptions(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    body = client.get(f"{CATALOG_PATH}?detail=1", headers=_auth()).get_json()
+    entry = next(m for m in body["models"] if m["id"] == "z-ai/glm-5.2:free")
+    assert entry["description"] == "A free tool-capable model."
+
+
+def test_catalog_502_when_upstream_unreachable(client, monkeypatch):
+    """With nothing cached the UI needs a 502 it can render as a retry."""
+    import requests as real_requests
+
+    monkeypatch.setattr(
+        openrouter_catalog, "requests", _CatalogFake(exc=real_requests.ConnectionError("down"))
+    )
+    r = client.get(CATALOG_PATH, headers=_auth())
+    assert r.status_code == 502
+    body = r.get_json()
+    assert body["models"] == [] and body["count"] == 0
+    assert "OpenRouter catalog unavailable" in body["error"]
+
+
+def test_catalog_serves_stale_instead_of_failing(client, monkeypatch):
+    """Once something is cached, an outage degrades rather than erroring."""
+    import requests as real_requests
+
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    client.get(CATALOG_PATH, headers=_auth())
+    monkeypatch.setattr(
+        openrouter_catalog, "requests", _CatalogFake(exc=real_requests.ConnectionError("down"))
+    )
+    monkeypatch.setitem(openrouter_catalog._cache, "fetched_at_epoch", 0)
+    body = client.get(CATALOG_PATH, headers=_auth()).get_json()
+    assert body["stale"] is True and body["count"] == 2
+    assert "down" in body["error"]
+
+
+def test_catalog_502_on_upstream_error_status(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake(status=503))
+    assert client.get(CATALOG_PATH, headers=_auth()).status_code == 502
+
+
+def test_catalog_does_not_disturb_curated_list(client, monkeypatch):
+    """The catalog is display-time enrichment: storage is untouched."""
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    client.get(CATALOG_PATH, headers=_auth())
+    body = client.get(SETTINGS_PATH, headers=_auth()).get_json()
+    assert body["current"] == DEFAULT_MODELS and body["customized"] is False
+
+
+# -- Picker payload round-trips the existing storage contract -------------
+
+
+def test_put_accepts_catalog_derived_picker_payload(client, monkeypatch):
+    """What the new picker sends — catalog ids with derived labels — is a valid
+    PUT body, proving the storage contract held without a schema change."""
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    catalog_models = client.get(CATALOG_PATH, headers=_auth()).get_json()["models"]
+    picked = [{"id": m["id"], "label": m["label"]} for m in catalog_models]
+    r = client.put(SETTINGS_PATH, json={"models": picked}, headers=_auth())
+    assert r.status_code == 200
+    assert r.get_json()["current"] == picked
+    assert r.get_json()["customized"] is True
 
 
 # -- Resolver branch ------------------------------------------------------

@@ -17,7 +17,7 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import openrouter, settings_store
+from . import openrouter, openrouter_catalog, settings_store
 from .prompt_seed import seed_default_prompts
 
 logger = logging.getLogger(__name__)
@@ -224,6 +224,31 @@ def delete_openrouter_models_setting():
     settings_store.reset_openrouter_models()
     logger.info("openrouter model list reset to built-in")
     return jsonify(_openrouter_settings_payload())
+
+
+# -- Live OpenRouter catalog (backs the model picker) --
+
+@chat_bp.route("/api/chat/settings/openrouter-catalog", methods=["GET"])
+@require_auth
+def get_openrouter_catalog():
+    """Live OpenRouter catalog, proxied and TTL-cached server-side.
+
+    ``?refresh=1`` bypasses the cache (the picker's Refresh button); ``?detail=1``
+    adds each model's truncated description. ``configured`` rides along so one
+    round-trip drives both the picker and the "key not set" banner, and
+    ``known_ids`` lets the short list badge curated entries the catalog no longer
+    offers. Not gated on the API key: upstream is public, so authoring the list
+    works before the key exists.
+    """
+    force = request.args.get("refresh") in ("1", "true")
+    detail = request.args.get("detail") in ("1", "true")
+    try:
+        payload = openrouter_catalog.fetch(force=force, detail=detail)
+    except openrouter_catalog.CatalogUnavailable as exc:
+        return jsonify({"error": f"OpenRouter catalog unavailable: {exc}", "models": [], "count": 0}), 502
+    payload["configured"] = openrouter.is_configured()
+    payload["known_ids"] = sorted(openrouter_catalog.known_ids())
+    return jsonify(payload)
 
 
 # -- Projects CRUD --
