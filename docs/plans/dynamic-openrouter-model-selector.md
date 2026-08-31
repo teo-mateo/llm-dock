@@ -437,24 +437,50 @@ leaves the short list editable.
 
 ## Rollout
 
-1. **Phase 1 — backend.** `openrouter_catalog.py` + route + tests. Ships dark:
+1. **Phase 1 [DONE] — backend.** `openrouter_catalog.py` + route + tests. Ships dark:
    nothing in the UI changes, and the endpoint is independently useful (a later
    read-only catalog view, or the Android client).
-2. **Phase 2 — frontend.** Service/hook, picker component, validator
+2. **Phase 2 [DONE] — frontend.** Service/hook, picker component, validator
    extraction, `/settings` mount, `/tools` removal, tests.
-3. **Phase 3 — polish (optional).** Sort-by-benchmark columns; "N new models
+3. **Phase 3 [TODO] — polish (optional).** Sort-by-benchmark columns; "N new models
    since you last looked" from `created` vs a stored `seen_at`; pre-filtered
    quick chips ("free", "tool-capable", "cheap"); drag reorder; lazy
    `?detail=1` descriptions.
 
 One commit per phase, feature branch from a fresh `main`.
 
-**Docs** (ride along in whichever phase moves the card): `AGENTS.md` documents
-both the endpoint surface and this card as living on the Tools page — "Tools
-page → 'OpenRouter models' card" in the *Chatting with OpenRouter models*
-section. Update the card's location, add
-`GET /api/chat/settings/openrouter-catalog` to the route table, and note the
-list is curated from a live catalog rather than hand-edited as JSON.
+## Implementation status
+
+Phases 1 and 2 are on `plans/dynamic-openrouter-model-selector`, one commit per
+phase from a fresh `main`. Phase 3 is untouched.
+
+- **Phase 1** — `chat/openrouter_catalog.py`,
+  `GET /api/chat/settings/openrouter-catalog`, 33 tests in
+  `tests/test_openrouter_catalog.py` and a catalog section in
+  `tests/test_openrouter_routes.py`. Checked against live upstream: 425 models,
+  238 KB (329 KB with `?detail=1`), 401 unauthenticated, `cached` / `stale`
+  flags and `?refresh=1` busting confirmed over HTTP.
+- **Phase 2** — `services/openrouterCatalog.js`, `hooks/useOpenRouterCatalog.js`,
+  `utils/openrouterModels.js`, `components/settings/OpenRouterModelsPicker.jsx`,
+  mounted on `/settings`, JSON editor removed from `/tools`, both `AGENTS.md`
+  files updated. 22 picker tests + 4 service tests + 22 util tests; full suite
+  green (823 backend, 383 frontend), lint 0 errors, build clean.
+- **Phase 3** — not started.
+
+Two deliberate deviations from the spec above:
+
+- Sort offers the **intelligence** index only; coding/agentic columns are
+  Phase 3.
+- The `hideDeprecated` filter is labelled **"hide expiring"**, which says what
+  it does better than the field name — upstream `expiration_date` means "this
+  row goes away", not "this model is deprecated".
+
+**Docs** (done, with Phase 2): `AGENTS.md` had documented both the endpoint
+surface and this card as living on the Tools page — "Tools page → 'OpenRouter
+models' card" in the *Chatting with OpenRouter models* section. The card's
+location now reads `/settings`, the catalog endpoint is described there, and the
+list is documented as curated from a live catalog rather than hand-edited as
+JSON.
 
 ## Resolved Decisions
 
