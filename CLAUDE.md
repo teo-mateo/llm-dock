@@ -93,6 +93,7 @@ llm-dock/
 │   │   ├── persistence.py       # Durable/ephemeral persistence seam
 │   │   ├── settings_store.py    # Chat settings singleton (chat_settings.json)
 │   │   ├── openrouter.py        # OpenRouter model resolution
+│   │   ├── openrouter_catalog.py # Proxied + TTL-cached OpenRouter model catalog
 │   │   ├── prompt_builder.py    # System prompt assembly
 │   │   ├── prompt_seed.py       # Default prompt seeding
 │   │   ├── project_files.py     # Project filesystem layer
@@ -637,12 +638,27 @@ appear in the chat pickers.
   local service names. `chat/llm_proxy.resolve_service()` branches on the
   prefix via `chat/openrouter.py`.
 - The curated picker list (built-in defaults in
-  `chat/openrouter.py:DEFAULT_MODELS`) is editable at runtime: Tools page →
-  "OpenRouter models" card, or `GET/PUT/DELETE
+  `chat/openrouter.py:DEFAULT_MODELS`) is editable at runtime: Settings page →
+  "OpenRouter models" card — a two-pane picker over the **live OpenRouter
+  catalog** (search/filter/sort on the left, short list with reorder +
+  inline labels on the right, plus a collapsed "Advanced: edit JSON" panel)
+  — or directly via `GET/PUT/DELETE
   /api/chat/settings/openrouter-models` (stored under `openrouter_models`
   in `chat_settings.json`). The list is a picker convenience, **not an
   allowlist** — any `openrouter:` string resolves as long as the key is
   set, so removing a model doesn't break conversations already using it.
+- The catalog itself comes from `GET /api/chat/settings/openrouter-catalog`
+  (`chat/openrouter_catalog.py`), which proxies OpenRouter's public
+  `/api/v1/models`, normalizes each entry to picker fields in display units
+  ($/1M, not $/token), and serves it from a 15-minute in-process TTL cache.
+  `?refresh=1` busts the cache; `?detail=1` adds truncated descriptions (the
+  heaviest field). An outage serves the last good payload with `stale: true`
+  — only a first-ever failure returns 502. It is **not** gated on
+  `OPENROUTER_API_KEY`, so the list can be authored before the key exists.
+  The catalog is display-time enrichment only: never persisted, so the stored
+  shape can't go stale. Normalization flags `router` / `image_out` /
+  `audio_out` / `chat_model` because the naive "no text in output_modalities"
+  test hides nothing upstream — every image/audio model still lists `text`.
 - MCP tool calling, streaming, images, and critique all go through the
   same code paths as local models. OpenRouter requires an explicit
   `model` field in the payload; local single-model servers must NOT get

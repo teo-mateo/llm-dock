@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import useRegistry from '../../hooks/useRegistry'
 import RegistryEditor from './RegistryEditor'
 import DefaultPromptEditor from './DefaultPromptEditor'
-import OpenRouterModelsEditor from './OpenRouterModelsEditor'
 import ServerTestPanel from './ServerTestPanel'
 
 function ServerRow({ server, selected, onSelect }) {
@@ -159,8 +158,6 @@ export default function ToolsPage() {
       </div>
 
       <DefaultPromptEditor />
-
-      <OpenRouterModelsEditor />
 
       <RegistryEditor
         initialContent={json?.content}

@@ -20,9 +20,9 @@ full chat experience. It talks to the Flask dashboard API on port 3399
 - **Chat** (`/chat/:conversationId?`, `/chat/project/:projectId`) — the
   largest subsystem: conversations, streaming responses, tool (MCP) calls,
   critiques, spinoffs, and per-project file workspaces.
-- **Tools** (`/tools`) — MCP registry editor, default system prompt, and
-  OpenRouter model list.
-- **Settings** (`/settings`) — theme, chat prompts, TOTP setup.
+- **Tools** (`/tools`) — MCP registry editor and default system prompt.
+- **Settings** (`/settings`) — theme, chat prompts, OpenRouter model picker,
+  TOTP setup.
 
 ## Tech Stack & Dependencies
 
@@ -153,9 +153,9 @@ Key mechanics:
 | `/` | `GpuMonitor` + `ServicesTable` | Dashboard |
 | `/chat/:conversationId?` | `ChatPage` | Chat (with optional conversation) |
 | `/chat/project/:projectId` | `ChatPage` | Project file explorer |
-| `/tools` | `ToolsPage` | MCP registry, default prompt, OpenRouter models |
+| `/tools` | `ToolsPage` | MCP registry, default prompt |
 | `/services/:serviceName/*` | `ServiceDetailsPage` | Config / logs / metrics |
-| `/settings` | `SettingsPage` | Theme, prompts, TOTP |
+| `/settings` | `SettingsPage` | Theme, prompts, OpenRouter models, TOTP |
 
 ### Navigation & layout
 
@@ -174,6 +174,7 @@ Key mechanics:
 | `src/utils.js` | `getValue`/`totalValue` (metric access), `timeAgo` |
 | `src/utils/fence.js` | Fence helpers for markdown/code fences |
 | `src/utils/openrouter.js` | Pure helpers for the `openrouter:<model-id>` service-string convention (`isOpenRouterService`, `openRouterModelId`, `serviceNameForModel`, `formatModelLabel`) |
+| `src/utils/openrouterModels.js` | Curated-list helpers shared by the picker and its JSON panel: `validateModelsJson`/`validateModels` (mirror of the server rules), `deriveLabel`, `formatPricePerMtok`, `formatContext` |
 
 ### Services (per-domain API clients under `src/services/`)
 
@@ -185,6 +186,7 @@ Key mechanics:
 | `chatPrompts.js` | Saved prompt CRUD + reorder (`/chat/prompts`) |
 | `chatSettings.js` | Default system prompt get/put/reset (`/chat/settings/main-system-prompt`) |
 | `openrouterModels.js` | Curated OpenRouter model list get/put/reset |
+| `openrouterCatalog.js` | Live OpenRouter catalog get (`/chat/settings/openrouter-catalog`), with `refresh`/`detail` flags |
 | `mcpRegistry.js` | Registry get/json/put/reload/test; surfaces structured `err.body` validation errors |
 
 ### Hooks (`src/hooks/`)
@@ -203,6 +205,7 @@ Key mechanics:
 | `useCritique.js` | Request/store per-message critiques |
 | `useRunningServices.js` | Filters running chat-capable services (llama.cpp/vLLM/DS4/PAIR_), excludes embedding-pooling ones; `kind: 'all'` for the dashboard |
 | `useOpenRouterModels.js` | OpenRouter model list load/save/reset |
+| `useOpenRouterCatalog.js` | Live OpenRouter catalog, loaded once on mount; `refresh(true)` is the explicit Refresh |
 | `useMainSystemPrompt.js` | Default system prompt load/save/reset |
 | `useRegistry.js` | MCP registry load/save/reload |
 | `useResizableWidth.js` | Drag-resize panel width with localStorage persistence + ResizeObserver clamp |
@@ -223,10 +226,10 @@ Key mechanics:
 | `ServiceLogsPanel.jsx` | Live logs viewer |
 | `ParameterReference.jsx` | Flag metadata reference + add-flag |
 | `SettingsPage.jsx` / `settings/PromptsEditor.jsx` / `TOTPSetup.jsx` | Settings: theme, chat prompts editor, TOTP enrollment |
+| `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges) + collapsed JSON panel |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
 | `tools/RegistryEditor.jsx` | JSON editor for `mcp_servers.json` |
 | `tools/DefaultPromptEditor.jsx` | Default system prompt editor |
-| `tools/OpenRouterModelsEditor.jsx` | Curated OpenRouter model list editor |
 | `tools/ServerTestPanel.jsx` | Discover tools + run a tool against a server |
 | `ThemeSwitcher.jsx` | Theme toggle |
 | `contexts/ThemeContext.jsx` | Theme provider: OS-following first-load-only, persisted override, no-transition swap |
