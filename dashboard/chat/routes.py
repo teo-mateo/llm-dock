@@ -186,7 +186,7 @@ def _openrouter_settings_payload() -> dict:
 
     ``configured`` tells the frontend whether OPENROUTER_API_KEY is set —
     the chat picker hides the OpenRouter group when it isn't, while the
-    Tools-page editor stays usable and just shows a banner.
+    Settings-page picker stays usable and just shows a banner.
     """
     return {
         "configured": openrouter.is_configured(),
@@ -261,7 +261,8 @@ def post_openrouter_catalog_endpoints():
     ``/models/{id}/endpoints`` per id and caches per id. Only ids that are not
     already fresh are fetched, so a repeated page of rows costs nothing; a
     partially failing batch still returns whatever succeeded and names the rest
-    in ``missing``.
+    in ``missing``. Ids are checked against :data:`MODEL_ID_RE` because each one
+    becomes a request path.
     """
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -273,8 +274,11 @@ def post_openrouter_catalog_endpoints():
     for value in raw_ids:
         if not isinstance(value, str) or not value.strip():
             return jsonify({"error": "each id must be a non-empty string"}), 400
-        if value.strip() not in ids:
-            ids.append(value.strip())
+        model_id = value.strip()
+        if not openrouter_catalog.MODEL_ID_RE.fullmatch(model_id):
+            return jsonify({"error": f"invalid model id: {model_id}"}), 400
+        if model_id not in ids:
+            ids.append(model_id)
     if len(ids) > openrouter_catalog.MAX_PROVIDER_IDS:
         return jsonify({"error": f"too many ids (max {openrouter_catalog.MAX_PROVIDER_IDS})"}), 400
     if not ids:

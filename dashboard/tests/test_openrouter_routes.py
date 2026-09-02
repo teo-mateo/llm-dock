@@ -417,6 +417,25 @@ def test_providers_caps_batch_size(client):
     assert "max" in r.get_json()["error"]
 
 
+def test_providers_rejects_ids_that_are_not_model_ids(client):
+    """Every id becomes a request path, so ids are checked by shape first."""
+    for bad in ["../x", "a b", "a?x=1", "a#b", "%2e%2e", "//evil", "a\nHost: evil"]:
+        r = client.post(PROVIDERS_PATH, json={"ids": [bad]}, headers=_auth())
+        assert r.status_code == 400, bad
+        assert "invalid model id" in r.get_json()["error"]
+
+
+def test_providers_accepts_the_latest_alias_ids(client, monkeypatch):
+    """``~vendor/model-latest`` are real upstream ids; shape checks must not eat them."""
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    body = client.post(
+        PROVIDERS_PATH, json={"ids": ["~anthropic/claude-opus-latest"]}, headers=_auth()
+    ).get_json()
+    assert body["fetched"] == 1 and body["missing"] == []
+    assert "~anthropic/claude-opus-latest" in body["models"]
+
+
 # -- Resolver branch ------------------------------------------------------
 
 

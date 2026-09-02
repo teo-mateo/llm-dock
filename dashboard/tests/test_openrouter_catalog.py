@@ -7,6 +7,7 @@ rows, non-text output rows, far-future ``expiration_date`` sentinels, and
 sparse keys.
 """
 import copy
+import itertools
 import os
 import sys
 import threading
@@ -152,6 +153,7 @@ class FakeRequests:
         self.response = None
         self.endpoints_response = None
         self.fail_ids = set()
+        self.explode_ids = set()
         self.inflight = 0
         self.max_inflight = 0
         self._peak_lock = threading.Lock()
@@ -168,6 +170,7 @@ class FakeRequests:
         self.exc = exc
         self.delay = delay
         self.fail_ids = set()
+        self.explode_ids = set()
         self.inflight = 0
         self.max_inflight = 0
         return self
@@ -177,6 +180,8 @@ class FakeRequests:
         is_endpoints = url.endswith("/endpoints")
         if is_endpoints and any(quote(model_id, safe="/") in url for model_id in self.fail_ids):
             raise real_requests.ConnectionError("forced endpoint failure")
+        if is_endpoints and any(quote(model_id, safe="/") in url for model_id in self.explode_ids):
+            raise TypeError("forced unforeseen endpoint failure")
         if self.exc:
             raise self.exc
         if self.delay:
@@ -506,6 +511,27 @@ def test_endpoints_url_keeps_slashes_and_escapes_colon():
     )
 
 
+def test_model_id_shape_accepts_every_shape_upstream_ships():
+    # Includes the `~vendor/model-latest` aliases, which are ordinary ids with a
+    # leading tilde, and a variant suffix.
+    for model_id in [
+        "anthropic/claude-sonnet-5",
+        "dots-studio/dots-3-note-preview",
+        "ibm-granite/granite-4.2-8b",
+        "z-ai/glm-5.2:free",
+        "~anthropic/claude-opus-latest",
+    ]:
+        assert catalog.MODEL_ID_RE.fullmatch(model_id), model_id
+
+
+def test_model_id_shape_rejects_anything_that_is_not_an_id():
+    # Ids are interpolated into a request path, so nothing that could alter one
+    # gets through — including the percent-encoded forms, which would be inert
+    # but are not ids either.
+    for value in ["../x", "a b", "a?x=1", "a#b", "%2e%2e", "//evil", "a\nHost: evil", ""]:
+        assert not catalog.MODEL_ID_RE.fullmatch(value), value
+
+
 def test_normalize_endpoints_sorts_by_price_and_skips_nameless():
     providers = catalog._normalize_endpoints(RAW_ENDPOINTS["data"]["endpoints"])
     assert [p["provider"] for p in providers] == ["Tencent", "GMICloud", "DeepInfra"]
@@ -581,6 +607,34 @@ def test_failed_id_is_not_cached_so_the_next_call_retries(fake):
     fake(delay=0.01)
     out = catalog.summarize_endpoints([ENDPOINT_IDS[0]])
     assert ENDPOINT_IDS[0] in out["models"]
+
+
+def test_unforeseen_error_in_one_id_costs_only_that_row(fake):
+    """Isolation has to cover errors nobody anticipated, not just request ones."""
+    recorder = fake(delay=0.01)
+    recorder.explode_ids = {ENDPOINT_IDS[0]}
+    out = catalog.summarize_endpoints(ENDPOINT_IDS)
+    assert out["missing"] == [ENDPOINT_IDS[0]]
+    assert sorted(out["models"]) == sorted(ENDPOINT_IDS[1:])
+
+
+def test_unforeseen_error_in_normalization_costs_only_that_row(fake, monkeypatch):
+    """Same posture on the parse side: one row lost, not the whole batch."""
+    fake(delay=0.01)
+    real = catalog._normalize_endpoints
+    seen = itertools.count()
+
+    def flaky(raw):
+        # ``next`` on a counter is atomic, so exactly one worker takes the hit
+        # however the fan-out interleaves.
+        if next(seen) == 0:
+            raise RuntimeError("forced normalization failure")
+        return real(raw)
+
+    monkeypatch.setattr(catalog, "_normalize_endpoints", flaky)
+    out = catalog.summarize_endpoints(ENDPOINT_IDS)
+    assert len(out["missing"]) == 1
+    assert len(out["models"]) == len(ENDPOINT_IDS) - 1
 
 
 def test_fan_out_concurrency_is_capped(fake):

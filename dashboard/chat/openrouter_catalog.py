@@ -25,6 +25,7 @@ sentinel; and a zero price is not the same signal as a ``:free`` id suffix.
 """
 
 import logging
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
@@ -66,8 +67,16 @@ ENDPOINT_CONCURRENCY = 6
 
 # Cap on one batch, so a POST can't be turned into a catalog-wide sweep (425
 # upstream requests) by a caller with a token. The picker never asks for more
-# than the page it is showing.
+# than the rows it has in view.
 MAX_PROVIDER_IDS = 60
+
+# Shape of an OpenRouter model id, checked before one is interpolated into a
+# request path. By shape rather than by catalog membership because the catalog
+# may be cold — a caller must be able to ask about a curated id upstream has
+# dropped. Accepts every id upstream lists today, including the
+# ``~vendor/model-latest`` aliases; rejects path segments, queries, fragments,
+# and control characters, none of which belong in an id anyway.
+MODEL_ID_RE = re.compile(r"~?[A-Za-z0-9_][A-Za-z0-9_.\-]*(/[A-Za-z0-9_.\-]+)*(:[A-Za-z0-9_.\-]+)?")
 
 # Fields a picker sorts/filters on that upstream may omit for some models.
 _KNOWN_VARIANTS = ("free", "batch", "extended")
@@ -374,7 +383,9 @@ def _fetch_endpoints(model_id: str):
 
     ``providers`` is ``None`` on failure so the caller can fall back to a cached
     entry per id: a fan-out over 40 rows that died because one id 500'd would
-    make the whole list look broken.
+    make the whole list look broken. The catch-all is the same idea pushed to
+    the unexpected — an id whose response trips something beyond a request or
+    decode error must cost one row of the table, not the whole batch.
     """
     try:
         response = requests.get(
@@ -382,6 +393,8 @@ def _fetch_endpoints(model_id: str):
         )
     except RequestException as exc:
         return None, f"request failed: {exc}"
+    except Exception as exc:  # noqa: BLE001 - isolated per id, reported as one row
+        return None, f"unexpected error: {exc}"
     if response.status_code // 100 != 2:
         return None, f"upstream returned HTTP {response.status_code}"
     try:
@@ -392,7 +405,10 @@ def _fetch_endpoints(model_id: str):
     raw = data.get("endpoints") if isinstance(data, dict) else None
     if not isinstance(raw, list):
         return None, "upstream returned no endpoints"
-    return _normalize_endpoints(raw), None
+    try:
+        return _normalize_endpoints(raw), None
+    except Exception as exc:  # noqa: BLE001 - isolated per id, reported as one row
+        return None, f"unexpected error: {exc}"
 
 
 def summarize_endpoints(ids: list, force: bool = False) -> dict:
