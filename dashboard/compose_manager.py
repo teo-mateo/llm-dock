@@ -14,6 +14,7 @@ from typing import Dict, Any, Set, Optional
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from flag_metadata import render_cli_flag
+import tabby_keys
 
 logger = logging.getLogger(__name__)
 
@@ -554,10 +555,23 @@ class ComposeManager:
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+            context["image"] = config.get("image", "llm-dock-vllm")
         elif template_type == "ds4":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+        elif template_type == "tabbyapi":
+            # model_path points at the model DIRECTORY inside the container;
+            # TabbyAPI addresses a model as model_dir + folder name, so split it.
+            # Auth is a mounted api_tokens.yml (there is no --api-key flag),
+            # refreshed here because every name/key mutation lands on this path.
+            model_dir = Path(config["model_path"])
+            context["model_path"] = config["model_path"]
+            context["model_dir"] = str(model_dir.parent)
+            context["model_name"] = model_dir.name
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
+            tabby_keys.ensure(service_name, config["api_key"])
 
         rendered_flags = []
         extra_env = {}
