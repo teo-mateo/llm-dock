@@ -659,6 +659,20 @@ appear in the chat pickers.
   shape can't go stale. Normalization flags `router` / `image_out` /
   `audio_out` / `chat_model` because the naive "no text in output_modalities"
   test hides nothing upstream — every image/audio model still lists `text`.
+- Provider detail — which endpoints actually serve a model, at what price and
+  uptime — comes from `POST /api/chat/settings/openrouter-catalog/endpoints`
+  with `{ids: [...], force?}`. Upstream exposes provider names only per model,
+  so the server fans out to `/models/{id}/endpoints` behind a separate 5-minute
+  per-id cache (own lock, so a fan-out never blocks a catalog read), capped
+  at `MAX_PROVIDER_IDS` (60) ids per call so one POST can't become a catalog-wide
+  sweep. Failure is isolated per id: whatever could not be fetched is named in
+  `missing` and stays out of the cache, so the next call retries it and a partial
+  outage costs rows rather than the panel. An id that fails `MODEL_ID_RE` (each
+  one becomes a request path) is likewise reported, not fatal — only a batch with
+  nothing usable in it is a 400. The picker requests only the rows its
+  `IntersectionObserver` reports as in view; a whole-catalog sweep is ~14 s and
+  ~2 % failures upstream, which is why providers describe what you can see rather
+  than filtering what you can't.
 - MCP tool calling, streaming, images, and critique all go through the
   same code paths as local models. OpenRouter requires an explicit
   `model` field in the payload; local single-model servers must NOT get

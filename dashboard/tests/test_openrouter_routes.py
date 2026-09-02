@@ -419,10 +419,35 @@ def test_providers_caps_batch_size(client):
 
 def test_providers_rejects_ids_that_are_not_model_ids(client):
     """Every id becomes a request path, so ids are checked by shape first."""
-    for bad in ["../x", "a b", "a?x=1", "a#b", "%2e%2e", "//evil", "a\nHost: evil"]:
+    for bad in ["../x", "a b", "a?x=1", "a#b", "%2e%2e", "//evil", "a\nHost: evil", "a/../../x"]:
         r = client.post(PROVIDERS_PATH, json={"ids": [bad]}, headers=_auth())
         assert r.status_code == 400, bad
         assert "invalid model id" in r.get_json()["error"]
+
+
+def test_providers_isolate_ids_that_fail_the_shape_check(client, monkeypatch):
+    """One odd id costs its own row, not the page.
+
+    The picker only ever sends ids it read out of the catalog, so a rejection can
+    only mean upstream started shipping a shape the check does not know — exactly
+    the case where failing the whole batch would turn a new id into no providers
+    anywhere.
+    """
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    body = client.post(
+        PROVIDERS_PATH, json={"ids": ["tencent/hy3", "a/../../etc/passwd"]}, headers=_auth()
+    ).get_json()
+    assert body["missing"] == ["a/../../etc/passwd"]
+    assert "tencent/hy3" in body["models"]
+    assert body["fetched"] == 1 and len(fake.calls) == 1      # the bad id cost no upstream call
+
+
+def test_providers_rejects_a_batch_with_nothing_usable(client):
+    """Skipping malformed ids is not the same as accepting a malformed request."""
+    r = client.post(PROVIDERS_PATH, json={"ids": ["../x", "a b"]}, headers=_auth())
+    assert r.status_code == 400
+    assert "invalid model id" in r.get_json()["error"]
 
 
 def test_providers_accepts_the_latest_alias_ids(client, monkeypatch):

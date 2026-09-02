@@ -506,7 +506,7 @@ leaves the short list editable.
    since you last looked" from `created` vs a stored `seen_at`; pre-filtered
    quick chips ("free", "tool-capable", "cheap"); drag reorder; lazy
    `?detail=1` descriptions.
-4. **Phase 4 [DONE, uncommitted] — provider detail** in the catalog rows, per the
+4. **Phase 4 [DONE] — provider detail** in the catalog rows, per the
    section below: per-id fan-out cache, batch POST route, provider line with an
    expandable table.
 
@@ -544,12 +544,14 @@ Two deliberate deviations from the spec above:
   it does better than the field name — upstream `expiration_date` means "this
   row goes away", not "this model is deprecated".
 
-**Docs** (done, with Phase 2): `AGENTS.md` had documented both the endpoint
-surface and this card as living on the Tools page — "Tools page → 'OpenRouter
-models' card" in the *Chatting with OpenRouter models* section. The card's
-location now reads `/settings`, the catalog endpoint is described there, and the
-list is documented as curated from a live catalog rather than hand-edited as
-JSON.
+**Docs** (done, with Phase 2; the Phase 4 fan-out added later): `AGENTS.md` had
+documented both the endpoint surface and this card as living on the Tools page —
+"Tools page → 'OpenRouter models' card" in the *Chatting with OpenRouter models*
+section. The card's location now reads `/settings`, the catalog endpoint is
+described there, and the list is documented as curated from a live catalog rather
+than hand-edited as JSON. The `POST …/openrouter-catalog/endpoints` fan-out —
+per-id cache, 60-id cap, per-id failure isolation — is documented in the same
+section.
 
 ## Resolved Decisions
 

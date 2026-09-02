@@ -23,6 +23,11 @@ import {
 // the same state and stays the escape hatch for bulk pastes and for the case
 // where OpenRouter is unreachable.
 
+// Shared empty array: `catalog.data?.models ?? []` would hand the memos below a
+// fresh array on every render while the catalog is still loading, which is the
+// same as not memoizing. Nothing here mutates it (`filter`/`map`/spread only).
+const NO_MODELS = []
+
 const DEFAULT_FILTERS = {
   vendors: [],
   toolsOnly: true,
@@ -382,8 +387,8 @@ export default function OpenRouterModelsPicker() {
     }
   }, [listEl])
 
-  const models = catalog.data?.models ?? []
-  const knownIds = catalog.data?.known_ids ?? []
+  const models = catalog.data?.models ?? NO_MODELS
+  const knownIds = catalog.data?.known_ids ?? NO_MODELS
   const catalogById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
   const selectedIds = useMemo(() => new Set(draft.map((m) => m.id)), [draft])
   const nonChatCount = useMemo(() => models.filter((m) => !m.chat_model).length, [models])

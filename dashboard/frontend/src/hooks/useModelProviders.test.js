@@ -70,6 +70,15 @@ describe('useModelProviders', () => {
     expect(getProviderSummaries).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps an id containing a comma in one piece', async () => {
+    // The wanted set is keyed by a serialized string; a joined key would split
+    // this into two ids that no such model will ever answer to.
+    getProviderSummaries.mockResolvedValue(payload({ 'vendor/a,b': [{ provider: 'X', price_in: 1 }] }))
+    const { result } = renderHook(() => useModelProviders(['vendor/a,b']))
+    await waitFor(() => expect(result.current.byId['vendor/a,b']).toBeDefined())
+    expect(getProviderSummaries.mock.calls[0][0]).toEqual(['vendor/a,b'])
+  })
+
   it('does nothing for an empty id list', async () => {
     const { result } = renderHook(() => useModelProviders([]))
     await waitFor(() => expect(result.current.loading).toBe(false))

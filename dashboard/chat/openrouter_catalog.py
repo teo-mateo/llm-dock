@@ -74,9 +74,19 @@ MAX_PROVIDER_IDS = 60
 # request path. By shape rather than by catalog membership because the catalog
 # may be cold — a caller must be able to ask about a curated id upstream has
 # dropped. Accepts every id upstream lists today, including the
-# ``~vendor/model-latest`` aliases; rejects path segments, queries, fragments,
-# and control characters, none of which belong in an id anyway.
-MODEL_ID_RE = re.compile(r"~?[A-Za-z0-9_][A-Za-z0-9_.\-]*(/[A-Za-z0-9_.\-]+)*(:[A-Za-z0-9_.\-]+)?")
+# ``~vendor/model-latest`` aliases; rejects queries, fragments, and control
+# characters, none of which belong in an id anyway.
+#
+# The leading lookahead exists because the slashes in an id are literal, and
+# ``requests`` resolves dot segments out of a path before sending: without it,
+# ``a/../../x`` would fullmatch and the request would go to a different path on
+# the upstream host. So a path segment of exactly ``.`` or ``..`` is rejected
+# wherever it appears, while a dot *inside* a segment (``dots-studio/dots.3``)
+# stays legal.
+MODEL_ID_RE = re.compile(
+    r"~?(?!(?:[^/]*/)*\.\.?(?:/|$))"
+    r"[A-Za-z0-9_][A-Za-z0-9_.\-]*(/[A-Za-z0-9_.\-]+)*(:[A-Za-z0-9_.\-]+)?"
+)
 
 # Fields a picker sorts/filters on that upstream may omit for some models.
 _KNOWN_VARIANTS = ("free", "batch", "extended")
@@ -282,19 +292,23 @@ def fetch(force: bool = False, detail: bool = False) -> dict:
             response = requests.get(
                 CATALOG_URL, headers=_headers(), timeout=FETCH_TIMEOUT_SECONDS
             )
+            if response.status_code // 100 != 2:
+                return _degrade(f"upstream returned HTTP {response.status_code}", detail)
+            try:
+                body = response.json()
+            except ValueError:
+                return _degrade("upstream returned malformed JSON", detail)
+            raw = body.get("data") if isinstance(body, dict) else None
+            if not isinstance(raw, list) or not raw:
+                return _degrade("upstream returned no models", detail)
+            models, descriptions = _normalize(raw)
         except RequestException as exc:
             return _degrade(f"request failed: {exc}", detail)
-        if response.status_code // 100 != 2:
-            return _degrade(f"upstream returned HTTP {response.status_code}", detail)
-        try:
-            body = response.json()
-        except ValueError:
-            return _degrade("upstream returned malformed JSON", detail)
-        raw = body.get("data") if isinstance(body, dict) else None
-        if not isinstance(raw, list) or not raw:
-            return _degrade("upstream returned no models", detail)
+        except CatalogUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a surprise upstream costs a refresh, not the pane
+            return _degrade(f"unexpected error: {exc}", detail)
 
-        models, descriptions = _normalize(raw)
         _cache["models"] = models
         _cache["descriptions"] = descriptions
         _cache["fetched_at"] = _now_iso()
@@ -463,7 +477,12 @@ def summarize_endpoints(ids: list, force: bool = False) -> dict:
 
 
 def clear_cache() -> None:
-    """Drop the cached catalog and provider detail (tests, key rotation)."""
+    """Drop the cached catalog and provider detail.
+
+    Nothing in the app calls this: the caches hold no credential (the key is read
+    per request), so rotating one needs no invalidation. It exists for tests and
+    for a shell that wants a cold catalog right now.
+    """
     with _lock:
         _cache["models"] = None
         _cache["descriptions"] = {}

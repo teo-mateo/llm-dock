@@ -262,7 +262,12 @@ def post_openrouter_catalog_endpoints():
     already fresh are fetched, so a repeated page of rows costs nothing; a
     partially failing batch still returns whatever succeeded and names the rest
     in ``missing``. Ids are checked against :data:`MODEL_ID_RE` because each one
-    becomes a request path.
+    becomes a request path — but an id that fails the check costs its own row, not
+    the batch: it is reported in ``missing`` and the rest of the page is fetched.
+    The picker only ever sends ids it read out of the catalog, so a rejection can
+    mean one thing — upstream has started shipping a shape this check does not
+    know — which is exactly when failing the whole batch would be wrong. Only a
+    batch with nothing usable in it is a 400.
     """
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -271,19 +276,25 @@ def post_openrouter_catalog_endpoints():
     if not isinstance(raw_ids, list):
         return jsonify({"error": "ids must be a list of model ids"}), 400
     ids = []
+    rejected = []
     for value in raw_ids:
         if not isinstance(value, str) or not value.strip():
             return jsonify({"error": "each id must be a non-empty string"}), 400
         model_id = value.strip()
-        if not openrouter_catalog.MODEL_ID_RE.fullmatch(model_id):
-            return jsonify({"error": f"invalid model id: {model_id}"}), 400
-        if model_id not in ids:
-            ids.append(model_id)
+        wanted = ids if openrouter_catalog.MODEL_ID_RE.fullmatch(model_id) else rejected
+        if model_id not in wanted:
+            wanted.append(model_id)
     if len(ids) > openrouter_catalog.MAX_PROVIDER_IDS:
         return jsonify({"error": f"too many ids (max {openrouter_catalog.MAX_PROVIDER_IDS})"}), 400
     if not ids:
+        if rejected:
+            return jsonify({"error": f"invalid model ids: {', '.join(rejected[:3])}"}), 400
         return jsonify({"models": {}, "missing": [], "stale": [], "fetched": 0, "cached": 0})
-    return jsonify(openrouter_catalog.summarize_endpoints(ids, force=bool(body.get("force"))))
+    payload = openrouter_catalog.summarize_endpoints(ids, force=bool(body.get("force")))
+    if rejected:
+        logger.warning("provider detail skipped %d malformed id(s): %s", len(rejected), rejected[:5])
+        payload["missing"] += rejected
+    return jsonify(payload)
 
 
 # -- Projects CRUD --

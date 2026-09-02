@@ -20,7 +20,10 @@ export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = 
   const requested = useRef(new Set())
   const mounted = useRef(true)
 
-  const key = useMemo(() => ids.slice(0, limit).join(','), [ids, limit])
+  // JSON rather than `join(",")`: a model id is only *usually* comma-free, and a
+  // comma inside one would silently split this key into two ids that no such
+  // model will ever answer to.
+  const key = useMemo(() => JSON.stringify(ids.slice(0, limit)), [ids, limit])
 
   useEffect(() => {
     mounted.current = true
@@ -28,7 +31,7 @@ export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = 
   }, [])
 
   useEffect(() => {
-    const wanted = key ? key.split(',') : []
+    const wanted = JSON.parse(key)
     const missing = wanted.filter((id) => !requested.current.has(id))
     if (!missing.length) return
     missing.forEach((id) => requested.current.add(id))

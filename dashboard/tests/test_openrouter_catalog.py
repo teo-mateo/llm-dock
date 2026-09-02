@@ -222,6 +222,11 @@ def _by_id(models, model_id):
     return next(m for m in models if m["id"] == model_id)
 
 
+def _explode(raw):
+    """Stands in for a shape the normalizer has no answer for."""
+    raise RuntimeError("forced catalog normalization failure")
+
+
 # -- Normalization ------------------------------------------------------
 
 def test_catalog_url_reuses_openrouter_base_url():
@@ -494,6 +499,30 @@ def test_stale_serves_detail_when_requested(fake):
     assert _by_id(out["models"], "ibm-granite/granite-4.2-8b")["description"]
 
 
+def test_unexpected_error_serves_stale_payload(fake, monkeypatch):
+    """The catch-all is what keeps the pane alive on a shape nobody predicted.
+
+    Everything except a request error would otherwise leave :func:`fetch` and
+    surface as a 500 while a perfectly good payload sits in the cache — the one
+    outcome the stale-if-error posture exists to avoid.
+    """
+    fake()
+    catalog.fetch()
+    monkeypatch.setattr(catalog, "_normalize", _explode)
+    catalog._cache["fetched_at_epoch"] = 0
+    out = catalog.fetch()
+    assert out["stale"] is True and out["cached"] is True
+    assert "forced catalog normalization failure" in out["error"]
+    assert out["count"] == 6
+
+
+def test_unexpected_error_raises_when_nothing_cached(fake, monkeypatch):
+    fake()
+    monkeypatch.setattr(catalog, "_normalize", _explode)
+    with pytest.raises(catalog.CatalogUnavailable, match="forced catalog normalization failure"):
+        catalog.fetch()
+
+
 # -- Provider detail (per-model endpoints) --------------------------------
 #
 # Upstream exposes provider names only per model, so this is a fan-out with a
@@ -527,9 +556,34 @@ def test_model_id_shape_accepts_every_shape_upstream_ships():
 def test_model_id_shape_rejects_anything_that_is_not_an_id():
     # Ids are interpolated into a request path, so nothing that could alter one
     # gets through — including the percent-encoded forms, which would be inert
-    # but are not ids either.
-    for value in ["../x", "a b", "a?x=1", "a#b", "%2e%2e", "//evil", "a\nHost: evil", ""]:
+    # but are not ids either, and the dot segments, which ``requests`` would
+    # resolve out of the path before sending.
+    for value in [
+        "../x",
+        "a b",
+        "a?x=1",
+        "a#b",
+        "%2e%2e",
+        "//evil",
+        "a\nHost: evil",
+        "a/../../etc/passwd",
+        "a/./b",
+        "vendor/model/..",
+        "",
+    ]:
         assert not catalog.MODEL_ID_RE.fullmatch(value), value
+
+
+def test_dot_segments_cannot_retarget_the_upstream_path():
+    """Slashes are literal in the URL built per id, so a traversal has to die here."""
+    import requests as real_requests
+
+    assert not catalog.MODEL_ID_RE.fullmatch("a/../../etc/passwd")
+    # What a shape that *does* pass looks like on the wire: the id stays put.
+    prepared = real_requests.Request(
+        "GET", catalog._endpoints_url("dots-studio/dots-3-note-preview")
+    ).prepare()
+    assert prepared.url.endswith("/models/dots-studio/dots-3-note-preview/endpoints")
 
 
 def test_normalize_endpoints_sorts_by_price_and_skips_nameless():
