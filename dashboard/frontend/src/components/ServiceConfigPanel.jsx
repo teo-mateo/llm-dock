@@ -346,6 +346,17 @@ function renderCommandPreview(config, apiKey, params) {
     if (config.model_path) parts.push(`-m ${config.model_path}`)
     parts.push(`--host 0.0.0.0`)
     parts.push(`--port 8000`)
+  } else if (config.template_type === 'tabbyapi') {
+    // TabbyAPI has no --api-key flag; keys arrive as a mounted api_tokens.yml.
+    parts.push('python3 main.py')
+    parts.push(`--host 0.0.0.0`)
+    parts.push(`--port 8000`)
+    if (config.model_path) {
+      const trimmed = String(config.model_path).replace(/\/+$/, '')
+      const name = trimmed.split('/').pop()
+      parts.push(`--model-dir ${trimmed.slice(0, trimmed.length - name.length - 1)}`)
+      parts.push(`--model-name ${name}`)
+    }
   } else {
     parts.push('vllm serve')
     if (config.model_name) parts.push(config.model_name)

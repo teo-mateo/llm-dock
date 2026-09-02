@@ -68,6 +68,7 @@ function EngineBadge({ templateType }) {
     ik_llamacpp: { label: 'ik_llama', classes: 'bg-badge-llamacpp-bg text-badge-llamacpp-fg' },
     vllm: { label: 'vLLM', classes: 'bg-badge-vllm-bg text-badge-vllm-fg' },
     ds4: { label: 'DS4', classes: 'bg-badge-ds4-bg text-badge-ds4-fg' },
+    tabbyapi: { label: 'EXL3', classes: 'bg-badge-exl3-bg text-badge-exl3-fg' },
   }
   const engine = engineMap[templateType] || { label: templateType, classes: 'bg-badge-neutral-bg text-badge-neutral-fg' }
 

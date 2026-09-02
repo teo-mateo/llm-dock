@@ -242,8 +242,8 @@ def create_service():
         template_type = data.get("template_type")
         if not template_type:
             return jsonify({"error": "template_type is required"}), 400
-        if template_type not in ["llamacpp", "ik_llamacpp", "vllm", "ds4"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "ik_llamacpp", "vllm", or "ds4"'}), 400
+        if template_type not in ["llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "ik_llamacpp", "vllm", "ds4", or "tabbyapi"'}), 400
 
         # Auto-generate API key if not provided
         if not data.get("api_key"):
@@ -399,6 +399,16 @@ def delete_service(service_name):
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
 
+        # Drop the TabbyAPI per-service key file (secrets) so a deleted service
+        # does not leave api/admin keys on disk.
+        if service_config.get("template_type") == "tabbyapi":
+            try:
+                import tabby_keys
+
+                tabby_keys.remove(service_name)
+            except Exception as e:
+                logger.warning(f"Failed to remove TabbyAPI key file for '{service_name}': {e}")
+
         from services import event_manager
         event_manager.emit({
             "service_name": service_name,
@@ -530,8 +540,8 @@ def rename_service(service_name):
 def get_flags_metadata(template_type):
     """Get flag metadata for a template type"""
     try:
-        if template_type not in ["llamacpp", "llamacpp_bench", "vllm", "ds4"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "llamacpp_bench", "vllm", or "ds4"'}), 400
+        if template_type not in ["llamacpp", "llamacpp_bench", "vllm", "ds4", "tabbyapi"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "llamacpp_bench", "vllm", "ds4", or "tabbyapi"'}), 400
 
         metadata = get_flag_metadata(template_type)
         mandatory = MANDATORY_FIELDS.get(template_type, [])

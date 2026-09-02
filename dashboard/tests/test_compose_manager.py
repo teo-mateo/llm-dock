@@ -76,6 +76,47 @@ class TestRemoveServiceUsesValidation:
         mock_replace.assert_called_once()
 
 
+class TestTabbyapiRender:
+    """Cover the tabbyapi (EXL3) template rendering path."""
+
+    def _render(self, mgr, monkeypatch, tmp_path, params):
+        monkeypatch.setenv("LLM_DOCK_TABBY_KEYS_DIR", str(tmp_path / "keys"))
+        cfg = {
+            "template_type": "tabbyapi",
+            "alias": "laguna",
+            "port": 3328,
+            "model_path": "/hf-cache/hub/models--turboderp--X-exl3/snapshots/abc123",
+            "api_key": "llmd-abc",
+            "params": params,
+        }
+        return mgr._render_service("exl3-laguna", cfg)
+
+    def test_model_dir_and_name_are_split(self, compose_manager, monkeypatch, tmp_path):
+        out = self._render(compose_manager, monkeypatch, tmp_path, {})
+        assert "--model-dir /hf-cache/hub/models--turboderp--X-exl3/snapshots" in out
+        assert "--model-name abc123" in out
+
+    def test_bind_mount_honors_keys_dir_override(
+        self, compose_manager, monkeypatch, tmp_path
+    ):
+        """The api_tokens.yml bind source must follow LLM_DOCK_TABBY_KEYS_DIR."""
+        out = self._render(compose_manager, monkeypatch, tmp_path, {})
+        expected = f"{tmp_path / 'keys' / 'exl3-laguna.yml'}:/app/api_tokens.yml:ro"
+        assert expected in out
+        assert (tmp_path / "keys" / "exl3-laguna.yml").is_file()
+
+    def test_empty_bool_params_render_with_a_value(
+        self, compose_manager, monkeypatch, tmp_path
+    ):
+        """TabbyAPI booleans take a value; an empty value must not render bare."""
+        out = self._render(
+            compose_manager, monkeypatch, tmp_path, {"--vision": "", "--max-seq-len": "32768"}
+        )
+        assert "--vision True" in out
+        assert "--vision\n" not in out
+        assert "--max-seq-len 32768" in out
+
+
 class TestAddServiceUsesValidation:
     """Confirm _atomic_add_service does use validation as a baseline."""
 

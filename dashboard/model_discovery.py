@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _CONTAINER_PATH_MAP = [
     ("/hf-cache/", os.path.expanduser("~/.cache/huggingface/")),
     ("/local-models/", os.path.expanduser("~/.cache/models/")),
+    ("/exl3/", os.path.expanduser("~/.cache/exl3/")),
 ]
 
 

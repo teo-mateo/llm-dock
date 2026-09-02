@@ -3,7 +3,7 @@ Flag metadata and validation for service templates.
 Defines how flags are rendered and validated for each template type.
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Set
 from service_templates import sanitize_service_name
 
 # ============================================
@@ -15,11 +15,13 @@ MANDATORY_FIELDS = {
     "ik_llamacpp": ["port", "model_path", "alias", "api_key"],
     "vllm": ["port", "model_name", "alias", "api_key"],
     "ds4": ["port", "model_path", "alias", "api_key"],
+    "tabbyapi": ["port", "model_path", "alias", "api_key"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
 SERVICE_NAME_PREFIXES = {
     "ik_llamacpp": "ik",
+    "tabbyapi": "exl3",
 }
 
 # ============================================
@@ -1310,6 +1312,246 @@ DS4_VALIDATION = {
 
 
 # ============================================
+# FLAG METADATA FOR tabbyapi (TabbyAPI / ExLlamaV3)
+# TabbyAPI is ExLlamaV3's OpenAI server; the image is a digest-pinned wrapper
+# (tabbyapi/Dockerfile) and the backend is the prebuilt exllamav3 wheel inside it.
+#
+# Two rules that differ from every other runner here, both because TabbyAPI's
+# argparser is GENERATED from its pydantic config model:
+#   1. config fields keep underscores, CLI flags use dashes — `cache_mode` is
+#      `--cache-mode`, `max_seq_len` is `--max-seq-len`.
+#   2. every flag takes a value, booleans included. There are no store_true
+#      flags, so `--vision` alone is an argparse error: store "True"/"False".
+#      render_cli_flag() renders an empty value as a bare flag, which breaks here.
+#
+# --host/--port/--model-dir/--model-name come from the template and must NOT be
+# set here. Nested dict options (template_vars_default, template_vars_force) and
+# the draft-model block are not representable as CLI args — use a config.yml.
+# ============================================
+
+TABBYAPI_FLAGS = {
+    # ========== CONTEXT & CACHE ==========
+    "max_seq_len": {
+        "cli": "--max-seq-len",
+        "type": "int",
+        "category": "Context & Cache",
+        "description": "Maximum sequence length. -1 reads it from the model's config.json.",
+        "impact": "Critical",
+        "tip": "Caps the context window at load time. Defaults to the model's own <code>max_position_embeddings</code>, which for long-context EXL3 checkpoints is often 256K+ and allocates far more cache than a single-user dashboard needs. Lower it to free VRAM for weights.",
+    },
+    "cache_size": {
+        "cli": "--cache-size",
+        "type": "int",
+        "category": "Context & Cache",
+        "description": "K/V cache size in tokens (must be a multiple of 256).",
+        "impact": "Critical",
+        "tip": "The actual VRAM the cache gets, decoupled from <code>--max-seq-len</code>. Set to <code>4096</code> to run a big model's weights resident with a modest window.",
+    },
+    "cache_mode": {
+        "cli": "--cache-mode",
+        "type": "string",
+        "category": "Context & Cache",
+        "description": "Cache quantisation as a <code>k_bits,v_bits</code> pair, each 2-8. Legacy values FP16, Q8, Q6, Q4 also accepted.",
+        "default": "FP16",
+        "impact": "High",
+        "tip": "Quantises the K/V cache instead of keeping it in fp16 — near-linear VRAM savings on long contexts for a small quality cost. <code>8,8</code> is a safe first step down.",
+    },
+    "chunk_size": {
+        "cli": "--chunk-size",
+        "type": "int",
+        "category": "Context & Cache",
+        "description": "Tokens per prompt-ingestion chunk.",
+        "default": "2048",
+        "impact": "Medium",
+        "tip": "Lower values cut peak VRAM during prefill at the cost of prompt throughput; sensible range 512-4096.",
+    },
+    "output_chunking": {
+        "cli": "--output-chunking",
+        "type": "bool",
+        "category": "Context & Cache",
+        "description": "Allocate completion cache space in chunks rather than all at once (EXL3 models only).",
+        "default": "True",
+        "impact": "Medium",
+    },
+    "max_batch_size": {
+        "cli": "--max-batch-size",
+        "type": "int",
+        "category": "Context & Cache",
+        "description": "Cap on concurrently generating jobs; also reserves less paged-attention overhead.",
+        "impact": "Medium",
+        "tip": "Batching is exllamav3's continuous/paged engine. Single-user dashboards gain nothing from a large value, and lowering it returns VRAM.",
+    },
+    # ========== VRAM SPLIT & PARALLELISM ==========
+    "gpu_split": {
+        "cli": "--gpu-split",
+        "type": "string",
+        "category": "VRAM & Parallelism",
+        "description": "GB of VRAM to claim per GPU, space-separated for multiple devices.",
+        "impact": "Critical",
+        "tip": "The closest analogue of vLLM's <code>--gpu-memory-utilization</code> on this dashboard: because every llm-dock service takes <code>count: all</code> GPUs, an explicit split is how two engines coexist on one card.",
+    },
+    "gpu_split_auto": {
+        "cli": "--gpu-split-auto",
+        "type": "bool",
+        "category": "VRAM & Parallelism",
+        "description": "Autosplit the model across visible GPUs, ignoring --gpu-split.",
+        "default": "True",
+        "impact": "High",
+        "tip": "Set to <code>False</code> when passing an explicit <code>--gpu-split</code>.",
+    },
+    "autosplit_reserve": {
+        "cli": "--autosplit-reserve",
+        "type": "string",
+        "category": "VRAM & Parallelism",
+        "description": "MB per GPU to leave free when autosplitting (space-separated).",
+        "default": "96",
+        "impact": "Low",
+    },
+    "tensor_parallel": {
+        "cli": "--tensor-parallel",
+        "type": "bool",
+        "category": "VRAM & Parallelism",
+        "description": "Tensor-parallel instead of layer-split. Falls back to autosplit without a gpu_split.",
+        "default": "False",
+        "impact": "High",
+    },
+    "tensor_parallel_backend": {
+        "cli": "--tensor-parallel-backend",
+        "type": "string",
+        "category": "VRAM & Parallelism",
+        "description": "<code>native</code> for PCIe GPUs, <code>nccl</code> for NVLink.",
+        "default": "native",
+        "impact": "Low",
+    },
+    # ========== CPU OFFLOAD ==========
+    "cpu_moe_offload_layers": {
+        "cli": "--cpu-moe-offload-layers",
+        "type": "int",
+        "category": "CPU Offload",
+        "description": "Whole MoE layers to compute on CPU with expert weights in system RAM (999 = all).",
+        "default": "0",
+        "impact": "High",
+        "tip": "The reason to run EXL3 alongside GGUF: MoE experts live in system RAM and only the active ones are read. Requires layer-split mode, i.e. not tensor parallel.",
+    },
+    "cpu_moe_split_experts": {
+        "cli": "--cpu-moe-split-experts",
+        "type": "int",
+        "category": "CPU Offload",
+        "description": "Routed experts per MoE layer to run on CPU, splitting every layer rather than offloading whole ones.",
+        "default": "0",
+        "impact": "High",
+        "tip": "Mutually exclusive with <code>--cpu-moe-offload-layers</code>. Overlaps CPU and GPU work and keeps hot experts in VRAM.",
+    },
+    "cpu_moe_threads": {
+        "cli": "--cpu-moe-threads",
+        "type": "int",
+        "category": "CPU Offload",
+        "description": "Worker threads for CPU MoE inference. Defaults to EXL3_MOE_CPU_THREADS, else half the cores.",
+        "impact": "Low",
+    },
+    "ngram_ram": {
+        "cli": "--ngram-ram",
+        "type": "bool",
+        "category": "CPU Offload",
+        "description": "Load a PLE model's n-gram embedding table fully into system RAM instead of streaming it from disk.",
+        "default": "False",
+        "impact": "Medium",
+    },
+    # ========== MULTIMODAL ==========
+    "vision": {
+        "cli": "--vision",
+        "type": "bool",
+        "category": "Multimodal",
+        "description": "Enable the vision tower, if the checkpoint carries one.",
+        "default": "False",
+        "impact": "High",
+        "tip": "Unlike llama.cpp there is no separate mmproj file — the vision weights are part of the EXL3 directory (quantised by <code>--vision_bits</code> at conversion time).",
+    },
+    "vision_offload": {
+        "cli": "--vision-offload",
+        "type": "bool",
+        "category": "Multimodal",
+        "description": "Keep vision weights in pinned system RAM and stream them to the GPU.",
+        "default": "False",
+        "impact": "Medium",
+    },
+    # ========== PROMPTING ==========
+    "prompt_template": {
+        "cli": "--prompt-template",
+        "type": "string",
+        "category": "Prompting",
+        "description": "Named template from the templates/ directory; empty uses the model's own chat template.",
+        "impact": "Medium",
+        "tip": "EXL3 directories usually ship <code>chat_template.jinja</code>, which TabbyAPI picks up automatically — the same Jinja engine as vLLM, so llm-dock's <code>chat-templates/</code> workflow ports over.",
+    },
+    "inline_model_loading": {
+        "cli": "--inline-model-loading",
+        "type": "bool",
+        "category": "Prompting",
+        "description": "Allow switching models via the <code>model</code> field of a generation request.",
+        "default": "False",
+        "impact": "High",
+        "tip": "Enables one TabbyAPI container serving many EXL3 quants — a different topology from llm-dock's one-container-per-model, so leave off for normal services.",
+    },
+    # ========== HTTP API ==========
+    "disable_auth": {
+        "cli": "--disable-auth",
+        "type": "bool",
+        "category": "HTTP API",
+        "description": "Turn off bearer-token auth entirely.",
+        "default": "False",
+        "impact": "High",
+        "tip": "The template normally mounts a per-service <code>api_tokens.yml</code> carrying this service's <code>api_key</code>. Only set this to <code>True</code> if you deliberately want ds4-style unenforced auth.",
+    },
+    "send_tracebacks": {
+        "cli": "--send-tracebacks",
+        "type": "bool",
+        "category": "HTTP API",
+        "description": "Return server tracebacks to the client (debug only).",
+        "default": "False",
+        "impact": "Low",
+    },
+    "sse_ping_interval": {
+        "cli": "--sse-ping-interval",
+        "type": "int",
+        "category": "HTTP API",
+        "description": "Seconds between SSE keep-alive comments on streaming responses; 0 disables.",
+        "default": "15",
+        "impact": "Low",
+        "tip": "Prevents streaming connections dropping during long prefills — relevant to llm-dock chat, which streams over SSE itself.",
+    },
+    # ========== LOGGING ==========
+    "log_prompt": {
+        "cli": "--log-prompt",
+        "type": "bool",
+        "category": "Logging",
+        "description": "Log the templated prompt to the container log.",
+        "default": "False",
+        "impact": "Low",
+    },
+    "log_generation_params": {
+        "cli": "--log-generation-params",
+        "type": "bool",
+        "category": "Logging",
+        "description": "Log per-request generation options.",
+        "default": "False",
+        "impact": "Low",
+    },
+}
+
+TABBYAPI_VALIDATION = {
+    "max_seq_len": {"type": "int", "min": -1, "max": 10000000},
+    "cache_size": {"type": "int", "min": 256, "max": 10000000},
+    "chunk_size": {"type": "int", "min": 1, "max": 65536},
+    "max_batch_size": {"type": "int", "min": 1, "max": 256},
+    "cpu_moe_offload_layers": {"type": "int", "min": 0, "max": 10000},
+    "cpu_moe_split_experts": {"type": "int", "min": 0, "max": 10000},
+    "cpu_moe_threads": {"type": "int", "min": 1, "max": 256},
+    "sse_ping_interval": {"type": "int", "min": 0, "max": 3600},
+}
+
+
+# ============================================
 # HELPER FUNCTIONS
 # ============================================
 
@@ -1324,6 +1566,8 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return VLLM_FLAGS
     elif template_type == "ds4":
         return DS4_FLAGS
+    elif template_type == "tabbyapi":
+        return TABBYAPI_FLAGS
     else:
         return {}
 
@@ -1336,8 +1580,25 @@ def get_validation_rules(template_type: str) -> Dict[str, Any]:
         return VLLM_VALIDATION
     elif template_type == "ds4":
         return DS4_VALIDATION
+    elif template_type == "tabbyapi":
+        return TABBYAPI_VALIDATION
     else:
         return {}
+
+
+def get_bool_cli_flags(template_type: str) -> Set[str]:
+    """Set of CLI flags that are boolean-typed for a template type.
+
+    Used to guard engines whose parser rejects a bare flag. TabbyAPI's argparse
+    is generated from its pydantic config model, so every flag (booleans
+    included) requires a value; a bool param stored with an empty value would
+    render as a bare `--flag` and fail at container startup.
+    """
+    return {
+        meta["cli"]
+        for meta in get_flag_metadata(template_type).values()
+        if isinstance(meta, dict) and meta.get("type") == "bool" and "cli" in meta
+    }
 
 
 def generate_service_name(template_type: str, alias: str) -> str:
@@ -1446,5 +1707,17 @@ def validate_service_config(
             is_valid, error = validate_custom_flag_name(flag_name)
             if not is_valid:
                 errors.append(f"Param '{flag_name}': {error}")
+
+    # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
+    # so an empty-valued bool param would render `--flag` and crash at startup.
+    if template_type == "tabbyapi":
+        bool_flags = get_bool_cli_flags(template_type)
+        for flag_name, flag_value in params.items():
+            if flag_name in bool_flags and not str(flag_value).strip():
+                errors.append(
+                    f"TabbyAPI boolean flag '{flag_name}' requires a value "
+                    "('True' or 'False'); an empty value renders a bare flag "
+                    "that TabbyAPI rejects"
+                )
 
     return len(errors) == 0, errors

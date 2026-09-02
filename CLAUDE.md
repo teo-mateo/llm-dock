@@ -277,6 +277,14 @@ Services are auto-registered as OpenAI-compatible endpoints in Open WebUI when c
 - **Params:** `--max-model-len`, `--gpu-memory-utilization`, `--tensor-parallel-size`, etc.
 - **FP8 models:** use `--dtype auto` — vLLM auto-detects `quantization=fp8` from the HF config. Forcing `--dtype bfloat16` on an FP8 checkpoint will error.
 
+### TabbyAPI (ExLlamaV3 / EXL3)
+- **Format:** EXL3 — QTIP-style quantized safetensors in a model **directory** (`config.json` with `quant_method: exl3`). Not GGUF, not plain safetensors; conversion needs `convert.py` from the exllamav3 repo.
+- **Image:** `llm-dock-tabbyapi`, a thin digest-pinned wrapper around `ghcr.io/theroyallab/tabbyapi` (`tabbyapi/Dockerfile`, `./build-tabbyapi.sh`). TabbyAPI is a rolling release with no git tags, so the digest in that Dockerfile (duplicated above and below `FROM`, since an `ARG` before `FROM` doesn't cross it) is the only pin. `docker run --rm --entrypoint cat llm-dock-tabbyapi /opt/llm-dock.txt` shows the baked base digest + `exllamav3`/`torch` versions. TabbyAPI is AGPLv3 — consumed as an image, never vendored.
+- **Template:** `dashboard/templates/tabbyapi.j2`. `template_type: "tabbyapi"`, service-name prefix `exl3-`, listens on 8000 like vLLM/ds4 (so Open WebUI registration and `docker_utils` need no special case).
+- **Params:** dash-cased overrides of TabbyAPI's `config.yml` — `--max-seq-len`, `--cache-mode`, `--gpu-split` (see `TABBYAPI_FLAGS`).
+- **Not supported:** benchmarking (`llama-bench` is llama.cpp-only) and the metrics/slots panel (no Prometheus endpoint, no `/slots`).
+- Full analysis and remaining work: `docs/plans/exllamav3-integration.md`.
+
 ## API Routes
 
 All routes are under the Flask app and require Bearer token auth (except static file serving).
@@ -467,6 +475,50 @@ files, and couldn't find them in the cached files.`
 The big chat models commonly take 0.55–0.94. An embedding service running
 alongside them only needs a sliver — set it to ~0.10 or less so it
 doesn't try to grab KV cache that's already reserved.
+
+### TabbyAPI args are config overrides, and booleans take a value
+
+TabbyAPI's argparser is *generated* from its pydantic config model, which breaks
+both llm-dock conventions:
+
+- Underscored config fields become **dashed** flags: `cache_mode` → `--cache-mode`,
+  `max_seq_len` → `--max-seq-len`.
+- Every flag takes a value, **booleans included** — there are no `store_true`
+  flags, so a bare `--vision` is an argparse error. Since `render_cli_flag()`
+  renders an empty value as a bare flag, bool params must be stored as
+  `"--output-chunking": "True"` / `"--gpu-split-auto": "False"`, never `""`.
+  (pydantic coerces the strings `True`/`False` correctly.)
+
+Auth also differs: no `--api-key` flag. `tabby_keys.ensure()` writes
+`dashboard/tabby_keys/<service>.yml` (gitignored, 0600) during compose rendering
+and the template mounts it at `/app/api_tokens.yml`. Rendering is the right seam
+because create/rename/rotate all rebuild `docker-compose.yml`. If the file were
+missing, TabbyAPI would generate its own keys — which silently stop matching the
+service's `api_key`.
+
+Nested dict options (`template_vars_default`, `template_vars_force`) and the
+`draft:` model block can't be expressed as CLI args; those need a real
+`config.yml` mounted at `/app/config.yml`.
+
+### `ComposeManager.add_service()` mangles `restart: no` — use add_service_to_db + rebuild
+
+`add_service()` → `_atomic_add_service()` round-trips the whole compose file
+through PyYAML, and YAML 1.1 parses `restart: no` as boolean `false`, which it
+then writes back as `restart: false`. `docker compose config` rejects that, so
+**any** add via that path fails with `services.<name>.restart must be a string` —
+including on this repo's existing `PAIR_*`/ds4 entries. The text-based path is
+unaffected: `mgr.add_service_to_db(name, cfg)` followed by
+`mgr.rebuild_compose_file()`, which only regenerates the region between the
+BEGIN/END DYNAMIC markers. That is the documented CLI workflow, and the one the
+EXL3 service was created with.
+
+### ghcr pulls fail when a ghcr.io credential is stored
+
+ghcr answers `denied: denied` (not 401) to an authenticated request with a dead
+token, and Docker never falls back to anonymous — so public images fail to pull.
+Symptom: `failed to fetch oauth token: denied: denied` during `docker build`.
+Workaround for a build: `DOCKER_CONFIG=/path/to/dir-with-empty-config.json
+./build-tabbyapi.sh`. Real fix is `docker logout ghcr.io`.
 
 ### Unknown flag names are silently dropped
 

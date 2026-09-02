@@ -100,6 +100,7 @@ def get_images_metadata():
             "llamacpp": get_image_build_metadata("llm-dock-llamacpp"),
             "vllm": get_image_build_metadata("llm-dock-vllm"),
             "ds4": get_image_build_metadata("llm-dock-ds4"),
+            "tabbyapi": get_image_build_metadata("llm-dock-tabbyapi"),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )
