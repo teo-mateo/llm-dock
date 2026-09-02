@@ -1,5 +1,6 @@
 import { useTheme } from '../contexts/ThemeContext'
 import PromptsEditor from './settings/PromptsEditor'
+import OpenRouterModelsPicker from './settings/OpenRouterModelsPicker'
 import TOTPSetup from './TOTPSetup'
 
 const THEMES = [
@@ -46,6 +47,7 @@ export default function SettingsPage() {
 
       <ThemeCard />
       <PromptsEditor />
+      <OpenRouterModelsPicker />
       <TOTPSetup />
     </div>
   )

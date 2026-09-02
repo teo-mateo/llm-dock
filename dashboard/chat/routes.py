@@ -17,7 +17,7 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import openrouter, settings_store
+from . import openrouter, openrouter_catalog, settings_store
 from .prompt_seed import seed_default_prompts
 
 logger = logging.getLogger(__name__)
@@ -186,7 +186,7 @@ def _openrouter_settings_payload() -> dict:
 
     ``configured`` tells the frontend whether OPENROUTER_API_KEY is set —
     the chat picker hides the OpenRouter group when it isn't, while the
-    Tools-page editor stays usable and just shows a banner.
+    Settings-page picker stays usable and just shows a banner.
     """
     return {
         "configured": openrouter.is_configured(),
@@ -224,6 +224,77 @@ def delete_openrouter_models_setting():
     settings_store.reset_openrouter_models()
     logger.info("openrouter model list reset to built-in")
     return jsonify(_openrouter_settings_payload())
+
+
+# -- Live OpenRouter catalog (backs the model picker) --
+
+@chat_bp.route("/api/chat/settings/openrouter-catalog", methods=["GET"])
+@require_auth
+def get_openrouter_catalog():
+    """Live OpenRouter catalog, proxied and TTL-cached server-side.
+
+    ``?refresh=1`` bypasses the cache (the picker's Refresh button); ``?detail=1``
+    adds each model's truncated description. ``configured`` rides along so one
+    round-trip drives both the picker and the "key not set" banner. What upstream
+    still offers is exactly the ids in ``models``, so nothing else rides along for
+    it — a parallel id list would be the same 400-odd strings again. Not gated on
+    the API key: upstream is public, so authoring the list works before the key
+    exists.
+    """
+    force = request.args.get("refresh") in ("1", "true")
+    detail = request.args.get("detail") in ("1", "true")
+    try:
+        payload = openrouter_catalog.fetch(force=force, detail=detail)
+    except openrouter_catalog.CatalogUnavailable as exc:
+        return jsonify({"error": f"OpenRouter catalog unavailable: {exc}", "models": [], "count": 0}), 502
+    payload["configured"] = openrouter.is_configured()
+    return jsonify(payload)
+
+
+@chat_bp.route("/api/chat/settings/openrouter-catalog/endpoints", methods=["POST"])
+@require_auth
+def post_openrouter_catalog_endpoints():
+    """Per-provider detail (price, quantization, context, uptime) for a batch of
+    model ids.
+
+    Provider names are not in the model list, so this fans out to
+    ``/models/{id}/endpoints`` per id and caches per id. Only ids that are not
+    already fresh are fetched, so a repeated page of rows costs nothing; a
+    partially failing batch still returns whatever succeeded and names the rest
+    in ``missing``. Ids are checked against :data:`MODEL_ID_RE` because each one
+    becomes a request path — but an id that fails the check costs its own row, not
+    the batch: it is reported in ``missing`` and the rest of the page is fetched.
+    The picker only ever sends ids it read out of the catalog, so a rejection can
+    mean one thing — upstream has started shipping a shape this check does not
+    know — which is exactly when failing the whole batch would be wrong. Only a
+    batch with nothing usable in it is a 400.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be {ids: [...]}"}), 400
+    raw_ids = body.get("ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "ids must be a list of model ids"}), 400
+    ids = []
+    rejected = []
+    for value in raw_ids:
+        if not isinstance(value, str) or not value.strip():
+            return jsonify({"error": "each id must be a non-empty string"}), 400
+        model_id = value.strip()
+        wanted = ids if openrouter_catalog.MODEL_ID_RE.fullmatch(model_id) else rejected
+        if model_id not in wanted:
+            wanted.append(model_id)
+    if len(ids) > openrouter_catalog.MAX_PROVIDER_IDS:
+        return jsonify({"error": f"too many ids (max {openrouter_catalog.MAX_PROVIDER_IDS})"}), 400
+    if not ids:
+        if rejected:
+            return jsonify({"error": f"invalid model ids: {', '.join(rejected[:3])}"}), 400
+        return jsonify({"models": {}, "missing": [], "stale": [], "fetched": 0, "cached": 0})
+    payload = openrouter_catalog.summarize_endpoints(ids, force=bool(body.get("force")))
+    if rejected:
+        logger.warning("provider detail skipped %d malformed id(s): %s", len(rejected), rejected[:5])
+        payload["missing"] += rejected
+    return jsonify(payload)
 
 
 # -- Projects CRUD --
