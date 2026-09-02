@@ -536,13 +536,23 @@ phase from a fresh `main`. Phase 3 is untouched.
   Live check: 4 ids cold in **0.345 s**, colon-suffixed id resolves, unknown id
   reported in `missing` and not cached, second call `fetched: 0`, 61 ids → 400.
 
-Two deliberate deviations from the spec above:
+Deliberate deviations from the spec above:
 
 - Sort offers the **intelligence** index only; coding/agentic columns are
   Phase 3.
 - The `hideDeprecated` filter is labelled **"hide expiring"**, which says what
   it does better than the field name — upstream `expiration_date` means "this
   row goes away", not "this model is deprecated".
+- **`known_ids` dropped** (review follow-up). The catalog response no longer
+  carries a parallel id list: it is exactly the ids in `models`, same cache and
+  same moment, so ~12 KB of duplicated strings bought nothing the payload could
+  not answer. The picker derives the "not in catalog" badge from `models`.
+- **`-1` is a sentinel, not a price** (review follow-up). Live upstream sends
+  `"-1"` for prompt *and* completion wherever it will not commit to a number —
+  every `openrouter/*` pseudo-router. `_price_per_mtok` now returns `None` for
+  any negative, which the picker renders as an em dash, sorts last under
+  `price ↑`, and does not read as free or as inside a price cap. Scaled through
+  like a number it read as `$-1e+06/M`, ranked first, and passed every cap.
 
 **Docs** (done, with Phase 2; the Phase 4 fan-out added later): `AGENTS.md` had
 documented both the endpoint surface and this card as living on the Tools page —

@@ -20,8 +20,11 @@ Only a first-ever failure raises :class:`CatalogUnavailable`.
 Upstream facts worth knowing (all verified against the live API): the endpoint
 is public, so nothing here requires ``OPENROUTER_API_KEY`` — passing it only
 buys better rate limits; ``pricing`` values are decimal-ish strings in
-**dollars per token**; ``expiration_date`` is dominated by a far-future
-sentinel; and a zero price is not the same signal as a ``:free`` id suffix.
+**dollars per token**; a ``-1`` price means *dynamic pricing* rather than a
+number (every ``openrouter/*`` pseudo-router ships one) and normalizes to
+``None``, not to a negative $/1M; ``expiration_date`` is dominated by a
+far-future sentinel; and a zero price is not the same signal as a ``:free`` id
+suffix.
 """
 
 import logging
@@ -108,12 +111,20 @@ class CatalogUnavailable(RuntimeError):
     """Raised when the catalog has never been fetched and cannot be fetched now."""
 
 
-def _price_per_mtok(raw) -> float:
-    """Upstream prices are strings of dollars-per-token; render as $/1M."""
+def _price_per_mtok(raw) -> float | None:
+    """Upstream prices are strings of dollars-per-token; render as $/1M.
+
+    A negative value is not a price: ``-1`` is what upstream sends for
+    *dynamic* pricing, and on every model that carries it both directions do.
+    Scaled through, that reads as ``$-1e+06/M`` in the picker, sorts to the top
+    of a price-ascending list and passes every price cap — so it becomes
+    ``None``, which the client renders as an em dash and sorts last.
+    """
     try:
-        return round(float(raw) * 1_000_000, 4)
+        value = float(raw)
     except (TypeError, ValueError):
         return 0.0
+    return None if value < 0 else round(value * 1_000_000, 4)
 
 
 def _expiry(value):
@@ -207,6 +218,7 @@ def _normalize(raw: list) -> tuple:
                 "price_cache_read": _price_per_mtok(cache_read) if cache_read is not None else None,
                 # Zero price, not a ":free" suffix: some free rows carry no
                 # suffix, and a zero price can still hide per-unit billing.
+                # ``None`` (dynamic pricing) is neither, so it is not free.
                 "free": price_in == 0 and price_out == 0,
                 "variant": _variant(model_id),
                 "vendor": model_id.split("/")[0],
@@ -340,16 +352,6 @@ def _payload(stale: bool, cached: bool, error, detail: bool = False) -> dict:
     }
 
 
-def known_ids() -> set:
-    """Ids in the last good catalog — empty when never fetched.
-
-    Lets the short list badge curated entries that upstream no longer offers
-    without paying for a second catalog read.
-    """
-    with _lock:
-        return {m["id"] for m in (_cache["models"] or [])}
-
-
 def _endpoints_url(model_id: str) -> str:
     """Provider list URL for one model. Slashes stay literal so the path
     segments survive; the ``:free`` / ``:batch`` colon is escaped."""
@@ -388,7 +390,12 @@ def _normalize_endpoints(raw: list) -> list:
                 "tools": "tools" in (params if isinstance(params, list) else []),
             }
         )
-    out.sort(key=lambda p: (p["price_in"], p["provider"]))
+    # ``price_in`` is None wherever upstream sent the dynamic-pricing sentinel,
+    # and None does not order against a float — the sentinel sorts last.
+    out.sort(key=lambda p: (
+        p["price_in"] if p["price_in"] is not None else float("inf"),
+        p["provider"],
+    ))
     return out
 
 

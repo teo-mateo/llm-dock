@@ -49,10 +49,17 @@ const SORTS = [
   { id: 'intelligence', label: 'intelligence ↓' },
 ]
 
+// Upstream marks a price it will not commit to with a -1 sentinel, which the
+// server normalizes to null. Unknown is not cheap, so it sorts last — and the
+// stand-in is finite because `Infinity - Infinity` is NaN, which a comparator
+// must not return.
+const PRICE_UNKNOWN = Number.MAX_SAFE_INTEGER
+const priceForSort = (m) => (m.price_in ?? PRICE_UNKNOWN)
+
 const SORTERS = {
   name: (a, b) => a.name.localeCompare(b.name),
   newest: (a, b) => (b.created || 0) - (a.created || 0),
-  price: (a, b) => a.price_in - b.price_in,
+  price: (a, b) => priceForSort(a) - priceForSort(b),
   context: (a, b) => (b.context_length || 0) - (a.context_length || 0),
   intelligence: (a, b) => (b.benchmarks?.intelligence ?? -1) - (a.benchmarks?.intelligence ?? -1),
 }
@@ -184,6 +191,9 @@ function ProviderSummary({ providers }) {
   const names = providers.map((p) => p.provider)
   const quants = [...new Set(providers.map((p) => p.quantization).filter((q) => q !== 'unknown'))]
   const rest = names.length - 3
+  // Empty when no endpoint quotes a price (all dynamic), and a dangling
+  // separator reads as a field that failed to load.
+  const priceRange = endpointPriceRange(providers)
   return (
     <div className="mt-1">
       <button
@@ -197,7 +207,7 @@ function ProviderSummary({ providers }) {
           {names.length === 1 ? names[0] : `${names.slice(0, 3).join(', ')}${rest > 0 ? ` +${rest}` : ''}`}
         </span>
         {quants.length > 0 && <span className="shrink-0">· {quants.join('/')}</span>}
-        <span className="shrink-0 text-fg-muted">· {endpointPriceRange(providers)}</span>
+        {priceRange && <span className="shrink-0 text-fg-muted">· {priceRange}</span>}
       </button>
       {open && <ProviderTable providers={providers} />}
     </div>
@@ -244,7 +254,7 @@ function CatalogRow({ entry, added, onToggle, providers, rowRef }) {
 }
 
 function ShortlistRow({ entry, index, count, knownIds, catalogEntry, onLabel, onMove, onRemove }) {
-  const missing = knownIds.length > 0 && !knownIds.includes(entry.id)
+  const missing = knownIds.size > 0 && !knownIds.has(entry.id)
   return (
     <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border last:border-0">
       <div className="flex flex-col shrink-0">
@@ -317,7 +327,11 @@ export default function OpenRouterModelsPicker() {
   const observerRef = useRef(null)
   const [seenIds, setSeenIds] = useState([])
   const observeRow = useCallback((el) => {
-    if (el) observerRef.current?.observe(el)
+    if (!el) return undefined
+    observerRef.current?.observe(el)
+    // Rows unmount on every filter keystroke. Without a cleanup the observer
+    // holds every element that ever mounted for the life of the pane.
+    return () => observerRef.current?.unobserve(el)
   }, [])
 
   // Local edits win over a background refresh of the curated list; the picker
@@ -388,8 +402,10 @@ export default function OpenRouterModelsPicker() {
   }, [listEl])
 
   const models = catalog.data?.models ?? NO_MODELS
-  const knownIds = catalog.data?.known_ids ?? NO_MODELS
   const catalogById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
+  // What upstream still offers is exactly the ids in this payload — no separate
+  // field needed, and none to keep in step with it.
+  const knownIds = useMemo(() => new Set(models.map((m) => m.id)), [models])
   const selectedIds = useMemo(() => new Set(draft.map((m) => m.id)), [draft])
   const nonChatCount = useMemo(() => models.filter((m) => !m.chat_model).length, [models])
   const vendors = useMemo(() => {
@@ -409,7 +425,9 @@ export default function OpenRouterModelsPicker() {
       if (filters.toolsOnly && !m.tools) return false
       if (filters.freeOnly && !m.free) return false
       if (filters.minContext && (m.context_length || 0) < filters.minContext) return false
-      if (maxPrice !== null && m.price_in > maxPrice) return false
+      // A price cap says nothing about a model whose price upstream will not
+      // commit to, so an unknown price stays in rather than being read as free.
+      if (maxPrice !== null && m.price_in !== null && m.price_in > maxPrice) return false
       if (filters.modality && !(m.input_modalities || []).includes(filters.modality)) return false
       if (filters.vendors.length && !filters.vendors.includes(m.vendor)) return false
       if (q && !(m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.vendor.includes(q))) return false

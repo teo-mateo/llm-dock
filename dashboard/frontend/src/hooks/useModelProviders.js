@@ -12,12 +12,18 @@ import { MAX_PROVIDER_BATCH, getProviderSummaries } from '../services/openrouter
 // `ids` beyond the server's per-batch cap are ignored rather than chunked: the
 // point is to cover what the user is looking at, and a list of 425 rows would
 // mean 425 upstream requests to describe models nobody is looking at.
+//
+// An id is asked for once per session. One the server reports in `missing` is
+// forgotten, so it comes back with the next batch the pane reports — an id the
+// picker stops reporting never comes back on its own, which is what `retry()`
+// below is for.
 export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = {}) {
   const [byId, setById] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [retryToken, setRetryToken] = useState(0)
   const requested = useRef(new Set())
+  const forceNext = useRef(false)
   const mounted = useRef(true)
 
   // JSON rather than `join(",")`: a model id is only *usually* comma-free, and a
@@ -32,18 +38,20 @@ export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = 
 
   useEffect(() => {
     const wanted = JSON.parse(key)
-    const missing = wanted.filter((id) => !requested.current.has(id))
+    const force = forceNext.current
+    forceNext.current = false
+    const missing = wanted.filter((id) => force || !requested.current.has(id))
     if (!missing.length) return
     missing.forEach((id) => requested.current.add(id))
     setLoading(true)
-    getProviderSummaries(missing)
+    getProviderSummaries(missing, force ? { force: true } : {})
       .then((data) => {
         if (!mounted.current) return
         setById((prev) => ({ ...prev, ...data.models }))
         setError(null)
         // Ids the server could not fetch must not stay marked as requested,
-        // or a transient upstream failure would leave a permanent hole in the
-        // map for this session.
+        // or a transient upstream failure would leave a hole in the map for
+        // the rest of the session.
         ;(data.missing || []).forEach((id) => requested.current.delete(id))
       })
       .catch((e) => {
@@ -54,9 +62,16 @@ export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = 
       .finally(() => { if (mounted.current) setLoading(false) })
   }, [key, retryToken])
 
+  // The one path that forces a refetch. It is what the user clicks precisely
+  // when a provider line did not appear, and the server holds a successful
+  // lookup for 5 minutes — so without `force` every id it ever managed to fetch
+  // would come back unchanged and only the never-cached ones would move. The
+  // batch is bounded by what is in view either way, and previously-shown lines
+  // are kept until the new ones land.
   const retry = useCallback(() => {
+    forceNext.current = true
     requested.current.clear()
-    setById({})
+    setError(null)
     setRetryToken((t) => t + 1)
   }, [])
 

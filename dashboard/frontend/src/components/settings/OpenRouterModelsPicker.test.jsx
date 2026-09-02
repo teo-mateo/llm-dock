@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 
 const mockSave = vi.fn()
 const mockReset = vi.fn()
@@ -139,7 +139,6 @@ beforeEach(() => {
       cached: true,
       error: null,
       configured: true,
-      known_ids: CATALOG.map((m) => m.id),
     },
     loading: false,
     error: null,
@@ -202,6 +201,7 @@ describe('OpenRouterModelsPicker', () => {
   })
 
   it('badges a curated id the catalog no longer offers', () => {
+    // Derived from the payload's own ids — the response carries no separate list.
     render(<OpenRouterModelsPicker />)
     expect(screen.getByText('not in catalog')).toBeInTheDocument()
   })
@@ -339,6 +339,57 @@ describe('OpenRouterModelsPicker', () => {
     expect(order[0]).toContain('Anthropic: Claude Opus 5')
   })
 
+  describe('an uncommitted upstream price', () => {
+    // Upstream sends `-1` where it will not commit to a price (every
+    // `openrouter/*` pseudo-router, both directions). The server normalizes that
+    // to null, so the picker must neither print it as a number nor rank it as
+    // one — and must not read it as free or as inside a price cap.
+    const addDynamicPricing = () => {
+      catalogState.data = {
+        ...catalogState.data,
+        models: [
+          ...catalogState.data.models,
+          entry('openrouter/fusion', 'OpenRouter: Fusion', { router: true, chat_model: false, price_in: null, price_out: null }),
+        ],
+        count: catalogState.data.count + 1,
+      }
+    }
+    const revealNonChat = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Filters' }))
+      fireEvent.click(screen.getByLabelText(/show 3 non-chat/))
+    }
+
+    it('renders as a dash and is not called free', () => {
+      addDynamicPricing()
+      render(<OpenRouterModelsPicker />)
+      revealNonChat()
+      const row = screen.getByText('openrouter/fusion').closest('[data-model-id]')
+      expect(within(row).getByText('— / —')).toBeInTheDocument()
+      expect(within(row).queryByText('Free')).not.toBeInTheDocument()
+      expect(screen.queryByText(/1e\+06/)).not.toBeInTheDocument()
+    })
+
+    it('sorts last under price ascending rather than to the top', () => {
+      addDynamicPricing()
+      render(<OpenRouterModelsPicker />)
+      revealNonChat()
+      // Only the catalog pane's controls — the short list's remove buttons also
+      // start with "Remove", but never end with "to dropdown".
+      const order = screen.getAllByRole('button', { name: /to dropdown$/ }).map((b) => b.getAttribute('aria-label'))
+      expect(order[0]).toContain('Z.ai: GLM 5.2 (free)')
+      expect(order.at(-1)).toContain('OpenRouter: Fusion')
+    })
+
+    it('is kept by a price cap it cannot be checked against', () => {
+      addDynamicPricing()
+      render(<OpenRouterModelsPicker />)
+      revealNonChat()
+      fireEvent.change(screen.getByLabelText('price'), { target: { value: '1' } })
+      expect(screen.getByText('OpenRouter: Fusion')).toBeInTheDocument()
+      expect(screen.queryByText('Anthropic: Claude Opus 5')).not.toBeInTheDocument()   // $5 is over the cap
+    })
+  })
+
   describe('provider detail', () => {
     it('shows provider count, names, quantizations and price spread', () => {
       render(<OpenRouterModelsPicker />)
@@ -379,6 +430,21 @@ describe('OpenRouterModelsPicker', () => {
       render(<OpenRouterModelsPicker />)
       fireEvent.click(screen.getByText('providers unavailable — retry'))
       expect(mockProviderRetry).toHaveBeenCalled()
+    })
+
+    it('omits the price spread when no endpoint quotes one', () => {
+      // `-1` (dynamic) normalizes to null on both sides of every endpoint, so
+      // there is no range to show and no separator to show without one.
+      providerState = {
+        ...providerState,
+        byId: {
+          'z-ai/glm-5.2': [
+            { provider: 'Variable', quantization: 'unknown', context_length: 200000, max_completion_tokens: null, price_in: null, price_out: null, uptime_1d: 99, status: 0, tools: true },
+          ],
+        },
+      }
+      render(<OpenRouterModelsPicker />)
+      expect(screen.getByText('provider').closest('button').textContent).toBe('providerVariable')
     })
 
     it('reports loading without hiding the rows', () => {
@@ -436,7 +502,6 @@ describe('OpenRouterModelsPicker', () => {
         ...catalogState.data,
         models: many,
         count: many.length,
-        known_ids: many.map((m) => m.id),
       }
       window.IntersectionObserver = ObserverStub
       render(<OpenRouterModelsPicker />)

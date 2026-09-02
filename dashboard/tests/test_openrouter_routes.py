@@ -247,7 +247,9 @@ def test_catalog_shape(client, monkeypatch):
     assert body["stale"] is False and body["cached"] is False and body["error"] is None
     assert body["fetched_at"].endswith("Z")
     assert {"id", "name", "label", "price_in", "chat_model", "tools"} <= set(body["models"][0])
-    assert body["known_ids"] == ["openrouter/auto", "z-ai/glm-5.2:free"]
+    # What upstream offers is exactly `models`; a parallel id list would repeat
+    # the same 400-odd strings the payload already carries.
+    assert "known_ids" not in body
 
 
 def test_catalog_reports_key_presence(client, monkeypatch):

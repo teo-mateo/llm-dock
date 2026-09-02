@@ -252,6 +252,34 @@ def test_prices_converted_to_dollars_per_million(fake):
     assert granite["price_cache_read"] == 0.05
 
 
+def test_dynamic_pricing_sentinel_is_unknown_not_negative():
+    """``-1`` is what upstream sends instead of a price, not a discount.
+
+    Every ``openrouter/*`` pseudo-router carries it in both directions. Scaled
+    through like a number it reads as ``$-1e+06/M``, sorts to the top of a
+    price-ascending list and passes every price cap.
+    """
+    assert catalog._price_per_mtok("-1") is None
+    models, _ = catalog._normalize(
+        [{"id": "openrouter/fusion", "name": "Fusion", "pricing": {"prompt": "-1", "completion": "-1"}}]
+    )
+    assert models[0]["price_in"] is None
+    assert models[0]["price_out"] is None
+    assert models[0]["free"] is False             # unknown is not the same as free
+
+
+def test_endpoints_sort_survives_the_dynamic_pricing_sentinel():
+    """``None`` does not order against a float, and the sentinel must not lead."""
+    providers = catalog._normalize_endpoints(
+        [
+            {"provider_name": "Variable", "pricing": {"prompt": "-1"}},
+            {"provider_name": "Priced", "pricing": {"prompt": "0.0000001"}},
+        ]
+    )
+    assert [p["provider"] for p in providers] == ["Priced", "Variable"]
+    assert providers[0]["price_in"] == 0.1 and providers[1]["price_in"] is None
+
+
 def test_unparseable_price_degrades_to_zero(fake):
     models = catalog.fetch()["models"]
     assert _by_id(models, "vendor/sparse-model")["price_in"] == 0.0
@@ -423,20 +451,13 @@ def test_lock_serialises_concurrent_fetches(fake):
     assert all(r["count"] == 6 for r in results)
 
 
-def test_known_ids_from_cache(fake):
-    assert catalog.known_ids() == set()
-    fake()
-    catalog.fetch()
-    assert "z-ai/glm-5.2:free" in catalog.known_ids()
-    assert len(catalog.known_ids()) == 6
-
-
 def test_clear_cache_resets(fake):
     fake()
     catalog.fetch()
     catalog.clear_cache()
-    assert catalog.known_ids() == set()
     assert catalog._cache["models"] is None
+    assert catalog._cache["descriptions"] == {}
+    assert "fetched_at_epoch" not in catalog._cache
 
 
 # -- Failure posture: stale-if-error, raise only on first-ever ------------

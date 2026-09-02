@@ -235,10 +235,11 @@ def get_openrouter_catalog():
 
     ``?refresh=1`` bypasses the cache (the picker's Refresh button); ``?detail=1``
     adds each model's truncated description. ``configured`` rides along so one
-    round-trip drives both the picker and the "key not set" banner, and
-    ``known_ids`` lets the short list badge curated entries the catalog no longer
-    offers. Not gated on the API key: upstream is public, so authoring the list
-    works before the key exists.
+    round-trip drives both the picker and the "key not set" banner. What upstream
+    still offers is exactly the ids in ``models``, so nothing else rides along for
+    it — a parallel id list would be the same 400-odd strings again. Not gated on
+    the API key: upstream is public, so authoring the list works before the key
+    exists.
     """
     force = request.args.get("refresh") in ("1", "true")
     detail = request.args.get("detail") in ("1", "true")
@@ -247,7 +248,6 @@ def get_openrouter_catalog():
     except openrouter_catalog.CatalogUnavailable as exc:
         return jsonify({"error": f"OpenRouter catalog unavailable: {exc}", "models": [], "count": 0}), 502
     payload["configured"] = openrouter.is_configured()
-    payload["known_ids"] = sorted(openrouter_catalog.known_ids())
     return jsonify(payload)
 
 

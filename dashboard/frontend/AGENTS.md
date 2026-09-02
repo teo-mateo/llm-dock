@@ -207,7 +207,7 @@ Key mechanics:
 | `useRunningServices.js` | Filters running chat-capable services (llama.cpp/vLLM/DS4/PAIR_), excludes embedding-pooling ones; `kind: 'all'` for the dashboard |
 | `useOpenRouterModels.js` | OpenRouter model list load/save/reset |
 | `useOpenRouterCatalog.js` | Live OpenRouter catalog, loaded once on mount; `refresh(true)` is the explicit Refresh |
-| `useModelProviders.js` | Provider detail for the catalog rows the picker reports as in view; fetched once per id per session, `retry()` re-requests |
+| `useModelProviders.js` | Provider detail for the catalog rows the picker reports as in view; fetched once per id per session, `retry()` forces a refetch of the ids in view |
 | `useMainSystemPrompt.js` | Default system prompt load/save/reset |
 | `useRegistry.js` | MCP registry load/save/reload |
 | `useResizableWidth.js` | Drag-resize panel width with localStorage persistence + ResizeObserver clamp |

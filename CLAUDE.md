@@ -656,9 +656,14 @@ appear in the chat pickers.
   — only a first-ever failure returns 502. It is **not** gated on
   `OPENROUTER_API_KEY`, so the list can be authored before the key exists.
   The catalog is display-time enrichment only: never persisted, so the stored
-  shape can't go stale. Normalization flags `router` / `image_out` /
+  shape can't go stale, and the response carries no separate id list — what
+  upstream offers is exactly the ids in `models`, which is what the short list
+  badges "not in catalog" against. Normalization flags `router` / `image_out` /
   `audio_out` / `chat_model` because the naive "no text in output_modalities"
-  test hides nothing upstream — every image/audio model still lists `text`.
+  test hides nothing upstream — every image/audio model still lists `text`. A
+  `-1` price means *dynamic pricing* upstream (every `openrouter/*` pseudo-router
+  ships one) and becomes `null`, not a negative $/1M that would sort first and
+  pass every price cap.
 - Provider detail — which endpoints actually serve a model, at what price and
   uptime — comes from `POST /api/chat/settings/openrouter-catalog/endpoints`
   with `{ids: [...], force?}`. Upstream exposes provider names only per model,

@@ -25,6 +25,31 @@ describe('useModelProviders', () => {
     await waitFor(() => expect(result.current.byId['a/b']).toBeDefined())
     expect(getProviderSummaries).toHaveBeenCalledTimes(1)
     expect(getProviderSummaries.mock.calls[0][0]).toEqual(['a/b'])
+    expect(getProviderSummaries.mock.calls[0][1]).toEqual({})   // ordinary loads do not force
+  })
+
+  it('retries with force, so a cached answer can move', async () => {
+    // The server caches a successful lookup for 5 minutes, so a retry that does
+    // not force would hand back the same answer for every id it ever fetched.
+    getProviderSummaries
+      .mockRejectedValueOnce(new Error('HTTP 502'))
+      .mockResolvedValueOnce(payload({ 'a/b': [] }))
+    const { result } = renderHook(() => useModelProviders(['a/b']))
+    await waitFor(() => expect(result.current.error).toBe('HTTP 502'))
+    act(() => result.current.retry())
+    await waitFor(() => expect(result.current.byId['a/b']).toEqual([]))
+    expect(getProviderSummaries.mock.calls[1][1]).toEqual({ force: true })
+  })
+
+  it('keeps rows already on screen through a forced retry', async () => {
+    getProviderSummaries
+      .mockResolvedValueOnce(payload({ 'a/b': [{ provider: 'X', price_in: 1 }] }))
+      .mockRejectedValueOnce(new Error('HTTP 502'))
+    const { result } = renderHook(() => useModelProviders(['a/b']))
+    await waitFor(() => expect(result.current.byId['a/b']).toBeDefined())
+    act(() => result.current.retry())
+    await waitFor(() => expect(result.current.error).toBe('HTTP 502'))
+    expect(result.current.byId['a/b']).toBeDefined()
   })
 
   it('never asks for the same id twice while mounted', async () => {

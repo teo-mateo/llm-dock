@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getOpenRouterCatalog } from '../services/openrouterCatalog'
 
 // Loads the live OpenRouter catalog for the settings picker. `data` is the
-// { models, count, fetched_at, stale, cached, configured, known_ids, error }
-// payload, or null until the first load resolves.
+// { models, count, fetched_at, stale, cached, configured, error } payload, or
+// null until the first load resolves.
 //
 // Loads once on mount and never auto-refreshes: the catalog changes slowly, the
 // server caches it, and a silently-changing list under a half-edited selection
