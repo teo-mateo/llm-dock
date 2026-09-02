@@ -356,6 +356,61 @@ once its validator has moved (its JSON panel lives on inside the picker).
 `ModelSelector.jsx` / `ModelOptions.jsx` / `useOpenRouterModels.js` are
 unchanged — they keep reading `current`.
 
+## Phase 4: provider detail in the catalog rows
+
+Goal: show, per row, which endpoint providers serve a model — DeepInfra, Tencent,
+Amazon Bedrock — since the model-level price is only the cheapest of them and the
+spread is the interesting part.
+
+Upstream constraints, all verified:
+
+- No bulk endpoint (`/api/v1/endpoints` → 404), no expansion flag on `/models`
+  (`?include=endpoints` and `?expand=endpoints` return the byte-identical 705 KB
+  payload with no `endpoints` key), no singular `/models/{id}` route. Provider
+  names exist **only** in `GET /api/v1/models/{id}/endpoints`.
+- Fan-out over all 425 models at concurrency 8: **14.3 s, 10 failures (2.4 %)**,
+  mean **2.9 endpoints** per model, **18 rows with zero**, **73 distinct**
+  providers. Summary payloads: 23 KB names-only, 134 KB slim, 195 KB verbose.
+- Per-model responses carry `provider_name`, `quantization`, `context_length`,
+  `max_completion_tokens`, `pricing` (per token, with time-of-day `overrides`),
+  `uptime_last_1d/30m/5m` (**already a percentage**), `latency_last_30m`,
+  `throughput_last_30m`, `status` (**integer enum, undocumented for non-zero
+  values**), `supported_parameters`, `supports_tool_choice`.
+
+Decisions:
+
+1. **Fetch the visible page, not the catalog.** The picker posts the ids it is
+   rendering (cap 60) to `POST …/openrouter-catalog/endpoints`; the server caches
+   per model id, so the cost is proportional to what is on screen — measured
+   **0.345 s for 4 ids** cold, 0 s warm. A whole-catalog fetch would be 425
+   upstream requests and 14 s to describe rows nobody is reading.
+2. **Per-id failure isolation, no cached holes.** A batch whose one id 404s still
+   returns the other three; the failure lands in `missing`, and the client drops
+   it from its requested-set so the next request retries. Without this, one
+   transient upstream error would punch a permanent gap in the session's map.
+3. **Per-id cache, 5 min TTL** — shorter than the catalog's 15 min, because price
+   and uptime move. Separate lock: provider fan-out must never block a catalog
+   read.
+4. **`status` passed through verbatim.** Non-zero values are not documented
+   upstream, so the row prints `status -2` rather than inventing a label like
+   "degraded" for an enum it cannot read.
+5. **Chips fade in, no per-row spinner.** A row without detail renders no provider
+   line; ~300 ms later it has one. A row that never gets one (zero endpoints, or a
+   rejected id) looks the same as one in flight — accepted, since the alternatives
+   (skeleton rows, per-row spinners) read worse for something this incidental.
+   Zero-endpoint rows get an explicit "no endpoints listed upstream" line, which
+   is a fact rather than a loading state.
+6. **Line format**: `4 providers · Z.ai, DeepInfra, Novita +1 · fp8/int4 ·
+   $1.00/M–$3.00/M`, expanding to a table of provider / quant / ctx / in-out /
+   uptime (with `no tools` and non-zero `status` flags inline). Single-provider
+   models — the common case — render `provider · name`, not `1 providers`.
+
+Deliberately **not** built: a provider filter across the catalog. It needs the
+model→provider map for all 425 rows, i.e. the 14 s sweep, and a filter that only
+correctly describes the models whose providers happen to be warm would be worse
+than none. If wanted later: a single-flight background sweep endpoint, warmed by
+the Refresh button, with the filter disabled until it completes.
+
 ## Edge Cases
 
 - **Curated id disappears upstream** (renamed/retired): badge it, never
@@ -446,6 +501,9 @@ leaves the short list editable.
    since you last looked" from `created` vs a stored `seen_at`; pre-filtered
    quick chips ("free", "tool-capable", "cheap"); drag reorder; lazy
    `?detail=1` descriptions.
+4. **Phase 4 [DONE, uncommitted] — provider detail** in the catalog rows, per the
+   section below: per-id fan-out cache, batch POST route, provider line with an
+   expandable table.
 
 One commit per phase, feature branch from a fresh `main`.
 
@@ -466,6 +524,12 @@ phase from a fresh `main`. Phase 3 is untouched.
   files updated. 22 picker tests + 4 service tests + 22 util tests; full suite
   green (823 backend, 383 frontend), lint 0 errors, build clean.
 - **Phase 3** — not started.
+- **Phase 4** — `summarize_endpoints()` + `POST /api/chat/settings/openrouter-
+  catalog/endpoints`, `services/openrouterProviders.js`,
+  `hooks/useModelProviders.js`, provider line in `CatalogRow`. 12 new backend
+  module tests + 8 route tests, 6 hook tests, 3 service tests, 7 picker tests.
+  Live check: 4 ids cold in **0.345 s**, colon-suffixed id resolves, unknown id
+  reported in `missing` and not cached, second call `fetched: 0`, 61 ids → 400.
 
 Two deliberate deviations from the spec above:
 

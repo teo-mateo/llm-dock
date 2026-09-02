@@ -48,6 +48,32 @@ RAW_CATALOG = {
     ]
 }
 
+RAW_ENDPOINTS = {
+    "data": {
+        "id": "tencent/hy3",
+        "endpoints": [
+            {
+                "provider_name": "DeepInfra",
+                "quantization": "fp8",
+                "context_length": 262144,
+                "pricing": {"prompt": "0.00000014", "completion": "0.00000042"},
+                "uptime_last_1d": 98.4301,
+                "status": 0,
+                "supported_parameters": ["tools"],
+            },
+            {
+                "provider_name": "Tencent",
+                "quantization": "fp8",
+                "context_length": 262144,
+                "pricing": {"prompt": "0.0000000825", "completion": "0.00000033"},
+                "uptime_last_1d": 99.895,
+                "status": 0,
+                "supported_parameters": ["tools"],
+            },
+        ],
+    }
+}
+
 
 class _CatalogFake:
     """Minimal stand-in for the ``requests`` module inside openrouter_catalog."""
@@ -61,6 +87,8 @@ class _CatalogFake:
         self.calls.append({"url": url})
         if self.exc:
             raise self.exc
+        if url.endswith("/endpoints"):
+            return _CatalogResponse(RAW_ENDPOINTS, self.status)
         return _CatalogResponse(RAW_CATALOG, self.status)
 
 
@@ -316,6 +344,77 @@ def test_put_accepts_catalog_derived_picker_payload(client, monkeypatch):
     assert r.status_code == 200
     assert r.get_json()["current"] == picked
     assert r.get_json()["customized"] is True
+
+
+# -- Provider detail -----------------------------------------------------
+
+PROVIDERS_PATH = "/api/chat/settings/openrouter-catalog/endpoints"
+
+
+def test_providers_requires_auth(client):
+    assert client.post(PROVIDERS_PATH, json={"ids": ["a/b"]}).status_code == 401
+
+
+def test_providers_shape(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _CatalogFake())
+    body = client.post(PROVIDERS_PATH, json={"ids": ["tencent/hy3"]}, headers=_auth()).get_json()
+    assert sorted(body) == ["cached", "fetched", "missing", "models", "stale"]
+    providers = body["models"]["tencent/hy3"]
+    assert [p["provider"] for p in providers] == ["Tencent", "DeepInfra"]   # cheapest first
+    assert providers[0]["price_in"] == 0.0825
+    assert providers[0]["uptime_1d"] in (99.89, 99.9)
+    assert body["fetched"] == 1 and body["cached"] == 0
+
+
+def test_providers_are_cached_per_id(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    client.post(PROVIDERS_PATH, json={"ids": ["tencent/hy3", "z-ai/glm-5.2:free"]}, headers=_auth())
+    calls = len(fake.calls)
+    body = client.post(PROVIDERS_PATH, json={"ids": ["tencent/hy3"]}, headers=_auth()).get_json()
+    assert len(fake.calls) == calls            # fresh entry, nothing fetched
+    assert body["cached"] == 1 and body["fetched"] == 0
+
+
+def test_providers_deduplicates_ids(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    body = client.post(
+        PROVIDERS_PATH, json={"ids": ["tencent/hy3", " tencent/hy3 ", "tencent/hy3"]}, headers=_auth()
+    ).get_json()
+    assert body["fetched"] == 1
+
+
+def test_providers_force_refetches(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    client.post(PROVIDERS_PATH, json={"ids": ["tencent/hy3"]}, headers=_auth())
+    calls = len(fake.calls)
+    client.post(PROVIDERS_PATH, json={"ids": ["tencent/hy3"], "force": True}, headers=_auth())
+    assert len(fake.calls) == calls + 1
+
+
+def test_providers_empty_batch_is_free(client, monkeypatch):
+    fake = _CatalogFake()
+    monkeypatch.setattr(openrouter_catalog, "requests", fake)
+    body = client.post(PROVIDERS_PATH, json={"ids": []}, headers=_auth()).get_json()
+    assert body["models"] == {} and body["fetched"] == 0
+    assert fake.calls == []
+
+
+def test_providers_rejects_bodies_that_are_not_id_lists(client):
+    assert client.post(PROVIDERS_PATH, json="ids", headers=_auth()).status_code == 400
+    assert client.post(PROVIDERS_PATH, json={"ids": "a/b"}, headers=_auth()).status_code == 400
+    assert client.post(PROVIDERS_PATH, json={"ids": [""]}, headers=_auth()).status_code == 400
+    assert client.post(PROVIDERS_PATH, json={"ids": [3]}, headers=_auth()).status_code == 400
+
+
+def test_providers_caps_batch_size(client):
+    """A POST must not become a back door for a catalog-wide sweep."""
+    ids = [f"vendor/model-{i}" for i in range(openrouter_catalog.MAX_PROVIDER_IDS + 1)]
+    r = client.post(PROVIDERS_PATH, json={"ids": ids}, headers=_auth())
+    assert r.status_code == 400
+    assert "max" in r.get_json()["error"]
 
 
 # -- Resolver branch ------------------------------------------------------

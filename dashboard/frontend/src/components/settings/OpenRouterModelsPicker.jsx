@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import useOpenRouterCatalog from '../../hooks/useOpenRouterCatalog'
+import useModelProviders from '../../hooks/useModelProviders'
+import { MAX_PROVIDER_BATCH } from '../../services/openrouterProviders'
 import {
   CONTEXT_PRESETS,
   deriveLabel,
@@ -107,7 +109,88 @@ function Tag({ children, title }) {
   )
 }
 
-function CatalogRow({ entry, added, onToggle }) {
+// Spread across providers, not the model-level price: the model-level number is
+// already the cheapest endpoint, so the interesting figure is how far apart the
+// providers are.
+function endpointPriceRange(providers) {
+  const prices = providers.map((p) => p.price_in).filter((v) => typeof v === 'number')
+  if (!prices.length) return ''
+  const lo = Math.min(...prices)
+  const hi = Math.max(...prices)
+  return lo === hi ? formatPricePerMtok(lo) : `${formatPricePerMtok(lo)}–${formatPricePerMtok(hi)}`
+}
+
+function ProviderTable({ providers }) {
+  return (
+    <table className="w-full text-xs mt-1.5">
+      <thead>
+        <tr className="text-left text-fg-subtle">
+          <th className="font-normal py-1">provider</th>
+          <th className="font-normal py-1">quant</th>
+          <th className="font-normal py-1">ctx</th>
+          <th className="font-normal py-1">in / out</th>
+          <th className="font-normal py-1 text-right" title="Uptime over the last 24 h">uptime</th>
+        </tr>
+      </thead>
+      <tbody>
+        {providers.map((p) => (
+          <tr key={`${p.provider}-${p.quantization}`} className="border-t border-border">
+            <td className="py-1 text-fg">
+              {p.provider}
+              {!p.tools && <span className="ml-1.5 text-fg-subtle">no tools</span>}
+              {typeof p.status === 'number' && p.status !== 0 && (
+                <span className="ml-1.5 text-warning-fg" title="Upstream endpoint status, reported verbatim">
+                  status {p.status}
+                </span>
+              )}
+            </td>
+            <td className="py-1 text-fg-muted">{p.quantization}</td>
+            <td className="py-1 text-fg-muted">{formatContext(p.context_length)}</td>
+            <td className="py-1 text-fg-muted">{formatPricePerMtok(p.price_in)} / {formatPricePerMtok(p.price_out)}</td>
+            <td className={`py-1 text-right ${p.uptime_1d !== null && p.uptime_1d < 99 ? 'text-warning-fg' : 'text-fg-muted'}`}>
+              {p.uptime_1d === null ? '—' : `${p.uptime_1d}%`}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// Provider line for one catalog row. Undefined means "not fetched yet", which
+// renders nothing rather than a placeholder: the line appears once the batch
+// lands, and a row that never gets one (server unreachable, or the id was
+// rejected upstream) is indistinguishable from one still in flight.
+function ProviderSummary({ providers }) {
+  const [open, setOpen] = useState(false)
+  if (!providers) return null
+  if (!providers.length) {
+    return <div className="mt-1 text-xs text-fg-subtle">no endpoints listed upstream</div>
+  }
+  const names = providers.map((p) => p.provider)
+  const quants = [...new Set(providers.map((p) => p.quantization).filter((q) => q !== 'unknown'))]
+  const rest = names.length - 3
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 text-xs text-fg-subtle hover:text-fg max-w-full"
+      >
+        <i className={`fa-solid ${open ? 'fa-chevron-down' : 'fa-chevron-right'} text-[9px]`}></i>
+        <span className="shrink-0">{names.length === 1 ? 'provider' : `${names.length} providers`}</span>
+        <span className="truncate">
+          {names.length === 1 ? names[0] : `${names.slice(0, 3).join(', ')}${rest > 0 ? ` +${rest}` : ''}`}
+        </span>
+        {quants.length > 0 && <span className="shrink-0">· {quants.join('/')}</span>}
+        <span className="shrink-0 text-fg-muted">· {endpointPriceRange(providers)}</span>
+      </button>
+      {open && <ProviderTable providers={providers} />}
+    </div>
+  )
+}
+
+function CatalogRow({ entry, added, onToggle, providers }) {
   return (
     <div className={`flex items-start gap-2 px-2 py-1.5 border-b border-border last:border-0 ${added ? 'opacity-60' : ''}`}>
       <div className="min-w-0 flex-1">
@@ -125,6 +208,7 @@ function CatalogRow({ entry, added, onToggle }) {
           {entry.variant && <Tag>{entry.variant}</Tag>}
           {entry.deprecated && <span className="text-xs text-warning-fg">expiring {entry.expires}</span>}
         </div>
+        <ProviderSummary providers={providers} />
       </div>
       <button
         onClick={() => onToggle(entry)}
@@ -262,6 +346,13 @@ export default function OpenRouterModelsPicker() {
     })
     return [...out].sort(SORTERS[sort])
   }, [models, debouncedQuery, filters, sort])
+
+  // Provider detail covers the page being rendered, not the catalog: it costs
+  // one upstream call per model, so fetching all 425 to describe the two rows
+  // a user is reading would be absurd. Rows without an entry simply show no
+  // provider line yet.
+  const providerIds = useMemo(() => visible.slice(0, MAX_PROVIDER_BATCH).map((m) => m.id), [visible])
+  const providerDetail = useModelProviders(providerIds)
 
   const filtersActive = useMemo(() => modelsToJson(filters) !== modelsToJson(DEFAULT_FILTERS), [filters])
   const validationError = jsonDirty ? validateModelsJson(jsonText) : null
@@ -575,7 +666,13 @@ export default function OpenRouterModelsPicker() {
           ) : (
             <div className="max-h-[26rem] overflow-y-auto">
               {visible.map((entry) => (
-                <CatalogRow key={entry.id} entry={entry} added={selectedIds.has(entry.id)} onToggle={toggle} />
+                <CatalogRow
+                  key={entry.id}
+                  entry={entry}
+                  added={selectedIds.has(entry.id)}
+                  onToggle={toggle}
+                  providers={providerDetail.byId[entry.id]}
+                />
               ))}
               {!visible.length && (
                 <div className="px-3 py-6 text-sm text-fg-subtle">
@@ -586,10 +683,20 @@ export default function OpenRouterModelsPicker() {
           )}
 
           <div className="px-2 py-1.5 border-t border-border text-xs text-fg-subtle flex items-center justify-between">
-            <span>showing {visible.length} of {models.length}</span>
-            {filtersActive && (
-              <button onClick={clearFilters} className="text-accent-fg-hover hover:underline">clear filters</button>
-            )}
+            <span>
+              showing {visible.length} of {models.length}
+              {providerDetail.loading && <span className="ml-2">· loading providers…</span>}
+            </span>
+            <span className="flex items-center gap-3">
+              {providerDetail.error && (
+                <button onClick={providerDetail.retry} className="text-warning-fg hover:underline">
+                  providers unavailable — retry
+                </button>
+              )}
+              {filtersActive && (
+                <button onClick={clearFilters} className="text-accent-fg-hover hover:underline">clear filters</button>
+              )}
+            </span>
           </div>
         </div>
 

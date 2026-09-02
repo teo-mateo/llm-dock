@@ -26,7 +26,9 @@ sentinel; and a zero price is not the same signal as a ``:free`` id suffix.
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
+from urllib.parse import quote
 
 import requests
 from requests.exceptions import RequestException
@@ -53,10 +55,29 @@ _EXPIRY_HORIZON_DAYS = 3650
 # Truncation for the opt-in descriptions payload (see ``detail`` in fetch()).
 _DESCRIPTION_CHARS = 200
 
+# Per-model provider detail. Names are not in the model list — upstream exposes
+# them only through /models/{id}/endpoints, one request per model — so this is
+# fetched per model and cached per model: a page of ~40 rows costs about 0.4 s
+# once warm, whereas sweeping the whole catalog is ~14 s and fails on ~2 % of
+# models. That asymmetry is why providers appear for the rows you can see
+# rather than as a catalog-wide filter.
+ENDPOINT_TTL_SECONDS = 300
+ENDPOINT_CONCURRENCY = 6
+
+# Cap on one batch, so a POST can't be turned into a catalog-wide sweep (425
+# upstream requests) by a caller with a token. The picker never asks for more
+# than the page it is showing.
+MAX_PROVIDER_IDS = 60
+
 # Fields a picker sorts/filters on that upstream may omit for some models.
 _KNOWN_VARIANTS = ("free", "batch", "extended")
 
 _lock = threading.Lock()
+
+# Separate lock and cache: provider fan-out must never block a catalog read,
+# and the two payloads have different lifetimes.
+_endpoints_lock = threading.Lock()
+_endpoints_cache: dict = {}  # model_id -> {providers, fetched_at, error}
 
 # One catalog for all users, keyed by nothing but time. ``descriptions`` is
 # kept out of ``models`` because it is by far the heaviest field and only
@@ -306,10 +327,131 @@ def known_ids() -> set:
         return {m["id"] for m in (_cache["models"] or [])}
 
 
+def _endpoints_url(model_id: str) -> str:
+    """Provider list URL for one model. Slashes stay literal so the path
+    segments survive; the ``:free`` / ``:batch`` colon is escaped."""
+    return f"{CATALOG_URL}/{quote(model_id, safe='/')}/endpoints"
+
+
+def _normalize_endpoints(raw: list) -> list:
+    """One record per endpoint, cheapest first.
+
+    ``uptime_last_1d`` is already a percentage upstream. ``status`` is an
+    upstream integer enum passed through untouched: its non-zero values are not
+    documented, so the UI prints it verbatim rather than inventing a label.
+    """
+    out = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        provider = entry.get("provider_name")
+        if not isinstance(provider, str) or not provider.strip():
+            continue
+        pricing = entry.get("pricing") if isinstance(entry.get("pricing"), dict) else {}
+        params = entry.get("supported_parameters")
+        uptime = entry.get("uptime_last_1d")
+        out.append(
+            {
+                "provider": provider.strip(),
+                "quantization": entry.get("quantization") or "unknown",
+                "context_length": entry.get("context_length") if isinstance(entry.get("context_length"), int) else None,
+                "max_completion_tokens": (
+                    entry.get("max_completion_tokens") if isinstance(entry.get("max_completion_tokens"), int) else None
+                ),
+                "price_in": _price_per_mtok(pricing.get("prompt")),
+                "price_out": _price_per_mtok(pricing.get("completion")),
+                "uptime_1d": round(uptime, 2) if isinstance(uptime, (int, float)) else None,
+                "status": entry.get("status") if isinstance(entry.get("status"), int) else None,
+                "tools": "tools" in (params if isinstance(params, list) else []),
+            }
+        )
+    out.sort(key=lambda p: (p["price_in"], p["provider"]))
+    return out
+
+
+def _fetch_endpoints(model_id: str):
+    """Fetch and normalize one model's endpoints -> ``(providers, error)``.
+
+    ``providers`` is ``None`` on failure so the caller can fall back to a cached
+    entry per id: a fan-out over 40 rows that died because one id 500'd would
+    make the whole list look broken.
+    """
+    try:
+        response = requests.get(
+            _endpoints_url(model_id), headers=_headers(), timeout=FETCH_TIMEOUT_SECONDS
+        )
+    except RequestException as exc:
+        return None, f"request failed: {exc}"
+    if response.status_code // 100 != 2:
+        return None, f"upstream returned HTTP {response.status_code}"
+    try:
+        body = response.json()
+    except ValueError:
+        return None, "upstream returned malformed JSON"
+    data = body.get("data") if isinstance(body, dict) else None
+    raw = data.get("endpoints") if isinstance(data, dict) else None
+    if not isinstance(raw, list):
+        return None, "upstream returned no endpoints"
+    return _normalize_endpoints(raw), None
+
+
+def summarize_endpoints(ids: list, force: bool = False) -> dict:
+    """Provider detail for ``ids``, fetching only what isn't fresh.
+
+    Returns ``{models, missing, stale, fetched, cached}``. ``missing`` holds ids
+    with neither a fresh entry nor a stale one to fall back on; those rows render
+    without provider chips and are retried on the next request, so a failed
+    fan-out leaves no permanent hole in the cache.
+    """
+    now = _epoch()
+    models = {}
+    due = []
+    with _endpoints_lock:
+        for model_id in ids:
+            entry = _endpoints_cache.get(model_id)
+            if entry and not force and (now - entry["fetched_at"]) < ENDPOINT_TTL_SECONDS:
+                models[model_id] = entry["providers"]
+            else:
+                due.append(model_id)
+    cached = len(models)
+    missing = []
+    stale = []
+    if due:
+        with ThreadPoolExecutor(max_workers=ENDPOINT_CONCURRENCY) as pool:
+            results = list(pool.map(lambda mid: (mid,) + _fetch_endpoints(mid), due))
+        for model_id, providers, error in results:
+            if providers is not None:
+                with _endpoints_lock:
+                    _endpoints_cache[model_id] = {
+                        "providers": providers,
+                        "fetched_at": _epoch(),
+                        "error": None,
+                    }
+                models[model_id] = providers
+                continue
+            logger.warning("openrouter endpoints for '%s' unavailable: %s", model_id, error)
+            with _endpoints_lock:
+                entry = _endpoints_cache.get(model_id)
+            if entry:
+                models[model_id] = entry["providers"]
+                stale.append(model_id)
+            else:
+                missing.append(model_id)
+    return {
+        "models": models,
+        "missing": missing,
+        "stale": stale,
+        "fetched": len(due),
+        "cached": cached,
+    }
+
+
 def clear_cache() -> None:
-    """Drop the cached payload (tests, and after a key rotation)."""
+    """Drop the cached catalog and provider detail (tests, key rotation)."""
     with _lock:
         _cache["models"] = None
         _cache["descriptions"] = {}
         _cache["fetched_at"] = None
         _cache.pop("fetched_at_epoch", None)
+    with _endpoints_lock:
+        _endpoints_cache.clear()

@@ -4,9 +4,11 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 const mockSave = vi.fn()
 const mockReset = vi.fn()
 const mockRefreshCatalog = vi.fn()
+const mockProviderRetry = vi.fn()
 
 let settingsState
 let catalogState
+let providerState
 
 vi.mock('../../hooks/useOpenRouterModels', () => ({
   default: () => settingsState,
@@ -14,6 +16,10 @@ vi.mock('../../hooks/useOpenRouterModels', () => ({
 
 vi.mock('../../hooks/useOpenRouterCatalog', () => ({
   default: () => catalogState,
+}))
+
+vi.mock('../../hooks/useModelProviders', () => ({
+  default: () => providerState,
 }))
 
 import OpenRouterModelsPicker from './OpenRouterModelsPicker'
@@ -61,6 +67,19 @@ const CURRENT = [
   { id: 'vendor/retired-model', label: 'Retired Model' },
 ]
 
+const PROVIDER_DETAIL = {
+  'z-ai/glm-5.2': [
+    { provider: 'Z.ai', quantization: 'fp8', context_length: 200000, max_completion_tokens: null, price_in: 1, price_out: 3, uptime_1d: 99.9, status: 0, tools: true },
+    { provider: 'DeepInfra', quantization: 'int4', context_length: 131072, max_completion_tokens: 8192, price_in: 1.2, price_out: 3.6, uptime_1d: 98.4, status: -2, tools: true },
+    { provider: 'Novita', quantization: 'unknown', context_length: 200000, max_completion_tokens: null, price_in: 2.5, price_out: 4, uptime_1d: 99.1, status: 0, tools: false },
+    { provider: 'AtlasCloud', quantization: 'fp8', context_length: 200000, max_completion_tokens: null, price_in: 3, price_out: 5, uptime_1d: 100, status: 0, tools: true },
+  ],
+  'anthropic/claude-opus-5': [
+    { provider: 'Anthropic', quantization: 'bf16', context_length: 200000, max_completion_tokens: null, price_in: 5, price_out: 25, uptime_1d: 99.99, status: 0, tools: true },
+  ],
+  'z-ai/glm-5.2:free': [],
+}
+
 beforeEach(() => {
   mockSave.mockReset().mockImplementation(async (models) => ({ ...settingsState.data, current: models, customized: true }))
   mockReset.mockReset().mockImplementation(async () => ({ ...settingsState.data, current: CURRENT, customized: false }))
@@ -88,6 +107,7 @@ beforeEach(() => {
     error: null,
     refresh: mockRefreshCatalog,
   }
+  providerState = { byId: PROVIDER_DETAIL, loading: false, error: null, retry: mockProviderRetry }
 })
 
 afterEach(() => cleanup())
@@ -273,5 +293,55 @@ describe('OpenRouterModelsPicker', () => {
       .getAllByRole('button', { name: /^(Add|Remove) / })
       .map((b) => b.getAttribute('aria-label'))
     expect(order[0]).toContain('Anthropic: Claude Opus 5')
+  })
+
+  describe('provider detail', () => {
+    it('shows provider count, names, quantizations and price spread', () => {
+      render(<OpenRouterModelsPicker />)
+      expect(screen.getByText('4 providers')).toBeInTheDocument()
+      expect(screen.getByText('Z.ai, DeepInfra, Novita +1')).toBeInTheDocument()
+      expect(screen.getByText('· fp8/int4')).toBeInTheDocument()
+      expect(screen.getByText('· $1.00/M–$3.00/M')).toBeInTheDocument()
+    })
+
+    it('expands into a per-provider table', () => {
+      render(<OpenRouterModelsPicker />)
+      fireEvent.click(screen.getByText('4 providers'))
+      expect(screen.getByText('no tools')).toBeInTheDocument()
+      expect(screen.getByText('status -2')).toBeInTheDocument()
+      expect(screen.getByText('98.4%')).toBeInTheDocument()
+      expect(screen.queryByText('8192')).not.toBeInTheDocument()   // max tokens not shown
+    })
+
+    it('uses singular wording for a single-provider model', () => {
+      render(<OpenRouterModelsPicker />)
+      expect(screen.getByText('provider')).toBeInTheDocument()
+      expect(screen.getByText('Anthropic')).toBeInTheDocument()
+    })
+
+    it('says so when upstream lists no endpoints', () => {
+      render(<OpenRouterModelsPicker />)
+      expect(screen.getByText('no endpoints listed upstream')).toBeInTheDocument()
+    })
+
+    it('shows no provider line for rows whose detail has not landed', () => {
+      providerState = { byId: {}, loading: false, error: null, retry: mockProviderRetry }
+      render(<OpenRouterModelsPicker />)
+      expect(screen.queryByText(/provider/i)).not.toBeInTheDocument()
+    })
+
+    it('offers a retry when the provider batch failed', () => {
+      providerState = { ...providerState, error: 'HTTP 502' }
+      render(<OpenRouterModelsPicker />)
+      fireEvent.click(screen.getByText('providers unavailable — retry'))
+      expect(mockProviderRetry).toHaveBeenCalled()
+    })
+
+    it('reports loading without hiding the rows', () => {
+      providerState = { ...providerState, loading: true }
+      render(<OpenRouterModelsPicker />)
+      expect(screen.getByText(/loading providers/i)).toBeInTheDocument()
+      expect(screen.getByText('Z.ai: GLM 5.2')).toBeInTheDocument()
+    })
   })
 })

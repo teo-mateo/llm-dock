@@ -251,6 +251,37 @@ def get_openrouter_catalog():
     return jsonify(payload)
 
 
+@chat_bp.route("/api/chat/settings/openrouter-catalog/endpoints", methods=["POST"])
+@require_auth
+def post_openrouter_catalog_endpoints():
+    """Per-provider detail (price, quantization, context, uptime) for a batch of
+    model ids.
+
+    Provider names are not in the model list, so this fans out to
+    ``/models/{id}/endpoints`` per id and caches per id. Only ids that are not
+    already fresh are fetched, so a repeated page of rows costs nothing; a
+    partially failing batch still returns whatever succeeded and names the rest
+    in ``missing``.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be {ids: [...]}"}), 400
+    raw_ids = body.get("ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "ids must be a list of model ids"}), 400
+    ids = []
+    for value in raw_ids:
+        if not isinstance(value, str) or not value.strip():
+            return jsonify({"error": "each id must be a non-empty string"}), 400
+        if value.strip() not in ids:
+            ids.append(value.strip())
+    if len(ids) > openrouter_catalog.MAX_PROVIDER_IDS:
+        return jsonify({"error": f"too many ids (max {openrouter_catalog.MAX_PROVIDER_IDS})"}), 400
+    if not ids:
+        return jsonify({"models": {}, "missing": [], "stale": [], "fetched": 0, "cached": 0})
+    return jsonify(openrouter_catalog.summarize_endpoints(ids, force=bool(body.get("force"))))
+
+
 # -- Projects CRUD --
 
 def _validate_project_name(name):
