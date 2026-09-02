@@ -11,7 +11,7 @@ The curated model list shown in the picker is a convenience, not an
 allowlist: any ``openrouter:`` service string resolves as long as
 ``OPENROUTER_API_KEY`` is configured, so conversations keep working when
 their model is later removed from the list. The list itself is editable at
-runtime via ``settings_store`` (Tools page), with :data:`DEFAULT_MODELS` as
+runtime via ``settings_store`` (Settings page), with :data:`DEFAULT_MODELS` as
 the built-in baseline.
 """
 

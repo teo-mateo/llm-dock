@@ -93,6 +93,7 @@ llm-dock/
 │   │   ├── persistence.py       # Durable/ephemeral persistence seam
 │   │   ├── settings_store.py    # Chat settings singleton (chat_settings.json)
 │   │   ├── openrouter.py        # OpenRouter model resolution
+│   │   ├── openrouter_catalog.py # Proxied + TTL-cached OpenRouter model catalog
 │   │   ├── prompt_builder.py    # System prompt assembly
 │   │   ├── prompt_seed.py       # Default prompt seeding
 │   │   ├── project_files.py     # Project filesystem layer
@@ -637,12 +638,46 @@ appear in the chat pickers.
   local service names. `chat/llm_proxy.resolve_service()` branches on the
   prefix via `chat/openrouter.py`.
 - The curated picker list (built-in defaults in
-  `chat/openrouter.py:DEFAULT_MODELS`) is editable at runtime: Tools page →
-  "OpenRouter models" card, or `GET/PUT/DELETE
+  `chat/openrouter.py:DEFAULT_MODELS`) is editable at runtime: Settings page →
+  "OpenRouter models" card — a two-pane picker over the **live OpenRouter
+  catalog** (search/filter/sort on the left, short list with reorder +
+  inline labels on the right, plus a collapsed "Advanced: edit JSON" panel)
+  — or directly via `GET/PUT/DELETE
   /api/chat/settings/openrouter-models` (stored under `openrouter_models`
   in `chat_settings.json`). The list is a picker convenience, **not an
   allowlist** — any `openrouter:` string resolves as long as the key is
   set, so removing a model doesn't break conversations already using it.
+- The catalog itself comes from `GET /api/chat/settings/openrouter-catalog`
+  (`chat/openrouter_catalog.py`), which proxies OpenRouter's public
+  `/api/v1/models`, normalizes each entry to picker fields in display units
+  ($/1M, not $/token), and serves it from a 15-minute in-process TTL cache.
+  `?refresh=1` busts the cache; `?detail=1` adds truncated descriptions (the
+  heaviest field). An outage serves the last good payload with `stale: true`
+  — only a first-ever failure returns 502. It is **not** gated on
+  `OPENROUTER_API_KEY`, so the list can be authored before the key exists.
+  The catalog is display-time enrichment only: never persisted, so the stored
+  shape can't go stale, and the response carries no separate id list — what
+  upstream offers is exactly the ids in `models`, which is what the short list
+  badges "not in catalog" against. Normalization flags `router` / `image_out` /
+  `audio_out` / `chat_model` because the naive "no text in output_modalities"
+  test hides nothing upstream — every image/audio model still lists `text`. A
+  `-1` price means *dynamic pricing* upstream (every `openrouter/*` pseudo-router
+  ships one) and becomes `null`, not a negative $/1M that would sort first and
+  pass every price cap.
+- Provider detail — which endpoints actually serve a model, at what price and
+  uptime — comes from `POST /api/chat/settings/openrouter-catalog/endpoints`
+  with `{ids: [...], force?}`. Upstream exposes provider names only per model,
+  so the server fans out to `/models/{id}/endpoints` behind a separate 5-minute
+  per-id cache (own lock, so a fan-out never blocks a catalog read), capped
+  at `MAX_PROVIDER_IDS` (60) ids per call so one POST can't become a catalog-wide
+  sweep. Failure is isolated per id: whatever could not be fetched is named in
+  `missing` and stays out of the cache, so the next call retries it and a partial
+  outage costs rows rather than the panel. An id that fails `MODEL_ID_RE` (each
+  one becomes a request path) is likewise reported, not fatal — only a batch with
+  nothing usable in it is a 400. The picker requests only the rows its
+  `IntersectionObserver` reports as in view; a whole-catalog sweep is ~14 s and
+  ~2 % failures upstream, which is why providers describe what you can see rather
+  than filtering what you can't.
 - MCP tool calling, streaming, images, and critique all go through the
   same code paths as local models. OpenRouter requires an explicit
   `model` field in the payload; local single-model servers must NOT get

@@ -115,3 +115,6 @@ dashboard/project_files/
 
 # Internal agent artifacts
 .pi-subagents/
+
+# TabbyAPI per-service api/admin keys, generated at render time
+dashboard/tabby_keys/
