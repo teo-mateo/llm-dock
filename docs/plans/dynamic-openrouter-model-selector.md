@@ -379,11 +379,16 @@ Upstream constraints, all verified:
 
 Decisions:
 
-1. **Fetch the visible page, not the catalog.** The picker posts the ids it is
-   rendering (cap 60) to `POST …/openrouter-catalog/endpoints`; the server caches
-   per model id, so the cost is proportional to what is on screen — measured
-   **0.345 s for 4 ids** cold, 0 s warm. A whole-catalog fetch would be 425
-   upstream requests and 14 s to describe rows nobody is reading.
+1. **Fetch what is in view, not the catalog.** The picker posts the ids its
+   `IntersectionObserver` reports as on screen (cap 60) to
+   `POST …/openrouter-catalog/endpoints`; the server caches per model id, so the
+   cost is proportional to what is on screen — measured **0.345 s for 4 ids**
+   cold, 0 s warm. A whole-catalog fetch would be 425 upstream requests and 14 s
+   to describe rows nobody is reading. "In view" cannot mean "the head of the
+   filtered list": the pane is not paginated, and with 421 models live and the
+   default filters 284 rows render — taking the first 60 of those spends 60
+   upstream calls (measured 2.4 s) on rows that may never be read while every row
+   below them shows nothing.
 2. **Per-id failure isolation, no cached holes.** A batch whose one id 404s still
    returns the other three; the failure lands in `missing`, and the client drops
    it from its requested-set so the next request retries. Without this, one

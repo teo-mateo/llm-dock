@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import useOpenRouterCatalog from '../../hooks/useOpenRouterCatalog'
 import useModelProviders from '../../hooks/useModelProviders'
@@ -67,6 +67,12 @@ const MODALITIES = [
   { label: 'files', value: 'file' },
 ]
 
+// Provider detail is fetched per model, so the wanted set is the rows actually
+// in view, observed just past the pane's edges so rows are described by the
+// time they scroll in, and flushed on a settle rather than per row crossing.
+const PROVIDER_ROOT_MARGIN = '120px 0px'
+const PROVIDER_FLUSH_MS = 200
+
 const clone = (models) => (models || []).map((m) => ({ id: m.id, label: m.label ?? m.id }))
 
 function Toggle({ checked, onChange, disabled, children }) {
@@ -132,9 +138,12 @@ function ProviderTable({ providers }) {
           <th className="font-normal py-1 text-right" title="Uptime over the last 24 h">uptime</th>
         </tr>
       </thead>
+      {/* Provider + quantization is not a unique row identity: one provider
+          routinely lists several endpoints for one model at the same (usually
+          absent, so "unknown") quantization. Indexed in the map. */}
       <tbody>
-        {providers.map((p) => (
-          <tr key={`${p.provider}-${p.quantization}`} className="border-t border-border">
+        {providers.map((p, i) => (
+          <tr key={`${p.provider}-${p.quantization}-${i}`} className="border-t border-border">
             <td className="py-1 text-fg">
               {p.provider}
               {!p.tools && <span className="ml-1.5 text-fg-subtle">no tools</span>}
@@ -190,9 +199,13 @@ function ProviderSummary({ providers }) {
   )
 }
 
-function CatalogRow({ entry, added, onToggle, providers }) {
+function CatalogRow({ entry, added, onToggle, providers, rowRef }) {
   return (
-    <div className={`flex items-start gap-2 px-2 py-1.5 border-b border-border last:border-0 ${added ? 'opacity-60' : ''}`}>
+    <div
+      ref={rowRef}
+      data-model-id={entry.id}
+      className={`flex items-start gap-2 px-2 py-1.5 border-b border-border last:border-0 ${added ? 'opacity-60' : ''}`}
+    >
       <div className="min-w-0 flex-1">
         <div className="text-sm text-fg truncate" title={entry.id}>{entry.name}</div>
         <div className="text-xs text-fg-subtle font-mono truncate">{entry.id}</div>
@@ -291,6 +304,16 @@ export default function OpenRouterModelsPicker() {
   const [note, setNote] = useState(null)
   const [confirmingReset, setConfirmingReset] = useState(false)
   const searchRef = useRef(null)
+  // Provider detail is fetched for the rows this scroll box reports as in view:
+  // `listEl` is the observer's root (held in state because the pane mounts only
+  // once the catalog has landed, and the observer has to be built with it),
+  // `seenIds` is the wanted set, `observeRow` registers rows as they mount.
+  const [listEl, setListEl] = useState(null)
+  const observerRef = useRef(null)
+  const [seenIds, setSeenIds] = useState([])
+  const observeRow = useCallback((el) => {
+    if (el) observerRef.current?.observe(el)
+  }, [])
 
   // Local edits win over a background refresh of the curated list; the picker
   // syncs from the server only while nothing is unsaved.
@@ -315,6 +338,49 @@ export default function OpenRouterModelsPicker() {
     const t = setTimeout(() => setDebouncedQuery(query), 150)
     return () => clearTimeout(t)
   }, [query])
+
+  // One IntersectionObserver per pane instance. Rows announce themselves through
+  // `data-model-id`; the callback pass is debounced, so a scroll gesture costs
+  // one request rather than one per row crossing. An id is queued once, which is
+  // also what the hook tracks, so re-entering a row costs nothing. Without
+  // IntersectionObserver (jsdom, older browsers) the picker simply has no
+  // provider lines — everything else still works.
+  useEffect(() => {
+    if (!listEl || typeof IntersectionObserver !== 'function') return undefined
+    const pending = new Set()
+    const announced = new Set()
+    let timer = null
+    const flush = () => {
+      const added = [...pending]
+      pending.clear()
+      setSeenIds((prev) => [...added, ...prev].slice(0, MAX_PROVIDER_BATCH))
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = entry.target.dataset.modelId
+          if (entry.isIntersecting && id && !announced.has(id)) {
+            announced.add(id)
+            pending.add(id)
+          }
+        }
+        if (pending.size) {
+          clearTimeout(timer)
+          timer = setTimeout(flush, PROVIDER_FLUSH_MS)
+        }
+      },
+      { root: listEl, rootMargin: PROVIDER_ROOT_MARGIN },
+    )
+    observerRef.current = observer
+    // Rows already in the pane mounted before this effect ran, so their ref
+    // callback hit a null observer; pick the first screen up here.
+    listEl.querySelectorAll('[data-model-id]').forEach((el) => observer.observe(el))
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+      observerRef.current = null
+    }
+  }, [listEl])
 
   const models = catalog.data?.models ?? []
   const knownIds = catalog.data?.known_ids ?? []
@@ -347,11 +413,15 @@ export default function OpenRouterModelsPicker() {
     return [...out].sort(SORTERS[sort])
   }, [models, debouncedQuery, filters, sort])
 
-  // Provider detail covers the page being rendered, not the catalog: it costs
-  // one upstream call per model, so fetching all 425 to describe the two rows
-  // a user is reading would be absurd. Rows without an entry simply show no
-  // provider line yet.
-  const providerIds = useMemo(() => visible.slice(0, MAX_PROVIDER_BATCH).map((m) => m.id), [visible])
+  // Provider detail covers the rows in view, not the head of the filtered
+  // list: it costs one upstream call per model, so fetching all 425 to describe
+  // the two rows a user is reading would be absurd, and describing the first 60
+  // regardless of scroll position would spend 60 calls on rows nobody is reading
+  // while the rows they do read stayed empty. Most recently seen first, so the
+  // batch cap always buys the bottom of the screen rather than the top of the
+  // list; the hook keeps what it has already fetched, so an id dropping out of
+  // this window only loses a row the user has not reached.
+  const providerIds = useMemo(() => seenIds.slice(0, MAX_PROVIDER_BATCH), [seenIds])
   const providerDetail = useModelProviders(providerIds)
 
   const filtersActive = useMemo(() => modelsToJson(filters) !== modelsToJson(DEFAULT_FILTERS), [filters])
@@ -664,7 +734,7 @@ export default function OpenRouterModelsPicker() {
               <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading catalog…
             </div>
           ) : (
-            <div className="max-h-[26rem] overflow-y-auto">
+            <div className="max-h-[26rem] overflow-y-auto" ref={setListEl}>
               {visible.map((entry) => (
                 <CatalogRow
                   key={entry.id}
@@ -672,6 +742,7 @@ export default function OpenRouterModelsPicker() {
                   added={selectedIds.has(entry.id)}
                   onToggle={toggle}
                   providers={providerDetail.byId[entry.id]}
+                  rowRef={observeRow}
                 />
               ))}
               {!visible.length && (

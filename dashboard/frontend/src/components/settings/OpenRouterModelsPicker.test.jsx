@@ -9,6 +9,7 @@ const mockProviderRetry = vi.fn()
 let settingsState
 let catalogState
 let providerState
+let requestedProviderIds
 
 vi.mock('../../hooks/useOpenRouterModels', () => ({
   default: () => settingsState,
@@ -19,10 +20,47 @@ vi.mock('../../hooks/useOpenRouterCatalog', () => ({
 }))
 
 vi.mock('../../hooks/useModelProviders', () => ({
-  default: () => providerState,
+  default: (ids) => {
+    requestedProviderIds = ids
+    return providerState
+  },
 }))
 
 import OpenRouterModelsPicker from './OpenRouterModelsPicker'
+import { MAX_PROVIDER_BATCH } from '../../services/openrouterProviders'
+
+// jsdom has no IntersectionObserver, and the picker treats its absence as "no
+// provider lines" rather than an error. Tests that care about which rows are
+// wanted install this stub, which records what the pane observes and lets the
+// test decide what is on screen.
+class ObserverStub {
+  static instances = []
+
+  constructor(callback) {
+    this.callback = callback
+    this.targets = []
+    ObserverStub.instances.push(this)
+  }
+
+  observe(el) {
+    this.targets.push(el)
+  }
+
+  unobserve(el) {
+    this.targets = this.targets.filter((t) => t !== el)
+  }
+
+  disconnect() {
+    this.targets = []
+  }
+
+  report(...ids) {
+    this.callback(
+      ids.map((id) => ({ isIntersecting: true, target: { dataset: { modelId: id } } })),
+      this,
+    )
+  }
+}
 
 const entry = (id, name, extra = {}) => ({
   id,
@@ -108,9 +146,15 @@ beforeEach(() => {
     refresh: mockRefreshCatalog,
   }
   providerState = { byId: PROVIDER_DETAIL, loading: false, error: null, retry: mockProviderRetry }
+  requestedProviderIds = []
+  ObserverStub.instances = []
+  delete window.IntersectionObserver
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  delete window.IntersectionObserver
+})
 
 const dropdown = () => screen.getByText(/Chat dropdown/).textContent
 
@@ -342,6 +386,62 @@ describe('OpenRouterModelsPicker', () => {
       render(<OpenRouterModelsPicker />)
       expect(screen.getByText(/loading providers/i)).toBeInTheDocument()
       expect(screen.getByText('Z.ai: GLM 5.2')).toBeInTheDocument()
+    })
+
+    it('keeps two endpoints from one provider as distinct rows', () => {
+      // Real data: one provider routinely lists several endpoints for a model at
+      // the same (absent, so "unknown") quantization.
+      providerState = {
+        ...providerState,
+        byId: {
+          'z-ai/glm-5.2': [
+            { provider: 'Azure', quantization: 'unknown', context_length: 400000, max_completion_tokens: null, price_in: 5, price_out: 25, uptime_1d: 99.9, status: 0, tools: true },
+            { provider: 'Azure', quantization: 'unknown', context_length: 1000000, max_completion_tokens: null, price_in: 6, price_out: 30, uptime_1d: 99.5, status: 0, tools: true },
+          ],
+        },
+      }
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      render(<OpenRouterModelsPicker />)
+      fireEvent.click(screen.getByText('2 providers'))
+      expect(screen.getAllByText('Azure')).toHaveLength(2)
+      expect(spy.mock.calls.flat().join(' ')).not.toContain('same key')
+      spy.mockRestore()
+    })
+
+    it('asks for no provider detail while nothing is reported in view', () => {
+      render(<OpenRouterModelsPicker />)
+      expect(requestedProviderIds).toEqual([])
+    })
+
+    it('registers the rendered rows with the observer', () => {
+      window.IntersectionObserver = ObserverStub
+      render(<OpenRouterModelsPicker />)
+      const observed = ObserverStub.instances.at(-1).targets.map((el) => el.dataset.modelId)
+      expect(observed).toEqual(expect.arrayContaining(['z-ai/glm-5.2', 'anthropic/claude-opus-5']))
+      expect(observed).not.toContain('mistralai/mistral-tiny')     // filtered out, so not mounted
+    })
+
+    it('asks for the rows the observer reports rather than the head of the list', async () => {
+      window.IntersectionObserver = ObserverStub
+      render(<OpenRouterModelsPicker />)
+      ObserverStub.instances.at(-1).report('anthropic/claude-opus-5')
+      await waitFor(() => expect(requestedProviderIds).toEqual(['anthropic/claude-opus-5']))
+    })
+
+    it('caps the wanted set at the server batch limit', async () => {
+      const many = Array.from({ length: MAX_PROVIDER_BATCH + 20 }, (_, i) =>
+        entry(`vendor/model-${i}`, `Vendor: Model ${i}`),
+      )
+      catalogState.data = {
+        ...catalogState.data,
+        models: many,
+        count: many.length,
+        known_ids: many.map((m) => m.id),
+      }
+      window.IntersectionObserver = ObserverStub
+      render(<OpenRouterModelsPicker />)
+      ObserverStub.instances.at(-1).report(...many.map((m) => m.id))
+      await waitFor(() => expect(requestedProviderIds.length).toBe(MAX_PROVIDER_BATCH))
     })
   })
 })

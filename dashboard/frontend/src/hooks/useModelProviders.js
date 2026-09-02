@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MAX_PROVIDER_BATCH, getProviderSummaries } from '../services/openrouterProviders'
 
-// Provider detail for the rows currently visible in the catalog pane.
+// Provider detail for the rows the caller reports as in view.
 //
 // Fetched per batch and cached per model id, on both sides: passing the same
 // ids again costs nothing, and scrolling back to a previously-seen page is
@@ -10,8 +10,8 @@ import { MAX_PROVIDER_BATCH, getProviderSummaries } from '../services/openrouter
 // ~300 ms a fan-out takes.
 //
 // `ids` beyond the server's per-batch cap are ignored rather than chunked: the
-// point is to cover the visible page, and a list of 425 rows would mean 425
-// upstream requests to describe models nobody is looking at.
+// point is to cover what the user is looking at, and a list of 425 rows would
+// mean 425 upstream requests to describe models nobody is looking at.
 export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = {}) {
   const [byId, setById] = useState({})
   const [loading, setLoading] = useState(false)

@@ -207,7 +207,7 @@ Key mechanics:
 | `useRunningServices.js` | Filters running chat-capable services (llama.cpp/vLLM/DS4/PAIR_), excludes embedding-pooling ones; `kind: 'all'` for the dashboard |
 | `useOpenRouterModels.js` | OpenRouter model list load/save/reset |
 | `useOpenRouterCatalog.js` | Live OpenRouter catalog, loaded once on mount; `refresh(true)` is the explicit Refresh |
-| `useModelProviders.js` | Provider detail for the visible page of catalog rows; fetched once per id per session, `retry()` re-requests |
+| `useModelProviders.js` | Provider detail for the catalog rows the picker reports as in view; fetched once per id per session, `retry()` re-requests |
 | `useMainSystemPrompt.js` | Default system prompt load/save/reset |
 | `useRegistry.js` | MCP registry load/save/reload |
 | `useResizableWidth.js` | Drag-resize panel width with localStorage persistence + ResizeObserver clamp |
@@ -228,7 +228,7 @@ Key mechanics:
 | `ServiceLogsPanel.jsx` | Live logs viewer |
 | `ParameterReference.jsx` | Flag metadata reference + add-flag |
 | `SettingsPage.jsx` / `settings/PromptsEditor.jsx` / `TOTPSetup.jsx` | Settings: theme, chat prompts editor, TOTP enrollment |
-| `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges) + collapsed JSON panel. Rows carry a provider line (count, names, quantizations, price spread, expandable per-provider uptime/status) once it lands |
+| `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges) + collapsed JSON panel. Rows carry a provider line (count, names, quantizations, price spread, expandable per-provider uptime/status) once it lands; which rows want one comes from an `IntersectionObserver` on the pane, not from list position |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
 | `tools/RegistryEditor.jsx` | JSON editor for `mcp_servers.json` |
 | `tools/DefaultPromptEditor.jsx` | Default system prompt editor |
