@@ -3,7 +3,7 @@ Flag metadata and validation for service templates.
 Defines how flags are rendered and validated for each template type.
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Set
 from service_templates import sanitize_service_name
 
 # ============================================
@@ -1586,6 +1586,21 @@ def get_validation_rules(template_type: str) -> Dict[str, Any]:
         return {}
 
 
+def get_bool_cli_flags(template_type: str) -> Set[str]:
+    """Set of CLI flags that are boolean-typed for a template type.
+
+    Used to guard engines whose parser rejects a bare flag. TabbyAPI's argparse
+    is generated from its pydantic config model, so every flag (booleans
+    included) requires a value; a bool param stored with an empty value would
+    render as a bare `--flag` and fail at container startup.
+    """
+    return {
+        meta["cli"]
+        for meta in get_flag_metadata(template_type).values()
+        if isinstance(meta, dict) and meta.get("type") == "bool" and "cli" in meta
+    }
+
+
 def generate_service_name(template_type: str, alias: str) -> str:
     """
     Generate service name from template type and alias.
@@ -1692,5 +1707,17 @@ def validate_service_config(
             is_valid, error = validate_custom_flag_name(flag_name)
             if not is_valid:
                 errors.append(f"Param '{flag_name}': {error}")
+
+    # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
+    # so an empty-valued bool param would render `--flag` and crash at startup.
+    if template_type == "tabbyapi":
+        bool_flags = get_bool_cli_flags(template_type)
+        for flag_name, flag_value in params.items():
+            if flag_name in bool_flags and not str(flag_value).strip():
+                errors.append(
+                    f"TabbyAPI boolean flag '{flag_name}' requires a value "
+                    "('True' or 'False'); an empty value renders a bare flag "
+                    "that TabbyAPI rejects"
+                )
 
     return len(errors) == 0, errors

@@ -399,6 +399,16 @@ def delete_service(service_name):
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
 
+        # Drop the TabbyAPI per-service key file (secrets) so a deleted service
+        # does not leave api/admin keys on disk.
+        if service_config.get("template_type") == "tabbyapi":
+            try:
+                import tabby_keys
+
+                tabby_keys.remove(service_name)
+            except Exception as e:
+                logger.warning(f"Failed to remove TabbyAPI key file for '{service_name}': {e}")
+
         from services import event_manager
         event_manager.emit({
             "service_name": service_name,

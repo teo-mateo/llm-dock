@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, Set, Optional
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_cli_flag
+from flag_metadata import render_cli_flag, get_bool_cli_flags
 import tabby_keys
 
 logger = logging.getLogger(__name__)
@@ -571,12 +571,26 @@ class ComposeManager:
             context["model_name"] = model_dir.name
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            tabby_keys.ensure(service_name, config["api_key"])
+            key_path = tabby_keys.ensure(service_name, config["api_key"])
+            # Bind source must follow keys_dir(), which may be overridden via
+            # LLM_DOCK_TABBY_KEYS_DIR; a relative ./dashboard/... path would not
+            # track the override and Docker would create a directory at the mount.
+            context["key_file"] = str(key_path)
 
         rendered_flags = []
         extra_env = {}
 
         params = config.get("params", {})
+
+        # TabbyAPI booleans take a value (no store_true); an empty value would
+        # render a bare flag and crash at startup. Coerce defensively so any
+        # entry path (API, manual services.json edit, key rotation) is valid.
+        if template_type == "tabbyapi":
+            bool_flags = get_bool_cli_flags(template_type)
+            for flag_name in list(params):
+                if flag_name in bool_flags and not str(params[flag_name]).strip():
+                    params[flag_name] = "True"
+
         for flag_name, flag_value in params.items():
             # Handle env: prefix keys as environment variables
             if flag_name.startswith("env:"):
