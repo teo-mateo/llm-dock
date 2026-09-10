@@ -1,4 +1,5 @@
-FROM vllm/vllm-openai:v0.24.0-cu129
+ARG VLLM_BASE=vllm/vllm-openai:v0.24.0-cu129
+FROM ${VLLM_BASE}
 
 # Build metadata
 ARG BUILD_DATE

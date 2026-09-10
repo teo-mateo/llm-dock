@@ -551,6 +551,14 @@ class ComposeManager:
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
             context["mmproj_path"] = config.get("mmproj_path")
+            # Without this the template's hardcoded image won the rebuild and
+            # silently reverted pinned builds (e.g. the glm5next images, which
+            # carry architectures upstream llama.cpp does not have yet).
+            default_image = (
+                "llm-dock-ik-llamacpp" if template_type == "ik_llamacpp"
+                else "llm-dock-llamacpp"
+            )
+            context["image"] = config.get("image", default_image)
         elif template_type == "vllm":
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]

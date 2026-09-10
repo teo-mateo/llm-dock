@@ -118,3 +118,6 @@ dashboard/tabby_keys/
 
 # Internal agent artifacts
 .pi-subagents/
+
+# Reasoning-level sweep outputs
+scripts/reasoning-sweep/results/

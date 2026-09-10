@@ -1,0 +1,3 @@
+Find the flaw in this derivation, or state that it is correct:
+
+Let f(x) = x². Since f(a) = 16, we have a = 4.
