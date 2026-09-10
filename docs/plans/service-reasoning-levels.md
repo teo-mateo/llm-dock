@@ -1,5 +1,15 @@
 # Per-service reasoning levels: declared at config time, selectable at runtime
 
+**Implemented** (P1-P8). Deviations from this plan, both deliberate:
+`parse_levels`/`validate_levels` trim spaces **around** comma-separated entries
+(so `"off, low"` is accepted) while still rejecting case differences and
+internal whitespace — trimming a separator cannot change which token is sent,
+normalising case can, so §5's `"medium "` case is accepted rather than
+rejected. And §5's live gate is **not yet run**: it needs a GPU slot, so no
+ladder is declared on a production service by this change.
+
+Original plan follows, as written before implementation.
+
 Plan only — no code written. Baseline: branch
 `feat/chat-reasoning-level-selector-qwen38-fn-skilled` @ `57846fa`, clean working
 tree. Only this ref was inspected; no other branch was read.

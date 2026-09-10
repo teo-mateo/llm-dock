@@ -98,7 +98,7 @@ class ChatRunManager:
     # -- starting a run ---------------------------------------------------
 
     def start(self, conv, run, mcp_manager=None, is_first=False, first_user_content="",
-              effective_project_id=None):
+              effective_project_id=None, reasoning_level=None):
         """Submit the run to the worker pool and return immediately.
 
         The caller should already have subscribed an observer to the bus for
@@ -106,11 +106,13 @@ class ChatRunManager:
 
         effective_project_id is the conversation's resolved project,
         snapshotted at run creation (routes._effective_project_id) — the
-        runner consumes it verbatim instead of re-resolving.
+        runner consumes it verbatim instead of re-resolving. reasoning_level
+        is snapshotted the same way (routes._start_run_response), already
+        re-checked against the service's current declaration.
         """
         self._executor.submit(
             self._execute, conv, run, mcp_manager, is_first, first_user_content,
-            effective_project_id,
+            effective_project_id, reasoning_level,
         )
 
     def request_cancel(self, run_id):
@@ -155,14 +157,15 @@ class ChatRunManager:
         return self.request_cancel(run.id)
 
     def _execute(self, conv, run, mcp_manager, is_first, first_user_content,
-                 effective_project_id=None):
+                 effective_project_id=None, reasoning_level=None):
         cancel_event = threading.Event()
         with self._flags_lock:
             self._cancel_flags[run.id] = cancel_event
         try:
             msg = self.runner.run(
                 run, ChatTurnRequest(conversation=conv, mcp_manager=mcp_manager,
-                                     effective_project_id=effective_project_id),
+                                     effective_project_id=effective_project_id,
+                                     reasoning_level=reasoning_level),
                 cancel_check=cancel_event.is_set,
             )
             # Auto-title runs here (not in the SSE response) so a first-message
@@ -192,7 +195,7 @@ class ChatRunManager:
         """Subscribe and capture the run's in-flight history (for reattach)."""
         return self.event_bus.subscribe_with_replay(run_id)
 
-    def observe(self, run_id: str, q, replay=()):
+    def observe(self, run_id: str, q, replay=(), run_started_extra=None):
         """SSE generator: drain the bus queue for a run, emitting legacy SSE
         frames, until the STREAM_END sentinel. Injects heartbeats on idle so
         the connection stays alive during slow model output.
@@ -201,6 +204,11 @@ class ChatRunManager:
         subscribe_with_replay): for a client reattaching mid-run it replays
         everything generated before it subscribed, so the in-progress turn
         renders in full before the live tail. Empty for the fresh-send path.
+
+        `run_started_extra` merges extra fields into the synthesized run_started
+        frame — the fresh-send path uses it to report the reasoning level the run
+        resolved to. A reattaching client gets a plain frame instead: the level
+        it needs is already readable off the conversation.
 
         Closing this generator (client disconnect) only unsubscribes — the
         background run keeps going.
@@ -212,7 +220,7 @@ class ChatRunManager:
             # actually starts and publishes its own run_started (suppressed in
             # _sse_frames_for to avoid a duplicate). Lets the client POST
             # /runs/<id>/cancel even for a still-queued run.
-            yield encode_sse_event("run_started", {"run_id": run_id})
+            yield encode_sse_event("run_started", {"run_id": run_id, **(run_started_extra or {})})
             # Replay the in-flight history first so a reattaching client sees the
             # content generated before it returned. These events are NOT on the
             # live queue (the snapshot was taken atomically with the subscribe),

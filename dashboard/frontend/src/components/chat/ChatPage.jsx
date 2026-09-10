@@ -158,6 +158,16 @@ export default function ChatPage() {
     setSelectedModel(prev => prev ?? defaultModelName)
   }, [defaultModelName])
 
+  // Reasoning level pre-selected in the empty-state composer, carried onto the
+  // new conversation. Cleared whenever the model changes: a level belongs to one
+  // model's chat template, so inheriting it across a model switch would carry
+  // over an instruction the new model may not accept.
+  const [selectedReasoningLevel, setSelectedReasoningLevel] = useState(null)
+  const handleComposerModelChange = useCallback((model) => {
+    setSelectedModel(model)
+    setSelectedReasoningLevel(null)
+  }, [])
+
   // True while the project file editor holds unsaved changes. In-app
   // navigation unmounts the editor without its own close handler, so the
   // navigation entry points below confirm before discarding. (Browser
@@ -237,10 +247,24 @@ export default function ChatPage() {
       window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
-    const conv = await create({ main_service: selectedModel })
+    let conv
+    try {
+      conv = await create({
+        main_service: selectedModel,
+        ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
+      })
+    } catch (err) {
+      // The only rejection worth handling is a level the ladder lost between
+      // render and click. The typed message is the user's work, so retry
+      // without the level rather than lose it; the picker re-reads the ladder
+      // on the conversation that follows.
+      if (!selectedReasoningLevel) throw err
+      console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
+      conv = await create({ main_service: selectedModel })
+    }
     pendingMsgRef.current = { convId: conv.id, content, images }
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, selectedModel])
+  }, [create, navigate, selectedModel, selectedReasoningLevel])
 
   const handleSelect = useCallback((id) => {
     if (!confirmDiscardEdits()) return
@@ -351,7 +375,9 @@ export default function ChatPage() {
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
         defaultModelName={defaultModelName}
         selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
+        onModelChange={handleComposerModelChange}
+        selectedReasoningLevel={selectedReasoningLevel}
+        onReasoningLevelChange={setSelectedReasoningLevel}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}
         critiques={critiques}

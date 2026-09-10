@@ -346,6 +346,7 @@ Whenever working on a new feature, create a new branch from a fresh `main`. Do n
 | `dashboard/compose_manager.py` | Docker Compose file management |
 | `dashboard/model_discovery.py` | Model scanning logic |
 | `dashboard/flag_metadata.py` | Engine flag definitions |
+| `dashboard/reasoning_levels.py` | Reasoning-level grammar, lookup and per-engine request mapping (pure) |
 | `dashboard/service_templates.py` | Service config generators |
 | `services.json` | Service definitions (source of truth) |
 | `docker-compose.yml.template` | Base compose template |
@@ -365,6 +366,7 @@ Each top-level key is a service name (matches `container_name`). Fields:
 | `params` | object | CLI flag → value. Empty string `""` means flag is passed with no value (e.g. `"--enable-prefix-caching": ""`). Values with spaces/JSON should be pre-quoted with single quotes |
 | `template_type` | `"llamacpp"` \| `"vllm"` | Selects Jinja template |
 | `model_size`, `model_size_str` | int, string | Optional metadata |
+| `reasoning_levels` | string | Optional, chat-only. Comma-separated level names the model accepts (`"off,low,medium,xhigh"`). Never a container flag — inert in compose rendering, like `favorite` |
 
 ### Port Conventions
 - `3300` — Open WebUI (static, not dashboard-managed)
@@ -557,6 +559,64 @@ Gotchas:
 - Core rotation logic is `key_rotation.rotate_keys_in_db()` (pure, unit
   tested in `dashboard/tests/test_key_rotation.py`); container stops and
   preview live in `routes/services.py`.
+
+## Reasoning levels per service
+
+A service can declare which reasoning levels its model accepts; chat then
+offers exactly those and applies the chosen one to the request. Owner of the
+whole lifecycle is `dashboard/reasoning_levels.py` (pure: grammar, lookup,
+per-engine request mapping) — validation, payload exposure and request
+construction all call it, so they cannot disagree.
+
+- **Declaration** (`services.json`): plain lowercase names, comma-separated, ≤ 8
+  levels, ≤ 120 chars, `off` reserved for "disable thinking". `""` clears.
+  Grammar enforced by `validate_levels()` inside `validate_service_config()`, so
+  both `POST /api/services` and `PUT /api/services/<name>` reject it.
+- **Exposure**: `get_docker_services()` parses it and puts the list
+  (`[{"id": "low", "effort": "low"}]`, `[]` when unset) on every service payload,
+  in both branches — feeding `GET /api/services`, the SSE snapshot, and therefore
+  `useServicesSSE`/`useRunningServices` with no extra frontend plumbing. The
+  config panel edits the raw string from `GET /api/services/<name>`.
+- **Selection**: per-conversation `conversations.reasoning_level` (nullable,
+  added in `chat/db.py:_migrate`). Stores the id only, so editing a ladder never
+  migrates conversations. `NULL` = "say nothing to the model" = today's request;
+  **not** `"off"`, which is an active instruction.
+- **Two enforcement points** (deliberate): the conversation write paths reject a
+  level the service doesn't declare, and `_effective_reasoning_level()` re-checks
+  at run creation, dropping it for that run and reporting
+  `reasoning_level_note` on the `run_started` frame. The stored value is never
+  rewritten — switching the model back restores the choice.
+- **Wire mapping** (`request_fields`): `llamacpp` → `reasoning_effort` (plus
+  `chat_template_kwargs.enable_thinking: false` for `off`); `vllm` →
+  `reasoning_effort` only, since the server derives `enable_thinking` itself.
+  `ik_llamacpp`, `tabbyapi`, `ds4` and **OpenRouter** get nothing: unverified
+  mappings are worse than no mapping. No numeric field is ever sent.
+- **Ladder edits need no container restart.** llama.cpp merges request-level
+  `chat_template_kwargs` over the `--chat-template-kwargs` server default
+  (`server-common.cpp:1308-1311`), so R8 holds even though `update_service`
+  rebuilds `docker-compose.yml` (it recreates no container).
+- Excluded call sites keep sending no reasoning field because they pass no level:
+  `auto_generate_title`, critique, `POST /api/chat/spinoff`.
+
+### Gotchas
+
+- **Never synthesize a level token.** What a level name means is a property of
+  each model's chat template, not of llm-dock, and an undeclared token makes
+  llama.cpp answer **HTTP 500** — see
+  `docs/reasoning-level-sweep-qwen3.8-27b.md` (Qwen3.8 accepts only
+  `low|medium|xhigh` plus the Unsloth `high` alias). llm-dock forwards only what
+  the operator declared, and the UI list is exactly that declaration. Before
+  declaring a new ladder on a service, probe it (`/apply-template`, then one
+  short completion per level).
+- **A level is not a token budget.** The sweep showed the named ladder is not
+  monotonic and sometimes inverted. That is why no numeric field is sent and the
+  UI shows no token counts. If budgets are ever wanted, the hooks are
+  `thinking_budget_tokens` (llama.cpp) and `thinking_token_budget` (vLLM) — and
+  `validate_levels` rejects any `name:budget` syntax today precisely so that
+  adding it later is additive instead of silently truncating `low:512` to `low`.
+- Services without the key are provably untouched: no UI control, and the
+  outgoing payload keeps the exact key set it had before
+  (`tests/test_reasoning_level_payload.py`).
 
 ## Adding an external MCP server
 

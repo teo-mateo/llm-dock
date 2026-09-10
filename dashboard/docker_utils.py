@@ -7,6 +7,7 @@ from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
 from model_discovery import compute_model_size
 from openwebui_integration import get_openwebui_registered_urls
+from reasoning_levels import parse_levels, validate_levels
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,25 @@ def _service_kind(config):
     return "chat"
 
 
+def _parsed_reasoning_levels(service_name: str, raw) -> list:
+    """Parsed declaration for one service, [] when absent or unparsable.
+
+    A stored value can only be malformed by hand-editing services.json (every
+    write path validates it), so this reports and continues rather than
+    raising — the Services page must still render the other 20 services.
+    """
+    valid, errors = validate_levels(raw)
+    if not valid:
+        logger.warning(
+            "Service '%s': ignoring invalid reasoning_levels %r (%s)",
+            service_name,
+            raw,
+            errors[0] if errors else "invalid",
+        )
+        return []
+    return parse_levels(raw)
+
+
 def get_docker_services():
     """Get status of compose services from Docker"""
     client = docker.from_env()
@@ -128,6 +148,7 @@ def get_docker_services():
     model_name_map = {}
     kind_map = {}
     favorite_map = {}
+    reasoning_levels_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
@@ -137,6 +158,9 @@ def get_docker_services():
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
             favorite_map[service_name] = bool(config.get("favorite", False))
+            reasoning_levels_map[service_name] = _parsed_reasoning_levels(
+                service_name, config.get("reasoning_levels")
+            )
 
     # Get Open WebUI registered URLs (one query for all services)
     openwebui_urls = get_openwebui_registered_urls()
@@ -180,6 +204,7 @@ def get_docker_services():
                 "model_size_str": model_size_str,
                 "kind": kind_map.get(service_name, "chat"),
                 "favorite": favorite_map.get(service_name, False),
+                "reasoning_levels": reasoning_levels_map.get(service_name, []),
             }
 
     # Build complete services list from compose file
@@ -208,6 +233,7 @@ def get_docker_services():
                     "model_size_str": model_size_str,
                     "kind": kind_map.get(service_name, "chat"),
                     "favorite": favorite_map.get(service_name, False),
+                    "reasoning_levels": reasoning_levels_map.get(service_name, []),
                 }
             )
 

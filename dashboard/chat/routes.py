@@ -19,6 +19,7 @@ from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import openrouter, openrouter_catalog, settings_store
 from .prompt_seed import seed_default_prompts
+from reasoning_levels import find_level, format_levels
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,70 @@ def _effective_project_id(conv):
     if conv.parent_conversation_id:
         return _get_db().resolve_project_id(conv.id)
     return None
+
+
+def _service_reasoning_levels(service_name):
+    """Levels a service currently declares, as parsed dicts ([] when none).
+
+    Reads the same payload the chat model picker uses, so the ladder offered in
+    the UI and the ladder enforced here cannot drift. Works for a stopped
+    service too (the payload lists every compose service), which is what lets a
+    level be saved before the model is started. OpenRouter names never resolve
+    here, so an `openrouter:` conversation can never carry a level.
+    """
+    if openrouter.is_openrouter_service(service_name):
+        return []
+    from docker_utils import get_docker_services
+    try:
+        services = get_docker_services()
+    except Exception:
+        logger.exception("reasoning-level lookup failed for service %s", service_name)
+        return []
+    for svc in services:
+        if svc["name"] == service_name:
+            return svc.get("reasoning_levels") or []
+    return []
+
+
+def _reasoning_level_error(main_service, reasoning_level):
+    """Rejection message for a level the service does not offer, else None.
+
+    `null` is always accepted: it means "say nothing to the model", which is
+    the pre-feature behaviour and needs no declaration to be legal.
+    """
+    if reasoning_level is None:
+        return None
+    if not isinstance(reasoning_level, str):
+        return "reasoning_level must be a string or null"
+    levels = _service_reasoning_levels(main_service)
+    if find_level(levels, reasoning_level) is None:
+        return (
+            f"reasoning_level '{reasoning_level}' is not offered by service "
+            f"'{main_service}' (declared: {format_levels(levels) or 'none'})"
+        )
+    return None
+
+
+def _effective_reasoning_level(conv):
+    """(level to apply, note) for a run — the second enforcement point.
+
+    The write path already rejected an undeclared level, but the service can
+    have lost it since (ladder edited, model switched underneath the
+    conversation). Nothing is ever sent that the service does not declare now.
+    The stored column is left alone: the drop applies to this run only, so
+    switching the model back restores the user's choice. The note rides the
+    run_started frame so the UI can say so instead of silently ignoring it.
+    """
+    stored = getattr(conv, "reasoning_level", None)
+    if not stored:
+        return None, None
+    if find_level(_service_reasoning_levels(conv.main_service), stored) is not None:
+        return stored, None
+    logger.info(
+        "run for conversation %s: reasoning level '%s' no longer offered by '%s', ignored",
+        conv.id, stored, conv.main_service,
+    )
+    return None, f"Reasoning level '{stored}' is not offered by this model and was ignored"
 
 
 def _mcp_for_conversation(conv, enabled_servers, project_id):
@@ -404,6 +469,15 @@ def create_conversation():
     if not main_service:
         return jsonify({"error": "main_service is required"}), 400
 
+    # A reasoning level must be one the service declares. Checked again at run
+    # creation (_effective_reasoning_level) because the declaration can change
+    # between here and the first message.
+    if "reasoning_level" in data:
+        level_error = _reasoning_level_error(main_service, data["reasoning_level"])
+        if level_error:
+            return jsonify({"error": level_error}), 400
+    reasoning_level = data.get("reasoning_level")
+
     project_id = data.get("project_id")
     if project_id is not None:
         if not isinstance(project_id, str):
@@ -440,6 +514,7 @@ def create_conversation():
         parent_conversation_id=data.get("parent_conversation_id"),
         selected_text=data.get("selected_text"),
         project_id=project_id,
+        reasoning_level=reasoning_level,
     )
     try:
         conv = _get_db().create_conversation(conv)
@@ -487,6 +562,18 @@ def get_conversation(conv_id):
 def update_conversation(conv_id):
     data = request.get_json() or {}
     db = _get_db()
+    # reasoning_level: null clears it (back to sending nothing to the model).
+    # A non-null level must be offered by the service the conversation ends up
+    # on, which is the newly requested main_service when both keys arrive.
+    if "reasoning_level" in data and data["reasoning_level"] is not None:
+        existing = db.get_conversation(conv_id)
+        if existing is None:
+            return jsonify({"error": "Conversation not found"}), 404
+        level_error = _reasoning_level_error(
+            data.get("main_service") or existing.main_service, data["reasoning_level"]
+        )
+        if level_error:
+            return jsonify({"error": level_error}), 400
     # project_id: null detaches (back to unfiled); a non-null value must be
     # a string naming an existing project, and only root conversations can
     # be assigned — spin-offs follow their parent's project.
@@ -643,14 +730,24 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     if created is None:
         return jsonify({"error": "A run is already active for this conversation"}), 409
 
+    # Snapshot the reasoning level now, alongside the project: the value this
+    # run uses can never change underneath it, and a ladder edited mid-run
+    # affects only the next run.
+    reasoning_level, level_note = _effective_reasoning_level(conv)
+
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
     manager.start(conv, run, mcp_manager=mcp_manager, is_first=is_first,
                   first_user_content=first_user_content,
-                  effective_project_id=effective_project_id)
+                  effective_project_id=effective_project_id,
+                  reasoning_level=reasoning_level)
+
+    started_extra = {"reasoning_level": reasoning_level}
+    if level_note:
+        started_extra["reasoning_level_note"] = level_note
 
     return Response(
-        stream_with_context(manager.observe(run.id, q)),
+        stream_with_context(manager.observe(run.id, q, run_started_extra=started_extra)),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -13,9 +13,15 @@ vi.mock('../../hooks/useRunningServices', () => ({
 // Heavy children that fetch or need extra context — not under test here.
 // ModelSelector captures its props so the empty-state dropdown wiring can be
 // asserted without rendering the real (hook-fetching) component.
-const { capturedModelSelectorProps } = vi.hoisted(() => ({ capturedModelSelectorProps: { current: null } }))
+const { capturedModelSelectorProps, capturedReasoningLevelProps } = vi.hoisted(() => ({
+  capturedModelSelectorProps: { current: null },
+  capturedReasoningLevelProps: { current: null },
+}))
 vi.mock('./ModelSelector', () => ({
   default: (props) => { capturedModelSelectorProps.current = props; return null },
+}))
+vi.mock('./ReasoningLevelSelect', () => ({
+  default: (props) => { capturedReasoningLevelProps.current = props; return null },
 }))
 vi.mock('./McpToggle', () => ({ default: () => null }))
 vi.mock('./MessageList', () => ({ default: () => null }))
@@ -286,5 +292,109 @@ describe('ChatArea — Stop gating on runReady', () => {
   it('shows Stop once runReady is true', () => {
     renderStreaming(true)
     expect(screen.getByRole('button', { name: /Stop/ })).toBeTruthy()
+  })
+})
+
+describe('ChatArea — reasoning level', () => {
+  beforeEach(() => {
+    capturedReasoningLevelProps.current = null
+    mockUpdateConversation.mockReset()
+  })
+
+  function renderConversationExtra(conversation, onReloadConversation) {
+    return render(
+      <ChatArea
+        conversation={conversation}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        streaming={false}
+        onSend={() => {}}
+        onReloadConversation={onReloadConversation}
+      />
+    )
+  }
+
+  it('shows the picker with the conversation and its stored level', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'low',
+    })
+    const props = capturedReasoningLevelProps.current
+    expect(props).not.toBeNull()
+    expect(props.mainService).toBe('llamacpp-x')
+    expect(props.value).toBe('low')
+    // A live run must not be interruptible by a level change.
+    expect(props.disabled).toBe(false)
+  })
+
+  it('saves a changed level on the conversation and reloads it', async () => {
+    const onReload = vi.fn()
+    mockUpdateConversation.mockResolvedValue({})
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'low',
+    }, onReload)
+    capturedReasoningLevelProps.current.onChange('medium')
+    await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledWith(
+      'conv-1', { reasoning_level: 'medium' }))
+    await waitFor(() => expect(onReload).toHaveBeenCalledWith('conv-1'))
+  })
+
+  it('passes null straight through when the level is cleared', async () => {
+    mockUpdateConversation.mockResolvedValue({})
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'medium',
+    })
+    capturedReasoningLevelProps.current.onChange(null)
+    await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledWith(
+      'conv-1', { reasoning_level: null }))
+  })
+
+  it('disables the picker while a run is active', () => {
+    render(
+      <ChatArea
+        conversation={{
+          id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+          mcp_servers: [], reasoning_level: null,
+        }}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        streaming={true}
+        runReady={true}
+        onStopStreaming={() => {}}
+      />
+    )
+    expect(capturedReasoningLevelProps.current.disabled).toBe(true)
+  })
+
+  it('offers pre-selection in the new-chat composer', () => {
+    const onReasoningLevelChange = vi.fn()
+    render(
+      <ChatArea
+        conversation={null}
+        awaitingConversation={false}
+        defaultModelName="vllm-test"
+        selectedModel="llamacpp-x"
+        onModelChange={() => {}}
+        selectedReasoningLevel="off"
+        onReasoningLevelChange={onReasoningLevelChange}
+        onCreateAndSend={() => {}}
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+      />
+    )
+    const props = capturedReasoningLevelProps.current
+    expect(props.mainService).toBe('llamacpp-x')
+    expect(props.value).toBe('off')
+    props.onChange('xhigh')
+    expect(onReasoningLevelChange).toHaveBeenCalledWith('xhigh')
   })
 })

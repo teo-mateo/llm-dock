@@ -5,6 +5,7 @@ Defines how flags are rendered and validated for each template type.
 
 from typing import Dict, Any, List, Tuple, Optional, Set
 from service_templates import sanitize_service_name
+from reasoning_levels import validate_levels
 
 # ============================================
 # MANDATORY FIELDS (per template type)
@@ -1707,6 +1708,26 @@ def validate_service_config(
             is_valid, error = validate_custom_flag_name(flag_name)
             if not is_valid:
                 errors.append(f"Param '{flag_name}': {error}")
+
+    # Optional reasoning-level declaration. Validated here rather than in a
+    # per-template rule set because the grammar is engine-independent: only the
+    # request mapping (§ request_fields) cares about the template type.
+    # Absent means "not sent" — on PUT the caller merges into the stored entry,
+    # so a key the client omitted must not be judged, let alone cleared.
+    if "reasoning_levels" in config:
+        levels_ok, level_errors = validate_levels(config["reasoning_levels"])
+        if not levels_ok:
+            errors.extend(level_errors)
+
+    # Optional reasoning-level declaration ("off,low,medium"). Validated here
+    # rather than per template type because the grammar is engine-independent —
+    # only the request mapping knows about engines. `""` is a valid clear.
+    # A key that isn't in the payload is not judged: PUT merges into the stored
+    # entry, so a field the client omitted survives untouched.
+    if "reasoning_levels" in config:
+        levels_valid, level_errors = validate_levels(config["reasoning_levels"])
+        if not levels_valid:
+            errors.extend(level_errors)
 
     # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
     # so an empty-valued bool param would render `--flag` and crash at startup.

@@ -12,7 +12,7 @@ MAX_TOOL_ROUNDS = 5
 
 
 def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_manager: MCPClientManager,
-                      progress_callback=None):
+                      progress_callback=None, *, reasoning_level: str = None):
     """Stream a chat completion with tool-calling support.
 
     Yields (event_type, data) tuples:
@@ -27,11 +27,16 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
     notification a tool emits during execution. It runs on the MCP manager's
     event-loop thread (NOT the worker thread), so it can stream progress out
     even while call_tool blocks.
+
+    reasoning_level is forwarded to every request this loop makes, including
+    the forced final response after MAX_TOOL_ROUNDS — a turn must not answer
+    with a different thinking posture than the one it was asked for.
     """
     for round_num in range(MAX_TOOL_ROUNDS):
         tool_calls_received = False
 
-        for event_type, data in stream_chat_completion(service_name, messages_array, tools):
+        for event_type, data in stream_chat_completion(service_name, messages_array, tools,
+                                                        reasoning_level=reasoning_level):
             if event_type == "delta":
                 yield ("delta", data)
 
@@ -138,7 +143,8 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
     final_content = []
     final_reasoning = []
     for event_type, data in stream_chat_completion(service_name, messages_array, tools=tools,
-                                                   tool_choice="none"):
+                                                   tool_choice="none",
+                                                   reasoning_level=reasoning_level):
         if event_type == "delta":
             final_content.append(data.get("content") or "")
             final_reasoning.append(data.get("reasoning_content") or "")

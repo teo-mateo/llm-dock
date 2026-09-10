@@ -3,6 +3,7 @@ import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import DebugOverlay from './DebugOverlay'
 import ModelSelector from './ModelSelector'
+import ReasoningLevelSelect from './ReasoningLevelSelect'
 import PromptSelector from './PromptSelector'
 import CritiquePanel from './CritiquePanel'
 import SpinoffWindow from './SpinoffWindow'
@@ -21,6 +22,8 @@ export default function ChatArea({
   defaultModelName,
   selectedModel,
   onModelChange,
+  selectedReasoningLevel,
+  onReasoningLevelChange,
   onCreateAndSend,
   messages,
   critiques,
@@ -137,12 +140,17 @@ export default function ChatArea({
               : 'No model available. Start a local model or configure OpenRouter.'}
           </p>
           {defaultModelName && (
-            <div className="mb-4">
+            <div className="mb-4 flex items-center gap-3 flex-wrap">
               <ModelSelector
                 variant="new-chat"
                 mainService={selectedModel}
                 onChangeMain={onModelChange}
                 disabled={!defaultModelName}
+              />
+              <ReasoningLevelSelect
+                mainService={selectedModel}
+                value={selectedReasoningLevel}
+                onChange={onReasoningLevelChange}
               />
             </div>
           )}
@@ -186,6 +194,14 @@ export default function ChatArea({
     onReloadConversation?.(conversation.id)
   }
 
+  // The level is stored per conversation, so clearing it sends null ("say
+  // nothing to the model") rather than dropping a key that would survive the
+  // server-side merge.
+  async function handleReasoningLevelChange(level) {
+    await updateConversation(conversation.id, { reasoning_level: level })
+    onReloadConversation?.(conversation.id)
+  }
+
   async function handlePromptSelect(promptId) {
     const nextPrompt = promptId === null
       ? ''
@@ -211,6 +227,12 @@ export default function ChatArea({
               sidekickService={conversation.sidekick_service}
               onChangeMain={v => handleModelChange('main_service', v)}
               onChangeSidekick={v => handleModelChange('sidekick_service', v)}
+              disabled={busy}
+            />
+            <ReasoningLevelSelect
+              mainService={conversation.main_service}
+              value={conversation.reasoning_level}
+              onChange={handleReasoningLevelChange}
               disabled={busy}
             />
             <McpToggle

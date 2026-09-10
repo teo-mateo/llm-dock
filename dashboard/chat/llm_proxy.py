@@ -5,6 +5,8 @@ import re
 
 import requests
 
+from reasoning_levels import find_level, request_fields
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,10 +83,15 @@ def detect_format_drift(content: str, reasoning: str = "", had_tool_calls: bool 
 def resolve_service(service_name: str) -> dict:
     """Resolve a service name to connection details.
 
-    Local Docker services resolve to ``{host_port, api_key}`` via
-    docker_utils; ``openrouter:<model-id>`` strings resolve to
-    ``{base_url, api_key, model, extra_headers}`` (or None when no
+    Local Docker services resolve to ``{host_port, api_key, template_type,
+    reasoning_levels}`` via docker_utils; ``openrouter:<model-id>`` strings
+    resolve to ``{base_url, api_key, model, extra_headers}`` (or None when no
     OPENROUTER_API_KEY is configured).
+
+    The engine fields come from the same payload lookup the connection needs,
+    so a request never re-reads services.json to decide what it may send. An
+    OpenRouter resolution carries neither, which is what keeps reasoning fields
+    out of OpenRouter requests without a special case anywhere.
     """
     from . import openrouter
     if openrouter.is_openrouter_service(service_name):
@@ -96,6 +103,8 @@ def resolve_service(service_name: str) -> dict:
             return {
                 "host_port": svc["host_port"],
                 "api_key": svc["api_key"],
+                "template_type": svc.get("template_type", ""),
+                "reasoning_levels": svc.get("reasoning_levels") or [],
             }
     return None
 
@@ -287,7 +296,7 @@ def build_messages_array(system_prompt: str, messages: list) -> list:
 
 
 def stream_chat_completion(service_name: str, messages_array: list, tools: list = None,
-                           tool_choice: str = None):
+                           tool_choice: str = None, *, reasoning_level: str = None):
     """Stream a chat completion from a llama.cpp service.
 
     Yields (event_type, data) tuples:
@@ -299,6 +308,12 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     `tool_choice` overrides the default. When `tools` are supplied it defaults to
     "auto"; pass "none" to forbid tool calls (e.g. the tool-loop's forced final
     response, which must produce prose, not yet another tool call).
+
+    `reasoning_level` is a level id the caller resolved for this request. It is
+    re-checked against what the service declares here, so an id that reached
+    this point by any other route still cannot go on the wire — and when it is
+    None the payload gains no key at all, which is the request shape every
+    service had before this feature existed.
     """
     svc = resolve_service(service_name)
     if svc is None:
@@ -327,6 +342,17 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         # No tool schemas in the request, but still pin tool_choice (e.g.
         # "none" on the forced final response) for backends that honor it.
         payload["tool_choice"] = tool_choice
+
+    # Reasoning fields last, so a level can never disturb the fields above.
+    # find_level returns None for an id this service doesn't declare, which
+    # yields {} from request_fields regardless of engine.
+    reasoning_fields = request_fields(
+        find_level(svc.get("reasoning_levels"), reasoning_level),
+        svc.get("template_type"),
+    )
+    if reasoning_fields.get("chat_template_kwargs") and "chat_template_kwargs" in payload:
+        payload["chat_template_kwargs"].update(reasoning_fields.pop("chat_template_kwargs"))
+    payload.update(reasoning_fields)
 
     collected_content = ""
     collected_reasoning = ""
