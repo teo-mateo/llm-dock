@@ -1,0 +1,1 @@
+How many trailing zeros does 2026! (2026 factorial) have? Answer with a single number.

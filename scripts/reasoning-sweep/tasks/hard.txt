@@ -1,0 +1,1 @@
+Find the smallest positive integer n such that n! (n factorial) has at least 1000 trailing zeros. Give the answer as a single number.

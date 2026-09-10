@@ -1,0 +1,1 @@
+Start with 3. Add 5. Multiply by 2. Subtract 7. Multiply by 4. Add 12. Divide by 6. Multiply by 3. Subtract 9. Add 1. Multiply by 5. Subtract 4. What number do you end up with?
