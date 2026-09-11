@@ -178,6 +178,24 @@ describe('ChatInput — trailing control', () => {
     expect(document.querySelector('textarea').parentElement.children).toHaveLength(1)
   })
 
+  it('bottom-aligns every row control so growth does not skew the row', () => {
+    // The row is items-end so attach/send/debug share the field's bottom edge as
+    // it grows. One control opted into align-self: center, which read as a
+    // crooked toolbar the moment a draft wrapped past one line.
+    render(<ChatInput onSend={() => {}} onDebug={() => {}} />)
+    const debug = document.querySelector('button[aria-label="Open debug viewer"]')
+    expect(debug.className).not.toContain('self-center')
+  })
+
+  it('lays the field out as a block so the docked control centres on it', () => {
+    // An inline-block textarea leaves a baseline descender gap inside its
+    // wrapper, so the wrapper is taller than the field and top-1/2 centres the
+    // control on the wrapper — measurably below the middle of the input.
+    const marker = <span data-testid="slot" />
+    render(<ChatInput onSend={() => {}} trailing={marker} />)
+    expect(document.querySelector('textarea').className).toContain('block')
+  })
+
   it('keeps typing and sending intact around it', () => {
     const onSend = vi.fn()
     const marker = <span data-testid="slot" />

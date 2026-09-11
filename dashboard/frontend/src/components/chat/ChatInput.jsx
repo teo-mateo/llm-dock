@@ -396,7 +396,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
               placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
               disabled={disabled}
               rows={1}
-              className={`w-full bg-surface border border-border rounded-lg py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50 ${trailing ? 'pl-4 pr-28' : 'px-4'}`}
+              className={`w-full block bg-surface border border-border rounded-lg py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50 ${trailing ? 'pl-4 pr-28' : 'px-4'}`}
             />
             {trailing && (
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -420,7 +420,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
               disabled={disabled}
               title="Open low-level conversation viewer (raw responses)"
               aria-label="Open debug viewer"
-              className="ml-auto self-center px-2.5 py-2.5 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-xs transition-colors"
+              className="ml-auto px-2.5 py-2.5 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-xs transition-colors"
             >
               <i className="fa-solid fa-bug mr-1"></i>debug
             </button>
