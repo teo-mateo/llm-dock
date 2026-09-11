@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -233,26 +232,29 @@ private fun ThreadContent(
                 title = loaded?.conversation?.title ?: "Conversation",
                 model = loaded?.conversation?.modelRef?.displayName,
                 onBack = onBack,
-                levelChip = loaded?.takeIf { it.reasoningControlVisible }?.let { thread ->
-                    {
-                        ReasoningLevelChip(
-                            level = thread.conversation.reasoningLevel,
-                            stale = thread.reasoningStale,
-                            enabled = thread.canSwitchModel,
-                            pending = thread.reasoningPicker?.writePending == true,
-                            onClick = onOpenReasoningPicker,
-                        )
-                    }
-                },
                 action = {
-                    if (loaded != null) {
-                        IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
-                            Icon(
-                                DesignLabIcons.Cog,
-                                contentDescription = "Chat settings",
-                                tint = colors.fg,
-                                modifier = Modifier.size(21.dp),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // F15 — beside the settings button, in its row, on its axis:
+                        // both are quiet 48 dp header controls, so they read as one
+                        // group instead of a control drifting under the gear.
+                        loaded?.takeIf { it.reasoningControlVisible }?.let { thread ->
+                            ReasoningLevelChip(
+                                level = thread.conversation.reasoningLevel,
+                                stale = thread.reasoningStale,
+                                enabled = thread.canSwitchModel,
+                                pending = thread.reasoningPicker?.writePending == true,
+                                onClick = onOpenReasoningPicker,
                             )
+                        }
+                        if (loaded != null) {
+                            IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
+                                Icon(
+                                    DesignLabIcons.Cog,
+                                    contentDescription = "Chat settings",
+                                    tint = colors.fg,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
                         }
                     }
                 },
@@ -406,16 +408,13 @@ private fun ThreadHeader(
     model: String?,
     onBack: () -> Unit,
     action: @Composable () -> Unit,
-    levelChip: (@Composable () -> Unit)? = null,
 ) {
     val colors = LlmTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
-            // A minimum, not a fixed height: the model row carries the reasoning chip
-            // (F15), whose 48 dp touch target plus a scaled title exceeds 64 dp.
-            .heightIn(min = 64.dp)
+            .height(64.dp)
             .padding(start = 4.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -433,21 +432,19 @@ private fun ThreadHeader(
                 modifier = Modifier.testTag("thread_title"),
             )
             // F04-R3: who is answering stays visible for the whole turn, not
-            // just at the moment it starts. F15 hangs the reasoning level beside
-            // it — the two facts that jointly determine the next answer.
+            // just at the moment it starts. F15's level control sits in the
+            // header's action row rather than here, so this line keeps its full
+            // width even on a service with a long name.
             if (model != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        model,
-                        color = colors.subtle,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false).testTag("thread_model"),
-                    )
-                    levelChip?.invoke()
-                }
+                Text(
+                    model,
+                    color = colors.subtle,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("thread_model"),
+                )
             }
         }
         action()

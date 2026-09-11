@@ -48,11 +48,13 @@ keep describing the service the user just left.
 
 ## F15-R2 · One control, showing the current level and every option (Must)
 
-A chip in the thread header's model row names the axis and the current value —
-`think medium ▾`, or `think default ▾` when nothing is chosen. The axis word is
-required, not decoration: a bare `medium` beside a model name is an unlabelled
-value, and the misreading it invites (a token budget, a temperature) is the one
-this feature must not cause. Tapping it opens a sheet: **"Model default"** first
+A control in the thread header's action row, beside the settings button, names the axis
+and the current value — `[brain] medium ⌄`, or `[brain] default ⌄` when nothing is
+chosen. The axis is named, not decoration: a bare `medium`
+beside a model name is an unlabelled value, and the misreading it invites (a token
+budget, a temperature) is the one this feature must not cause. The glyph says it
+graphically, in the width a word would have spent, and `contentDescription` says it in
+words for TalkBack. Tapping it opens a sheet: **"Model default"** first
 (clears the choice, so nothing is said to the model), then each declared level in
 order.
 Selecting "Model default" sends `null`, not `"off"` — those are different
@@ -63,9 +65,9 @@ choosing and then immediately sending cannot use the old level.
 
 - [x] Option rows are "Model default" + the declared levels, in declaration
       order, with the current value checked.
-- [ ] After the chip redesign: the pill reads as a control (tonal fill, trailing
-      disclosure), the touch target is ≥48 dp, and a 16-character level id
-      ellipsizes inside the chip rather than crowding out the model name.
+- [ ] After the control's redraw: it reads as a control rather than a badge (no fill, a
+      21 dp brain glyph, the value, a disclosure chevron), the touch target is ≥ 48 dp,
+      and a 16-character level id ellipsizes instead of pushing the gear out.
 - [x] Picking a level, then reopening the sheet, shows it selected.
 - [x] Picking "Model default" on a thread that had a level leaves the chip
       reading `default` after a reload — i.e. the clear really reached the
@@ -186,10 +188,12 @@ is why `ik_llamacpp`, `tabbyapi`, `ds4` and OpenRouter send nothing.
   selector in the composer's control rail (`ReasoningLevelSelect.jsx`). The
   phone's composer row already holds attach + field + send on a 411 dp screen,
   and a fourth element competes with the text field at exactly the viewport that
-  can least afford it. The header already carries the other fact that jointly
-  determines an answer — the model name, kept visible for the whole turn per
-  F04-R3 — so the two sit side by side, and the control stays one tap instead of
-  three. Parity with web is behavioural (same options, same meaning, same
+  can least afford it. The header is where the two facts that jointly determine an
+  answer belong, and the control joins the header's *action* row rather than the line
+  under the title: it is then a second quiet 48 dp control on the gear's own axis
+  instead of a control drawn under the title sitting lower than a centred gear, and the
+  model line keeps its full width for F04-R3. Either way the control stays one tap
+  instead of three. Parity with web is behavioural (same options, same meaning, same
   staleness rules), not positional.
 - **Not in the settings sheet.** That sheet holds durable per-thread settings
   (prompt, tools, text size); which rung the *next answer* uses is turn-adjacent
@@ -220,27 +224,31 @@ is why `ik_llamacpp`, `tabbyapi`, `ds4` and OpenRouter send nothing.
   `StreamingTurn`; a turn is discarded at its terminal and refetched, which made
   the notice readable only while the answer happened to be streaming. It is now
   cleared by the next send, like the web client's `runNotice`.
-- **The chip names its axis (`think medium ⌄`) and is drawn like the settings button,
-  not like a badge.** The first implementation drew an outlined box on `sunken` with a
-  bare level id in blue mono. Three things were wrong: it was the only outlined chip in
-  the app (`DlChip`, the foundation screen's `Chip` and the engine badges are all
+- **The control names its axis (`[brain] medium ⌄`) and is drawn like the settings
+  button, not like a badge.** The first implementation drew an outlined box on `sunken`
+  with a bare level id in blue mono. Three things were wrong: it was the only outlined
+  chip in the app (`DlChip`, the foundation screen's `Chip` and the engine badges are all
   borderless tinted pills), so border-plus-recessed-fill read as a *disabled text
   field*; it carried no affordance that it opens anything, though the app already has a
   disclosure idiom in the reasoning block (F04-R4); and a lone `medium` states a value
-  without stating what it measures. The first fix gave it the app's tonal pill — and
-  that looked right in isolation but wrong beside the header's gear, because a visible
-  rectangle in the model row sits lower than a control centred against the whole header.
-  It is therefore a quiet control now: no fill, no border, one 48 dp invisible target,
-  `think` in `subtle`, the value in mono coloured by state (muted unset, accent chosen,
-  amber stranded), a trailing `ChevronDown`, the header's own ripple. Behaviour is
-  untouched: same options, same order, same staleness rules, same `thread_reasoning_chip`
-  tag and pure helpers.
-- **`ThreadHeader` is `heightIn(min = 64.dp)`, not `height(64.dp)`.** The header had a
-  fixed height from before this row existed; a 48 dp touch target on the model row plus
-  a title at 1.5× font scale does not fit inside 64 dp, so the header now takes 64 dp
-  as a floor and grows. The alternative — a 24 dp target to keep the header exactly 64 —
-  fails M3's target size for a chip, which is the one constraint here that is not a
-  style preference.
+  without stating what it measures. The first fix gave it the app's tonal pill, which
+  looked right alone and wrong in the header: any rectangle drawn on the model line sits
+  lower than a gear centred against the whole header. It is therefore a control of the
+  gear's family — no fill, no border, one 48 dp invisible target, a brain glyph and the
+  value in mono both coloured by state (muted unset, accent chosen, amber stranded), a
+  trailing `ChevronDown`, the header's own ripple — and it sits in the action row beside
+  the gear rather than under the title, which is what makes the pair read as one group.
+  The glyph is `DesignLabIcons.Brain`, drawn and rasterised at its shipped size rather
+  than pulled from a dependency (this app vendors its icon set) and drawn at the cog's
+  own 21 dp, so the two controls weigh the same in the row.
+  Behaviour is untouched: same options, same order, same staleness rules, same
+  `thread_reasoning_chip` tag and pure helpers.
+- **`ThreadHeader`'s frame is untouched — still `height(64.dp)`.** The revision that put
+  the control on the model line needed the header to grow past 64 dp to hold a 48 dp
+  target under a title, and the header became `heightIn(min = 64.dp)` for it. Moving the
+  control into the action row removed that need: 48 dp already fits inside 64 dp, the
+  header is back to its fixed height, and the model line gets the width the control took
+  from it. Recorded because the intermediate state is what the earlier commits show.
 - **The level's full value survives ellipsis.** At `widthIn(max = 128.dp)` a 16-character
   id is cut off on screen; `contentDescription` ("Reasoning level: <id>") and the sheet
   both carry it in full, so the ellipsis costs pixels and nothing else.
@@ -307,7 +315,7 @@ What the pass caught, that unit tests could not have:
 |---------|-------------|-----------------|
 | F15 | R1's stopped-service half | Checking it means stopping a container, which this session's rules forbid; the map is keyed by service name regardless of `running`, and the server resolves the ladder for stopped services too (the web picker reads the unfiltered list for the same reason) |
 | F15 | R8's wire-level absence | No proxy in place to capture the outgoing body. The client has no code path that could add a reasoning field: `SendMessageRequestDto` is untouched, and the level is only ever written to the conversation (unit) |
-| F15 | R2's chip appearance after the redesign | The behaviour is unchanged and unit-covered, but the pill was redrawn (tonal fill, axis word, disclosure chevron, 48 dp target) and `ThreadHeader` became `heightIn`. Needs a fresh device pass for the four states — unset, chosen, stale, pending — in both themes, at 1.5× font scale, and on a service with a long declared id, to confirm the model name survives |
+| F15 | R2's control after the redraw | Behaviour unchanged and unit-covered; the control was redrawn (21 dp brain glyph, disclosure chevron, 48 dp invisible target, no fill) and moved to the header's action row. Device-checked light and dark on a chosen level and, unbidden, on a stranded one, at the cog's size. Still owed: unset/`default` and pending states on device, 1.5× font scale, and a service whose longest declared id hits the 128 dp cap |
 
 **Suite run.** The 543-test figure is a clean-run figure. `ThreadToolsTest` fails
 intermittently in a full-suite run on this branch *and* on its base (reproduced on

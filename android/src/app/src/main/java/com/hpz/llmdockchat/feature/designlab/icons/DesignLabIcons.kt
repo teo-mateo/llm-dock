@@ -396,4 +396,42 @@ object DesignLabIcons {
             close()
         }
     }
+    /**
+     * The reasoning-level axis (F15): what the level value in the thread header's
+     * action row measures. Drawn here because this app vendors its icon set — there is
+     * no material-icons artefact in the build.
+     *
+     * Filled, and foldless, both because it renders beside a 21 dp cog. Stroked versions
+     * were drawn first and rasterised at the size they ship: interior folds merge into
+     * one grey lump there, and a stroked outline of two lobes reads as a cloud.
+     *
+     * What makes it a brain at 21 dp, each point arrived at by rasterising a candidate and
+     * looking rather than by reasoning about it: five gyri per hemisphere, since four
+     * scallops read as a bean and six close up into a gear; the inner edge stops short of
+     * the outer curve, so the pair open the notch at the top centre that a full-length
+     * midline flattens away; lobes are arcs of 1.4–1.7 units of bulge — enough to be seen,
+     * shallow enough not to come to a point, which is what a semicircle does; and radius is
+     * chosen per chord rather than shared, because one radius either flattens the long arcs
+     * or spikes the short ones. Radii all stay clear of c/2, so nothing needs scaling. The
+     * glyph fills ~18.4 x 16 of the 24 unit box, which puts its drawn size within a dp of
+     * the cog's at the same `Icon` size. Filled rather than lined also matches that cog.
+     */
+    val Brain: ImageVector by lazy {
+        fillIcon("Brain") {
+            moveTo(11f, 4f)
+            arcTo(2.69f, 2.69f, 0f, false, false, 6.2f, 4.4f)
+            arcTo(2.83f, 2.83f, 0f, false, false, 2.8f, 8.2f)
+            arcTo(2.57f, 2.57f, 0f, false, false, 3.6f, 12.8f)
+            arcTo(2.3f, 2.3f, 0f, false, false, 5f, 16.8f)
+            arcTo(4.25f, 4.25f, 0f, false, false, 11f, 20f)
+            close()
+            moveTo(13f, 4f)
+            arcTo(2.69f, 2.69f, 0f, false, true, 17.8f, 4.4f)
+            arcTo(2.83f, 2.83f, 0f, false, true, 21.2f, 8.2f)
+            arcTo(2.57f, 2.57f, 0f, false, true, 20.4f, 12.8f)
+            arcTo(2.3f, 2.3f, 0f, false, true, 19f, 16.8f)
+            arcTo(4.25f, 4.25f, 0f, false, true, 13f, 20f)
+            close()
+        }
+    }
 }

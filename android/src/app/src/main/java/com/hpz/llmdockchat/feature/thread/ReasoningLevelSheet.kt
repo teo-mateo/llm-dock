@@ -181,33 +181,36 @@ private fun ReasoningOptionRow(
 }
 
 /**
- * The header chip. F15's *Deviations* puts it here rather than in the composer's
- * control rail as on the desktop; what stays identical to web is the behaviour.
+ * The header's reasoning control, and F15's whole UI at rest. F15's *Deviations*
+ * puts it in the header rather than the composer's control rail as on the desktop;
+ * within the header it belongs to the action row, beside the settings button — two
+ * quiet 48 dp controls with nothing drawn behind either, sharing one axis. Hanging it
+ * off the model name, as an earlier revision did, left a control drawn under the title
+ * sitting visibly lower than a gear centred against the whole header, and the two
+ * revisions before that (an outlined box on `sunken`, then a tinted pill) each put a
+ * second rectangle where the header has one.
  *
- * Reads `think medium ⌄`, not `medium`. A bare level id in a header is an unlabelled
+ * Reads `[brain] medium ⌄`, not `medium`. A bare level id in a header is an unlabelled
  * value, and the misreading it invites is the one this feature cannot allow — that
  * the word is a token budget or a temperature, when it is one token of a model's own
- * vocabulary. `think` is the axis, in the sheet's own wording; the value follows in
+ * vocabulary. So the axis is named, in [DesignLabIcons.Brain], and the value follows in
  * mono because it is the server's string verbatim; the chevron is the disclosure the
  * reasoning block in the message list already uses (F04-R4), so the control says it
- * opens rather than that it reports.
+ * opens rather than that it reports. A word would have said the same thing and cost the
+ * control a third of its width in the one row that has no width to spare; TalkBack gets
+ * the words anyway, through [contentDescription].
  *
- * Built like the settings button across from it, not like a badge: no fill, no border,
- * one 48 dp invisible target around quiet content, the same ripple the header's own
- * icon button gets. The first version drew an outlined box on `sunken`, the second a
- * tinted pill; both were a visible rectangle sitting in the model row while the gear
- * sat centred against the whole header, so the pair read as misaligned — and the
- * outlined one, the only outlined chip in the app, read as a disabled text field.
- * State is carried by colour instead: muted while nothing is chosen, accent once
- * something is, amber when the value the server holds is no longer offered (F15-R3),
- * with [pending] dimming it while the write is in flight — and the sheet stays open
- * until that write lands, so choosing and immediately sending can never send the old
- * level (F15-R2's last criterion).
+ * State is colour: muted while nothing is chosen, accent once something is, amber when
+ * the value the server holds is no longer offered (F15-R3). [pending] dims it mid-write,
+ * and the sheet stays open until that write lands, so choosing and immediately sending
+ * can never send the old level (F15-R2's last criterion).
  *
- * `widthIn(max = 128.dp)` is the constraint this function originally only claimed in
- * prose: an ellipsized level id costs the control, not the model name beside it
- * (F04-R3), and the full value still reaches TalkBack through [contentDescription] and
- * the sheet.
+ * The 48 dp square is the settings button's own footprint, so the pair take up the same
+ * room whether or not a label fills it, and the content carries no trailing padding —
+ * the only gap to the gear is the gear's own inset, so the two read as one group rather
+ * than two buttons sharing a row. `widthIn(max = 128.dp)` caps the label: a
+ * 16-character level id ellipsizes here rather than pushing the gear out of the header,
+ * and the full value still reaches TalkBack through [contentDescription] and the sheet.
  */
 @Composable
 fun ReasoningLevelChip(
@@ -226,6 +229,7 @@ fun ReasoningLevelChip(
     Box(
         Modifier
             .testTag("thread_reasoning_chip")
+            .widthIn(min = 48.dp)
             .heightIn(min = 48.dp)
             .alpha(if (pending) 0.4f else 1f)
             .semantics(mergeDescendants = true) {
@@ -242,15 +246,15 @@ fun ReasoningLevelChip(
         Row(
             Modifier
                 .widthIn(max = 128.dp)
-                .padding(horizontal = 6.dp),
+                .padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Text(
-                "think",
-                color = colors.subtle,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
+            Icon(
+                DesignLabIcons.Brain,
+                contentDescription = null,
+                tint = valueColor,
+                modifier = Modifier.size(21.dp),
             )
             Text(
                 level ?: "default",
