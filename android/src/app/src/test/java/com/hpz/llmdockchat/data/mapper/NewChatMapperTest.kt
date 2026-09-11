@@ -1,7 +1,9 @@
 package com.hpz.llmdockchat.data.mapper
 
 import com.hpz.llmdockchat.core.net.ApiJson
+import com.hpz.llmdockchat.data.dto.OpenRouterModelDto
 import com.hpz.llmdockchat.data.dto.ServiceDto
+import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -74,6 +76,30 @@ class NewChatMapperTest {
     fun `a ladder that is not an array at all reads as no ladder`() {
         assertEquals(emptyList<String>(), decode("""{"name": "vllm-a", "reasoning_levels": "off,low"}""").toDomain().reasoningLevels)
     }
+
+    /**
+     * F15.1: a remote model's ladder reaches the domain through the same parser a
+     * local service's does, which is the whole point of keeping the two wire shapes
+     * alike. The absent case matters as much as the present one: a model OpenRouter
+     * publishes no efforts for must yield an empty ladder, because an empty ladder
+     * is exactly what suppresses the control (F15-R7).
+     */
+    @Test
+    fun `an openrouter entry maps its derived ladder and an absent one maps to empty`() {
+        val withLadder = decodeOr(
+            """{"id":"a/b","label":"A B","reasoning_levels":[{"id":"low","effort":"low"},""" +
+                """{"id":"high","effort":"high"}]}""",
+        ).toDomain()
+        assertEquals(listOf("low", "high"), withLadder.reasoningLevels)
+        assertEquals("A B", withLadder.label)
+
+        val without = decodeOr("""{"id":"a/b","label":"A B"}""").toDomain()
+        assertEquals(emptyList<String>(), without.reasoningLevels)
+        assertEquals(ModelOption.Remote("a/b", "A B", emptyList()), without)
+    }
 }
+
+private fun decodeOr(json: String): OpenRouterModelDto =
+    ApiJson.decodeFromString(OpenRouterModelDto.serializer(), json)
 
 private fun decode(json: String): ServiceDto = ApiJson.decodeFromString(ServiceDto.serializer(), json)

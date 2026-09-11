@@ -86,13 +86,18 @@ fun isReasoningLevelStale(ladder: List<String>, stored: String?): Boolean =
 
 /**
  * The control appears when there is something to choose, or when a value the
- * server still holds needs a way to be seen and cleared (F15-R3). Never on
- * OpenRouter (F15-R8): the server resolves no ladder for an `openrouter:`
- * service and rejects any level written to one, so such a thread can never hold
- * a value either.
+ * server still holds needs a way to be seen and cleared (F15-R3).
+ *
+ * Provider-blind since F15.1. F15 excluded OpenRouter here on the strength of a
+ * server rule that has since changed: an `openrouter:` service used to resolve no
+ * ladder and reject any level written to it, so a remote thread could not hold a
+ * value and the exclusion was load-bearing. OpenRouter publishes its own effort
+ * ladder, llm-dock derives and stores it, and the conversation write path accepts
+ * it — so the ladder alone is now the whole test, and excluding a provider by name
+ * would only hide a control whose data is already on screen.
  */
-fun showsReasoningControl(ladder: List<String>, stored: String?, onOpenRouter: Boolean): Boolean =
-    !onOpenRouter && (ladder.isNotEmpty() || stored != null)
+fun showsReasoningControl(ladder: List<String>, stored: String?): Boolean =
+    ladder.isNotEmpty() || stored != null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

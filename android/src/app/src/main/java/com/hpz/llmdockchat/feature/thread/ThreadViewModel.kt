@@ -20,9 +20,11 @@ import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.model.ManagedPrompt
+import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
+import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import kotlinx.coroutines.CancellationException
@@ -113,6 +115,20 @@ class ThreadViewModel(
     /** The ladder by service name, from the last successful read of `/api/services`. */
     private var ladders: Map<String, List<String>> = emptyMap()
 
+    /**
+     * F15.1: ladders for curated OpenRouter models, keyed by their full service
+     * string (`openrouter:<id>`). Kept apart from [ladders] rather than merged
+     * into it because [updateLadders] replaces that map wholesale — a refresh of
+     * the *local* services must not erase what the settings read found, and the
+     * keys cannot collide since local keys are bare service names. The two are
+     * concatenated only at [mergedLadders], which is the single thing the UI sees.
+     */
+    private var remoteLadders: Map<String, List<String>> = emptyMap()
+
+    /** Both providers as one lookup table; the key is a [com.hpz.llmdockchat.data.model.ModelRef]'s wire value. */
+    private val mergedLadders: Map<String, List<String>>
+        get() = ladders + remoteLadders
+
     /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
     private var composerBeforeEdit: String = ""
     private var attachmentsBeforeEdit: List<String> = emptyList()
@@ -167,7 +183,7 @@ class ThreadViewModel(
             attachments = (current?.attachments.orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
             actionError = current?.actionError,
-            laddersByService = ladders,
+            laddersByService = mergedLadders,
         )
     }
 
@@ -184,17 +200,40 @@ class ThreadViewModel(
      */
     private suspend fun refreshLadders() {
         servicesRepository.list().getOrNull()?.let(::updateLadders)
+        // Gated on the conversation being remote, so a local thread issues exactly
+        // the requests it issued before this feature existed and a remote one pays
+        // one read. The OR list is not on the service stream, so this endpoint is
+        // its only refresh point besides [openModelPicker].
+        if (loaded()?.conversation?.modelRef is ModelRef.OpenRouter) {
+            openRouterModelsRepository.list().getOrNull()?.let { updateRemoteLadders(it.models) }
+        }
     }
 
     /**
-     * The one place a ladder map is written, whether it arrived from the one-shot
-     * `GET /api/services` or from the picker's live stream: both carry a complete
-     * service list, so both replace the map wholesale and neither can half-cover
-     * the other (F15-R1).
+     * The one place the **local** ladder map is written, whether it arrived from
+     * the one-shot `GET /api/services` or from the picker's live stream: both
+     * carry a complete service list, so both replace the map wholesale and neither
+     * can half-cover the other (F15-R1). Remote ladders have their own map for
+     * exactly this reason (F15.1) — see [updateRemoteLadders].
      */
     private fun updateLadders(services: List<ServiceSummary>) {
         ladders = services.associate { it.name to it.reasoningLevels }
-        loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
+        publishLadders()
+    }
+
+    /**
+     * F15.1: the curated OpenRouter list is the remote ladder's only source. Replaced
+     * wholesale like the local map, so a model dropped from the shortlist loses its
+     * ladder rather than keeping one it can no longer be selected with.
+     */
+    private fun updateRemoteLadders(models: List<ModelOption.Remote>) {
+        remoteLadders = models.associate { it.ref.wireValue to it.reasoningLevels }
+        publishLadders()
+    }
+
+    /** Publishes the merged map, so no screen has to know a ladder came from a different endpoint. */
+    private fun publishLadders() {
+        loaded()?.let { _state.value = it.copy(laddersByService = mergedLadders) }
     }
 
     /** Opens the level sheet and refreshes the ladder on the way in (F15-R5). */
@@ -416,6 +455,11 @@ class ThreadViewModel(
         modelPickerJob?.cancel()
         modelPickerJob = viewModelScope.launch {
             val openRouter = openRouterModelsRepository.list().getOrNull()
+            // F15.1: this read already happens for the switch list, so take the
+            // ladders from it rather than issuing a second one. Switching to a
+            // remote model then lands with its ladder already in the map, which is
+            // the same guarantee the local picker gives.
+            openRouter?.let { updateRemoteLadders(it.models) }
             loaded()?.let {
                 _state.value = it.copy(
                     modelPicker = it.modelPicker?.copy(

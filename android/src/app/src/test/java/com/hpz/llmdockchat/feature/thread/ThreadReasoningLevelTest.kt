@@ -132,6 +132,14 @@ class ThreadReasoningLevelTest {
     private fun services(vararg rows: String) =
         enqueue("""{"services":[${rows.joinToString(",")}],"total":${rows.size}}""")
 
+    /** F15.1: the curated-list read that carries remote ladders. */
+    private fun orSettings(vararg rows: String) =
+        enqueue("""{"configured":true,"current":[${rows.joinToString(",")}]}""")
+
+    private fun orLadderRow(id: String, vararg ids: String) =
+        """{"id":"$id","label":"$id","reasoning_levels":[""" +
+            ids.joinToString(",") { """{"id":"$it","effort":"$it"}""" } + "]}"
+
     private fun viewModel(): ThreadViewModel = ViewModelProvider.create(
         store,
         viewModelFactory {
@@ -218,17 +226,62 @@ class ThreadReasoningLevelTest {
         assertEquals(afterLoad + 4, server.requestCount)
     }
 
-    /** F15-R8: an OpenRouter thread resolves no ladder and shows no control. */
+    /**
+     * F15-R8 was: an OpenRouter thread resolves no ladder and shows no control.
+     * That held while the server resolved no ladder for an `openrouter:` service and
+     * rejected any level written to one. #132 made the server derive ladders from
+     * OpenRouter's own `supported_efforts` and accept them on the write path, so the
+     * rule is inverted rather than deleted — and the two halves the old test
+     * conflated are now tested apart: a declared ladder means a control, and an
+     * undeclared one still means none (F15-R7).
+     */
     @Test
-    fun `an openrouter thread shows no control even when the snapshot is full of ladders`() = threadTest {
+    fun `an openrouter thread resolves its ladder from the curated list`() = threadTest {
         conversation("openrouter:anthropic/claude-sonnet-5")
         services(ladderRow("vllm-a", "off", "low"))
+        orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high", "max"))
         val viewModel = openedThread()
 
-        val state = viewModel.state.value as ThreadUiState.Loaded
+        val state = viewModel.awaitState { it.ladder.isNotEmpty() }
+
+        assertEquals(listOf("low", "high", "max"), state.ladder)
+        assertEquals(true, state.reasoningControlVisible)
+        // The local snapshot's ladder must not leak onto a remote thread: the lookup
+        // key is the whole service string, so `vllm-a`'s ladder is simply absent here.
+        assertEquals(false, state.ladder.contains("off"))
+    }
+
+    /** F15-R7 on a remote model: nothing published, so nothing offered. */
+    @Test
+    fun `an openrouter model with no published ladder shows no control`() = threadTest {
+        conversation("openrouter:anthropic/claude-haiku-4.5")
+        services(ladderRow("vllm-a", "off", "low"))
+        orSettings("""{"id":"anthropic/claude-haiku-4.5","label":"Claude Haiku 4.5"}""")
+        val viewModel = openedThread()
+
+        val state = viewModel.awaitLoaded()
 
         assertEquals(emptyList<String>(), state.ladder)
         assertEquals(false, state.reasoningControlVisible)
+    }
+
+    /** F15-R3 on a remote model: a level the ladder no longer declares reads amber. */
+    @Test
+    fun `a remote level the ladder no longer declares reads stale`() = threadTest {
+        conversation("openrouter:anthropic/claude-sonnet-5", reasoningLevel = "minimal")
+        services(ladderRow("vllm-a", "off"))
+        orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high"))
+        val viewModel = openedThread()
+        // Await the ladder, not the staleness: a stored level reads stale against an
+        // *empty* ladder too, so `reasoningStale` alone cannot tell "not loaded yet"
+        // from "stranded". Same window F15 already accepts for local services, where
+        // the ladder likewise arrives after the first frame.
+        val state = viewModel.awaitState { it.ladder.isNotEmpty() }
+
+        assertEquals(listOf("low", "high"), state.ladder)
+        assertEquals(true, state.reasoningStale)
+        // Visible precisely because it is stranded: the chip is how it gets cleared.
+        assertEquals(true, state.reasoningControlVisible)
     }
 
     /** F15-R5: a ladder delta on the picker's live stream reaches the thread. */

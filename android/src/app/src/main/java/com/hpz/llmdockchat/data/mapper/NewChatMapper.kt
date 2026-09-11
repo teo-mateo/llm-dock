@@ -30,4 +30,8 @@ fun McpServerDto.toDomain(): McpServerInfo =
 
 /** Falls back to the id when [OpenRouterModelDto.label] is blank — it's optional server-side. */
 fun OpenRouterModelDto.toDomain(): ModelOption.Remote =
-    ModelOption.Remote(modelId = id, label = label.ifBlank { id })
+    ModelOption.Remote(
+        modelId = id,
+        label = label.ifBlank { id },
+        reasoningLevels = parseReasoningLevels(reasoningLevels),
+    )

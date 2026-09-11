@@ -858,6 +858,13 @@ appear in the chat pickers.
     enforcement points, mirroring the local invariant that the ladder offered and the
     ladder enforced cannot drift. A resolution carries `template_type` and
     `reasoning_levels` together for this reason: either alone sends nothing, silently.
+  - The Android client offers these ladders too (F15.1), reading them off this same payload —
+    it has no other source, since the service stream carries no remote models. `ThreadViewModel`
+    keeps remote ladders in a map of their own and concatenates the two only when publishing
+    state, because the local map is replaced wholesale by every `/api/services` read and must
+    not erase what the settings read found. `ModelRef.wireValue` is the shared key: the service
+    name for a local model, `openrouter:<id>` for a remote one, which is why the lookup in
+    `ThreadState` has no provider branch.
   - `reasoning_details` is **not** stored or replayed. Multi-turn conversations with
     models that return encrypted reasoning may lose thinking continuity; that behaviour
     predates this feature (nothing in llm-dock ever sent it) and is characterised, not

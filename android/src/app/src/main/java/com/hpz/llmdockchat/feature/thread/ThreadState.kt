@@ -6,9 +6,9 @@ import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
-import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
+import com.hpz.llmdockchat.data.model.wireValue
 
 /** What the user typed, shown before the server has a message id for it. */
 data class PendingUserMessage(val content: String, val images: List<String> = emptyList())
@@ -203,22 +203,23 @@ sealed interface ThreadUiState {
     ) : ThreadUiState {
 
         /**
-         * The current service's ladder (F15-R1). Looked up by the *local*
-         * service name only, so an OpenRouter thread resolves to empty whatever
-         * the map holds (F15-R8).
+         * The current model's ladder (F15-R1), looked up by the model reference's
+         * wire value — which is the service name for a local model and
+         * `openrouter:<id>` for a remote one. One lookup for both providers since
+         * F15.1, because the view model already keys its merged map that way; a
+         * provider branch here would be a second, divergent answer to the same
+         * question.
          */
         val ladder: List<String>
-            get() = (conversation.modelRef as? ModelRef.Local)?.serviceName
-                ?.let { laddersByService[it] }
-                .orEmpty()
+            get() = laddersByService[conversation.modelRef.wireValue].orEmpty()
 
-        /** F15-R3: a stored level the current service no longer declares. */
+        /** F15-R3: a stored level the current model no longer declares. */
         val reasoningStale: Boolean
             get() = isReasoningLevelStale(ladder, conversation.reasoningLevel)
 
-        /** F15-R3/R8: whether the chip is composed at all. */
+        /** F15-R3: whether the chip is composed at all. */
         val reasoningControlVisible: Boolean
-            get() = showsReasoningControl(ladder, conversation.reasoningLevel, conversation.modelRef is ModelRef.OpenRouter)
+            get() = showsReasoningControl(ladder, conversation.reasoningLevel)
 
 
         /**

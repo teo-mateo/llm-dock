@@ -71,13 +71,18 @@ class ReasoningLevelSheetTest {
         assertFalse(isReasoningLevelStale(listOf("low", "off"), "off"))
     }
 
-    /** F15-R3 + F15-R8: visibility of the control, in the four cases that matter. */
+    /**
+     * F15-R3 as amended by F15.1: a ladder or a stored level is the whole test.
+     * F15 added a fourth argument here to hide OpenRouter; the predicate no longer
+     * has one, so the same inputs cannot get a different answer per provider.
+     */
     @Test
-    fun `the control shows only with a ladder or a stored level, and never on OpenRouter`() {
-        assertTrue(showsReasoningControl(listOf("low"), null, onOpenRouter = false))
-        assertTrue(showsReasoningControl(emptyList(), "low", onOpenRouter = false))
-        assertFalse(showsReasoningControl(emptyList(), null, onOpenRouter = false))
-        assertFalse(showsReasoningControl(listOf("low"), "low", onOpenRouter = true))
+    fun `the control shows only with a ladder or a stored level`() {
+        assertTrue(showsReasoningControl(listOf("low"), null))
+        assertTrue(showsReasoningControl(emptyList(), "low"))
+        assertFalse(showsReasoningControl(emptyList(), null))
+        // The case F15 hid, now reachable: a remote model that does declare levels.
+        assertTrue(showsReasoningControl(listOf("low", "high"), "low"))
     }
 
     @Test
