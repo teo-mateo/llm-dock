@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fetchAPI } from '../api'
-import useServicesSSE from '../hooks/useServicesSSE'
 
 let nextParamId = 0
 
@@ -39,8 +38,6 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
   const [commandPreviewOpen, setCommandPreviewOpen] = useState(false)
 
   const initialized = useRef(false)
-
-  const { refresh: refreshServicesSSE } = useServicesSSE()
 
   // Initialize form from config
   useEffect(() => {
@@ -110,10 +107,9 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
       })
 
       const wasRunning = runtime?.status === 'running'
-      // Chat reads levels off the service payload, not the config fetch, so
-      // pull a fresh snapshot — otherwise the picker keeps offering the old
-      // ladder until the page reloads.
-      refreshServicesSSE()
+      // Nothing to pull here: the PUT broadcasts the new ladder as an SSE
+      // metadata delta, so every consumer's service payload — chat's picker
+      // included — updates on its own connection.
       onSaved(wasRunning
         ? 'Configuration saved. Container will be recreated.'
         : 'Configuration saved.'
@@ -123,7 +119,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     } finally {
       setSaving(false)
     }
-  }, [config, port, apiKey, params, reasoningLevels, serviceName, runtime, onSaved, onError, refreshServicesSSE])
+  }, [config, port, apiKey, params, reasoningLevels, serviceName, runtime, onSaved, onError])
 
   const handleUseGlobalKey = useCallback(async () => {
     setSettingGlobalKey(true)

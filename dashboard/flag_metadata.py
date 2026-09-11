@@ -1719,16 +1719,6 @@ def validate_service_config(
         if not levels_ok:
             errors.extend(level_errors)
 
-    # Optional reasoning-level declaration ("off,low,medium"). Validated here
-    # rather than per template type because the grammar is engine-independent —
-    # only the request mapping knows about engines. `""` is a valid clear.
-    # A key that isn't in the payload is not judged: PUT merges into the stored
-    # entry, so a field the client omitted survives untouched.
-    if "reasoning_levels" in config:
-        levels_valid, level_errors = validate_levels(config["reasoning_levels"])
-        if not levels_valid:
-            errors.extend(level_errors)
-
     # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
     # so an empty-valued bool param would render `--flag` and crash at startup.
     if template_type == "tabbyapi":

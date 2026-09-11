@@ -304,7 +304,7 @@ describe('ChatArea — reasoning level', () => {
     mockUpdateConversation.mockReset()
   })
 
-  function renderConversationExtra(conversation, onReloadConversation) {
+  function renderConversationExtra(conversation, onReloadConversation, extra = {}) {
     return render(
       <ChatArea
         conversation={conversation}
@@ -316,9 +316,29 @@ describe('ChatArea — reasoning level', () => {
         streaming={false}
         onSend={() => {}}
         onReloadConversation={onReloadConversation}
+        {...extra}
       />
     )
   }
+
+  // The server drops a stored level the selected model stopped offering and
+  // sends no reasoning field at all. That is invisible in the answer, so the
+  // note it puts on run_started must reach the screen beside the picker.
+  it('shows the server note about a level this run ignored', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'low',
+    }, undefined, { runNotice: "Reasoning level 'low' is not offered by this model and was ignored" })
+    expect(screen.getByText(/is not offered by this model and was ignored/)).toBeTruthy()
+  })
+
+  it('shows no note for a run that dropped nothing', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'low',
+    })
+    expect(screen.queryByText(/not offered by this model/)).toBeNull()
+  })
 
   it('shows the picker with the conversation and its stored level', () => {
     renderConversationExtra({

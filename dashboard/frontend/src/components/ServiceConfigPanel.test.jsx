@@ -2,14 +2,20 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import ServiceConfigPanel from './ServiceConfigPanel'
 
-const { fetchAPIMock, refreshMock } = vi.hoisted(() => ({
+const { fetchAPIMock, sseHookCalls } = vi.hoisted(() => ({
   fetchAPIMock: vi.fn(),
-  refreshMock: vi.fn(),
+  sseHookCalls: { count: 0 },
 }))
 
 vi.mock('../api', () => ({ fetchAPI: (...a) => fetchAPIMock(...a) }))
+// The panel must not subscribe: it renders nothing off the service list, and
+// each useServicesSSE() call is its own EventSource. Counting calls pins the
+// absence rather than mocking the hook's return value.
 vi.mock('../hooks/useServicesSSE', () => ({
-  default: () => ({ services: [], loading: false, error: null, connected: true, refresh: refreshMock }),
+  default: () => {
+    sseHookCalls.count += 1
+    return { services: [], loading: false, error: null, connected: true, refresh: vi.fn() }
+  },
 }))
 
 const BASE = {
@@ -42,7 +48,7 @@ function input() {
 afterEach(() => {
   cleanup()
   fetchAPIMock.mockReset()
-  refreshMock.mockReset()
+  sseHookCalls.count = 0
 })
 
 describe('ServiceConfigPanel reasoning levels', () => {
@@ -86,14 +92,20 @@ describe('ServiceConfigPanel reasoning levels', () => {
     expect(body.reasoning_levels).toBe('')
   })
 
-  it('refreshes the service snapshot so chat sees the new ladder', async () => {
+  it('opens no services stream of its own, before or after saving', async () => {
+    // The ladder reaches chat as the SSE metadata delta of the PUT itself. A
+    // refresh() here only ever reopened a second /services/stream whose state
+    // nothing in this panel rendered, while another already-open tab kept
+    // showing the old ladder.
     setup({ ...BASE, reasoning_levels: 'off' })
+    expect(sseHookCalls.count).toBe(0)
     fireEvent.change(input(), { target: { value: 'off,low' } })
     fireEvent.click(screen.getByRole('button', { name: /^Save/ }))
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled())
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalled())
+    expect(sseHookCalls.count).toBe(0)
   })
 
-  it('does not refresh the snapshot when the server rejects the grammar', async () => {
+  it('opens no services stream when the server rejects the grammar', async () => {
     fetchAPIMock.mockReset()
     fetchAPIMock.mockRejectedValue(new Error('Validation failed'))
     const onError = vi.fn()
@@ -110,6 +122,6 @@ describe('ServiceConfigPanel reasoning levels', () => {
     fireEvent.change(input(), { target: { value: 'low:512' } })
     fireEvent.click(screen.getByRole('button', { name: /^Save/ }))
     await waitFor(() => expect(onError).toHaveBeenCalled())
-    expect(refreshMock).not.toHaveBeenCalled()
+    expect(sseHookCalls.count).toBe(0)
   })
 })

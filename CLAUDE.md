@@ -575,16 +575,26 @@ construction all call it, so they cannot disagree.
 - **Exposure**: `get_docker_services()` parses it and puts the list
   (`[{"id": "low", "effort": "low"}]`, `[]` when unset) on every service payload,
   in both branches — feeding `GET /api/services`, the SSE snapshot, and therefore
-  `useServicesSSE`/`useRunningServices` with no extra frontend plumbing. The
-  config panel edits the raw string from `GET /api/services/<name>`.
+  the chat picker with no extra frontend plumbing. The config panel edits the raw
+  string from `GET /api/services/<name>`, and `PUT /api/services/<name>` broadcasts
+  the parsed list as an SSE `metadata-changed` delta (same event `favorite` uses),
+  so an edit reaches an already-open chat tab without a refetch — a `refresh()`
+  call in the panel would only refresh the panel. The picker reads the unfiltered
+  service list (`useServicesSSE`), not `useRunningServices`: the server accepts a
+  level for a stopped service, so a status filter would hide the control on the
+  conversations that have one.
 - **Selection**: per-conversation `conversations.reasoning_level` (nullable,
   added in `chat/db.py:_migrate`). Stores the id only, so editing a ladder never
   migrates conversations. `NULL` = "say nothing to the model" = today's request;
   **not** `"off"`, which is an active instruction.
 - **Two enforcement points** (deliberate): the conversation write paths reject a
-  level the service doesn't declare, and `_effective_reasoning_level()` re-checks
-  at run creation, dropping it for that run and reporting
-  `reasoning_level_note` on the `run_started` frame. The stored value is never
+  level the service doesn't declare (400 with `code: "invalid_reasoning_level"`,
+  which is what the composer's retry-on-level-loss branches on — never the prose),
+  and `_effective_reasoning_level()` re-checks at run creation, dropping it for
+  that run and reporting `reasoning_level_note` on the `run_started` frame. That
+  note has a consumer: `useChat` records it as `runNotice` and `ChatArea` renders
+  it above the composer, because a dropped level is otherwise indistinguishable
+  from a model that chose not to think. The stored value is never
   rewritten — switching the model back restores the choice.
 - **Wire mapping** (`request_fields`): `llamacpp` → `reasoning_effort` (plus
   `chat_template_kwargs.enable_thinking: false` for `off`); `vllm` →

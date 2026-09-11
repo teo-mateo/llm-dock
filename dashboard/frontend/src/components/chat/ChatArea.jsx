@@ -37,6 +37,7 @@ export default function ChatArea({
   artifacts,
   streamingArtifacts,
   streamingParseWarning,
+  runNotice,
   error,
   cancelling,
   runReady,
@@ -311,6 +312,17 @@ export default function ChatArea({
           streamingParseWarning={streamingParseWarning}
           activeCritiqueId={critiqueTarget}
         />
+
+        {/* Something this run was told to do and was not: today a reasoning level
+            the selected model stopped offering. Server-phrased, shown next to the
+            control that named the level — a silently dropped level looks exactly
+            like a model that chose not to think. */}
+        {runNotice && (
+          <div className="mx-4 mb-2 px-3 py-2 bg-warning-subtle border border-warning rounded text-xs text-warning-fg flex items-start gap-2">
+            <i className="fa-solid fa-circle-info mt-0.5"></i>
+            <span>{runNotice}</span>
+          </div>
+        )}
 
         {/* Input */}
         <ChatInput

@@ -68,6 +68,21 @@ def test_malformed_declaration_is_rejected_naming_the_field():
     assert any("budget" in e for e in errors)
 
 
+def test_one_violation_produces_exactly_one_error():
+    """A single bad declaration must be reported once.
+
+    The rejection used to be duplicated by two identical blocks in
+    validate_service_config, and every assertion here was any(...), which is
+    the exact shape that hides a duplicate: the API echoes the same line twice
+    in `details` and every assertion still passed.
+    """
+    for raw in ("low:512", "Ultra", "a,b,c,d,e,f,g,h,i"):
+        valid, errors = validate_service_config("llamacpp", _llamacpp_cfg(reasoning_levels=raw))
+        assert not valid, raw
+        level_errors = [e for e in errors if "reasoning_levels" in e]
+        assert len(level_errors) == 1, (raw, errors)
+
+
 def test_bogus_declaration_is_rejected_for_vllm_too():
     valid, errors = validate_service_config("vllm", _vllm_cfg(reasoning_levels="Ultra"))
     assert not valid
@@ -183,13 +198,22 @@ def test_payload_carries_parsed_levels_in_both_branches(monkeypatch):
     assert all(s["status"] == "not-created" for s in services.values())
 
 
-def test_garbage_stored_value_degrades_to_empty_and_warns(monkeypatch, caplog):
+def test_garbage_stored_value_degrades_to_empty_and_warns_once(monkeypatch, caplog):
     entries = {"vllm-a": {"api_key": "k", "template_type": "vllm", "reasoning_levels": "low:512"}}
+    import docker_utils
+
+    monkeypatch.setattr(docker_utils, "_level_warned", set())
     with caplog.at_level("WARNING"):
         services = _payload_for(monkeypatch, entries, ["vllm-a"])
-    assert services["vllm-a"]["reasoning_levels"] == []
-    assert any("vllm-a" in r.getMessage() and "reasoning_levels" in r.getMessage()
-               for r in caplog.records)
+        assert services["vllm-a"]["reasoning_levels"] == []
+        assert any("vllm-a" in r.getMessage() and "reasoning_levels" in r.getMessage()
+                   for r in caplog.records)
+        # This runs on every payload read, so an invalid entry must not log once
+        # per /api/services request and per SSE reconnect.
+        caplog.clear()
+        _payload_for(monkeypatch, entries, ["vllm-a"])
+        _payload_for(monkeypatch, entries, ["vllm-a"])
+        assert [r for r in caplog.records if "reasoning_levels" in r.getMessage()] == []
 
 
 def test_resolve_service_exposes_engine_and_levels(monkeypatch):
@@ -306,6 +330,66 @@ def test_put_omitting_the_key_keeps_it_and_empty_string_clears(api):
     assert stored["reasoning_levels"] == ""
     # The merge preserves what the PUT body didn't mention.
     assert stored["favorite"] is True
+
+
+def _captured_events(monkeypatch):
+    """Collect what the routes broadcast on the services SSE stream."""
+    import services as services_pkg
+
+    events = []
+    monkeypatch.setattr(services_pkg.event_manager, "emit", events.append)
+    return events
+
+
+def test_put_broadcasts_the_ladder_to_every_sse_consumer(api, monkeypatch):
+    """The ladder must reach the other tab, not just the config form.
+
+    Chat reads levels off the service payload, and run creation drops a level the
+    service no longer declares, so a save that updated only this browser left the
+    composer offering a level the server then ignored. Broadcasting inside the PUT
+    is what closes that; the panel deliberately opens no stream of its own.
+    """
+    events = _captured_events(monkeypatch)
+    assert api.post("/api/services", json=_vllm_cfg(reasoning_levels="off,low"),
+                    headers=_headers()).status_code == 201
+    events.clear()
+
+    assert api.put("/api/services/vllm-qwen38", json=_vllm_cfg(reasoning_levels="off,low,xhigh"),
+                   headers=_headers()).status_code == 200
+    deltas = [e for e in events if e.get("action") == "metadata-changed"]
+    assert len(deltas) == 1
+    # Payload shape, not the raw string: this merges straight into what the SSE
+    # snapshot carries for the service.
+    assert deltas[0]["metadata"]["reasoning_levels"] == [
+        {"id": "off", "effort": "off"},
+        {"id": "low", "effort": "low"},
+        {"id": "xhigh", "effort": "xhigh"},
+    ]
+    # A metadata delta must not disturb the status a consumer already holds.
+    assert deltas[0]["status"] is None
+
+
+def test_put_broadcasts_an_empty_ladder_when_the_declaration_is_cleared(api, monkeypatch):
+    events = _captured_events(monkeypatch)
+    assert api.post("/api/services", json=_vllm_cfg(reasoning_levels="off,low"),
+                    headers=_headers()).status_code == 201
+    events.clear()
+
+    assert api.put("/api/services/vllm-qwen38", json=_vllm_cfg(reasoning_levels=""),
+                   headers=_headers()).status_code == 200
+    deltas = [e for e in events if e.get("action") == "metadata-changed"]
+    assert [d["metadata"]["reasoning_levels"] for d in deltas] == [[]]
+
+
+def test_rejected_put_broadcasts_nothing(api, monkeypatch):
+    events = _captured_events(monkeypatch)
+    assert api.post("/api/services", json=_vllm_cfg(reasoning_levels="off,low"),
+                    headers=_headers()).status_code == 201
+    events.clear()
+
+    assert api.put("/api/services/vllm-qwen38", json=_vllm_cfg(reasoning_levels="low:512"),
+                   headers=_headers()).status_code == 400
+    assert [e for e in events if e.get("action") == "metadata-changed"] == []
 
 
 def test_put_rejects_malformed_without_touching_the_stored_value(api):

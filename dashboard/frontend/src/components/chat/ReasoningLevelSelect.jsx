@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import useRunningServices from '../../hooks/useRunningServices'
+import useServicesSSE from '../../hooks/useServicesSSE'
 
 // Per-conversation reasoning-level picker, rendered inside the composer.
 //
@@ -7,6 +7,12 @@ import useRunningServices from '../../hooks/useRunningServices'
 // can only ever be ignored is worse than no control. The ladder comes from the
 // service payload, which is the same list the server validates against, so what
 // is offered here is exactly what can reach the model.
+//
+// Read from the unfiltered service list, not the running-services one: the
+// server accepts a level for a stopped service (that is what lets a level be
+// saved before the model starts), so filtering by status here would hide the
+// stored choice on precisely the conversations where it cannot be resent — and
+// a cleared ladder would leave a stale value with no way to clear it.
 //
 // "Model default" is not the same choice as an "off" level. It stores null,
 // which sends no reasoning field at all — the request an un-featured service
@@ -45,7 +51,7 @@ function iconFor(id) {
 }
 
 export default function ReasoningLevelSelect({ mainService, value, onChange, disabled }) {
-  const { services, loading } = useRunningServices()
+  const { services, loading } = useServicesSSE()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const rootRef = useRef(null)
@@ -75,14 +81,17 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
 
   if (loading || !onChange || !mainService) return null
 
-  const service = services.find(s => s.name === mainService)
+  const service = (services || []).find(s => s.name === mainService)
   const levels = service?.reasoning_levels || []
-  if (levels.length === 0) return null
 
   // A stored level the service no longer declares is still shown (and still
   // will not be sent — the server drops it and says so on run_started). Hiding
-  // it would make the conversation look like it was thinking.
+  // it would make the conversation look like it was thinking, and would leave
+  // the value with no way to clear it from here.
   const stale = !!value && !levels.some(l => l.id === value)
+  // Nothing declared and nothing stored: the control could only ever be
+  // ignored, so it stays out of the rail entirely.
+  if (levels.length === 0 && !stale) return null
 
   const options = [
     { id: null, label: 'Model default', icon: DEFAULT_ICON, note: '' },

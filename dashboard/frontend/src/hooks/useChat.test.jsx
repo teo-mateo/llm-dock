@@ -347,6 +347,43 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.runReady).toBe(true)
   })
 
+  it('records the note a run_started frame carries about a level it dropped', async () => {
+    // The server sends no reasoning field for a level the selected model stopped
+    // offering, which is otherwise indistinguishable from a model that chose not
+    // to think. run_started says so; the hook has to keep saying it.
+    let handlers
+    mockStreamChat.mockImplementation((_url, _body, h) => {
+      handlers = h
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+    await act(async () => {
+      result.current.sendMessage('hi')
+      await Promise.resolve()
+    })
+    expect(result.current.runNotice).toBeNull()
+
+    await act(async () => {
+      handlers.onRunStarted({
+        type: 'run_started',
+        run_id: 'run-x',
+        reasoning_level: null,
+        reasoning_level_note: "Reasoning level 'low' is not offered by this model and was ignored",
+      })
+      await Promise.resolve()
+    })
+    expect(result.current.runNotice).toContain("Reasoning level 'low'")
+
+    // A later run that dropped nothing must not inherit the complaint.
+    await act(async () => {
+      handlers.onRunStarted({ type: 'run_started', run_id: 'run-y' })
+      await Promise.resolve()
+    })
+    expect(result.current.runNotice).toBeNull()
+  })
+
   it('surfaces a failed background run error on load via last_run', async () => {
     // Phase 7: a run that failed while we weren't observing shows up as
     // last_run (active_run is only queued/running). loadConversation must

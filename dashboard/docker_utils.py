@@ -115,21 +115,34 @@ def _service_kind(config):
     return "chat"
 
 
+# (service, raw, reason) triples already warned about by the reader below.
+# Bounded only by the number of distinct bad values an operator can hand-edit
+# into services.json.
+_level_warned: set = set()
+
+
 def _parsed_reasoning_levels(service_name: str, raw) -> list:
     """Parsed declaration for one service, [] when absent or unparsable.
 
     A stored value can only be malformed by hand-editing services.json (every
     write path validates it), so this reports and continues rather than
     raising — the Services page must still render the other 20 services.
+
+    Warns once per offending value: this runs on every payload read, so a
+    hand-edited entry would otherwise log once per /api/services request and per
+    SSE reconnect, burying whatever else the log has to say.
     """
     valid, errors = validate_levels(raw)
     if not valid:
-        logger.warning(
-            "Service '%s': ignoring invalid reasoning_levels %r (%s)",
-            service_name,
-            raw,
-            errors[0] if errors else "invalid",
-        )
+        reason = errors[0] if errors else "invalid"
+        if (service_name, repr(raw), reason) not in _level_warned:
+            _level_warned.add((service_name, repr(raw), reason))
+            logger.warning(
+                "Service '%s': ignoring invalid reasoning_levels %r (%s)",
+                service_name,
+                raw,
+                reason,
+            )
         return []
     return parse_levels(raw)
 

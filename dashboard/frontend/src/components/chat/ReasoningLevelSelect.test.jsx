@@ -2,17 +2,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, fireEvent, cleanup, screen } from '@testing-library/react'
 import ReasoningLevelSelect from './ReasoningLevelSelect'
 
-const { mockRunningServices } = vi.hoisted(() => ({ mockRunningServices: vi.fn() }))
-vi.mock('../../hooks/useRunningServices', () => ({ default: (...a) => mockRunningServices(...a) }))
+const { mockServices } = vi.hoisted(() => ({ mockServices: vi.fn() }))
+vi.mock('../../hooks/useServicesSSE', () => ({ default: (...a) => mockServices(...a) }))
 
-const withLevels = (levels) => [{
+const withLevels = (levels, status = 'running') => [{
   name: 'llamacpp-qwen38',
-  status: 'running',
+  status,
   reasoning_levels: levels.map(id => ({ id, effort: id })),
 }]
 
 function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChange = () => {}, disabled }) {
-  mockRunningServices.mockReturnValue({ services, loading: false })
+  mockServices.mockReturnValue({ services, loading: false })
   return render(
     <ReasoningLevelSelect
       mainService={mainService}
@@ -44,11 +44,36 @@ describe('ReasoningLevelSelect', () => {
   })
 
   it('renders nothing while services are still loading', () => {
-    mockRunningServices.mockReturnValue({ services: [], loading: true })
+    mockServices.mockReturnValue({ services: null, loading: true })
     const { container } = render(
       <ReasoningLevelSelect mainService="llamacpp-qwen38" value={null} onChange={() => {}} />
     )
     expect(container.firstChild).toBeNull()
+  })
+
+  // The server accepts and applies a level for a service that is not running —
+  // that is what lets a level be saved before the model starts. Filtering by
+  // status here would hide the ladder on exactly those conversations, and would
+  // leave a cleared declaration unviewable and unclearable.
+  it('offers the ladder for a stopped service too', () => {
+    setup({ services: withLevels(['off', 'low'], 'exited'), value: 'low' })
+    expect(trigger().textContent).toContain('low')
+    openList()
+    expect(optionLabels()).toEqual(['Model default', 'off', 'low'])
+  })
+
+  it('keeps a stored level visible and clearable after the ladder was cleared', () => {
+    // Same shape as a ladder edited down to nothing: the conversation still
+    // carries the old level, and hiding it would leave it unviewable and
+    // impossible to clear from the composer.
+    const onChange = vi.fn()
+    setup({ services: withLevels([]), value: 'low', onChange })
+    expect(trigger().textContent).toContain('low')
+    expect(trigger().className).toContain('text-critique')
+    openList()
+    expect(optionLabels()).toEqual(['Model default', 'low'])
+    fireEvent.click(screen.getByRole('option', { name: /Model default/ }))
+    expect(onChange).toHaveBeenCalledWith(null)
   })
 
   it('carries no visible "Reasoning:" label — the control speaks for itself', () => {

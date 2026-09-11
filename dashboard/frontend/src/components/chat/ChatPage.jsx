@@ -12,6 +12,7 @@ import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import { serviceNameForModel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
+import { isReasoningLevelRejection } from './levelRejection'
 
 export default function ChatPage() {
   const { conversationId, projectId } = useParams()
@@ -41,6 +42,7 @@ export default function ChatPage() {
     artifacts,
     streamingArtifacts,
     streamingParseWarning,
+    runNotice,
     error,
     runReady,
     cancelling,
@@ -254,11 +256,12 @@ export default function ChatPage() {
         ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
       })
     } catch (err) {
-      // The only rejection worth handling is a level the ladder lost between
-      // render and click. The typed message is the user's work, so retry
-      // without the level rather than lose it; the picker re-reads the ladder
-      // on the conversation that follows.
-      if (!selectedReasoningLevel) throw err
+      // Retry only the rejection worth handling: a level the ladder lost between
+      // render and click, identified by its error code. The typed message is the
+      // user's work, so retry without the level rather than lose it. Retrying on
+      // any failure would duplicate a conversation whose create actually
+      // succeeded and failed afterwards.
+      if (!isReasoningLevelRejection(err)) throw err
       console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
       conv = await create({ main_service: selectedModel })
     }
@@ -391,6 +394,7 @@ export default function ChatPage() {
         artifacts={artifacts}
         streamingArtifacts={streamingArtifacts}
         streamingParseWarning={streamingParseWarning}
+        runNotice={runNotice}
         error={error}
         cancelling={cancelling}
         runReady={runReady}

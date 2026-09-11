@@ -111,6 +111,13 @@ def _service_reasoning_levels(service_name):
     return []
 
 
+# Machine-readable identifier for "this level is not on the service's ladder",
+# carried on the 400 so a client can tell a level rejection from any other bad
+# request. The composer retries a create without the level, and doing that on any
+# failure would duplicate a conversation whose create actually went through.
+INVALID_LEVEL_CODE = "invalid_reasoning_level"
+
+
 def _reasoning_level_error(main_service, reasoning_level):
     """Rejection message for a level the service does not offer, else None.
 
@@ -475,7 +482,10 @@ def create_conversation():
     if "reasoning_level" in data:
         level_error = _reasoning_level_error(main_service, data["reasoning_level"])
         if level_error:
-            return jsonify({"error": level_error}), 400
+            # code, not prose, is what the client branches on: the composer
+            # retries a create without the level on this rejection only, and a
+            # different 400 must not be swallowed as if it were a lost level.
+            return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
     reasoning_level = data.get("reasoning_level")
 
     project_id = data.get("project_id")
@@ -573,7 +583,7 @@ def update_conversation(conv_id):
             data.get("main_service") or existing.main_service, data["reasoning_level"]
         )
         if level_error:
-            return jsonify({"error": level_error}), 400
+            return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
     # project_id: null detaches (back to unfiled); a non-null value must be
     # a string naming an existing project, and only root conversations can
     # be assigned — spin-offs follow their parent's project.

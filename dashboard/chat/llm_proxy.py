@@ -350,8 +350,6 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         find_level(svc.get("reasoning_levels"), reasoning_level),
         svc.get("template_type"),
     )
-    if reasoning_fields.get("chat_template_kwargs") and "chat_template_kwargs" in payload:
-        payload["chat_template_kwargs"].update(reasoning_fields.pop("chat_template_kwargs"))
     payload.update(reasoning_fields)
 
     collected_content = ""

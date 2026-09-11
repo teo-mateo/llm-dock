@@ -1,10 +1,46 @@
 # Per-service reasoning levels: declared at config time, selectable at runtime
 
-**Implemented** (P1-P8). One deliberate deviation: `parse_levels`/`validate_levels`
-trim spaces **around** comma-separated entries (so `"off, low"` is accepted) while
-still rejecting case differences and internal whitespace — trimming a separator
-cannot change which token is sent, normalising case can, so §5's `"medium "` case
-is accepted rather than rejected.
+**Implemented** (P1-P8). Deliberate deviations, all of them measured rather than
+assumed:
+
+- `parse_levels`/`validate_levels` trim spaces **around** comma-separated entries
+  (so `"off, low"` is accepted) while still rejecting case differences and
+  internal whitespace — trimming a separator cannot change which token is sent,
+  normalising case can, so §5's `"medium "` case is accepted rather than rejected.
+- **§3.5's UI moved.** The picker is not next to `ModelSelector` in the header: it
+  started there, moved inside the textarea, and ended up on the composer's control
+  rail — a bordered card with the field on top and the controls below, the level
+  picker rendered through `ChatInput`'s `trailing` slot (`ChatInput.jsx` →
+  `ChatArea.jsx` → both the conversation and new-chat variants). It moved because
+  position was measured: docked, the control sits 8.8px from the card bottom in all
+  four field states instead of riding a content-height box (44→184px); the field
+  gained ~200px of line width; the hit target went 25.6px → 40px. The conversation
+  viewer moved the other way, out of the composer into the header's right cluster,
+  icon-only — it inspects the conversation, not the draft, and as the composer's
+  only labelled control it out-signalled send.
+- **§3.2's staleness claim was wrong as written**, and the mechanism it named was
+  a no-op: `useServicesSSE` is a per-call hook with its own connection, so the
+  config panel's `refresh()` refreshed only the panel's own copy, at the cost of a
+  second `/api/services/stream`, and an already-open chat tab still showed the old
+  ladder. `PUT /api/services/<name>` now emits a `metadata-changed` delta carrying
+  the parsed ladder (the same event `set_favorite` uses), which reaches every
+  consumer on its own connection; the panel opens no stream at all.
+- **§3.5's picker reads the unfiltered service list**, not the running-services
+  one, and it renders a stored level whose ladder went to `""`. Both follow from
+  §3.3: the server accepts a level for a stopped service (that is what lets one be
+  saved before the model starts), so filtering by status would hide the control on
+  exactly the conversations that have a level, and clearing a ladder would leave a
+  value that is neither shown nor clearable.
+- The note promised in §3.3 ("reported on `run_started` so the UI can show" it)
+  has a consumer: `useChat` records `reasoning_level_note` from the `run_started`
+  frame and `ChatArea` renders it above the composer. A dropped level is otherwise
+  invisible — the answer arrives, it just never thought.
+- §3.4's rejection of token budgets stands, and the config validation that
+  enforces it was duplicated in `validate_service_config` (two identical blocks,
+  both added in `1c53e7b`), so every invalid declaration was reported twice in the
+  API's `details`. No test caught it: every assertion was `any(...)`, the exact
+  shape that hides a duplicate. `test_one_violation_produces_exactly_one_error`
+  pins the count now.
 
 §5's live gate **has been run and passed** on `vllm-qwen3-8-flash-next-mixed-nvfp4-fp8`:
 `off` → no reasoning, `low` → brief reasoning, no level → default. Running it is
@@ -154,10 +190,14 @@ mapping must agree: **`dashboard/reasoning_levels.py`** (proposed) with
 needed. Unparsed/invalid stored strings degrade to `[]` plus one `logger.warning`
 (a hand-edited `services.json` must not break the Services page).
 
-Staleness is bounded by the existing `refresh()` (reconnect → new snapshot,
-`useServicesSSE.js:390`), which the config panel calls after a successful save;
-chat re-reads a snapshot on mount anyway. A config edit while a chat page stays
-open is picked up on the next snapshot — acceptable and stated in the UI tooltip.
+Staleness is closed by the write itself, not by a client-side pull: `PUT
+/api/services/<name>` emits a `metadata-changed` delta carrying
+`{"reasoning_levels": parse_levels(...)}` (the event `set_favorite` already uses),
+so every open stream updates its own copy of the service — including a chat tab
+that was open across the edit. `refresh()` remains what a reconnect falls back on.
+The config panel deliberately calls no `refresh()`: `useServicesSSE` is per-call
+(own reducer, own connection), so a panel instance that took `refresh` from it was
+opening a second `/api/services/stream` to refresh a copy nothing rendered.
 
 ### 3.3 Selection and its lifecycle
 
@@ -222,16 +262,18 @@ that payload rather than re-reading `services.json`).
 - **Config panel** (`ServiceConfigPanel.jsx`): one text input
   "Reasoning levels (comma separated)" beside Port/API Key, initialized from
   `config.reasoning_levels`, added to `isDirty`/`handleDiscard` and to the PUT
-  body built at `:88-96` (send the string, and `""` to clear; the backend merge
-  keeps it if omitted). Save calls `refresh()` from `useServicesSSE`. Server-side
-  validation errors surface through the existing `onError`.
-- **Chat**: a small `ReasoningLevelSelect` rendered next to `ModelSelector` in
-  `ChatArea.jsx` (both the header `:141` and the new-chat variant `:209`), fed by
-  the levels of the currently selected service, value = `conversation.reasoning_level`,
-  onChange → existing `updateConversation` + reload path (`:185`). Hidden entirely
-  when the service declares no levels — never a disabled-but-mysterious control.
-  New-chat pre-selection flows through `create({ main_service, reasoning_level })`
-  (`ChatPage.jsx:240`). Panel: the body is built at `ServiceConfigPanel.jsx:87-96`.
+  body (send the string, and `""` to clear; the backend merge keeps it if omitted).
+  Server-side validation errors surface through the existing `onError`. The save
+  path broadcasts nothing itself — see §3.2.
+- **Chat**: a `ReasoningLevelSelect` custom listbox in the composer's control rail
+  (`ChatInput`'s `trailing` slot, so both the conversation and new-chat variants get
+  it), fed by the levels of the currently selected service, value =
+  `conversation.reasoning_level`, onChange → existing `updateConversation` + reload
+  path. Hidden when the service declares no levels and nothing is stored — never a
+  disabled-but-mysterious control; a stored level with no ladder stays visible and
+  stays clearable. New-chat pre-selection flows through
+  `create({ main_service, reasoning_level })` (`ChatPage.jsx`). Panel: the body is
+  built in `ServiceConfigPanel.jsx`.
 
 ### 3.6 OpenRouter: excluded by decision
 

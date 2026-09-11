@@ -144,9 +144,22 @@ def test_level_not_offered_is_rejected_naming_service_and_ladder(client):
     r = client.post(CONVERSATIONS_PATH, json={"main_service": "llamacpp-a",
                                              "reasoning_level": "minimal"}, headers=_auth())
     assert r.status_code == 400
-    msg = r.get_json()["error"]
+    body = r.get_json()
+    msg = body["error"]
     assert "minimal" in msg and "llamacpp-a" in msg
     assert "off,low,medium,xhigh" in msg
+    # The composer retries a create without the level, and it must be able to
+    # tell this rejection from any other 400 — retrying on prose would duplicate
+    # a conversation whose first create actually went through.
+    assert body["code"] == "invalid_reasoning_level"
+
+
+def test_put_level_rejection_carries_the_same_code(client):
+    conv = _create(client, reasoning_level="low")
+    r = client.put(f"{CONVERSATIONS_PATH}/{conv['id']}", json={"reasoning_level": "ultra"},
+                   headers=_auth())
+    assert r.status_code == 400
+    assert r.get_json()["code"] == "invalid_reasoning_level"
 
 
 def test_level_offered_only_by_another_service_is_rejected(client):
