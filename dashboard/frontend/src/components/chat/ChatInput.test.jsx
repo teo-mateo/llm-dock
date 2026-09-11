@@ -53,9 +53,8 @@ describe('ChatInput attachments', () => {
     const onSend = vi.fn()
     render(<ChatInput onSend={onSend} disabled={false} />)
 
-    // Type some text BEFORE the read settles — this is the race codex
-    // flagged: in the old code the message would send without the
-    // attachment, and the chip would reappear in the cleared composer.
+    // The race: sending before the read settles would drop the attachment and
+    // resurrect the chip in a cleared composer.
     fireEvent.change(screen.getByPlaceholderText(/type a message/i), {
       target: { value: 'hello' },
     })
@@ -145,5 +144,79 @@ describe('pickFence', () => {
   })
   it('handles isolated single backticks without inflating the fence', () => {
     expect(pickFence('inline `x` and `y`')).toBe('```')
+  })
+})
+
+describe('ChatInput — control rail', () => {
+  const rail = () => screen.getByTestId('composer-rail')
+  const card = () => rail().parentElement
+
+  it('puts the trailing control on the rail, outside the field', () => {
+    const marker = <span data-testid="slot">x</span>
+    render(<ChatInput onSend={() => {}} trailing={marker} />)
+    const slot = screen.getByTestId('slot')
+    const ta = document.querySelector('textarea')
+    expect(rail().contains(slot)).toBe(true)
+    // Not in the scroll box: the control must not travel with draft height or
+    // with scrolling.
+    expect(slot.closest('textarea')).toBeNull()
+    expect(rail().parentElement).toBe(ta.parentElement)
+  })
+
+  it('stops reserving field padding for it', () => {
+    const marker = <span data-testid="slot" />
+    render(<ChatInput onSend={() => {}} trailing={marker} />)
+    const cls = document.querySelector('textarea').className
+    expect(cls).not.toContain('pr-28')
+    expect(cls).not.toContain('pl-4')
+    expect(cls).toContain('px-4')
+  })
+
+  it('keeps the rail laid out when no control is docked', () => {
+    render(<ChatInput onSend={() => {}} />)
+    const kids = [...rail().children]
+    expect(rail().querySelector('[data-testid="slot"]')).toBeNull()
+    // The spacer carries the layout, so send stays right with or without a ladder.
+    expect(rail().querySelector('.flex-1')).toBeTruthy()
+    expect(kids[kids.length - 1].getAttribute('type')).toBe('submit')
+  })
+
+  it('gives the rail controls one height and the row one primary', () => {
+    render(<ChatInput onSend={() => {}} trailing={<span data-testid="slot" />} />)
+    const attach = screen.getByLabelText('Attach files')
+    const submit = rail().querySelector('button[type="submit"]')
+    expect(attach.className).toContain('h-10')
+    expect(submit.className).toContain('h-10')
+    const filled = [...rail().querySelectorAll('button')].filter(b => b.className.includes('bg-accent-strong'))
+    expect(filled).toHaveLength(1)
+    expect(filled[0]).toBe(submit)
+  })
+
+  it('names the icon-only send button, since it is the primary action', () => {
+    render(<ChatInput onSend={() => {}} />)
+    const submit = rail().querySelector('button[type="submit"]')
+    expect(submit.getAttribute('aria-label')).toBe('Send message')
+    expect(screen.queryByText(/debug/i)).toBeNull()
+  })
+
+  it('lets the level list open upward out of the card', () => {
+    render(<ChatInput onSend={() => {}} trailing={<span data-testid="slot" />} />)
+    // overflow-hidden on the card would clip the listbox — exactly what the
+    // rounded corners tempt you to add.
+    expect(card().className).not.toContain('overflow-hidden')
+  })
+
+  it('renders the draft in the face the message will render in', () => {
+    render(<ChatInput onSend={() => {}} />)
+    expect(document.querySelector('textarea').className).toContain('font-mono')
+  })
+
+  it('keeps typing and sending intact around the rail', () => {
+    const onSend = vi.fn()
+    const marker = <span data-testid="slot" />
+    render(<ChatInput onSend={onSend} trailing={marker} />)
+    fireEvent.change(document.querySelector('textarea'), { target: { value: 'hello' } })
+    fireEvent.keyDown(document.querySelector('textarea'), { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledWith('hello', undefined)
   })
 })

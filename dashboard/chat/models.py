@@ -172,6 +172,9 @@ class Conversation:
     selected_text: Optional[str] = None
     mcp_servers_json: Optional[str] = None
     project_id: Optional[str] = None
+    # Declared reasoning level id chosen for this conversation, or None to send
+    # no reasoning field at all. Not "off" — "off" actively disables thinking.
+    reasoning_level: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     messages: List[Message] = field(default_factory=list)
@@ -195,6 +198,7 @@ class Conversation:
             "parent_conversation_id": self.parent_conversation_id,
             "selected_text": self.selected_text,
             "project_id": self.project_id,
+            "reasoning_level": self.reasoning_level,
             "mcp_servers": json.loads(self.mcp_servers_json) if self.mcp_servers_json else [],
             "active_run": self.active_run,
             "last_run": self.last_run,

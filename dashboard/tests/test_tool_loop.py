@@ -39,8 +39,8 @@ def _scripted_stream(scripts, record):
     script repeats for any further calls. Each call's kwargs are appended to
     `record` so tests can assert how the forced final call was made.
     """
-    def _stream(service_name, messages_array, tools=None, tool_choice=None):
-        record.append({"tools": tools, "tool_choice": tool_choice})
+    def _stream(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None):
+        record.append({"tools": tools, "tool_choice": tool_choice, "reasoning_level": reasoning_level})
         idx = len(record) - 1
         events = scripts[idx] if idx < len(scripts) else scripts[-1]
         for ev in events:
@@ -137,7 +137,7 @@ def test_normal_completion_before_cap_unaffected(monkeypatch):
 def test_reasoning_preserved_between_tool_rounds(monkeypatch):
     requests = []
 
-    def _stream(service_name, messages_array, tools=None, tool_choice=None):
+    def _stream(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None):
         requests.append([dict(message) for message in messages_array])
         if len(requests) == 1:
             yield _tool_calls_event()[0], {

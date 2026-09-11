@@ -195,6 +195,9 @@ class ChatDB:
             # No FK here: sqlite's ALTER TABLE can't add one, so project
             # detachment on delete is handled explicitly in delete_project.
             ("conversations", "project_id", "ALTER TABLE conversations ADD COLUMN project_id TEXT"),
+            # Per-conversation reasoning level id. NULL means "send nothing",
+            # which is not the same as the declared level "off".
+            ("conversations", "reasoning_level", "ALTER TABLE conversations ADD COLUMN reasoning_level TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -313,6 +316,7 @@ class ChatDB:
             selected_text=row["selected_text"],
             mcp_servers_json=row["mcp_servers_json"],
             project_id=row["project_id"],
+            reasoning_level=row["reasoning_level"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -324,12 +328,13 @@ class ChatDB:
                 """INSERT INTO conversations
                    (id, title, main_service, sidekick_service,
                     main_system_prompt, sidekick_system_prompt,
-                    parent_conversation_id, selected_text, mcp_servers_json, project_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    parent_conversation_id, selected_text, mcp_servers_json, project_id,
+                    reasoning_level)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (conv.id, conv.title, conv.main_service, conv.sidekick_service,
                  conv.main_system_prompt, conv.sidekick_system_prompt,
                  conv.parent_conversation_id, conv.selected_text, conv.mcp_servers_json,
-                 conv.project_id),
+                 conv.project_id, conv.reasoning_level),
             )
             conn.commit()
             return self.get_conversation(conv.id)
@@ -414,7 +419,7 @@ class ChatDB:
     def update_conversation(self, conv_id: str, **kwargs) -> Optional[Conversation]:
         allowed = {"title", "main_service", "sidekick_service",
                     "main_system_prompt", "sidekick_system_prompt", "mcp_servers_json",
-                    "project_id"}
+                    "project_id", "reasoning_level"}
         fields = []
         params = []
         for key, val in kwargs.items():

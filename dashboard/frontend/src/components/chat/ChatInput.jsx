@@ -54,7 +54,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey, onDebug }, ref) {
+const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey, trailing }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
   const [attachments, setAttachments] = useState([]) // [{name, size, type, content, truncated}]
@@ -90,6 +90,9 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     if (ta) {
       ta.style.height = 'auto'
       ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+      // Auto-sizing field: a scrollbar is only real past the growth cap, and
+      // always-on renders one for an empty field too.
+      ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden'
     }
   }, [value])
 
@@ -356,59 +359,66 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
         </div>
       )}
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4">
-        <div className="flex gap-3 items-end max-w-6xl mx-auto">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,text/*,application/json,.md,.csv,.tsv,.log,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.cc,.hpp,.cs,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.yml,.yaml,.toml,.ini,.xml"
-            className="hidden"
-            onChange={handleFilePick}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            aria-label="Attach files"
-            title="Attach files"
-            className="px-4 py-3 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-sm transition-colors"
-          >
-            <i className="fa-solid fa-paperclip"></i>
-          </button>
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
-            disabled={disabled}
-            rows={1}
-            className="flex-1 bg-surface border border-border rounded-lg px-4 py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!canSend}
-            className="px-4 py-3 bg-accent-strong hover:bg-accent-hover text-fg-inverse disabled:bg-surface-strong disabled:text-fg-subtle rounded-lg text-sm font-medium transition-colors"
-          >
-            <i className="fa-solid fa-paper-plane"></i>
-          </button>
-          {/* Low-level conversation viewer — only shown when the composer is
-              wired to a live conversation (onDebug provided). */}
-          {onDebug && (
-            <button
-              type="button"
-              onClick={onDebug}
+      {/* Input — one bordered card holding the field and a control rail below
+          it. The rail is a flex sibling of the textarea, so every control on it
+          holds a fixed offset from the card's bottom edge whatever the draft
+          length is, and the field keeps its full line width: a control docked
+          inside the field would travel as the field grew and would cost ~100px
+          of text width in the padding that keeps text out of it. Deliberately no
+          overflow-hidden on the card — it would clip the level list opening
+          upward from the rail. */}
+      <form onSubmit={handleSubmit} className="px-4 pb-3 pt-2">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col rounded-lg border border-border bg-surface transition-colors focus-within:border-accent">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,text/*,application/json,.md,.csv,.tsv,.log,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.cc,.hpp,.cs,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.yml,.yaml,.toml,.ini,.xml"
+              className="hidden"
+              onChange={handleFilePick}
+            />
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
               disabled={disabled}
-              title="Open low-level conversation viewer (raw responses)"
-              aria-label="Open debug viewer"
-              className="ml-auto self-center px-2.5 py-2.5 bg-surface border border-border hover:border-accent text-fg-muted hover:text-accent disabled:opacity-50 rounded-lg text-xs transition-colors"
-            >
-              <i className="fa-solid fa-bug mr-1"></i>debug
-            </button>
-          )}
+              rows={1}
+              className="w-full block bg-transparent px-4 pt-3 pb-1 text-sm font-mono text-fg placeholder-fg-subtle resize-none focus:outline-none disabled:opacity-50"
+            />
+            <div data-testid="composer-rail" className="flex flex-wrap items-center gap-1 px-2 pt-1 pb-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                aria-label="Attach files"
+                title="Attach files"
+                className="shrink-0 h-10 w-10 grid place-items-center rounded-md text-fg-muted hover:text-accent hover:bg-elevated disabled:opacity-50 transition-colors"
+              >
+                <i className="fa-solid fa-paperclip"></i>
+              </button>
+              {trailing && (
+                <div className="flex items-center gap-1 min-w-0 shrink-0">
+                  {trailing}
+                </div>
+              )}
+              {/* Spacer: carries the layout, so send stays right even when
+                  there is no trailing control at all. */}
+              <div className="flex-1 min-w-2" aria-hidden="true"></div>
+              <button
+                type="submit"
+                disabled={!canSend}
+                aria-label="Send message"
+                title="Send (Enter)"
+                className="shrink-0 h-10 px-4 rounded-md bg-accent-strong hover:bg-accent-hover text-fg-inverse text-sm font-medium transition-colors disabled:bg-surface-strong disabled:text-fg-subtle"
+              >
+                <i className="fa-solid fa-paper-plane"></i>
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </div>

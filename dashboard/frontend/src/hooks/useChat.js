@@ -34,6 +34,9 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [artifacts, setArtifacts] = useState({}) // {messageId: [artifact]}
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
   const [streamingParseWarning, setStreamingParseWarning] = useState(null) // {kind, snippet, description} | null
+  // Server-phrased notice about what this run ignored (see run_started). A
+  // dropped reasoning level is otherwise invisible in the answer.
+  const [runNotice, setRunNotice] = useState(null) // string | null
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
   // True between message_saved and stream-end — the title-tail phase where
@@ -64,6 +67,13 @@ export default function useChat({ onConversationUpdated } = {}) {
   // kill a newer run that started after the one the user stopped. Reset at the
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
+  // One handler for every stream path: records the run notice, and a note-less
+  // frame clears it so a later run can't inherit the previous one's.
+  const handleRunStarted = useCallback((evt) => {
+    runIdRef.current = evt.run_id
+    setRunReady(true)
+    setRunNotice(typeof evt.reasoning_level_note === 'string' ? evt.reasoning_level_note : null)
+  }, [])
   // Monotonic load generation. Incremented synchronously at the start of every
   // loadConversation; the post-fetch reattach only fires if it is still the
   // latest. The id guard (observedConvIdRef) alone is insufficient when two
@@ -180,6 +190,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setHeartbeat(null)
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
+    setRunNotice(null)
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -341,6 +352,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setHeartbeat(null)
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
+    setRunNotice(null)
     setError(null)
     // Pass the generation as the freshness predicate so a superseded same-id
     // load neither commits its (stale) snapshot nor reattaches — refetchMessages
@@ -370,6 +382,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setHeartbeat(null)
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
+    setRunNotice(null)
 
     // Optimistically add user message
     const tempUserMsg = {
@@ -479,7 +492,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           // Will be followed by message_saved
         },
         onConversationUpdated: handleConversationUpdated,
-        onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
+        onRunStarted: handleRunStarted,
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -526,7 +539,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, refetchMessages, handleConversationUpdated])
+  }, [conversation, messages, streaming, refetchMessages, handleConversationUpdated, handleRunStarted])
 
   const editMessage = useCallback(async (msgId, content) => {
     // Block edits while a run is active for this conversation — including a
@@ -546,6 +559,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setHeartbeat(null)
     setStreamingArtifacts([])
     setStreamingParseWarning(null)
+    setRunNotice(null)
 
     // Truncate messages from this point
     setMessages(prev => {
@@ -633,7 +647,7 @@ export default function useChat({ onConversationUpdated } = {}) {
           },
           onDone: () => {},
           onConversationUpdated: handleConversationUpdated,
-          onRunStarted: (evt) => { runIdRef.current = evt.run_id; setRunReady(true) },
+          onRunStarted: handleRunStarted,
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
@@ -660,7 +674,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     } finally {
       liveControllersRef.current.delete(controller)
     }
-  }, [conversation, messages, streaming, loadConversation, refetchMessages, handleConversationUpdated])
+  }, [conversation, messages, streaming, loadConversation, refetchMessages, handleConversationUpdated, handleRunStarted])
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
@@ -744,6 +758,7 @@ export default function useChat({ onConversationUpdated } = {}) {
     setArtifacts,
     streamingArtifacts,
     streamingParseWarning,
+    runNotice,
     error,
     loadConversation,
     sendMessage,

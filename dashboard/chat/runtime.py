@@ -112,6 +112,9 @@ class ChatTurnRequest:
     # resolution. The runner consumes it verbatim so manager scoping and
     # tool auto-enable can never disagree about the effective project.
     effective_project_id: Optional[str] = None
+    # Reasoning level id this run applies, snapshotted at run creation. None
+    # sends no reasoning field at all.
+    reasoning_level: Optional[str] = None
 
 
 class ChatRunner:
@@ -128,7 +131,8 @@ class ChatRunner:
         if self.event_bus is not None:
             self.event_bus.publish(run_id, ChatRuntimeEvent(type, data or {}))
 
-    def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None, run_id=None):
+    def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None, run_id=None,
+                      reasoning_level=None):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
         # Project conversations always get the project-files tools —
@@ -155,8 +159,10 @@ class ChatRunner:
                         "message": message,
                     }))
             return stream_with_tools(conv.main_service, messages_array, tools, mcp_manager,
-                                     progress_callback=_progress)
-        return stream_chat_completion(conv.main_service, messages_array)
+                                     progress_callback=_progress,
+                                     reasoning_level=reasoning_level)
+        return stream_chat_completion(conv.main_service, messages_array,
+                                      reasoning_level=reasoning_level)
 
     def run(self, run, request: ChatTurnRequest, cancel_check=None) -> Optional[Message]:
         """Execute the turn for an existing (queued) run.
@@ -207,7 +213,8 @@ class ChatRunner:
         last_parse_warning = None
 
         try:
-            stream = self._build_stream(conv, mcp_manager, request.effective_project_id, run_id)
+            stream = self._build_stream(conv, mcp_manager, request.effective_project_id,
+                                        run_id, request.reasoning_level)
             for event_type, data in stream:
                 if cancel_check is not None and cancel_check():
                     # Stop the model/tool loop promptly: closing the generator

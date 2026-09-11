@@ -12,6 +12,7 @@ import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import { serviceNameForModel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
+import { isReasoningLevelRejection } from './levelRejection'
 
 export default function ChatPage() {
   const { conversationId, projectId } = useParams()
@@ -41,6 +42,7 @@ export default function ChatPage() {
     artifacts,
     streamingArtifacts,
     streamingParseWarning,
+    runNotice,
     error,
     runReady,
     cancelling,
@@ -158,6 +160,14 @@ export default function ChatPage() {
     setSelectedModel(prev => prev ?? defaultModelName)
   }, [defaultModelName])
 
+  // Pre-selected level for a new conversation. Cleared on model change: a level
+  // belongs to one model's template and may not exist on the next.
+  const [selectedReasoningLevel, setSelectedReasoningLevel] = useState(null)
+  const handleComposerModelChange = useCallback((model) => {
+    setSelectedModel(model)
+    setSelectedReasoningLevel(null)
+  }, [])
+
   // True while the project file editor holds unsaved changes. In-app
   // navigation unmounts the editor without its own close handler, so the
   // navigation entry points below confirm before discarding. (Browser
@@ -237,10 +247,22 @@ export default function ChatPage() {
       window.alert('No model available. Start a local model or configure OpenRouter.')
       return
     }
-    const conv = await create({ main_service: selectedModel })
+    let conv
+    try {
+      conv = await create({
+        main_service: selectedModel,
+        ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
+      })
+    } catch (err) {
+      // Retry on a level rejection only; any other failure may follow a create
+      // that succeeded, and retrying that would duplicate the conversation.
+      if (!isReasoningLevelRejection(err)) throw err
+      console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
+      conv = await create({ main_service: selectedModel })
+    }
     pendingMsgRef.current = { convId: conv.id, content, images }
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, selectedModel])
+  }, [create, navigate, selectedModel, selectedReasoningLevel])
 
   const handleSelect = useCallback((id) => {
     if (!confirmDiscardEdits()) return
@@ -351,7 +373,9 @@ export default function ChatPage() {
         awaitingConversation={!!convId && (!conversation || conversation.id !== convId)}
         defaultModelName={defaultModelName}
         selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
+        onModelChange={handleComposerModelChange}
+        selectedReasoningLevel={selectedReasoningLevel}
+        onReasoningLevelChange={setSelectedReasoningLevel}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}
         critiques={critiques}
@@ -365,6 +389,7 @@ export default function ChatPage() {
         artifacts={artifacts}
         streamingArtifacts={streamingArtifacts}
         streamingParseWarning={streamingParseWarning}
+        runNotice={runNotice}
         error={error}
         cancelling={cancelling}
         runReady={runReady}

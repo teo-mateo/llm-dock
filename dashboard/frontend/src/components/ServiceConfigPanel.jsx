@@ -31,6 +31,7 @@ function paramsEqual(a, b) {
 export default function ServiceConfigPanel({ config, serviceName, runtime, onSaved, onError, flagMetadata, onParamsChange, addFlagRef }) {
   const [port, setPort] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [reasoningLevels, setReasoningLevels] = useState('')
   const [params, setParams] = useState([])
   const [saving, setSaving] = useState(false)
   const [settingGlobalKey, setSettingGlobalKey] = useState(false)
@@ -43,6 +44,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     if (config) {
       setPort(String(config.port || ''))
       setApiKey(config.api_key || '')
+      setReasoningLevels(config.reasoning_levels || '')
       setParams(paramsToArray(config.params))
       initialized.current = true
     }
@@ -70,13 +72,15 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     if (!initialized.current || !config) return false
     if (port !== String(config.port || '')) return true
     if (apiKey !== (config.api_key || '')) return true
+    if (reasoningLevels !== (config.reasoning_levels || '')) return true
     return !paramsEqual(paramsToObject(params), config.params)
-  }, [port, apiKey, params, config])
+  }, [port, apiKey, reasoningLevels, params, config])
 
   const handleDiscard = useCallback(() => {
     if (config) {
       setPort(String(config.port || ''))
       setApiKey(config.api_key || '')
+      setReasoningLevels(config.reasoning_levels || '')
       setParams(paramsToArray(config.params))
     }
   }, [config])
@@ -89,6 +93,9 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
         port: parseInt(port, 10),
         api_key: apiKey,
         params: paramsToObject(params),
+        // Always sent: an empty string is how a ladder gets cleared, and
+        // omitting it would leave the stored declaration in place.
+        reasoning_levels: reasoningLevels.trim(),
       }
       if (config.model_path) payload.model_path = config.model_path
       if (config.model_name) payload.model_name = config.model_name
@@ -100,6 +107,8 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
       })
 
       const wasRunning = runtime?.status === 'running'
+      // Nothing to pull here: the PUT broadcasts the new ladder as a metadata
+      // delta, so every consumer's payload updates on its own connection.
       onSaved(wasRunning
         ? 'Configuration saved. Container will be recreated.'
         : 'Configuration saved.'
@@ -109,7 +118,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     } finally {
       setSaving(false)
     }
-  }, [config, port, apiKey, params, serviceName, runtime, onSaved, onError])
+  }, [config, port, apiKey, params, reasoningLevels, serviceName, runtime, onSaved, onError])
 
   const handleUseGlobalKey = useCallback(async () => {
     setSettingGlobalKey(true)
@@ -224,6 +233,27 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                 )}
               </button>
             </div>
+          </div>
+          <div>
+            <label
+              className="block text-sm font-medium mb-2 text-fg-muted"
+              htmlFor="config-reasoning-levels"
+              title="Comma-separated level names this model accepts, shown verbatim in chat. They are instructions to the model's chat template, not token budgets — an undeclared token is rejected by the template, so list only what the model takes. Leave empty to offer nothing."
+            >
+              Reasoning levels
+            </label>
+            <input
+              id="config-reasoning-levels"
+              type="text"
+              value={reasoningLevels}
+              onChange={e => setReasoningLevels(e.target.value)}
+              disabled={saving}
+              placeholder="off,low,medium,xhigh"
+              className="w-full bg-surface-strong border border-border-strong rounded px-3 py-2 text-fg font-mono text-sm focus:outline-none focus:border-accent disabled:opacity-50"
+            />
+            <p className="mt-1 text-xs text-fg-subtle">
+              Comma separated, lowercase. Empty means no reasoning control for this model.
+            </p>
           </div>
         </div>
 

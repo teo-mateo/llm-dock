@@ -3,6 +3,7 @@ import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import DebugOverlay from './DebugOverlay'
 import ModelSelector from './ModelSelector'
+import ReasoningLevelSelect from './ReasoningLevelSelect'
 import PromptSelector from './PromptSelector'
 import CritiquePanel from './CritiquePanel'
 import SpinoffWindow from './SpinoffWindow'
@@ -21,6 +22,8 @@ export default function ChatArea({
   defaultModelName,
   selectedModel,
   onModelChange,
+  selectedReasoningLevel,
+  onReasoningLevelChange,
   onCreateAndSend,
   messages,
   critiques,
@@ -34,6 +37,7 @@ export default function ChatArea({
   artifacts,
   streamingArtifacts,
   streamingParseWarning,
+  runNotice,
   error,
   cancelling,
   runReady,
@@ -151,6 +155,14 @@ export default function ChatArea({
               focusKey="empty-state"
               onSend={(msg, images) => onCreateAndSend?.(msg, images)}
               disabled={!defaultModelName}
+              trailing={
+                <ReasoningLevelSelect
+                  mainService={selectedModel}
+                  value={selectedReasoningLevel}
+                  onChange={onReasoningLevelChange}
+                  disabled={!defaultModelName}
+                />
+              }
             />
           </div>
         </div>
@@ -183,6 +195,12 @@ export default function ChatArea({
 
   async function handleModelChange(field, value) {
     await updateConversation(conversation.id, { [field]: value })
+    onReloadConversation?.(conversation.id)
+  }
+
+  // Clearing sends null explicitly: omitting the key would survive the merge.
+  async function handleReasoningLevelChange(level) {
+    await updateConversation(conversation.id, { reasoning_level: level })
     onReloadConversation?.(conversation.id)
   }
 
@@ -220,19 +238,38 @@ export default function ChatArea({
               disabled={busy}
             />
           </div>
-          {/* Gate the live-stream Stop on runReady: it must not appear until
-              run_started has delivered the run id, so Stop always cancels with
-              an expected-run guard rather than an unguarded "cancel whatever is
-              active" that a concurrently-started run could be hit by. The
-              returned-to active_run path already has an id (active_run.id). */}
-          {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
+          {/* Right cluster: conversation-level actions. The viewer lives here
+              rather than in the composer because it inspects this conversation,
+              not the draft — and icon-only ghost, so it no longer out-signals
+              send as the only labelled control in the interface. */}
+          {/* Right cluster: conversation-level actions. ml-auto rather than
+              relying on the parent's justify-between, because this header wraps
+              and a wrapped line leaves a between-justified item at its start —
+              which stranded the viewer icon alone under the MCP chips. */}
+          <div className="flex items-center gap-2 ml-auto">
             <button
-              onClick={onStopStreaming}
-              className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
+              type="button"
+              onClick={() => setDebugOpen(true)}
+              title="Conversation viewer (raw responses)"
+              aria-label="Open conversation viewer"
+              className="h-8 w-8 grid place-items-center rounded-md text-fg-subtle hover:text-fg-muted hover:bg-elevated transition-colors"
             >
-              <i className="fa-solid fa-stop mr-1"></i>Stop
+              <i className="fa-solid fa-bug"></i>
             </button>
-          )}
+            {/* Gate the live-stream Stop on runReady: it must not appear until
+                run_started has delivered the run id, so Stop always cancels with
+                an expected-run guard rather than an unguarded "cancel whatever is
+                active" that a concurrently-started run could be hit by. The
+                returned-to active_run path already has an id (active_run.id). */}
+            {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
+              <button
+                onClick={onStopStreaming}
+                className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
+              >
+                <i className="fa-solid fa-stop mr-1"></i>Stop
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Prompt selector — read-only, keyed by conversation so selection
@@ -274,6 +311,16 @@ export default function ChatArea({
           activeCritiqueId={critiqueTarget}
         />
 
+        {/* Server-phrased notice about what this run ignored, shown beside the
+            control that named it: a silently dropped level looks like a model
+            that chose not to think. */}
+        {runNotice && (
+          <div className="mx-4 mb-2 px-3 py-2 bg-warning-subtle border border-warning rounded text-xs text-warning-fg flex items-start gap-2">
+            <i className="fa-solid fa-circle-info mt-0.5"></i>
+            <span>{runNotice}</span>
+          </div>
+        )}
+
         {/* Input */}
         <ChatInput
           ref={composerRef}
@@ -282,7 +329,14 @@ export default function ChatArea({
           disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
-          onDebug={() => setDebugOpen(true)}
+          trailing={
+            <ReasoningLevelSelect
+              mainService={conversation.main_service}
+              value={conversation.reasoning_level}
+              onChange={handleReasoningLevelChange}
+              disabled={busy}
+            />
+          }
         />
       </div>
 
