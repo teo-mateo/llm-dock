@@ -543,6 +543,9 @@ class ComposeManager:
         context = {
             "service_name": service_name,
             "port": config["port"],
+            # Optional per-service bind mounts are needed for narrowly scoped
+            # runtime overlays (for example, quantized PLE support in vLLM).
+            "extra_volumes": config.get("volumes", []),
         }
 
         # Add mandatory fields based on template type

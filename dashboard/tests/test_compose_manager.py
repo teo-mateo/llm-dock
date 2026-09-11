@@ -117,6 +117,29 @@ class TestTabbyapiRender:
         assert "--max-seq-len 32768" in out
 
 
+class TestVllmRender:
+    """Cover optional vLLM runtime-overlay mounts."""
+
+    def test_extra_volumes_render(self, compose_manager):
+        cfg = {
+            "template_type": "vllm",
+            "alias": "qwen",
+            "port": 3301,
+            "model_name": "org/model",
+            "api_key": "test-key",
+            "params": {},
+            "volumes": [
+                "${HOME}/overlay.py:/usr/local/lib/python3.12/site-packages/pkg/module.py:ro",
+                "${HOME}/ple-cache:/ple-cache:ro",
+            ],
+        }
+
+        out = compose_manager._render_service("vllm-qwen", cfg)
+
+        assert cfg["volumes"][0] in out
+        assert cfg["volumes"][1] in out
+
+
 class TestAddServiceUsesValidation:
     """Confirm _atomic_add_service does use validation as a baseline."""
 

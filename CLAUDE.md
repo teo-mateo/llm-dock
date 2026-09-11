@@ -367,6 +367,7 @@ Each top-level key is a service name (matches `container_name`). Fields:
 | `template_type` | `"llamacpp"` \| `"vllm"` | Selects Jinja template |
 | `model_size`, `model_size_str` | int, string | Optional metadata |
 | `reasoning_levels` | string | Optional, chat-only. Comma-separated level names the model accepts (`"off,low,medium,xhigh"`). Never a container flag — inert in compose rendering, like `favorite` |
+| `volumes` | list | Optional, **vLLM only** — extra bind mounts as `"src:dst[:mode]"` strings, appended to the container's own mounts. Operator-authored and unvalidated, like `params` |
 
 ### Port Conventions
 - `3300` — Open WebUI (static, not dashboard-managed)
@@ -530,6 +531,21 @@ That's why arbitrary vLLM flags work in `params` without metadata
 entries — but it also means a **typo** in the flag name (e.g. `--gpu-mem`)
 ships to the container as-is and fails at startup, not at config time.
 Verify with `mgr.preview_service(name)` before bringing the container up.
+
+### `volumes` is vLLM-only, unvalidated, and survives a dashboard edit
+
+`_render_service()` passes `config.get("volumes", [])` to the template and only
+`vllm.j2` iterates it, so the field is inert on llama.cpp, TabbyAPI and ds4
+services — not an error, just nothing. Strings reach Compose verbatim, so
+`${HOME}` expands at compose time and nothing checks the shape. A host path that
+does not exist is created as an empty directory rather than failing, which turns a
+typo'd file mount into an empty dir shadowing whatever it targeted — same failure
+class as the flag typo above, and the reason to `docker inspect` the mount once
+after first start.
+
+`PUT /api/services/<name>` merges into the stored entry (`existing.update(data)`),
+so a hand-written `volumes` list survives a dashboard edit that never mentions it.
+A client that sends `volumes: []` does clear it.
 
 ## Default API key rotation
 
