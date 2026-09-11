@@ -15,6 +15,13 @@ data class ServiceSummary(
     val modelSizeStr: String? = null,
     /** The container's creation time, ISO-8601 UTC. Not a start time — see [[F10-models-list.md]]'s Deviations. */
     val createdAt: String? = null,
+    /**
+     * F15: reasoning levels this service declares, in declaration order —
+     * never sorted, never completed. Empty when it declares none (and the
+     * server collapses an invalid declaration to none too), which is what
+     * hides the level control on 90 % of services (F15-R3, F15-R8).
+     */
+    val reasoningLevels: List<String> = emptyList(),
 ) {
     val engine: Engine get() = ModelRef.Local(name).engine
 

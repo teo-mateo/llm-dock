@@ -17,6 +17,9 @@ import com.hpz.llmdockchat.data.model.ConversationSummary
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * `GET/DELETE /api/chat/conversations*` (F02).
@@ -114,6 +117,32 @@ open class ConversationsRepository(private val api: ApiClient) {
             path = Endpoints.conversation(id),
             deserializer = ConversationIdResponseDto.serializer(),
             body = ApiJson.encodeToString(UpdateSystemPromptRequestDto(mainSystemPrompt = content)),
+        )
+        Unit
+    }
+
+    /**
+     * `PUT /api/chat/conversations/<id>` with `reasoning_level` (F15-R4).
+     *
+     * The body is hand-built as a `JsonObject`, not `ApiJson.encodeToString` of
+     * a `@Serializable` DTO, and that is the whole point: this client's encoder
+     * runs with `explicitNulls = false`, so a null field on a data class is
+     * **omitted** — a `UpdateReasoningLevelRequestDto(null)` would be a PUT of
+     * `{}`, answering 200 while clearing nothing, which is a "Model default"
+     * button that looks like it works forever. The explicit `JsonNull` puts
+     * `"reasoning_level": null` on the wire, which the server reads as "send no
+     * reasoning field" (`chat/routes.py:update_conversation`).
+     *
+     * A level the service stopped offering comes back 400 with
+     * `code: "invalid_reasoning_level"`, which is F15-R7's revert path.
+     */
+    open suspend fun setReasoningLevel(id: String, level: String?): Result<Unit> = apiCall {
+        api.request(
+            method = "PUT",
+            path = Endpoints.conversation(id),
+            deserializer = ConversationIdResponseDto.serializer(),
+            body = buildJsonObject { put("reasoning_level", level?.let { JsonPrimitive(it) } ?: JsonNull) }
+                .toString(),
         )
         Unit
     }

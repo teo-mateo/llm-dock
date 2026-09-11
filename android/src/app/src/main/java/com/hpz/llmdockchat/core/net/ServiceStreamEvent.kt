@@ -3,6 +3,7 @@ package com.hpz.llmdockchat.core.net
 import com.hpz.llmdockchat.data.dto.ServiceDto
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -14,19 +15,35 @@ import kotlinx.serialization.json.booleanOrNull
  * nothing but "SSE" (`dashboard/routes/services.py:services_stream`, not
  * `chat/run_manager.py`).
  *
- * [Delta] deliberately carries only [serviceName], [status] and [favorite] —
- * the three fields a picker actually needs to update in place
- * (`ComposeManagerEvent`'s `action`/`container_id`/`timestamp` are not read).
- * Neither this type nor [Snapshot] (via [ServiceDto]) ever has a field for
- * `api_key`, so one cannot leak through here even by accident (F07-R6).
+ * [Delta] deliberately carries only [serviceName], [status], [favorite] and
+ * [reasoningLevels] — the fields a picker and the thread header actually need
+ * to update in place (`ComposeManagerEvent`'s `action`/`container_id`/
+ * `timestamp` are not read). Neither this type nor [Snapshot] (via
+ * [ServiceDto]) ever has a field for `api_key`, so one cannot leak through here
+ * even by accident (F07-R6).
  */
 sealed interface ServiceStreamEvent {
 
     /** Always the first frame on connect — the full service list as it stands right now. */
     data class Snapshot(val services: List<ServiceDto>) : ServiceStreamEvent
 
-    /** A container's status changed, or its `favorite` flag did, elsewhere (dashboard or another client). */
-    data class Delta(val serviceName: String, val status: String?, val favorite: Boolean?) : ServiceStreamEvent
+    /**
+     * A container's status changed, or its `favorite` flag or declared
+     * reasoning ladder did, elsewhere (dashboard or another client).
+     *
+     * [reasoningLevels] is **tri-state where the domain value is not**: null
+     * means this frame said nothing about the ladder, `emptyList()` means the
+     * service declares none. Both `update_service` and the favourite route
+     * emit the same `metadata-changed` action, and only the first sends
+     * `reasoning_levels` — collapsing null into `[]` here would empty a
+     * ladder every time someone stars a model (F15's anti-clear rule, F15-R5).
+     */
+    data class Delta(
+        val serviceName: String,
+        val status: String?,
+        val favorite: Boolean?,
+        val reasoningLevels: List<String>? = null,
+    ) : ServiceStreamEvent
 
     data class Error(val message: String) : ServiceStreamEvent
 
@@ -61,10 +78,12 @@ private fun JsonObject.snapshotFrame(payload: String): ServiceStreamEvent {
 private fun JsonObject.deltaFrame(payload: String): ServiceStreamEvent {
     val name = string("service_name") ?: return ServiceStreamEvent.Unknown(payload)
     val metadata = this["metadata"] as? JsonObject
+    val ladder = metadata?.get("reasoning_levels")?.takeUnless { it is JsonNull }
     return ServiceStreamEvent.Delta(
         serviceName = name,
         status = string("status"),
         favorite = (metadata?.get("favorite") as? JsonPrimitive)?.booleanOrNull,
+        reasoningLevels = ladder?.let { parseReasoningLevels(it) },
     )
 }
 

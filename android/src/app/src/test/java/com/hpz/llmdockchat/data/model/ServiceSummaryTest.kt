@@ -1,5 +1,8 @@
 package com.hpz.llmdockchat.data.model
 
+import com.hpz.llmdockchat.data.dto.ServiceDto
+import com.hpz.llmdockchat.data.mapper.toDomain
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,5 +59,20 @@ class ServiceSummaryTest {
         val service = ServiceSummary("ds4-a", "exited", "chat")
         assertTrue(service.isChatCapable)
         assertFalse(service.isRunning)
+    }
+
+    /**
+     * F15-R8's proof for the 90 % of services that declare no ladder: the new
+     * field defaults to empty, so a row that predates F15 is still equal to
+     * itself. Every pre-F15 assertion in this suite stays green unchanged.
+     */
+    @Test
+    fun `a row with no reasoning_levels maps to exactly the pre-F15 summary`() {
+        val row = ServiceDto(name = "llamacpp-a", status = "running", kind = "chat", hostPort = 3301)
+        assertEquals(
+            ServiceSummary(name = "llamacpp-a", status = "running", kind = "chat", port = 3301),
+            row.toDomain(),
+        )
+        assertEquals(emptyList<String>(), row.toDomain().reasoningLevels)
     }
 }

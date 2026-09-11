@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.data.mapper
 
+import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.data.dto.ServiceDto
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import org.junit.Assert.assertEquals
@@ -30,4 +31,49 @@ class NewChatMapperTest {
         assertEquals(0, summary.port)
         assertEquals(false, summary.favorite)
     }
+
+    // -- F15: the reasoning ladder ------------------------------------------------
+
+    @Test
+    fun `a declared ladder maps through in declaration order`() {
+        val summary = decode(
+            """{"name": "vllm-a", "status": "running", "kind": "chat",
+                 "reasoning_levels": [{"id": "off", "effort": "off"},
+                                       {"id": "xhigh", "effort": "xhigh"},
+                                       {"id": "low", "effort": "low"}]}""",
+        ).toDomain()
+        // Order is the operator's meaning, so it is never sorted or deduped by rank.
+        assertEquals(listOf("off", "xhigh", "low"), summary.reasoningLevels)
+    }
+
+    @Test
+    fun `no key and an empty list both mean no ladder`() {
+        assertEquals(emptyList<String>(), decode("""{"name": "vllm-a"}""").toDomain().reasoningLevels)
+        assertEquals(emptyList<String>(), decode("""{"name": "vllm-a", "reasoning_levels": []}""").toDomain().reasoningLevels)
+    }
+
+    /**
+     * The tolerant-entry rules, which are the reason the wire type is a
+     * JsonElement: each of these would throw at decode against a typed
+     * `List<ReasoningLevelDto>`, and the throw is caught one layer above the
+     * mapper — where it costs the whole snapshot rather than one row's ladder.
+     */
+    @Test
+    fun `malformed ladder entries are dropped one by one and the valid ones survive`() {
+        val summary = decode(
+            """{"name": "vllm-a", "status": "running",
+                 "reasoning_levels": [{"id": null}, "junk", {}, {"id": "   "},
+                                      {"id": "low"}, {"id": "low"}, {"id": "xhigh"}]}""",
+        ).toDomain()
+        assertEquals(listOf("low", "xhigh"), summary.reasoningLevels)
+        // The row itself is still there — a garbage ladder must not lose the service.
+        assertEquals("running", summary.status)
+    }
+
+    @Test
+    fun `a ladder that is not an array at all reads as no ladder`() {
+        assertEquals(emptyList<String>(), decode("""{"name": "vllm-a", "reasoning_levels": "off,low"}""").toDomain().reasoningLevels)
+    }
 }
+
+private fun decode(json: String): ServiceDto = ApiJson.decodeFromString(ServiceDto.serializer(), json)

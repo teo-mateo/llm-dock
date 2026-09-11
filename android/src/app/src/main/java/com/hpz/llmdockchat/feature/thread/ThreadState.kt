@@ -6,6 +6,7 @@ import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
+import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
 
@@ -138,6 +139,16 @@ data class ChatSettingsState(
     val prompts: List<ManagedPrompt> = emptyList(),
 )
 
+/**
+ * The reasoning-level sheet (F15), open only while
+ * [ThreadUiState.Loaded.reasoningPicker] is non-null — same lifetime rule as
+ * [ChatSettingsState], with a ladder read on the way in rather than a registry.
+ */
+data class ReasoningPickerState(
+    /** A write is in flight: rows are inert, the chip is dimmed, the sheet stays open. */
+    val writePending: Boolean = false,
+)
+
 sealed interface ThreadUiState {
     data object Loading : ThreadUiState
 
@@ -166,7 +177,49 @@ sealed interface ThreadUiState {
         val modelPicker: ModelPickerState? = null,
         /** Non-null exactly while the chat-settings sheet is open. */
         val settings: ChatSettingsState? = null,
+        /** F15: non-null exactly while the reasoning-level sheet is open. */
+        val reasoningPicker: ReasoningPickerState? = null,
+        /**
+         * F15-R6: the server ignored this conversation's reasoning level for the
+         * run just made (its service stopped declaring it after the choice was
+         * written). Server-phrased, from the `run_started` frame, shown above the
+         * composer.
+         *
+         * On the screen state rather than on the streaming turn, and cleared by
+         * the next send: the turn is discarded at its terminal and refetched, so
+         * a notice riding the turn would be readable only while the answer
+         * streams — and a silently dropped level looks exactly like a model that
+         * chose not to think. The header's stale chip is the durable version.
+         */
+        val reasoningNotice: String? = null,
+        /**
+         * F15: each service's declared reasoning ladder, keyed by service name —
+         * the whole snapshot, not just the current service's, because switching
+         * models refetches the conversation and nothing else, and a ladder copied
+         * for one service would keep describing it after the switch. Empty until
+         * the first `GET /api/services` answers, and kept as-is when one fails.
+         */
+        val laddersByService: Map<String, List<String>> = emptyMap(),
     ) : ThreadUiState {
+
+        /**
+         * The current service's ladder (F15-R1). Looked up by the *local*
+         * service name only, so an OpenRouter thread resolves to empty whatever
+         * the map holds (F15-R8).
+         */
+        val ladder: List<String>
+            get() = (conversation.modelRef as? ModelRef.Local)?.serviceName
+                ?.let { laddersByService[it] }
+                .orEmpty()
+
+        /** F15-R3: a stored level the current service no longer declares. */
+        val reasoningStale: Boolean
+            get() = isReasoningLevelStale(ladder, conversation.reasoningLevel)
+
+        /** F15-R3/R8: whether the chip is composed at all. */
+        val reasoningControlVisible: Boolean
+            get() = showsReasoningControl(ladder, conversation.reasoningLevel, conversation.modelRef is ModelRef.OpenRouter)
+
 
         /**
          * Either this client is streaming, or the server says a run is live in

@@ -265,6 +265,7 @@ fun AppNavHost(
                             drafts = container.draftStore,
                             attachmentStore = container.sharedDraftStore,
                             servicesStreamRepository = container.servicesStreamRepository,
+                            servicesRepository = container.servicesRepository,
                             openRouterModelsRepository = container.openRouterModelsRepository,
                             conversationsRepository = container.conversationsRepository,
                             mcpServersRepository = container.mcpServersRepository,

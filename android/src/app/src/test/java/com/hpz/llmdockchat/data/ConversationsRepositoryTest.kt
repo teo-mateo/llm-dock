@@ -183,4 +183,48 @@ class ConversationsRepositoryTest {
             request.body?.utf8().orEmpty(),
         )
     }
+
+    /**
+     * F15-R4's load-bearing pair. `ApiJson` runs with `explicitNulls = false`, so
+     * the clear cannot be a serialized data class — that would PUT `{}`, which
+     * the server answers with 200 and its usual "everything you asked for"
+     * payload, clearing nothing. Asserting the exact body is the only way to
+     * catch a "Model default" option that silently no-ops.
+     */
+    @Test
+    fun `setReasoningLevel PUTs the level id as the whole body`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "conv-1"}""").build())
+
+        repository.setReasoningLevel("conv-1", "low").getOrThrow()
+
+        val request = server.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/chat/conversations/conv-1", request.url.encodedPath)
+        assertEquals("""{"reasoning_level":"low"}""", request.body?.utf8().orEmpty())
+    }
+
+    @Test
+    fun `clearing the reasoning level sends an explicit JSON null, not an omitted key`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "conv-1"}""").build())
+
+        repository.setReasoningLevel("conv-1", null).getOrThrow()
+
+        val body = server.takeRequest().body?.utf8().orEmpty()
+        assertEquals("""{"reasoning_level":null}""", body)
+    }
+
+    @Test
+    fun `a level the service no longer offers surfaces the server's rejection`() = runTest {
+        server.enqueue(
+            MockResponse.Builder().code(400)
+                .body("""{"error": "reasoning_level 'high' is not offered by service 'vllm-a'", "code": "invalid_reasoning_level"}""")
+                .build(),
+        )
+
+        val http = (repository.setReasoningLevel("conv-1", "high").exceptionOrNull() as ApiException).error
+            as com.hpz.llmdockchat.core.error.AppError.Http
+
+        assertEquals(400, http.status)
+        assertTrue(http.message.contains("not offered"))
+    }
 }

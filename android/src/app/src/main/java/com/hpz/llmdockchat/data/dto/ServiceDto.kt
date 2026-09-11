@@ -23,6 +23,13 @@ data class ServiceDto(
     @SerialName("exit_code") val exitCode: Int? = null,
     @SerialName("model_size_str") val modelSizeStr: String? = null,
     val created: String? = null,
+    /**
+     * F15: the levels this service's model accepts, `[{"id","effort"}, …]` in
+     * the operator's declaration order. A [JsonElement] rather than a typed
+     * list so one unexpected entry costs this service its ladder instead of
+     * the whole snapshot — see [com.hpz.llmdockchat.core.net.parseReasoningLevels].
+     */
+    @SerialName("reasoning_levels") val reasoningLevels: JsonElement? = null,
 )
 
 @Serializable
