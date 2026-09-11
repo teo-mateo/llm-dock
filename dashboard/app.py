@@ -11,6 +11,17 @@ from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
 from services import event_manager
 
+_SPA_ASSET_SUFFIXES = (
+    ".js", ".mjs", ".css", ".map", ".json", ".txt", ".html", ".xml",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
+    ".mp4", ".webm", ".m4a", ".mp3", ".ogg",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".wasm", ".webmanifest",
+)
+
+
+def _is_asset_request(path: str) -> bool:
+    return path.lower().endswith(_SPA_ASSET_SUFFIXES)
+
 
 def create_app(config=None):
     """Application factory."""
@@ -88,10 +99,11 @@ def create_app(config=None):
         file_path = os.path.realpath(os.path.join(dist_dir, whatever))
         if file_path.startswith(dist_dir) and os.path.isfile(file_path):
             return send_from_directory("frontend/dist", whatever)
-        # Only fall back to index.html for client-side routes (no file extension).
-        # Asset requests (.js, .css, etc.) must 404 so browsers don't cache HTML
-        # as a JS/CSS resource after deploys.
-        if '.' in whatever.split('/')[-1]:
+        # Client-side routes carry no file extension, but they can still contain
+        # dots (service names like 'llamacpp-glm-5.3-flash-q2kxl'), so an asset
+        # request is recognized by its suffix. Asset requests must 404 so
+        # browsers don't cache HTML as a JS/CSS resource after deploys.
+        if _is_asset_request(whatever):
             abort(404)
         return send_from_directory("frontend/dist", "index.html")
 
