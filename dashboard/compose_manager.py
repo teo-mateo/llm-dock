@@ -3,6 +3,7 @@ Docker Compose file manager with safe atomic updates.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,9 +23,18 @@ logger = logging.getLogger(__name__)
 BEGIN_DYNAMIC_MARKER = "# <<<<<<< BEGIN DYNAMIC"
 END_DYNAMIC_MARKER = "# >>>>>>> END DYNAMIC"
 
+# Mirrors Docker's container-name rule: a name this accepts that Docker does not
+# fails only later, at container create, because `docker compose config` does not
+# check container_name against the engine's rule.
+_SERVICE_NAME_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*")
+_SERVICE_NAME_ERROR = (
+    "Service name must start with a letter or digit and contain only "
+    "alphanumerics, hyphens, underscores or dots"
+)
+
 
 def _valid_service_name(name: str) -> bool:
-    return name.replace("-", "").replace("_", "").replace(".", "").isalnum()
+    return _SERVICE_NAME_PATTERN.fullmatch(name) is not None
 
 
 class ComposeManager:
@@ -122,7 +132,7 @@ class ComposeManager:
             return False, "Service name too long (max 63 characters)"
 
         if not _valid_service_name(service_name):
-            return False, "Service name must be alphanumeric with hyphens, underscores or dots"
+            return False, _SERVICE_NAME_ERROR
 
         if service_name in self.get_existing_services():
             return False, f"Service '{service_name}' already exists"
@@ -486,9 +496,7 @@ class ComposeManager:
         if len(new_name) > 63:
             raise ValueError("Service name too long (max 63 characters)")
         if not _valid_service_name(new_name):
-            raise ValueError(
-                "Service name must be alphanumeric with hyphens, underscores or dots"
-            )
+            raise ValueError(_SERVICE_NAME_ERROR)
 
         services = self._load_services_db()
 

@@ -3,7 +3,6 @@ import sys
 from unittest.mock import patch
 
 import pytest
-from werkzeug.exceptions import NotFound
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -26,6 +25,22 @@ def test_hashed_css_asset_is_an_asset():
     assert _is_asset_request("assets/index-D3f8Lm1.css") is True
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "assets/photo.avif",
+        "assets/clip.webm",
+        "assets/clip.mp4",
+        "assets/font.otf",
+        "assets/font.eot",
+        "site.webmanifest",
+        "sitemap.xml",
+    ],
+)
+def test_media_and_font_assets_are_assets(path):
+    assert _is_asset_request(path) is True
+
+
 @pytest.fixture
 def app(tmp_path):
     compose_path = tmp_path / "docker-compose.yml"
@@ -44,18 +59,23 @@ def app(tmp_path):
     )
 
 
+def test_dotted_service_deep_link_serves_spa(app):
+    client = app.test_client()
+    with patch("app.send_from_directory", return_value="spa-index"):
+        response = client.get("/v2/services/llamacpp-glm-5.3-flash-q2kxl")
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "spa-index"
+
+
 def test_dotted_service_logs_deep_link_serves_spa(app):
-    view = app.view_functions["serve_v2_static"]
-    path = "services/llamacpp-glm-5.3-flash-q2kxl/logs"
-    with app.test_request_context(f"/v2/{path}"):
-        with patch("app.send_from_directory", return_value="spa-index") as send:
-            result = view(whatever=path)
-    assert result == "spa-index"
-    send.assert_called_once_with("frontend/dist", "index.html")
+    client = app.test_client()
+    with patch("app.send_from_directory", return_value="spa-index"):
+        response = client.get("/v2/services/llamacpp-glm-5.3-flash-q2kxl/logs")
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "spa-index"
 
 
 def test_missing_asset_still_404s(app):
-    view = app.view_functions["serve_v2_static"]
-    with app.test_request_context("/v2/assets/index-gone.js"):
-        with pytest.raises(NotFound):
-            view(whatever="assets/index-gone.js")
+    client = app.test_client()
+    response = client.get("/v2/assets/index-gone.js")
+    assert response.status_code == 404

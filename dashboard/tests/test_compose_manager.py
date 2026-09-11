@@ -187,6 +187,17 @@ class TestDottedServiceNames:
         assert valid is False
         assert "hyphens" in error
 
+    @pytest.mark.parametrize(
+        "name",
+        [".llamacpp-glm-5.3", "-llamacpp-glm-5.3", "_llamacpp-glm-5.3", "服务"],
+    )
+    def test_validate_service_name_rejects_names_docker_rejects(
+        self, compose_manager, name
+    ):
+        valid, error = compose_manager.validate_service_name(name)
+        assert valid is False
+        assert "start with a letter or digit" in error
+
     @patch.object(ComposeManager, "rebuild_compose_file")
     def test_rename_to_dotted_name(self, mock_rebuild, compose_manager):
         compose_manager.rename_service("test-svc", "test-svc-5.3-flash-lru")

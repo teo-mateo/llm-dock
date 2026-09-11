@@ -339,8 +339,8 @@ async function confirmRename() {
         errorEl.classList.remove('hidden');
         return;
     }
-    if (!newName.replace(/-/g, '').replace(/_/g, '').match(/^[a-zA-Z0-9]+$/)) {
-        errorEl.textContent = 'Only alphanumeric characters, hyphens, and underscores allowed';
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(newName)) {
+        errorEl.textContent = 'Must start with a letter or digit and contain only letters, digits, hyphens, underscores and dots';
         errorEl.classList.remove('hidden');
         return;
     }

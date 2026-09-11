@@ -12,9 +12,10 @@ from chat.routes import chat_bp, init_chat
 from services import event_manager
 
 _SPA_ASSET_SUFFIXES = (
-    ".js", ".mjs", ".css", ".map", ".json", ".txt", ".html",
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
-    ".woff", ".woff2", ".ttf", ".wasm",
+    ".js", ".mjs", ".css", ".map", ".json", ".txt", ".html", ".xml",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
+    ".mp4", ".webm", ".m4a", ".mp3", ".ogg",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".wasm", ".webmanifest",
 )
 
 
