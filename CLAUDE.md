@@ -307,7 +307,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 - **Routes:** Organized as Flask blueprints in `routes/`
 - **File updates:** Always use atomic writes (temp file + rename) with backup/rollback
 - **Security:** Constant-time token comparison, security headers on all responses (X-Content-Type-Options, X-Frame-Options, etc.)
-- **No comments** unless explicitly requested
+- **Comments:** none by default. The single exception, and the test for it, are in [Comments](#comments) below.
 - **Python strings:** Always use **double quotes** for all strings, except when a string contains double quotes — then use single quotes. This matches `ruff`/`black` default behavior.
 
 ```python
@@ -323,6 +323,101 @@ msg = 'Invalid JSON in services.json: expected value'
 config = {'services': {}, 'version': '3.8'}
 logger.error(f"Failed to add service: {e}")
 ```
+
+### Comments
+
+Default: **no comments.** One is added only when it protects a constraint that cannot
+live in a type or a test, and it lives at a declaration or interface boundary — never
+inside a function body.
+
+**Delete on sight, in any language:**
+
+- narration inside a body — "loop over the services, then rebuild the file"
+- restating the next line — `# set the port to 3301`
+- progress or history notes — "changed this because the test failed"; that is the commit
+- KDoc/docstrings that paraphrase the name, parameters or implementation
+- a per-file "do not add comments" header. It is itself a comment, it costs context on
+  every read, and a model already ignoring the convention ignores the instruction too
+
+**Permitted, and only this**, when the constraint is real and types cannot carry it:
+
+- a contract a caller depends on
+- an invariant the type system cannot express
+- a compatibility, security, concurrency or protocol constraint
+- a deliberate exclusion a future reader would otherwise "fix"
+
+The test is **not** "does this explain why" — most prose can claim that. It is:
+
+> which tempting change would violate which stable constraint?
+
+If you cannot name the change and the constraint, delete the comment.
+
+**Where the reasoning belongs instead:**
+
+| Kind of reasoning | Home |
+|---|---|
+| what the code does | the code |
+| behaviour that must hold | a test, named for the behaviour |
+| shape of a value or an API contract | the type |
+| why a design was chosen, what was rejected | `docs/plans/*.md`, referenced from the commit |
+| why this change happened | the commit message |
+
+**Examples — delete these:**
+
+```python
+# Loop over the services and rebuild the compose file
+for name, cfg in services.items():        # for each service
+    mgr.add_service_to_db(name, cfg)
+```
+
+The first line narrates the loop, the second restates it. Neither names a constraint, and
+the function names already say everything they said.
+
+```kotlin
+/** A local Docker service — `vllm-…`, `llamacpp-…`, `ds4-…`, or anything else. */
+data class Local(val serviceName: String) : ModelRef
+```
+
+A paraphrase of the type name. Delete it — the name is the documentation.
+
+**Examples — keep these:**
+
+```python
+# Cap on a single replayed tool result in the rebuilt history. Results are
+# unbounded (read_file alone can return ~2 MB), and every prior turn's results
+# ride along on every subsequent request — uncapped, a few file reads would
+# crowd out the conversation itself.
+MAX_REPLAYED_TOOL_RESULT_CHARS = 4000
+```
+
+Names the constraint (every result is re-sent on every later turn) and the change that
+breaks it (raising the cap so one large file survives intact). This one is real, and
+excerpted — `dashboard/chat/llm_proxy.py`.
+
+```kotlin
+/** `openrouter:<model-id>` — the id is what the UI shows, never the raw string. */
+data class OpenRouter(val modelId: String) : ModelRef
+```
+
+The wire format is a contract, and re-parsing it per call site is the mistake this
+prevents. Both Kotlin examples are real and excerpted —
+`android/src/app/src/main/java/com/hpz/llmdockchat/data/model/ModelRef.kt`.
+
+**Enforcement beats instruction.** A model that ignores this section ignores a comment
+repeating it, and a rule in a file is only as strong as the next session's reading of it.
+
+State of play, so nobody assumes a guard exists: there is **no CI** in this repo and
+neither `ktlint` nor `detekt` is configured, so this is held by review alone. `dashboard/`
+carries many comments today; the Android files touched by the OpenRouter reasoning work
+were stripped and their rationale moved into `docs/plans/openrouter-reasoning-levels.md`
+and `docs/plans/android-openrouter-reasoning-ladders.md`. If the loop keeps generating
+comments, the fix is a `check` task that fails on a newly added comment — not a stronger
+sentence here.
+
+**If you are asked to remove comments:** migrate any still-true constraint to a test, a
+type or a plan doc **before** deleting it. The strip is only safe once the reasoning has a
+home — otherwise the next agent re-derives it, or breaks the constraint because nothing
+recorded it.
 
 ## Scope of Changes
 
