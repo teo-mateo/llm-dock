@@ -147,3 +147,43 @@ describe('pickFence', () => {
     expect(pickFence('inline `x` and `y`')).toBe('```')
   })
 })
+
+describe('ChatInput — trailing control', () => {
+  it('renders it inside the text field, at its right edge', () => {
+    const marker = <span data-testid="slot">x</span>
+    const { getByTestId } = render(<ChatInput onSend={() => {}} trailing={marker} />)
+    const field = document.querySelector('textarea')
+    const slot = getByTestId('slot')
+    // Same wrapper, so the control sits within the field's border rather than
+    // joining the attach/send row.
+    expect(field.parentElement).toBe(slot.parentElement.parentElement)
+    expect(slot.parentElement.className).toContain('absolute')
+    expect(slot.parentElement.className).toContain('right-2')
+  })
+
+  it('reserves textarea padding only when something is docked there', () => {
+    const marker = <span data-testid="slot" />
+    const withSlot = render(<ChatInput onSend={() => {}} trailing={marker} />)
+    expect(document.querySelector('textarea').className).toContain('pr-28')
+    withSlot.unmount()
+    render(<ChatInput onSend={() => {}} />)
+    const field = document.querySelector('textarea')
+    expect(field.className).toContain('px-4')
+    expect(field.className).not.toContain('pr-28')
+  })
+
+  it('renders nothing extra when no control is passed', () => {
+    const { container } = render(<ChatInput onSend={() => {}} />)
+    expect(container.querySelectorAll('textarea').length).toBe(1)
+    expect(document.querySelector('textarea').parentElement.children).toHaveLength(1)
+  })
+
+  it('keeps typing and sending intact around it', () => {
+    const onSend = vi.fn()
+    const marker = <span data-testid="slot" />
+    render(<ChatInput onSend={onSend} trailing={marker} />)
+    fireEvent.change(document.querySelector('textarea'), { target: { value: 'hello' } })
+    fireEvent.keyDown(document.querySelector('textarea'), { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledWith('hello', undefined)
+  })
+})

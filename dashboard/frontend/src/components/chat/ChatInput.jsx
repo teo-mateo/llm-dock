@@ -54,7 +54,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey, onDebug }, ref) {
+const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInserts = [], onClearInsert, focusKey, onDebug, trailing }, ref) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState([]) // [{dataUrl, name, size}]
   const [attachments, setAttachments] = useState([]) // [{name, size, type, content, truncated}]
@@ -90,6 +90,11 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     if (ta) {
       ta.style.height = 'auto'
       ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+      // The field grows instead of scrolling, so a scrollbar is only real once
+      // the 200px cap is reached. Left on always it renders for an empty field
+      // too (height lands a rounding hair under scrollHeight), which reads as a
+      // clash next to the docked trailing control.
+      ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden'
     }
   }, [value])
 
@@ -377,17 +382,28 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
           >
             <i className="fa-solid fa-paperclip"></i>
           </button>
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
-            disabled={disabled}
-            rows={1}
-            className="flex-1 bg-surface border border-border rounded-lg px-4 py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50"
-          />
+          {/* `trailing` sits inside the field's border at its right edge, so a
+              caller can hang a compact control (the reasoning-level picker) in
+              the one spot the eye already is. The textarea reserves padding for
+              it so typed text can never slide underneath. */}
+          <div className="relative flex-1">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={images.length > 0 ? 'Add a message about the image(s)...' : pendingInserts.length > 0 ? 'Add a message (optional) or send with issues only...' : 'Type a message, paste or drop files...'}
+              disabled={disabled}
+              rows={1}
+              className={`w-full bg-surface border border-border rounded-lg py-3 text-sm text-fg placeholder-fg-subtle resize-none focus:outline-none focus:border-accent disabled:opacity-50 ${trailing ? 'pl-4 pr-28' : 'px-4'}`}
+            />
+            {trailing && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                {trailing}
+              </div>
+            )}
+          </div>
           <button
             type="submit"
             disabled={!canSend}

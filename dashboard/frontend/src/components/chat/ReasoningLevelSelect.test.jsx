@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, fireEvent, cleanup } from '@testing-library/react'
+import { render, fireEvent, cleanup, screen } from '@testing-library/react'
 import ReasoningLevelSelect from './ReasoningLevelSelect'
 
 const { mockRunningServices } = vi.hoisted(() => ({ mockRunningServices: vi.fn() }))
@@ -11,12 +11,24 @@ const withLevels = (levels) => [{
   reasoning_levels: levels.map(id => ({ id, effort: id })),
 }]
 
-function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChange = () => {} }) {
+function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChange = () => {}, disabled }) {
   mockRunningServices.mockReturnValue({ services, loading: false })
   return render(
-    <ReasoningLevelSelect mainService={mainService} value={value} onChange={onChange} />
+    <ReasoningLevelSelect
+      mainService={mainService}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+    />
   )
 }
+
+const trigger = () => screen.getByTestId('reasoning-level-select')
+const openList = () => {
+  fireEvent.click(trigger())
+  return screen.getByRole('listbox')
+}
+const optionLabels = () => [...screen.getAllByRole('option')].map(o => o.textContent.replace(/not offered by this model$/, '').trim())
 
 afterEach(() => cleanup())
 
@@ -31,50 +43,140 @@ describe('ReasoningLevelSelect', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('offers the declared ladder in declaration order plus a model default', () => {
-    const { container } = setup({ services: withLevels(['off', 'low', 'medium', 'xhigh']) })
-    const options = [...container.querySelectorAll('option')].map(o => o.value)
-    // '' is "say nothing to the model", distinct from the declared 'off'.
-    expect(options).toEqual(['', 'off', 'low', 'medium', 'xhigh'])
-  })
-
-  it('shows model default when no level is selected', () => {
-    const { container } = setup({ services: withLevels(['off', 'low']), value: null })
-    expect(container.querySelector('select').value).toBe('')
-  })
-
-  it('selects the stored level', () => {
-    const { container } = setup({ services: withLevels(['off', 'low', 'xhigh']), value: 'xhigh' })
-    expect(container.querySelector('select').value).toBe('xhigh')
-  })
-
-  it('keeps a level the service no longer offers visible and labelled', () => {
-    const { container } = setup({ services: withLevels(['off', 'low']), value: 'thinking' })
-    const select = container.querySelector('select')
-    expect(select.value).toBe('thinking')
-    const stale = container.querySelector('option[value="thinking"]')
-    expect(stale.textContent).toContain('not offered by this model')
-  })
-
-  it('reports an empty choice as null rather than an empty string', () => {
-    const onChange = vi.fn()
-    const { container } = setup({ services: withLevels(['off', 'low']), value: 'low', onChange })
-    fireEvent.change(container.querySelector('select'), { target: { value: '' } })
-    expect(onChange).toHaveBeenCalledWith(null)
-  })
-
-  it('reports a picked level by id', () => {
-    const onChange = vi.fn()
-    const { container } = setup({ services: withLevels(['off', 'low', 'medium']), onChange })
-    fireEvent.change(container.querySelector('select'), { target: { value: 'medium' } })
-    expect(onChange).toHaveBeenCalledWith('medium')
-  })
-
   it('renders nothing while services are still loading', () => {
     mockRunningServices.mockReturnValue({ services: [], loading: true })
     const { container } = render(
       <ReasoningLevelSelect mainService="llamacpp-qwen38" value={null} onChange={() => {}} />
     )
     expect(container.firstChild).toBeNull()
+  })
+
+  it('carries no visible "Reasoning:" label — the control speaks for itself', () => {
+    setup({ services: withLevels(['off', 'low']) })
+    expect(screen.queryByText(/reasoning/i)).toBeNull()
+    expect(trigger().getAttribute('aria-label')).toContain('Reasoning level')
+  })
+
+  it('is a collapsed button until opened, so the composer stays narrow', () => {
+    setup({ services: withLevels(['off', 'low']) })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(trigger().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('offers the declared ladder in declaration order plus a model default', () => {
+    setup({ services: withLevels(['off', 'low', 'medium', 'xhigh']) })
+    openList()
+    expect(optionLabels()).toEqual(['Model default', 'off', 'low', 'medium', 'xhigh'])
+  })
+
+  it('names the current choice on the trigger, model default when unset', () => {
+    setup({ services: withLevels(['off', 'low']), value: null })
+    expect(trigger().getAttribute('aria-label')).toBe('Reasoning level: model default')
+    cleanup()
+    setup({ services: withLevels(['off', 'low']), value: 'low' })
+    expect(trigger().getAttribute('aria-label')).toBe('Reasoning level: low')
+    expect(trigger().textContent).toContain('low')
+  })
+
+  it('marks the stored level selected when the list opens', () => {
+    setup({ services: withLevels(['off', 'low', 'xhigh']), value: 'xhigh' })
+    openList()
+    const selected = screen.getAllByRole('option').filter(o => o.getAttribute('aria-selected') === 'true')
+    expect(selected).toHaveLength(1)
+    expect(selected[0].textContent).toContain('xhigh')
+  })
+
+  it('reports a picked level by id', () => {
+    const onChange = vi.fn()
+    setup({ services: withLevels(['off', 'low', 'medium']), onChange })
+    openList()
+    fireEvent.click(screen.getByRole('option', { name: /medium/ }))
+    expect(onChange).toHaveBeenCalledWith('medium')
+  })
+
+  it('reports the model default as null rather than an empty string', () => {
+    const onChange = vi.fn()
+    setup({ services: withLevels(['off', 'low']), value: 'low', onChange })
+    openList()
+    fireEvent.click(screen.getByRole('option', { name: /Model default/ }))
+    expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('closes after a pick, so the composer does not stay covered', () => {
+    setup({ services: withLevels(['off', 'low']) })
+    openList()
+    fireEvent.click(screen.getByRole('option', { name: /off/ }))
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('opens and moves on the keyboard, choosing with Enter', () => {
+    const onChange = vi.fn()
+    setup({ services: withLevels(['off', 'low']), onChange })
+    fireEvent.keyDown(trigger(), { key: 'ArrowDown' })
+    expect(screen.getByRole('listbox')).toBeTruthy()
+    fireEvent.keyDown(trigger(), { key: 'ArrowDown' })
+    fireEvent.keyDown(trigger(), { key: 'Enter' })
+    // Index 1 of [Model default, off, low] is 'off'.
+    expect(onChange).toHaveBeenCalledWith('off')
+  })
+
+  it('clamps at the ends of the list instead of wrapping out of range', () => {
+    const onChange = vi.fn()
+    setup({ services: withLevels(['off']), onChange })
+    fireEvent.keyDown(trigger(), { key: 'ArrowUp' })
+    fireEvent.keyDown(trigger(), { key: 'Enter' })
+    expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('closes on Escape and returns focus to the trigger', () => {
+    setup({ services: withLevels(['off', 'low']) })
+    openList()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(document.activeElement).toBe(trigger())
+  })
+
+  it('closes on a click outside, e.g. back into the textarea', () => {
+    const { container } = setup({ services: withLevels(['off', 'low']) })
+    openList()
+    fireEvent.pointerDown(container.ownerDocument.body)
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('keeps a level the service no longer offers visible, flagged, and selectable', () => {
+    setup({ services: withLevels(['off', 'low']), value: 'thinking' })
+    expect(trigger().textContent).toContain('thinking')
+    expect(trigger().className).toContain('text-critique')
+    openList()
+    const stale = screen.getByRole('option', { name: /thinking/ })
+    expect(stale.textContent).toContain('not offered by this model')
+    expect(stale.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('is disabled by the caller, e.g. mid-run', () => {
+    setup({ services: withLevels(['off', 'low']), disabled: true })
+    expect(trigger().disabled).toBe(true)
+  })
+
+  // Icons are the point of the control, and a name missing from the free icon
+  // set renders as an empty box — fa-gauge-low is pro-only and must not appear.
+  it.each([
+    ['off', 'fa-ban'],
+    ['low', 'fa-feather'],
+    ['minimal', 'fa-feather'],
+    ['medium', 'fa-gauge-simple'],
+    ['high', 'fa-gauge'],
+    ['xhigh', 'fa-gauge-high'],
+    ['max', 'fa-gauge-high'],
+    ['dragon', 'fa-brain'],
+  ])('maps level %s to icon %s', (level, icon) => {
+    setup({ services: withLevels([level]), value: level })
+    expect(trigger().querySelector('i')).toHaveClass(icon)
+    expect(trigger().innerHTML).not.toContain('fa-gauge-low')
+  })
+
+  it('shows the model-default icon when nothing is stored', () => {
+    setup({ services: withLevels(['off']), value: null })
+    expect(trigger().querySelector('i')).toHaveClass('fa-wand-magic-sparkles')
   })
 })

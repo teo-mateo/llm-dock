@@ -21,7 +21,10 @@ vi.mock('./ModelSelector', () => ({
   default: (props) => { capturedModelSelectorProps.current = props; return null },
 }))
 vi.mock('./ReasoningLevelSelect', () => ({
-  default: (props) => { capturedReasoningLevelProps.current = props; return null },
+  default: (props) => {
+    capturedReasoningLevelProps.current = props
+    return <span data-testid="reasoning-level-slot" />
+  },
 }))
 vi.mock('./McpToggle', () => ({ default: () => null }))
 vi.mock('./MessageList', () => ({ default: () => null }))
@@ -328,6 +331,23 @@ describe('ChatArea — reasoning level', () => {
     expect(props.value).toBe('low')
     // A live run must not be interruptible by a level change.
     expect(props.disabled).toBe(false)
+  })
+
+  it('lives in the composer, not the conversation header', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: 'low',
+    })
+    const slot = screen.getByTestId('reasoning-level-slot')
+    const form = document.querySelector('textarea').closest('form')
+    // Inside the composer's form, next to the field — and the header's model
+    // picker is outside that form, which is what makes this a placement test
+    // rather than an existence test.
+    expect(form.contains(slot)).toBe(true)
+    // The attach button only exists in the composer row, so sharing a form with
+    // it is what proves placement rather than mere presence — ModelSelector is
+    // mocked out in this file and cannot anchor the header side.
+    expect(form.contains(screen.getByLabelText('Attach files'))).toBe(true)
   })
 
   it('saves a changed level on the conversation and reloads it', async () => {

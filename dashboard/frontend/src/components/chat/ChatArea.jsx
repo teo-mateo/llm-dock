@@ -140,17 +140,12 @@ export default function ChatArea({
               : 'No model available. Start a local model or configure OpenRouter.'}
           </p>
           {defaultModelName && (
-            <div className="mb-4 flex items-center gap-3 flex-wrap">
+            <div className="mb-4">
               <ModelSelector
                 variant="new-chat"
                 mainService={selectedModel}
                 onChangeMain={onModelChange}
                 disabled={!defaultModelName}
-              />
-              <ReasoningLevelSelect
-                mainService={selectedModel}
-                value={selectedReasoningLevel}
-                onChange={onReasoningLevelChange}
               />
             </div>
           )}
@@ -159,6 +154,14 @@ export default function ChatArea({
               focusKey="empty-state"
               onSend={(msg, images) => onCreateAndSend?.(msg, images)}
               disabled={!defaultModelName}
+              trailing={
+                <ReasoningLevelSelect
+                  mainService={selectedModel}
+                  value={selectedReasoningLevel}
+                  onChange={onReasoningLevelChange}
+                  disabled={!defaultModelName}
+                />
+              }
             />
           </div>
         </div>
@@ -227,12 +230,6 @@ export default function ChatArea({
               sidekickService={conversation.sidekick_service}
               onChangeMain={v => handleModelChange('main_service', v)}
               onChangeSidekick={v => handleModelChange('sidekick_service', v)}
-              disabled={busy}
-            />
-            <ReasoningLevelSelect
-              mainService={conversation.main_service}
-              value={conversation.reasoning_level}
-              onChange={handleReasoningLevelChange}
               disabled={busy}
             />
             <McpToggle
@@ -305,6 +302,14 @@ export default function ChatArea({
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
           onDebug={() => setDebugOpen(true)}
+          trailing={
+            <ReasoningLevelSelect
+              mainService={conversation.main_service}
+              value={conversation.reasoning_level}
+              onChange={handleReasoningLevelChange}
+              disabled={busy}
+            />
+          }
         />
       </div>
 
