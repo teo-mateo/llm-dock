@@ -1,7 +1,6 @@
 package com.hpz.llmdockchat.feature.thread
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,12 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -25,10 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 
 /**
  * F15 — the per-conversation reasoning level: the thread header's chip and the
@@ -178,10 +184,30 @@ private fun ReasoningOptionRow(
  * The header chip. F15's *Deviations* puts it here rather than in the composer's
  * control rail as on the desktop; what stays identical to web is the behaviour.
  *
- * Fixed width and ellipsized, so the model label beside it shrinks rather than
- * the 64 dp header growing. [pending] dims it while the write is in flight —
- * and the sheet stays open until that write lands, so choosing and immediately
- * sending can never send the old level (F15-R2's last criterion).
+ * Reads `think medium ⌄`, not `medium`. A bare level id in a header is an unlabelled
+ * value, and the misreading it invites is the one this feature cannot allow — that
+ * the word is a token budget or a temperature, when it is one token of a model's own
+ * vocabulary. `think` is the axis, in the sheet's own wording; the value follows in
+ * mono because it is the server's string verbatim; the chevron is the disclosure the
+ * reasoning block in the message list already uses (F04-R4), so the control says it
+ * opens rather than that it reports.
+ *
+ * Built like the settings button across from it, not like a badge: no fill, no border,
+ * one 48 dp invisible target around quiet content, the same ripple the header's own
+ * icon button gets. The first version drew an outlined box on `sunken`, the second a
+ * tinted pill; both were a visible rectangle sitting in the model row while the gear
+ * sat centred against the whole header, so the pair read as misaligned — and the
+ * outlined one, the only outlined chip in the app, read as a disabled text field.
+ * State is carried by colour instead: muted while nothing is chosen, accent once
+ * something is, amber when the value the server holds is no longer offered (F15-R3),
+ * with [pending] dimming it while the write is in flight — and the sheet stays open
+ * until that write lands, so choosing and immediately sending can never send the old
+ * level (F15-R2's last criterion).
+ *
+ * `widthIn(max = 128.dp)` is the constraint this function originally only claimed in
+ * prose: an ellipsized level id costs the control, not the model name beside it
+ * (F04-R3), and the full value still reaches TalkBack through [contentDescription] and
+ * the sheet.
  */
 @Composable
 fun ReasoningLevelChip(
@@ -192,28 +218,55 @@ fun ReasoningLevelChip(
     onClick: () -> Unit,
 ) {
     val colors = LlmTheme.colors
-    val tint = when {
+    val valueColor = when {
         stale -> colors.amber
         level != null -> colors.accent
-        else -> colors.subtle
+        else -> colors.muted
     }
     Box(
         Modifier
             .testTag("thread_reasoning_chip")
-            .padding(start = 6.dp)
+            .heightIn(min = 48.dp)
             .alpha(if (pending) 0.4f else 1f)
-            .border(1.dp, colors.line, RoundedCornerShape(6.dp))
-            .background(colors.sunken, RoundedCornerShape(6.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Reasoning level: " + (level ?: "model default")
+            }
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClickLabel = "Choose the reasoning level",
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            level ?: "default",
-            color = tint,
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            Modifier
+                .widthIn(max = 128.dp)
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "think",
+                color = colors.subtle,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+            Text(
+                level ?: "default",
+                color = valueColor,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Icon(
+                DesignLabIcons.ChevronDown,
+                contentDescription = null,
+                tint = valueColor,
+                modifier = Modifier.size(11.dp),
+            )
+        }
     }
 }

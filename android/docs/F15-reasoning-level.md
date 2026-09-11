@@ -48,9 +48,13 @@ keep describing the service the user just left.
 
 ## F15-R2 · One control, showing the current level and every option (Must)
 
-A chip in the thread header's model row shows the current level id, or
-`default`. Tapping it opens a sheet: **"Model default"** first (clears the
-choice, so nothing is said to the model), then each declared level in order.
+A chip in the thread header's model row names the axis and the current value —
+`think medium ▾`, or `think default ▾` when nothing is chosen. The axis word is
+required, not decoration: a bare `medium` beside a model name is an unlabelled
+value, and the misreading it invites (a token budget, a temperature) is the one
+this feature must not cause. Tapping it opens a sheet: **"Model default"** first
+(clears the choice, so nothing is said to the model), then each declared level in
+order.
 Selecting "Model default" sends `null`, not `"off"` — those are different
 instructions. The sheet dismisses on **write success**, not on tap, so
 choosing and then immediately sending cannot use the old level.
@@ -59,6 +63,9 @@ choosing and then immediately sending cannot use the old level.
 
 - [x] Option rows are "Model default" + the declared levels, in declaration
       order, with the current value checked.
+- [ ] After the chip redesign: the pill reads as a control (tonal fill, trailing
+      disclosure), the touch target is ≥48 dp, and a 16-character level id
+      ellipsizes inside the chip rather than crowding out the model name.
 - [x] Picking a level, then reopening the sheet, shows it selected.
 - [x] Picking "Model default" on a thread that had a level leaves the chip
       reading `default` after a reload — i.e. the clear really reached the
@@ -213,6 +220,30 @@ is why `ik_llamacpp`, `tabbyapi`, `ds4` and OpenRouter send nothing.
   `StreamingTurn`; a turn is discarded at its terminal and refetched, which made
   the notice readable only while the answer happened to be streaming. It is now
   cleared by the next send, like the web client's `runNotice`.
+- **The chip names its axis (`think medium ⌄`) and is drawn like the settings button,
+  not like a badge.** The first implementation drew an outlined box on `sunken` with a
+  bare level id in blue mono. Three things were wrong: it was the only outlined chip in
+  the app (`DlChip`, the foundation screen's `Chip` and the engine badges are all
+  borderless tinted pills), so border-plus-recessed-fill read as a *disabled text
+  field*; it carried no affordance that it opens anything, though the app already has a
+  disclosure idiom in the reasoning block (F04-R4); and a lone `medium` states a value
+  without stating what it measures. The first fix gave it the app's tonal pill — and
+  that looked right in isolation but wrong beside the header's gear, because a visible
+  rectangle in the model row sits lower than a control centred against the whole header.
+  It is therefore a quiet control now: no fill, no border, one 48 dp invisible target,
+  `think` in `subtle`, the value in mono coloured by state (muted unset, accent chosen,
+  amber stranded), a trailing `ChevronDown`, the header's own ripple. Behaviour is
+  untouched: same options, same order, same staleness rules, same `thread_reasoning_chip`
+  tag and pure helpers.
+- **`ThreadHeader` is `heightIn(min = 64.dp)`, not `height(64.dp)`.** The header had a
+  fixed height from before this row existed; a 48 dp touch target on the model row plus
+  a title at 1.5× font scale does not fit inside 64 dp, so the header now takes 64 dp
+  as a floor and grows. The alternative — a 24 dp target to keep the header exactly 64 —
+  fails M3's target size for a chip, which is the one constraint here that is not a
+  style preference.
+- **The level's full value survives ellipsis.** At `widthIn(max = 128.dp)` a 16-character
+  id is cut off on screen; `contentDescription` ("Reasoning level: <id>") and the sheet
+  both carry it in full, so the ellipsis costs pixels and nothing else.
 - **A stale stored level appears in the sheet without the selected marker**, since
   the marker means "this request was honoured" and it wasn't. The chip carries
   the value; the row's label says it is not offered.
@@ -276,3 +307,11 @@ What the pass caught, that unit tests could not have:
 |---------|-------------|-----------------|
 | F15 | R1's stopped-service half | Checking it means stopping a container, which this session's rules forbid; the map is keyed by service name regardless of `running`, and the server resolves the ladder for stopped services too (the web picker reads the unfiltered list for the same reason) |
 | F15 | R8's wire-level absence | No proxy in place to capture the outgoing body. The client has no code path that could add a reasoning field: `SendMessageRequestDto` is untouched, and the level is only ever written to the conversation (unit) |
+| F15 | R2's chip appearance after the redesign | The behaviour is unchanged and unit-covered, but the pill was redrawn (tonal fill, axis word, disclosure chevron, 48 dp target) and `ThreadHeader` became `heightIn`. Needs a fresh device pass for the four states — unset, chosen, stale, pending — in both themes, at 1.5× font scale, and on a service with a long declared id, to confirm the model name survives |
+
+**Suite run.** The 543-test figure is a clean-run figure. `ThreadToolsTest` fails
+intermittently in a full-suite run on this branch *and* on its base (reproduced on
+`51a39e9`), always a `Dispatchers.Main` state error or a 10 s timeout, so
+`testDebugUnitTest` has to be read rather than counted. Pre-existing, not caused by
+F15 — but it will read as a false regression to whoever picks up the next Android
+feature, and is worth its own fix.
