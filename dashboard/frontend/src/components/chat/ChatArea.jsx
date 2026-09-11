@@ -239,19 +239,38 @@ export default function ChatArea({
               disabled={busy}
             />
           </div>
-          {/* Gate the live-stream Stop on runReady: it must not appear until
-              run_started has delivered the run id, so Stop always cancels with
-              an expected-run guard rather than an unguarded "cancel whatever is
-              active" that a concurrently-started run could be hit by. The
-              returned-to active_run path already has an id (active_run.id). */}
-          {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
+          {/* Right cluster: conversation-level actions. The viewer lives here
+              rather than in the composer because it inspects this conversation,
+              not the draft — and icon-only ghost, so it no longer out-signals
+              send as the only labelled control in the interface. */}
+          {/* Right cluster: conversation-level actions. ml-auto rather than
+              relying on the parent's justify-between, because this header wraps
+              and a wrapped line leaves a between-justified item at its start —
+              which stranded the viewer icon alone under the MCP chips. */}
+          <div className="flex items-center gap-2 ml-auto">
             <button
-              onClick={onStopStreaming}
-              className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
+              type="button"
+              onClick={() => setDebugOpen(true)}
+              title="Conversation viewer (raw responses)"
+              aria-label="Open conversation viewer"
+              className="h-8 w-8 grid place-items-center rounded-md text-fg-subtle hover:text-fg-muted hover:bg-elevated transition-colors"
             >
-              <i className="fa-solid fa-stop mr-1"></i>Stop
+              <i className="fa-solid fa-bug"></i>
             </button>
-          )}
+            {/* Gate the live-stream Stop on runReady: it must not appear until
+                run_started has delivered the run id, so Stop always cancels with
+                an expected-run guard rather than an unguarded "cancel whatever is
+                active" that a concurrently-started run could be hit by. The
+                returned-to active_run path already has an id (active_run.id). */}
+            {(((streaming && runReady) || hasActiveRun) && !cancelling) && (
+              <button
+                onClick={onStopStreaming}
+                className="text-xs px-3 py-1 bg-danger-subtle text-danger-fg border border-danger rounded hover:bg-danger-subtle"
+              >
+                <i className="fa-solid fa-stop mr-1"></i>Stop
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Prompt selector — read-only, keyed by conversation so selection
@@ -301,7 +320,6 @@ export default function ChatArea({
           disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
-          onDebug={() => setDebugOpen(true)}
           trailing={
             <ReasoningLevelSelect
               mainService={conversation.main_service}

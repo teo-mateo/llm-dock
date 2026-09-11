@@ -350,6 +350,18 @@ describe('ChatArea — reasoning level', () => {
     expect(form.contains(screen.getByLabelText('Attach files'))).toBe(true)
   })
 
+  it('keeps the conversation viewer in the header, out of the composer', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
+      mcp_servers: [], reasoning_level: null,
+    })
+    const viewer = screen.getByLabelText('Open conversation viewer')
+    // It inspects the conversation, not the draft: with it in the composer it
+    // was the only labelled control in the row and out-signalled send.
+    expect(viewer.closest('form')).toBeNull()
+    expect(document.querySelector('textarea').closest('form').contains(viewer)).toBe(false)
+  })
+
   it('saves a changed level on the conversation and reloads it', async () => {
     const onReload = vi.fn()
     mockUpdateConversation.mockResolvedValue({})

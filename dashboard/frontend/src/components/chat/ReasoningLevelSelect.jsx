@@ -151,13 +151,17 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={onTriggerKeyDown}
         className={[
-          'flex items-center gap-1.5 rounded-md border px-2 py-1.5 leading-none text-xs transition-colors',
-          'bg-elevated border-hairline hover:border-accent hover:text-accent disabled:opacity-50',
+          'h-10 shrink-0 flex items-center gap-1.5 rounded-md border px-2.5 leading-none text-xs transition-colors',
+          'bg-elevated border-hairline hover:border-accent hover:text-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50',
           stale ? 'text-critique' : 'text-fg-muted',
         ].join(' ')}
       >
         <i className={`fa-solid ${triggerIcon}`} aria-hidden="true"></i>
-        <span className="hidden sm:inline max-w-[70px] truncate">{value || 'default'}</span>
+        {/* Truncate rather than hide: narrow viewports are exactly where the
+            current level matters most, and a hidden value leaves the control
+            meaning nothing while still costing its width. */}
+        <span className="min-w-0 truncate max-w-[10ch] min-[420px]:max-w-[12ch]">{value || 'default'}</span>
         <i className="fa-solid fa-chevron-down text-[9px] opacity-60" aria-hidden="true"></i>
       </button>
 

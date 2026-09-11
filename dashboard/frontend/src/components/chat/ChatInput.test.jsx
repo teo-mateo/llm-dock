@@ -148,55 +148,71 @@ describe('pickFence', () => {
   })
 })
 
-describe('ChatInput — trailing control', () => {
-  it('renders it inside the text field, at its right edge', () => {
+describe('ChatInput — control rail', () => {
+  const rail = () => screen.getByTestId('composer-rail')
+  const card = () => rail().parentElement
+
+  it('puts the trailing control on the rail, outside the field', () => {
     const marker = <span data-testid="slot">x</span>
-    const { getByTestId } = render(<ChatInput onSend={() => {}} trailing={marker} />)
-    const field = document.querySelector('textarea')
-    const slot = getByTestId('slot')
-    // Same wrapper, so the control sits within the field's border rather than
-    // joining the attach/send row.
-    expect(field.parentElement).toBe(slot.parentElement.parentElement)
-    expect(slot.parentElement.className).toContain('absolute')
-    expect(slot.parentElement.className).toContain('right-2')
+    render(<ChatInput onSend={() => {}} trailing={marker} />)
+    const slot = screen.getByTestId('slot')
+    const ta = document.querySelector('textarea')
+    expect(rail().contains(slot)).toBe(true)
+    // Not inside the scroll box: the control must not travel with draft height
+    // or with scrolling once the field reaches its growth cap.
+    expect(slot.closest('textarea')).toBeNull()
+    expect(rail().parentElement).toBe(ta.parentElement)
   })
 
-  it('reserves textarea padding only when something is docked there', () => {
-    const marker = <span data-testid="slot" />
-    const withSlot = render(<ChatInput onSend={() => {}} trailing={marker} />)
-    expect(document.querySelector('textarea').className).toContain('pr-28')
-    withSlot.unmount()
-    render(<ChatInput onSend={() => {}} />)
-    const field = document.querySelector('textarea')
-    expect(field.className).toContain('px-4')
-    expect(field.className).not.toContain('pr-28')
-  })
-
-  it('renders nothing extra when no control is passed', () => {
-    const { container } = render(<ChatInput onSend={() => {}} />)
-    expect(container.querySelectorAll('textarea').length).toBe(1)
-    expect(document.querySelector('textarea').parentElement.children).toHaveLength(1)
-  })
-
-  it('bottom-aligns every row control so growth does not skew the row', () => {
-    // The row is items-end so attach/send/debug share the field's bottom edge as
-    // it grows. One control opted into align-self: center, which read as a
-    // crooked toolbar the moment a draft wrapped past one line.
-    render(<ChatInput onSend={() => {}} onDebug={() => {}} />)
-    const debug = document.querySelector('button[aria-label="Open debug viewer"]')
-    expect(debug.className).not.toContain('self-center')
-  })
-
-  it('lays the field out as a block so the docked control centres on it', () => {
-    // An inline-block textarea leaves a baseline descender gap inside its
-    // wrapper, so the wrapper is taller than the field and top-1/2 centres the
-    // control on the wrapper — measurably below the middle of the input.
+  it('stops reserving field padding for it', () => {
     const marker = <span data-testid="slot" />
     render(<ChatInput onSend={() => {}} trailing={marker} />)
-    expect(document.querySelector('textarea').className).toContain('block')
+    const cls = document.querySelector('textarea').className
+    expect(cls).not.toContain('pr-28')
+    expect(cls).not.toContain('pl-4')
+    expect(cls).toContain('px-4')
   })
 
-  it('keeps typing and sending intact around it', () => {
+  it('keeps the rail laid out when no control is docked', () => {
+    render(<ChatInput onSend={() => {}} />)
+    const kids = [...rail().children]
+    expect(rail().querySelector('[data-testid="slot"]')).toBeNull()
+    // The spacer carries the layout, so send stays right with or without a ladder.
+    expect(rail().querySelector('.flex-1')).toBeTruthy()
+    expect(kids[kids.length - 1].getAttribute('type')).toBe('submit')
+  })
+
+  it('gives the rail controls one height and the row one primary', () => {
+    render(<ChatInput onSend={() => {}} trailing={<span data-testid="slot" />} />)
+    const attach = screen.getByLabelText('Attach files')
+    const submit = rail().querySelector('button[type="submit"]')
+    expect(attach.className).toContain('h-10')
+    expect(submit.className).toContain('h-10')
+    const filled = [...rail().querySelectorAll('button')].filter(b => b.className.includes('bg-accent-strong'))
+    expect(filled).toHaveLength(1)
+    expect(filled[0]).toBe(submit)
+  })
+
+  it('names the icon-only send button, since it is the primary action', () => {
+    render(<ChatInput onSend={() => {}} />)
+    const submit = rail().querySelector('button[type="submit"]')
+    expect(submit.getAttribute('aria-label')).toBe('Send message')
+    expect(screen.queryByText(/debug/i)).toBeNull()
+  })
+
+  it('lets the level list open upward out of the card', () => {
+    render(<ChatInput onSend={() => {}} trailing={<span data-testid="slot" />} />)
+    // overflow-hidden on the card would clip the listbox; the rounded corners
+    // temptation this is exactly the class that forbids.
+    expect(card().className).not.toContain('overflow-hidden')
+  })
+
+  it('renders the draft in the face the message will render in', () => {
+    render(<ChatInput onSend={() => {}} />)
+    expect(document.querySelector('textarea').className).toContain('font-mono')
+  })
+
+  it('keeps typing and sending intact around the rail', () => {
     const onSend = vi.fn()
     const marker = <span data-testid="slot" />
     render(<ChatInput onSend={onSend} trailing={marker} />)
