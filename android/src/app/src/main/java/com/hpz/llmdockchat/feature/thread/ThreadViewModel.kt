@@ -20,6 +20,7 @@ import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.model.ManagedPrompt
+import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -37,31 +38,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/**
- * One thread: load it, send a turn, render the stream, stop it (F04).
- *
- * Collection is screen-scoped (Architecture D5). Leaving the thread clears the
- * ViewModel, which cancels [streamJob], which cancels the HTTP call — and
- * **nothing else**. No cancel request is sent; the server finishes the run and
- * persists the reply (F04-R10).
- */
 class ThreadViewModel(
     private val conversationId: String,
     private val repository: ChatRepository,
     private val drafts: DraftStore,
-    /**
-     * F14 — staged share attachments for this conversation, read back on load
-     * so a force-stop between the pick and the send does not lose them
-     * (F14-R5). Null in tests that don't exercise the share flow.
-     */
     private val attachmentStore: SharedDraftStore? = null,
     private val servicesStreamRepository: ServicesStreamRepository,
-    /**
-     * F15: the one-shot `GET /api/services`, for the reasoning ladder. The live
-     * stream is scoped to the model picker's visible lifetime (F07's rule) and a
-     * thread outlives that by hours, so the ladder rides the one-shot read plus
-     * whatever the picker's stream happens to deliver while it is up.
-     */
     private val servicesRepository: ServicesRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
@@ -78,42 +60,22 @@ class ThreadViewModel(
 
     private var streamJob: Job? = null
 
-    /** The model picker's own live subscription — separate from [streamJob], which is the chat run's. */
     private var modelPickerJob: Job? = null
 
-    /**
-     * Serialises the tools writes (F08-R2). Every toggle PUTs the **whole**
-     * server-id array, so two writes in flight at once is a lost-update race:
-     * the earlier one can reach the server last and leave it holding a list
-     * the sheet no longer shows. Cancelling the earlier coroutine does not
-     * help — `ApiClient` runs a blocking call, and a request already handed
-     * to the server cannot be recalled — so the writes are ordered instead.
-     * The last one queued is the last one sent, and it carries the newest
-     * selection, so the server deterministically ends up agreeing with the UI.
-     */
     private val toolsWriteLock = Mutex()
 
-    /**
-     * Which toggle is the newest, so a *stale* write's failure is not acted
-     * on: a later write carries the whole array and will establish the right
-     * state on its own, and reverting to a superseded selection would fight
-     * it. Only the most recent toggle's own outcome reverts the sheet.
-     */
     private var latestToolsToggle = 0L
 
-    /**
-     * F15-R7: same ordering discipline as [toolsWriteLock] and
-     * [latestToolsToggle], for the same reason. Two level writes in flight are
-     * two PUTs of the same column, and a stale failure reverting to what the
-     * user has since replaced would fight the newer write.
-     */
     private val levelWriteLock = Mutex()
     private var latestLevelWrite = 0L
 
-    /** The ladder by service name, from the last successful read of `/api/services`. */
     private var ladders: Map<String, List<String>> = emptyMap()
 
-    /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
+    private var remoteLadders: Map<String, List<String>> = emptyMap()
+
+    private val mergedLadders: Map<String, List<String>>
+        get() = ladders + remoteLadders
+
     private var composerBeforeEdit: String = ""
     private var attachmentsBeforeEdit: List<String> = emptyList()
 
@@ -127,8 +89,6 @@ class ThreadViewModel(
                     reattachIfRunning(conversation)
                 },
                 onFailure = { failure ->
-                    // A reload that fails mid-thread must not throw away a
-                    // thread already on screen; only a cold load goes to Failed.
                     val current = _state.value
                     if (current is ThreadUiState.Loaded) {
                         _state.value = current.copy(actionError = failure.appError.displayMessage)
@@ -137,10 +97,6 @@ class ThreadViewModel(
                     }
                 },
             )
-            // After the thread, not before: the ladder is decoration on the
-            // header, not a prerequisite for drawing it, and a slow service
-            // listing must never delay the conversation. Its failure is silent by
-            // design (see [refreshLadders]) — the thread itself is what matters.
             refreshLadders()
         }
     }
@@ -155,49 +111,38 @@ class ThreadViewModel(
             conversation = conversation,
             thread = ThreadState(
                 messages = conversation.messages,
-                // A turn held over from a refetch that failed is superseded the
-                // moment a load succeeds; keeping it would show it twice.
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
             ),
             composer = current?.composer ?: draft,
-            // F14 — the record is read back on every load (it survives until
-            // send/leave), so a re-entry within the same process would re-add
-            // what `current` already holds; distinct keeps that a no-op while
-            // a process death re-stages the attachments from disk.
             attachments = (current?.attachments.orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
             actionError = current?.actionError,
-            laddersByService = ladders,
+            laddersByService = mergedLadders,
         )
     }
 
-    // -- reasoning ladder (F15) ------------------------------------------------
 
-    /**
-     * One-shot `GET /api/services` for the ladders, ignoring failure rather than
-     * reporting it: a failed read keeps the last known map ([ladders]) instead of
-     * clearing it, because an empty ladder hides the chip and the chip is the
-     * only way back to the sheet — clearing on a network hiccup would make the
-     * control unrecoverable without leaving the screen. The next successful read
-     * (sheet open, re-open, picker stream) replaces it wholesale, which is also
-     * how a service that stopped declaring levels disappears from the map.
-     */
     private suspend fun refreshLadders() {
         servicesRepository.list().getOrNull()?.let(::updateLadders)
+        if (loaded()?.conversation?.modelRef is ModelRef.OpenRouter) {
+            openRouterModelsRepository.list().getOrNull()?.let { updateRemoteLadders(it.models) }
+        }
     }
 
-    /**
-     * The one place a ladder map is written, whether it arrived from the one-shot
-     * `GET /api/services` or from the picker's live stream: both carry a complete
-     * service list, so both replace the map wholesale and neither can half-cover
-     * the other (F15-R1).
-     */
     private fun updateLadders(services: List<ServiceSummary>) {
         ladders = services.associate { it.name to it.reasoningLevels }
-        loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
+        publishLadders()
     }
 
-    /** Opens the level sheet and refreshes the ladder on the way in (F15-R5). */
+    private fun updateRemoteLadders(models: List<ModelOption.Remote>) {
+        remoteLadders = models.associate { it.ref.wireValue to it.reasoningLevels }
+        publishLadders()
+    }
+
+    private fun publishLadders() {
+        loaded()?.let { _state.value = it.copy(laddersByService = mergedLadders) }
+    }
+
     fun openReasoningPicker() {
         val current = loaded() ?: return
         if (!current.canSwitchModel) return
@@ -209,16 +154,6 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(reasoningPicker = null) }
     }
 
-    /**
-     * F15-R2/R4/R7: choose a level, or `null` for "model default".
-     *
-     * Optimistic like [selectPrompt], ordered like [toggleTool], and the sheet
-     * closes on **write success** rather than on tap — so "pick a level, then
-     * immediately send" is well defined: the PUT has landed before the sheet is
-     * gone, and the next turn uses the new level. A failure reverts to what the
-     * server has and surfaces through [ThreadUiState.Loaded.actionError]
-     * (F00-R4), and only the newest write's failure does either.
-     */
     fun selectReasoningLevel(level: String?) {
         val current = loaded() ?: return
         if (!current.canSwitchModel) return
@@ -241,10 +176,6 @@ class ThreadViewModel(
                         val latest = loaded() ?: return@fold
                         _state.value = latest.copy(
                             conversation = latest.conversation.copy(reasoningLevel = previous),
-                            // Only re-open a sheet that is still open: the user can dismiss a
-                            // pending write (scrim tap, drag-down), and a late failure must not
-                            // push it back over the composer. The revert and the error stand on
-                            // their own either way (F00-R4, F15-R7).
                             reasoningPicker = latest.reasoningPicker?.let { ReasoningPickerState() },
                             actionError = failure.appError.displayMessage,
                         )
@@ -254,27 +185,9 @@ class ThreadViewModel(
         }
     }
 
-    /**
-     * F09-R1/R2 — the thread was opened on a run that is already going: started
-     * here and left behind, or started on the desktop. Two things happen, in
-     * this order and for two different reasons.
-     *
-     * The turn is put on screen **first**, empty. `active_run` is enough to know
-     * the thread is generating, and the criterion is that it reads that way
-     * *before any stream data arrives* — the alternative, waiting for the first
-     * replayed frame, shows an idle thread with a live composer for as long as
-     * the subscribe takes, and invites a send that would earn a 409.
-     *
-     * Then the reader is pointed at `GET /api/chat/runs/<id>/stream`, which is
-     * the same reader the send path uses (Architecture D2) because it is the
-     * same frames. The replay it opens with rebuilds the turn from nothing, so
-     * there is no dedup step anywhere — see [collectAttempt].
-     */
     private fun reattachIfRunning(conversation: ConversationDetail) {
         if (!conversation.isGenerating) return
         val run = conversation.activeRun ?: return
-        // Already streaming — either this client's own send, or a reattach from
-        // an earlier load(). A second subscription would be a second replay.
         if (streamJob?.isActive == true) return
         val current = loaded() ?: return
 
@@ -326,20 +239,9 @@ class ThreadViewModel(
         )
     }
 
-    /**
-     * Cancel by conversation with the run id as a guard (F04-R6). The server
-     * cancels cooperatively, so generation stops at the next stream event
-     * rather than instantly, and the run emits **no terminal frame** — the
-     * stream simply ends, which [collectRun] treats as a cancel.
-     */
     fun stop() {
         val current = loaded() ?: return
-        // A turn held over from a failed refetch belongs to a run that already
-        // ended; there is nothing of ours left to stop.
         val turn = current.thread.streaming?.takeUnless { it.unconfirmed }
-        // A run this client is not streaming is still stoppable — one started
-        // on the desktop, or left running here and returned to. The server
-        // finds it from the conversation; the id, when known, is only a guard.
         val runId = turn?.runId ?: current.conversation.activeRun?.id
         if (turn == null && runId == null) return
         if (turn != null) {
@@ -347,9 +249,6 @@ class ThreadViewModel(
         }
         viewModelScope.launch {
             repository.cancelActiveRun(conversationId, runId).fold(
-                // With no local stream there is no terminal to react to, so the
-                // refetch that clears the thread's "generating" state has to be
-                // issued here.
                 onSuccess = { if (turn == null) reloadConversation() },
                 onFailure = { failure ->
                     loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
@@ -379,17 +278,9 @@ class ThreadViewModel(
         val current = loaded() ?: return
         if (index !in current.attachments.indices) return
         _state.value = current.copy(attachments = current.attachments.filterIndexed { i, _ -> i != index })
-        // Keep the persisted record aligned so a later re-entry cannot
-        // resurrect a removed attachment (F14-R5's "no ghost").
         attachmentStore?.removeAttachment(conversationId, index)
     }
 
-    /**
-     * F14 — leaving the thread spends the staged record. Called from the
-     * screen's back handlers, never from a 401 teardown (which pops the graph
-     * directly), so a forced re-login round trip keeps the staged content
-     * (F14-R5's third criterion) while an ordinary leave produces no ghost.
-     */
     fun leaveThread() {
         attachmentStore?.clear(conversationId)
     }
@@ -398,24 +289,15 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(actionError = message) }
     }
 
-    // -- switch model (F07-R4) --------------------------------------------------
 
-    /**
-     * Opens the sheet and starts its own live services subscription — separate
-     * from [streamJob] (the chat run's), and unlike [NewChatViewModel]'s, not
-     * kept open for the whole time the screen is: a thread stays open far
-     * longer than a new-chat sheet does, so the SSE connection is scoped to the
-     * sheet being visible, cancelled the moment it closes ([closeModelPicker]).
-     */
     fun openModelPicker() {
         val current = loaded() ?: return
         if (current.runActive) return
-        // Settings is where this is reached from; dismiss it rather than stack
-        // one modal sheet on top of another.
         _state.value = current.copy(settings = null, modelPicker = ModelPickerState())
         modelPickerJob?.cancel()
         modelPickerJob = viewModelScope.launch {
             val openRouter = openRouterModelsRepository.list().getOrNull()
+            openRouter?.let { updateRemoteLadders(it.models) }
             loaded()?.let {
                 _state.value = it.copy(
                     modelPicker = it.modelPicker?.copy(
@@ -425,10 +307,6 @@ class ThreadViewModel(
                 )
             }
             servicesStreamRepository.stream().collect { services ->
-                // F15: the picker's live list is also the ladder's second
-                // source, so a dashboard edit reaches an open thread while the
-                // picker is up — and the service the user is about to pick
-                // already has its ladder in the map when the switch lands.
                 updateLadders(services)
                 loaded()?.let {
                     _state.value = it.copy(modelPicker = it.modelPicker?.copy(services = services))
@@ -443,12 +321,6 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(modelPicker = null) }
     }
 
-    /**
-     * `PUT /api/chat/conversations/<id>` with the new `main_service`. Earlier
-     * messages are untouched server-side — each already carries its own
-     * `model_service` — only the next turn is affected. The reload afterwards
-     * is what updates the thread header (F07-R4's first criterion).
-     */
     fun switchModel(ref: ModelRef) {
         val current = loaded() ?: return
         if (current.runActive) return
@@ -465,27 +337,10 @@ class ThreadViewModel(
         }
     }
 
-    // -- tools for this chat (F08) ----------------------------------------------
 
-    /**
-     * Opens the chat-settings sheet and fetches the registry once (unlike
-     * [openModelPicker], no live subscription — see [ChatSettingsState]'s doc
-     * for why a one-shot fetch already satisfies F08-R1's "no app update
-     * needed" criterion).
-     *
-     * Unguarded, unlike [openModelPicker]: the sheet also carries the text-size
-     * control, which is unrelated to any run. F08-R4's guarantee is enforced
-     * where it actually matters — [toggleTool] refuses during a run, and the
-     * rows render disabled — rather than by hiding the whole sheet.
-     */
     fun openSettings() {
         val current = loaded() ?: return
         _state.value = current.copy(settings = ChatSettingsState())
-        // Two independent fetches, each applied as it lands. Awaiting both
-        // before showing anything means a slow or failing prompts endpoint
-        // holds back the tool list, which is the thing usually being opened
-        // for — and each `settings != null` check is what stops a late
-        // response repopulating a sheet the user has already closed.
         viewModelScope.launch {
             val servers = mcpServersRepository.list().getOrNull().orEmpty()
             loaded()?.settings?.let { open ->
@@ -504,15 +359,6 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(settings = null) }
     }
 
-    /**
-     * Switches the thread's system prompt (the settings sheet's picker).
-     *
-     * Optimistic like [toggleTool], and reverted the same way — the sheet shows
-     * the selection immediately, and a failed write puts the previous prompt
-     * back rather than leaving the UI claiming something the server does not
-     * have. Refused during a run for the same reason a tool toggle is: the turn
-     * in flight already read the old prompt.
-     */
     fun selectPrompt(prompt: ManagedPrompt) {
         val current = loaded() ?: return
         if (!current.canToggleTools) return
@@ -535,19 +381,6 @@ class ThreadViewModel(
         }
     }
 
-    /**
-     * `PUT /api/chat/conversations/<id>` with `mcp_servers_json` (F08-R2) —
-     * the same call [com.hpz.llmdockchat.feature.newchat.NewChatViewModel]
-     * uses for a brand-new thread, reused here for an existing one.
-     *
-     * Applied optimistically — the switch in the sheet must flip the instant
-     * it's tapped, not after a round trip — and rolled back to exactly what
-     * it was before this toggle if the write fails, so the UI never claims a
-     * state the server doesn't have (F08-R2's fourth criterion). No refetch
-     * on success: the writes are ordered by [toolsWriteLock], so the array
-     * this client wrote last is already what the server has — a refetch
-     * would cost a round trip to learn what it just told the server.
-     */
     fun toggleTool(serverId: String) {
         val current = loaded() ?: return
         if (!current.canToggleTools) return
@@ -573,25 +406,17 @@ class ThreadViewModel(
         }
     }
 
-    // -- delete (F06-R2) -------------------------------------------------------
 
-    /** Opens the confirm. The menu itself hides Delete while a run is active; this is the second guard. */
     fun requestDelete(message: ChatMessage) {
         val current = loaded() ?: return
         if (current.runActive) return
         _state.value = current.copy(pendingDelete = message)
     }
 
-    /** No request — the confirm's whole point is that cancelling touches nothing. */
     fun cancelDelete() {
         loaded()?.let { _state.value = it.copy(pendingDelete = null) }
     }
 
-    /**
-     * The message is **not** removed optimistically — only a refetch after a
-     * confirmed 200 does that (F06-R2's second criterion: a 409 must show the
-     * server's message, not a row that quietly vanished and came back).
-     */
     fun confirmDelete() {
         val current = loaded() ?: return
         val target = current.pendingDelete ?: return
@@ -606,12 +431,7 @@ class ThreadViewModel(
         }
     }
 
-    // -- edit and resend (F06-R3) ----------------------------------------------
 
-    /**
-     * The menu hides this action on an assistant message; this is the second
-     * guard (the server would 400 it anyway — F06-R3's fourth criterion).
-     */
     fun beginEdit(message: ChatMessage) {
         if (message.role != MessageRole.USER) return
         val current = loaded() ?: return
@@ -627,7 +447,6 @@ class ThreadViewModel(
         )
     }
 
-    /** Leaves edit mode and restores whatever was in the composer before it started. No request. */
     fun cancelEdit() {
         val current = loaded() ?: return
         if (current.editingMessage == null) return
@@ -640,11 +459,6 @@ class ThreadViewModel(
         drafts.save(conversationId, composerBeforeEdit)
     }
 
-    /**
-     * Send, while editing, opens the confirm instead of sending. [discardCount]
-     * is computed from what this client already has loaded — verified against
-     * the server's own truncation in `ThreadEditAndResendTest`.
-     */
     fun requestEditConfirm() {
         val current = loaded() ?: return
         val target = current.editingMessage ?: return
@@ -659,20 +473,10 @@ class ThreadViewModel(
         )
     }
 
-    /** Stays in edit mode; only the confirm closes. No request. */
     fun cancelEditConfirm() {
         loaded()?.let { _state.value = it.copy(pendingEdit = null) }
     }
 
-    /**
-     * `PUT …/messages/<id>` truncates from [PendingEdit.message]'s position on
-     * the server *before* the run even starts, so the local copy is truncated
-     * here too rather than left to show stale turns under the new answer for
-     * the length of the stream. If the request is rejected before any frame
-     * arrives — a 409, someone else started a run in between — [finishRun]
-     * refetches to undo this rather than trust the rollback to be correct on
-     * its own (F06-R3's last criterion).
-     */
     fun confirmEdit() {
         val current = loaded() ?: return
         val edit = current.pendingEdit ?: return
@@ -701,26 +505,7 @@ class ThreadViewModel(
         )
     }
 
-    // -- the stream ----------------------------------------------------------
 
-    /**
-     * One run, however many connections it takes (F04 + F09-R4).
-     *
-     * [first] is the stream the run arrived on — a send's POST, an edit's PUT,
-     * or a reattach's GET. If the *connection* breaks while the run is still
-     * going, the run itself is untouched: it is executing on a worker thread on
-     * the dashboard and will persist its reply whether anyone is listening or
-     * not. So a broken connection is retried, and **always** by reattaching.
-     * Re-issuing the POST would create a second run and a second copy of the
-     * user's message, which is the one failure mode here that damages the
-     * thread rather than the screen.
-     *
-     * A stream that *ends* is not retried. There is no frame that distinguishes
-     * a cancelled run from any other clean close — `_sse_frames_for` maps
-     * `run_cancelled` to nothing at all — so "the server closed it" is the
-     * signal that the run is over, and what actually happened comes from the
-     * refetch in [finishRun] (Architecture D3).
-     */
     private fun collectRun(
         first: Flow<RunEvent>,
         restoreOnEarlyFailure: PendingUserMessage?,
@@ -750,10 +535,6 @@ class ThreadViewModel(
                 val id = runId
                 if (error == null || id == null || error.appError !is AppError.Network) break
 
-                // Only a *failed* attempt earns a longer wait. One that
-                // connected and then dropped starts the schedule over, so a
-                // flaky link is not punished with the delay a previous outage
-                // worked its way up to.
                 if (attempt.sawAnyFrame) backoff.reset()
                 setReconnecting(true)
                 delay(backoff.next())
@@ -772,40 +553,14 @@ class ThreadViewModel(
         }
     }
 
-    /**
-     * One connection's worth of frames.
-     *
-     * The accumulator is built here, per attempt, and that is the whole of
-     * F09-R2's no-duplication rule. `GET /api/chat/runs/<id>/stream` replays the
-     * run **from its first token every time it is subscribed to** — verified
-     * against the dashboard: two consecutive reattaches to one run returned
-     * 8,168 and 12,304 characters, the second containing the first in full. An
-     * accumulator carried across attempts would therefore append the replay to
-     * text it already had. Rebuilding instead is Architecture D3's reattach
-     * corollary: the client holds no authoritative copy, so replay is
-     * idempotent and there is no dedup logic anywhere.
-     *
-     * Nothing is blanked in the gap: the previous snapshot stays in `streaming`
-     * until this attempt's first publish replaces it wholesale.
-     */
     private suspend fun CoroutineScope.collectAttempt(
         source: Flow<RunEvent>,
         knownRunId: String?,
     ): RunAttempt {
-        // Per attempt, deliberately. Do not hoist this into collectRun: every
-        // reattach replays the run from its first token, so an accumulator
-        // shared across attempts appends the replay to text it already has and
-        // the answer appears twice. Pinned by ThreadReattachTest's `reattaching
-        // twice does not duplicate…`, which fails at 20,472 characters for a
-        // 12,304-character answer against the shared version.
         val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage, knownRunId)
         var titleFrameSeen = false
         var failureMessage: String? = null
 
-        // Deltas arrive faster than the display refreshes, so they are
-        // folded into the accumulator and published on a timer rather than
-        // one state copy per token (Architecture P1). One timer per burst,
-        // not a ticker: nothing is scheduled while the stream is quiet.
         var pendingFlush: Job? = null
         val scheduleFlush = {
             if (pendingFlush?.isActive != true) {
@@ -818,8 +573,6 @@ class ThreadViewModel(
 
         val error: Throwable? = try {
             source.collect { event ->
-                // Frames are flowing again, whatever this attempt turns out to
-                // deliver — so the screen stops saying it is reconnecting.
                 if (!accumulator.sawAnyFrame) setReconnecting(false)
                 accumulator.sawFrame()
                 when (event) {
@@ -828,12 +581,6 @@ class ThreadViewModel(
                         scheduleFlush()
                     }
                     is RunEvent.Failed -> failureMessage = event.message
-                    /**
-                     * F15-R6: the note is hoisted onto the screen state the moment
-                     * it arrives rather than left on the turn — the turn is dropped
-                     * at its terminal and refetched, and a notice that dies with it
-                     * is only readable while the answer happens to be streaming.
-                     */
                     is RunEvent.RunStarted -> {
                         event.reasoningLevelNote?.let { note ->
                             loaded()?.let { _state.value = it.copy(reasoningNotice = note) }
@@ -848,9 +595,6 @@ class ThreadViewModel(
                         titleFrameSeen = true
                         applyTitle(event.title)
                     }
-                    // [DONE] and message_saved are NOT the end of the
-                    // stream: the auto-title frame can still follow, so the
-                    // loop keeps reading until the server closes it.
                     RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
                     is RunEvent.Unknown -> Unit
                     else -> {
@@ -861,8 +605,6 @@ class ThreadViewModel(
             }
             null
         } catch (e: CancellationException) {
-            // The screen went away. Not a run outcome — no cleanup, no
-            // refetch, and above all no cancel request (F04-R10).
             throw e
         } catch (e: Throwable) {
             e
@@ -870,11 +612,6 @@ class ThreadViewModel(
             pendingFlush?.cancel()
         }
 
-        // A burst that ended inside the coalescing window leaves text the
-        // cancelled timer will never publish. Flushing here is what makes
-        // the turn on screen complete for the whole refetch that follows —
-        // without it the tail of every answer blinks in only when the
-        // saved message arrives.
         if (accumulator.takeDirty()) publishTurn(accumulator)
 
         return RunAttempt(
@@ -886,7 +623,6 @@ class ThreadViewModel(
         )
     }
 
-    /** The connection dropped and the app is trying to get it back (F09-R4). */
     private fun setReconnecting(value: Boolean) {
         val current = loaded() ?: return
         val turn = current.thread.streaming ?: return
@@ -894,11 +630,6 @@ class ThreadViewModel(
         _state.value = current.copy(thread = current.thread.copy(streaming = turn.copy(reconnecting = value)))
     }
 
-    /**
-     * Every path here drops `streaming` and refetches — that is D3's whole
-     * point. What the server has is the answer, whether it saved a message, a
-     * partial plus an error, or nothing at all.
-     */
     private suspend fun finishRun(
         error: Throwable?,
         sawAnyFrame: Boolean,
@@ -910,23 +641,9 @@ class ThreadViewModel(
     ) {
         val current = loaded()
 
-        // Not on the reattach path. "The run never started" is a statement
-        // about a turn this client was trying to *send*; a reattach that never
-        // connected — an unknown run id, say — says nothing about the thread,
-        // and the refetch below is what corrects the `active_run` that sent us
-        // looking for it (F09-R2's last criterion: an error, not a hang).
         if (error != null && !sawAnyFrame && !reattach) {
-            // The run never started — a 409 because one is already active, or
-            // the request never connected. The server rolled the user message
-            // back, so dropping `streaming` leaves no phantom turn behind, and
-            // the text goes back in the composer rather than vanishing.
             val restored = restoreOnEarlyFailure?.content.orEmpty()
             val loadedCurrent = current ?: return
-            // `confirmEdit` truncated `messages` locally on the assumption the
-            // request would succeed. A rejection here means the server never
-            // touched anything (F06-R3's last criterion), so that truncation
-            // has to come back — a refetch proves it rather than trusting the
-            // in-memory rollback to be right on its own.
             val messages = if (messagesBeforeEdit != null) {
                 repository.load(conversationId).getOrNull()?.messages ?: messagesBeforeEdit
             } else {
@@ -943,28 +660,14 @@ class ThreadViewModel(
             return
         }
 
-        // Refetch *before* dropping `streaming`, and swap both in one state
-        // update: doing it the other way round blanks the answer for a round
-        // trip and reads as a flicker at the end of every turn.
         val refetch = repository.load(conversationId)
         val refetched = refetch.getOrNull()
         val latest = loaded() ?: return
 
         if (refetched == null) {
-            // The run is over but the server's copy of it could not be
-            // fetched. Dropping `streaming` now would take the whole turn off
-            // screen — the user's own message included — with nothing to say
-            // why, and after a failure the text is real: the server persisted
-            // the partial plus its error. So the turn stays, marked
-            // unconfirmed: it no longer counts as a live run, it carries the
-            // error the refetch could not deliver, and the next successful
-            // load replaces it rather than duplicating it.
             _state.value = latest.copy(
                 sending = false,
                 thread = latest.thread.copy(
-                    // Nothing to hold over when the turn is the empty placeholder
-                    // a reattach put up: an unconfirmed blank bubble is noise, and
-                    // the error is reported below either way.
                     streaming = latest.thread.streaming
                         ?.takeIf { it.hasVisibleOutput || it.userMessage != null }
                         ?.copy(
@@ -985,23 +688,11 @@ class ThreadViewModel(
             sending = false,
             conversation = refetched,
             thread = ThreadState(messages = refetched.messages, streaming = null),
-            // A `{"error": …}` frame is already persisted on the run, so the
-            // refetch surfaces it through `last_run`; only a client-side stream
-            // failure needs reporting here.
             actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
         )
         if (expectTitle) awaitAutoTitle()
     }
 
-    /**
-     * The auto-title is generated *after* the run is marked complete, and the
-     * SSE observer closes on the run's durable status the moment it idles for
-     * three seconds — so on a rig where titling takes longer than that (a local
-     * model titling with itself does), `conversation_updated` is published to a
-     * bus nobody is listening to any more. Polling briefly is what makes
-     * F04-R7's "without a manual refresh" true in practice. See F04's
-     * *Deviations*.
-     */
     private suspend fun awaitAutoTitle() {
         repeat(TITLE_SETTLE_ATTEMPTS) {
             delay(titleSettleDelayMs)
@@ -1027,9 +718,6 @@ class ThreadViewModel(
             thread = current.thread.copy(
                 streaming = accumulator.snapshot(
                     stopping = existing?.stopping == true,
-                    // A snapshot replaces the turn wholesale, so the flags that
-                    // belong to the *turn* rather than to the accumulated text
-                    // have to be carried across it.
                     reconnecting = existing?.reconnecting == true,
                     reattached = existing?.reattached == true,
                 ),
@@ -1040,43 +728,24 @@ class ThreadViewModel(
     private fun loaded(): ThreadUiState.Loaded? = _state.value as? ThreadUiState.Loaded
 
     companion object {
-        /** Architecture P1 — roughly one publish per frame, not one per token. */
         const val DEFAULT_COALESCE_WINDOW_MS = 24L
         const val DEFAULT_TITLE_SETTLE_DELAY_MS = 1_500L
         const val TITLE_SETTLE_ATTEMPTS = 4
 
-        /** The exact title `auto_generate_title` refuses to overwrite. */
         const val UNTITLED = "New Conversation"
     }
 }
 
-/**
- * What one connection's worth of frames turned out to be. Everything here
- * except [error] survives into the next attempt when there is one, so a title
- * frame or an error frame seen before a drop is not lost by reconnecting.
- */
 private class RunAttempt(
-    /** Null when the server closed the stream — which means the run is over. */
     val error: Throwable?,
     val runId: String?,
     val failureMessage: String?,
     val titleFrameSeen: Boolean,
-    /** False means this attempt never got a byte: nothing to reset the backoff for. */
     val sawAnyFrame: Boolean,
 )
 
-/**
- * Mutable accumulation of one streaming turn, kept out of UI state so that
- * appending a token costs an `append` rather than a whole state copy and a
- * recomposition (Architecture P1).
- */
 private class TurnAccumulator(
     private val userMessage: PendingUserMessage?,
-    /**
-     * The run this attempt is reattaching to, known before its `run_started`
-     * frame arrives — so Stop has a guard to send even in a reconnect gap
-     * (F09-R3).
-     */
     seedRunId: String? = null,
 ) {
     private val content = StringBuilder()
@@ -1092,7 +761,6 @@ private class TurnAccumulator(
     var sawAnyFrame = false
         private set
 
-    /** Distinguishes "the run never started" from "the stream broke mid-run". */
     fun sawFrame() {
         sawAnyFrame = true
     }
@@ -1127,14 +795,12 @@ private class TurnAccumulator(
         }
     }
 
-    /** `tool_call_pending` announced the name; this fills in the arguments in place. */
     private fun upsertCall(event: RunEvent.ToolCall) {
         val slot = toolCalls.indexOfFirst { it.name == event.name && it.arguments == null }
         val filled = StreamingToolCall(event.name, event.serverId, event.arguments, null)
         if (slot >= 0) toolCalls[slot] = filled else toolCalls += filled
     }
 
-    /** The server matches a result to the most recent unanswered call of that name; so does this. */
     private fun completeCall(event: RunEvent.ToolResult) {
         val slot = toolCalls.indexOfLast { it.name == event.name && it.result == null }
         if (slot >= 0) {
@@ -1158,7 +824,6 @@ private class TurnAccumulator(
     )
 
     private companion object {
-        /** `mcp_client.py` namespaces a pending call as `<server_id>__<tool>`. */
         const val TOOL_NAMESPACE = "__"
     }
 }

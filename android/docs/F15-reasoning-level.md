@@ -166,6 +166,16 @@ superseded write coming back late cannot overwrite the choice that replaced it.
 
 ## F15-R8 · OpenRouter and ladder-less services are provably untouched (Must)
 
+> **Amended by F15.1** (`docs/plans/android-openrouter-reasoning-ladders.md`). The
+> exclusion below was correct when written and is now lifted for OpenRouter only.
+> What made it true was a server rule, not a client one: OpenRouter resolved no
+> ladder and rejected levels. PR #132 made the server derive ladders from
+> OpenRouter's own `supported_efforts` and accept them on the conversation write
+> path, so the premise expired. The ladder is now the only test, for either
+> provider — and the ladder-less half of this requirement, which was always the
+> load-bearing part, stands unchanged. The device row for this rule in the
+> verification table below is kept as the record of what was checked at the time.
+
 OpenRouter threads never show the control — the server resolves no ladder for an
 `openrouter:` service and rejects any level written to one, so an OpenRouter
 conversation can never hold one either. And the app never sends a reasoning
@@ -176,6 +186,8 @@ is why `ik_llamacpp`, `tabbyapi`, `ds4` and OpenRouter send nothing.
 **Acceptance criteria**
 
 - [x] No chip on an OpenRouter thread, whatever the payload contains.
+      *(Superseded by F15.1: an OpenRouter thread with a derived ladder shows the chip;
+      one without still shows nothing, which is the surviving half of this rule.)*
 - [ ] One turn on a no-ladder service, with the request observed at the model:
       no `reasoning_effort`, no `chat_template_kwargs`. Absence is the point —
       90 % of services must see a byte-identical request to before this feature.

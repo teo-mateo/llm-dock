@@ -1,19 +1,16 @@
 package com.hpz.llmdockchat.data.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
-/** One entry of `GET /api/chat/settings/openrouter-models`'s `current` list. */
 @Serializable
 data class OpenRouterModelDto(
     val id: String = "",
     val label: String = "",
+    @SerialName("reasoning_levels") val reasoningLevels: JsonElement? = null,
 )
 
-/**
- * `GET /api/chat/settings/openrouter-models` (F03). Read-only from the phone —
- * `configured` gates whether the picker's remote group is shown at all
- * (`OPENROUTER_API_KEY` unset server-side means the list is decorative).
- */
 @Serializable
 data class OpenRouterModelsSettingsResponseDto(
     val configured: Boolean = false,
