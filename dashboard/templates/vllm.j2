@@ -35,6 +35,9 @@
       - ${HOME}/.triton:/root/.triton
       - ${HOME}/.cache/models:/local-models:ro
       - ./chat-templates:/chat-templates:ro
+{% for volume in (extra_volumes or []) %}
+      - {{ volume }}
+{% endfor %}
 
     networks:
       - llm-network
