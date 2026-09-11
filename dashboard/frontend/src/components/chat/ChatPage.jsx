@@ -375,6 +375,7 @@ export default function ChatPage() {
         selectedModel={selectedModel}
         onModelChange={handleComposerModelChange}
         selectedReasoningLevel={selectedReasoningLevel}
+        openRouterModels={openRouterModels}
         onReasoningLevelChange={setSelectedReasoningLevel}
         onCreateAndSend={handleCreateAndSend}
         messages={messages}

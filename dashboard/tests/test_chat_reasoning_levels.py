@@ -188,10 +188,33 @@ def test_explicit_null_is_accepted_everywhere(client):
 
 
 def test_openrouter_conversation_cannot_carry_a_level(client, monkeypatch):
-    # Exclusion, asserted: OpenRouter resolves no levels, so no level is legal.
+    # No ladder, no level: the shortlist entry carries none, so nothing is legal.
     r = client.post(CONVERSATIONS_PATH, json={"main_service": "openrouter:deepseek/r1",
                                              "reasoning_level": "low"}, headers=_auth())
     assert r.status_code == 400
+
+
+def test_openrouter_conversation_carries_a_level_its_ladder_offers(client, monkeypatch):
+    # The ladder a shortlist entry carries stands in for a service declaration, so the
+    # same guard applies to it rather than a blanket refusal.
+    import chat.routes as routes
+
+    monkeypatch.setattr(routes, "_service_reasoning_levels",
+                        lambda svc: _parse("off,low,high") if svc == "openrouter:x" else [])
+    r = client.post(CONVERSATIONS_PATH, json={"main_service": "openrouter:x",
+                                             "reasoning_level": "low"}, headers=_auth())
+    assert r.status_code == 201
+
+
+def test_openrouter_conversation_rejects_a_level_outside_its_ladder(client, monkeypatch):
+    import chat.routes as routes
+
+    monkeypatch.setattr(routes, "_service_reasoning_levels",
+                        lambda svc: _parse("off,low") if svc == "openrouter:x" else [])
+    r = client.post(CONVERSATIONS_PATH, json={"main_service": "openrouter:x",
+                                             "reasoning_level": "xhigh"}, headers=_auth())
+    assert r.status_code == 400
+    assert r.get_json()["code"] == "invalid_reasoning_level"
 
 
 def test_put_changes_and_clears_the_level(client):

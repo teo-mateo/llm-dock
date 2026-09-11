@@ -175,11 +175,45 @@ def _valid_openrouter_models(value) -> bool:
     return True
 
 
-def _normalize_openrouter_models(models: list) -> list:
-    return [
-        {"id": m["id"].strip(), "label": (m.get("label") or m["id"]).strip() or m["id"].strip()}
-        for m in models
-    ]
+def _readable_ladder(value) -> str:
+    """A stored ladder that a reader can trust, "" when the stored one cannot.
+
+    Deliberately silent-and-empty rather than raising: on this store a rejected list
+    means the whole curated selection silently reverts to the built-in, so a single
+    unreadable field must cost one model its control and nothing more. Strictness
+    belongs to the write path, where there is someone to tell.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    from reasoning_levels import validate_levels
+
+    valid, errors = validate_levels(value)
+    if not valid:
+        logger.warning("openrouter model list: ignoring unreadable ladder %r (%s)", value, errors[0])
+        return ""
+    return value.strip()
+
+
+def _normalize_openrouter_models(models: list, ladders: dict | None = None) -> list:
+    """Storage shape for the curated list, carrying the ladder from the caller only.
+
+    ``ladders`` is a server-owned channel keyed by model id, and the reason it exists:
+    the picker's editor round-trips ``{id, label}`` alone, so a ladder accepted from a
+    request body would be a ladder a client invented. Entries keep the field only when
+    a caller with catalogue access supplied one.
+    """
+    normalized = []
+    for entry in models:
+        record = {
+            "id": entry["id"].strip(),
+            "label": (entry.get("label") or entry["id"]).strip() or entry["id"].strip(),
+        }
+        ladder = (ladders or {}).get(record["id"])
+        ladder = _readable_ladder(ladder)
+        if ladder:
+            record["reasoning_levels"] = ladder
+        normalized.append(record)
+    return normalized
 
 
 def get_openrouter_models() -> list:
@@ -191,25 +225,48 @@ def get_openrouter_models() -> list:
     with _lock:
         data = _load_unlocked()
     value = data.get("openrouter_models")
-    if _valid_openrouter_models(value):
-        return value
-    return [dict(m) for m in DEFAULT_OPENROUTER_MODELS]
+    entries = value if _valid_openrouter_models(value) else [dict(m) for m in DEFAULT_OPENROUTER_MODELS]
+    records = []
+    for entry in entries:
+        entry = dict(entry)
+        ladder = _readable_ladder(entry.get("reasoning_levels"))
+        # Absent is the representation of "no ladder", so an unreadable stored value
+        # loses the key rather than handing back the bytes that failed to parse.
+        if ladder:
+            entry["reasoning_levels"] = ladder
+        else:
+            entry.pop("reasoning_levels", None)
+        records.append(entry)
+    return records
 
 
 def is_openrouter_models_customized() -> bool:
-    """True if a valid override is stored AND differs from the built-in."""
+    """True if a valid override is stored AND selects different models.
+
+    Compared by id, not whole entry: a ladder is derived from the catalogue rather
+    than chosen, so once entries carry one, a list naming the built-in models would
+    otherwise read as hand-picked forever.
+    """
     with _lock:
         data = _load_unlocked()
     value = data.get("openrouter_models")
-    return _valid_openrouter_models(value) and value != DEFAULT_OPENROUTER_MODELS
+    if not _valid_openrouter_models(value):
+        return False
+    return [entry["id"].strip() for entry in value] != [entry["id"].strip() for entry in DEFAULT_OPENROUTER_MODELS]
 
 
-def set_openrouter_models(models: list) -> None:
+def set_openrouter_models(models: list, ladders: dict | None = None) -> None:
     """Persist ``models`` as the curated OpenRouter model list.
 
     Each entry must be a dict with a non-empty string ``id``; ``label`` is
     optional and defaults to the id. An empty list is allowed. Raises
     ``TypeError`` / ``ValueError`` on malformed input.
+
+    ``ladders`` maps model id to a catalogue-derived declaration and is the only way a
+    ladder is written. It is merged over the stored ones by id, so an id the caller
+    does not mention keeps whatever it had — that is what lets a client that knows
+    nothing about ladders reorder the list without wiping them. A key present with an
+    empty value clears, which is how a refresh records that a model lost its efforts.
     """
     if not isinstance(models, list):
         raise TypeError("openrouter_models must be a list")
@@ -228,7 +285,13 @@ def set_openrouter_models(models: list) -> None:
         seen.add(model.strip())
     with _lock:
         data = _load_unlocked()
-        data["openrouter_models"] = _normalize_openrouter_models(models)
+        stored = data.get("openrouter_models")
+        merged = {}
+        if _valid_openrouter_models(stored):
+            merged = {entry["id"].strip(): entry.get("reasoning_levels") or "" for entry in stored}
+        if ladders:
+            merged.update({key: value for key, value in ladders.items() if isinstance(key, str)})
+        data["openrouter_models"] = _normalize_openrouter_models(models, merged)
         _save_unlocked(data)
 
 

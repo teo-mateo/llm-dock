@@ -15,7 +15,12 @@ runtime via ``settings_store`` (Settings page), with :data:`DEFAULT_MODELS` as
 the built-in baseline.
 """
 
+import logging
+
 import config
+from reasoning_levels import LEVEL_NAME_RE, MAX_LEVELS, OFF_LEVEL
+
+logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 SERVICE_PREFIX = "openrouter:"
@@ -65,6 +70,73 @@ def is_openrouter_service(service_name) -> bool:
 
 def model_id(service_name: str) -> str:
     return service_name[len(SERVICE_PREFIX):]
+
+
+# Upstream lists efforts descending; the ladder reads least-to-most, so ordering comes
+# from this rank rather than from a reversal, and an effort OpenRouter adds tomorrow
+# lands after the known ones instead of somewhere arbitrary.
+_EFFORT_RANK = {"minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4, "max": 5}
+
+# The effort that switches reasoning off, and the level id llm-dock reserves for it.
+_EFFORT_NONE = "none"
+
+
+def ladder_from_reasoning(meta) -> str:
+    """Derive a declaration string from one model's upstream capability metadata.
+
+    Takes the ``reasoning_meta`` the catalogue normaliser keeps and returns what an
+    operator would otherwise type into ``reasoning_levels``: least-to-most, ``off``
+    first, ``""`` when the model exposes no effort selection at all.
+
+    ``off`` appears only where upstream lists ``none`` and reasoning is not mandatory,
+    because ``effort: "none"`` is answered with a 400 on a mandatory model - offering it
+    would be offering a failure. Tokens outside the declaration grammar are dropped
+    rather than raised: a ladder comes from the network, and a surprising token must
+    cost one level, not the whole shortlist save.
+    """
+    if not isinstance(meta, dict):
+        return ""
+    efforts = meta.get("supported_efforts")
+    if not isinstance(efforts, list) or not efforts:
+        return ""
+
+    known, unknown = [], []
+    for token in efforts:
+        if not isinstance(token, str) or token == _EFFORT_NONE:
+            continue
+        if not LEVEL_NAME_RE.match(token):
+            logger.warning("openrouter: dropping effort outside the grammar: %r", token)
+            continue
+        (known if token in _EFFORT_RANK else unknown).append(token)
+
+    levels = sorted(known, key=lambda token: _EFFORT_RANK[token]) + unknown
+    if not meta.get("mandatory") and _EFFORT_NONE in efforts:
+        levels.insert(0, OFF_LEVEL)
+
+    if len(levels) > MAX_LEVELS:
+        logger.warning("openrouter: truncating %d levels to %d", len(levels), MAX_LEVELS)
+        levels = levels[:MAX_LEVELS]
+    return ",".join(levels)
+
+
+def ladder_for_model(model: str) -> str:
+    """The stored ladder for one OpenRouter model id, "" when it has none.
+
+    The single reader behind both enforcement points, so the ladder offered and the
+    ladder enforced cannot drift - the property ``routes._service_reasoning_levels``
+    documents for local services, provided here for a remote one.
+
+    The settings import is deferred because ``settings_store`` imports this module at
+    module level for its built-in baseline; a module-level import here is a circular
+    ImportError in either load order.
+    """
+    if not isinstance(model, str) or not model:
+        return ""
+    from . import settings_store
+    for entry in settings_store.get_openrouter_models():
+        if isinstance(entry, dict) and entry.get("id") == model:
+            return entry.get("reasoning_levels") or ""
+    return ""
 
 
 def resolve(service_name: str):

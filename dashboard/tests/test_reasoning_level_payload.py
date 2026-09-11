@@ -145,15 +145,53 @@ def test_unmapped_engine_sends_nothing_even_with_a_declared_level(monkeypatch, e
     assert set(_send(monkeypatch, svc, "low")) == {"messages", "stream"}
 
 
-def test_openrouter_payload_is_unchanged(monkeypatch):
-    """The exclusion, asserted on the wire: OpenRouter resolves no
-    template_type/reasoning_levels, so a level can't reach it even if a client
-    somehow stored one."""
-    svc = {"base_url": "https://openrouter.ai/api/v1", "api_key": "k", "model": "x",
-           "extra_headers": {}}
-    captured = _send(monkeypatch, svc, "low")
-    assert set(captured) == {"messages", "stream", "model"}
+def test_openrouter_payload_carries_only_its_own_reasoning_field(monkeypatch):
+    # Built through the real resolve_service, patching one level lower: a hand-written
+    # service dict would hide exactly the bug this feature already recorded, where the
+    # engine travelled without the ladder and every declared level was dropped in
+    # silence at the last step.
+    import config
+    from chat import openrouter
+
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(openrouter, "ladder_for_model", lambda model: "off,low,high")
+    captured = {}
+
+    def _post(*a, **k):
+        captured.clear()
+        captured.update(k.get("json", {}))
+        return _FakeResp()
+    monkeypatch.setattr(llm_proxy.requests, "post", _post)
+
+    list(llm_proxy.stream_chat_completion("openrouter:vendor/model-a",
+                                         [{"role": "user", "content": "hi"}],
+                                         reasoning_level="low"))
+    assert captured["reasoning"] == {"effort": "low"}
+    assert captured["model"] == "vendor/model-a"
     assert "reasoning_effort" not in captured
+
+
+def test_openrouter_off_is_spelled_none_on_the_wire(monkeypatch):
+    # `off` is llm-dock's reserved level id; upstream spells the same intent "none".
+    # Sending the stored id would be a 400, and this feature sends no numeric budget.
+    import config
+    from chat import openrouter
+
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(openrouter, "ladder_for_model", lambda model: "off,low,high")
+    captured = {}
+
+    def _post(*a, **k):
+        captured.clear()
+        captured.update(k.get("json", {}))
+        return _FakeResp()
+    monkeypatch.setattr(llm_proxy.requests, "post", _post)
+
+    list(llm_proxy.stream_chat_completion("openrouter:vendor/model-a",
+                                         [{"role": "user", "content": "hi"}],
+                                         reasoning_level="off"))
+    assert captured["reasoning"] == {"effort": "none"}
+    assert set(captured["reasoning"]) == {"effort"}
 
 
 # -- a level the service no longer offers (R7) ---------------------------

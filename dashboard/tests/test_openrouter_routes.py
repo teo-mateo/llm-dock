@@ -474,6 +474,11 @@ def test_resolve_openrouter_service_with_key(monkeypatch):
         "api_key": "sk-or-test",
         "model": "vendor/model-a",
         "extra_headers": openrouter.OPENROUTER_EXTRA_HEADERS,
+        # The engine is what enables a reasoning field and the ladder is what bounds it;
+        # an exact assertion is the point, because a resolution missing either one sends
+        # nothing and logs nothing.
+        "template_type": "openrouter",
+        "reasoning_levels": [],
     }
 
 
@@ -650,3 +655,123 @@ def test_critique_unconfigured_returns_specific_error(monkeypatch):
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", None)
     result = critique.request_critique("openrouter:vendor/model-a", "ctx")
     assert "OPENROUTER_API_KEY" in result["error"]
+
+
+# -- Reasoning ladders: derived on write, refreshed on demand ------------
+#
+# A ladder is derived from the catalogue rather than typed, and the derivation can
+# only happen where the catalogue is visible -- this route. These tests cover the
+# three outcomes a write can produce (derived, none, unavailable) and the one thing
+# a write must never do: lose a ladder that is already stored.
+
+RAW_LADDER_CATALOG = {
+    "data": [
+        {
+            "id": "vendor/model-a",
+            "name": "Model A",
+            "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "supported_parameters": ["tools", "reasoning"],
+            "reasoning": {
+                "supported_efforts": ["xhigh", "high", "medium", "low", "none"],
+                "default_effort": "medium",
+                "mandatory": False,
+            },
+        },
+        {
+            "id": "vendor/plain",
+            "name": "Plain",
+            "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "supported_parameters": ["tools"],
+        },
+    ]
+}
+
+REFRESH_PATH = f"{SETTINGS_PATH}/refresh"
+
+
+class _LadderCatalog:
+    """``requests`` stand-in serving ``RAW_LADDER_CATALOG``, or failing."""
+
+    def __init__(self, exc=None):
+        self.exc = exc
+
+    def get(self, url, headers=None, timeout=None):
+        if self.exc:
+            raise self.exc
+        return _CatalogResponse(RAW_LADDER_CATALOG, 200)
+
+
+def _ladder_of(body, model_id):
+    for entry in body["current"]:
+        if entry["id"] == model_id:
+            return [level["id"] for level in entry.get("reasoning_levels", [])]
+    raise AssertionError(f"{model_id} not in payload")
+
+
+def test_put_derives_a_ladder_for_a_new_model(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    body = client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth()).get_json()
+    assert _ladder_of(body, "vendor/model-a") == ["off", "low", "medium", "high", "xhigh"]
+    assert body["ladders"]["vendor/model-a"] == "derived"
+
+
+def test_levels_travel_parsed_not_as_a_declaration_string(client, monkeypatch):
+    # Same shape a local service's reasoning_levels has on GET /api/services, so the
+    # composer has one shape to handle rather than a branch per provider.
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    entry = next(e for e in client.put(SETTINGS_PATH, json={"models": MODELS_A},
+                                       headers=_auth()).get_json()["current"]
+                 if e["id"] == "vendor/model-a")
+    assert entry["reasoning_levels"][0] == {"id": "off", "effort": "off"}
+
+
+def test_put_records_no_ladder_for_a_model_without_metadata(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    body = client.put(SETTINGS_PATH, json={"models": [{"id": "vendor/plain"}]},
+                      headers=_auth()).get_json()
+    assert _ladder_of(body, "vendor/plain") == []
+    assert body["ladders"]["vendor/plain"] == "none"
+
+
+def test_a_catalogue_outage_costs_a_ladder_not_the_save(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog(exc=RuntimeError("down")))
+    r = client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["customized"] is True and _ladder_of(body, "vendor/model-a") == []
+    assert body["ladders"]["vendor/model-a"] == "unavailable"
+
+
+def test_a_later_save_does_not_lose_a_stored_ladder(client, monkeypatch):
+    # The picker sends {id, label} only. If a write re-derived from whatever the
+    # catalogue happens to say, reordering the shortlist would rewrite every ladder.
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth())
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog(exc=RuntimeError("down")))
+    body = client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth()).get_json()
+    assert _ladder_of(body, "vendor/model-a") == ["off", "low", "medium", "high", "xhigh"]
+
+
+def test_refresh_supplies_a_ladder_a_model_saved_without(client, monkeypatch):
+    # The point of the endpoint: derivation fires only for a first-time id, so a
+    # shortlist written during an outage (or before the feature) could never recover.
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog(exc=RuntimeError("down")))
+    client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth())
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    body = client.post(REFRESH_PATH, json={"ids": ["vendor/model-a"]}, headers=_auth()).get_json()
+    assert _ladder_of(body, "vendor/model-a") == ["off", "low", "medium", "high", "xhigh"]
+    assert body["ladders"]["vendor/model-a"] == "derived" and body["missing"] == []
+
+
+def test_refresh_reports_ids_outside_the_shortlist(client, monkeypatch):
+    monkeypatch.setattr(openrouter_catalog, "requests", _LadderCatalog())
+    client.put(SETTINGS_PATH, json={"models": MODELS_A}, headers=_auth())
+    body = client.post(REFRESH_PATH, json={"ids": ["vendor/not-stored"]}, headers=_auth()).get_json()
+    assert body["missing"] == ["vendor/not-stored"]
+
+
+def test_refresh_needs_an_id_list(client):
+    assert client.post(REFRESH_PATH, json={}, headers=_auth()).status_code == 400
+    assert client.post(REFRESH_PATH, json={"ids": "vendor/model-a"}, headers=_auth()).status_code == 400

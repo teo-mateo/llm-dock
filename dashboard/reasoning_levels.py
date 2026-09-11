@@ -33,6 +33,7 @@ GRAMMAR_HINT = (
 # of failing.
 ENGINE_LLAMACPP = "llamacpp"
 ENGINE_VLLM = "vllm"
+ENGINE_OPENROUTER = "openrouter"
 
 
 def _normalize(raw: Any) -> Optional[str]:
@@ -155,4 +156,11 @@ def request_fields(level: Any, engine: Optional[str]) -> Dict[str, Any]:
     if engine == ENGINE_VLLM:
         # vLLM derives enable_thinking from reasoning_effort itself: one field.
         return {"reasoning_effort": "none" if level_id == OFF_LEVEL else level_id}
+    if engine == ENGINE_OPENROUTER:
+        # OpenRouter's own spelling rather than the flat OpenAI field: one object, one
+        # member. `off` is llm-dock's id for "switch reasoning off", which upstream
+        # spells "none"; every other level is the upstream token unchanged. Deliberately
+        # no `enabled` and no `max_tokens`: a level is not a token budget, and `enabled`
+        # would be a second dialect for one intent.
+        return {"reasoning": {"effort": "none" if level_id == OFF_LEVEL else level_id}}
     return {}

@@ -181,7 +181,7 @@ def test_vllm_maps_off_to_none_and_names_to_themselves():
 
 @pytest.mark.parametrize(
     "engine",
-    ["ik_llamacpp", "tabbyapi", "ds4", "openrouter", "", None, "unknown-engine"],
+    ["ik_llamacpp", "tabbyapi", "ds4", "", None, "unknown-engine"],
 )
 def test_unmapped_engines_send_nothing(engine):
     assert rl.request_fields({"id": "low", "effort": "low"}, engine) == {}

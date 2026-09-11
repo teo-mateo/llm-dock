@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-li
 
 const mockSave = vi.fn()
 const mockReset = vi.fn()
+const mockRefreshLadders = vi.fn()
 const mockRefreshCatalog = vi.fn()
 const mockProviderRetry = vi.fn()
 
@@ -122,13 +123,15 @@ beforeEach(() => {
   mockSave.mockReset().mockImplementation(async (models) => ({ ...settingsState.data, current: models, customized: true }))
   mockReset.mockReset().mockImplementation(async () => ({ ...settingsState.data, current: CURRENT, customized: false }))
   mockRefreshCatalog.mockReset()
+  mockRefreshLadders.mockReset().mockImplementation(async () => settingsState.data)
   settingsState = {
     data: { configured: true, current: CURRENT, builtin: CURRENT, customized: false },
     loading: false,
     error: null,
     save: mockSave,
     reset: mockReset,
-    refresh: vi.fn(),
+    refresh: mockRefreshCatalog,
+    refreshLadders: mockRefreshLadders,
   }
   catalogState = {
     data: {
@@ -276,6 +279,51 @@ describe('OpenRouterModelsPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset to built-in' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reset' }))
     await waitFor(() => expect(mockReset).toHaveBeenCalled())
+  })
+
+  // A ladder is derived server-side from the catalog, so the editor reads it and asks
+  // for it again, but never owns it. These three are the contract that falls out of
+  // that: shown, re-readable, and invisible to the dirty check.
+  it('shows the derived ladder, and says so when a model has none', () => {
+    settingsState.data = {
+      ...settingsState.data,
+      current: [
+        { id: 'z-ai/glm-5.2', label: 'GLM 5.2', reasoning_levels: [{ id: 'off', effort: 'off' }, { id: 'low', effort: 'low' }] },
+        { id: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
+      ],
+    }
+    render(<OpenRouterModelsPicker />)
+    const row = screen.getByLabelText('Label for z-ai/glm-5.2').closest('div').parentElement
+    expect(within(row).getByText('off')).toBeInTheDocument()
+    expect(within(row).getByText('low')).toBeInTheDocument()
+    const laddered = within(row).queryByText('no reasoning ladder')
+    expect(laddered).toBeNull()
+    expect(screen.getAllByText('no reasoning ladder').length).toBeGreaterThan(0)
+  })
+
+  it('asks for the ladder by id, and does not mark the editor dirty for having one', () => {
+    // The regression this guards: a field the editor strips from its draft but the
+    // payload carries would leave the picker reading "Unsaved" permanently.
+    settingsState.data = {
+      ...settingsState.data,
+      current: [{ id: 'z-ai/glm-5.2', label: 'GLM 5.2', reasoning_levels: [{ id: 'low', effort: 'low' }] }],
+    }
+    render(<OpenRouterModelsPicker />)
+    expect(screen.queryByText('Unsaved')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Re-read reasoning levels for z-ai/glm-5.2'))
+    expect(mockRefreshLadders).toHaveBeenCalledWith(['z-ai/glm-5.2'])
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('re-reads a ladder while an unrelated edit is unsaved', () => {
+    render(<OpenRouterModelsPicker />)
+    fireEvent.change(screen.getByLabelText('Label for z-ai/glm-5.2'), { target: { value: 'Renamed' } })
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Re-read reasoning levels for anthropic/claude-opus-5'))
+    expect(mockRefreshLadders).toHaveBeenCalledWith(['anthropic/claude-opus-5'])
+    // The refresh must not reach the server as a save, nor discard the pending rename.
+    expect(mockSave).not.toHaveBeenCalled()
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
   })
 
   it('refreshes the catalog through the header button', () => {

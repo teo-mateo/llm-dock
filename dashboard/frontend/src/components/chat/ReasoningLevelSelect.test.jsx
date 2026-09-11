@@ -11,7 +11,7 @@ const withLevels = (levels, status = 'running') => [{
   reasoning_levels: levels.map(id => ({ id, effort: id })),
 }]
 
-function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChange = () => {}, disabled }) {
+function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChange = () => {}, disabled, openRouterModels }) {
   mockServices.mockReturnValue({ services, loading: false })
   return render(
     <ReasoningLevelSelect
@@ -19,6 +19,7 @@ function setup({ services, mainService = 'llamacpp-qwen38', value = null, onChan
       value={value}
       onChange={onChange}
       disabled={disabled}
+      openRouterModels={openRouterModels}
     />
   )
 }
@@ -40,6 +41,28 @@ describe('ReasoningLevelSelect', () => {
 
   it('renders nothing for a service absent from the payload, e.g. OpenRouter', () => {
     const { container } = setup({ services: [], mainService: 'openrouter:vendor/model-a' })
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('offers the ladder an OpenRouter shortlist entry carries', () => {
+    // Same shape as a local service's, so the control does not know which provider it
+    // is describing: the ladder came from services.json or from the catalogue.
+    const { container } = setup({
+      services: [],
+      mainService: 'openrouter:vendor/model-a',
+      openRouterModels: [{ id: 'vendor/model-a', label: 'A', reasoning_levels: ['off', 'low', 'high'].map(id => ({ id, effort: id })) }],
+    })
+    expect(container.firstChild).not.toBeNull()
+    openList()
+    expect(optionLabels()).toEqual(expect.arrayContaining(['off', 'low', 'high']))
+  })
+
+  it('renders nothing for an OpenRouter model that publishes no ladder', () => {
+    const { container } = setup({
+      services: [],
+      mainService: 'openrouter:vendor/model-a',
+      openRouterModels: [{ id: 'vendor/model-a', label: 'A' }],
+    })
     expect(container.firstChild).toBeNull()
   })
 

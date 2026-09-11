@@ -24,6 +24,7 @@ export default function ChatArea({
   onModelChange,
   selectedReasoningLevel,
   onReasoningLevelChange,
+  openRouterModels,
   onCreateAndSend,
   messages,
   critiques,
@@ -160,6 +161,7 @@ export default function ChatArea({
                   mainService={selectedModel}
                   value={selectedReasoningLevel}
                   onChange={onReasoningLevelChange}
+                  openRouterModels={openRouterModels}
                   disabled={!defaultModelName}
                 />
               }
@@ -334,6 +336,7 @@ export default function ChatArea({
               mainService={conversation.main_service}
               value={conversation.reasoning_level}
               onChange={handleReasoningLevelChange}
+              openRouterModels={openRouterModels}
               disabled={busy}
             />
           }
