@@ -1709,11 +1709,10 @@ def validate_service_config(
             if not is_valid:
                 errors.append(f"Param '{flag_name}': {error}")
 
-    # Optional reasoning-level declaration. Validated here rather than in a
-    # per-template rule set because the grammar is engine-independent: only the
-    # request mapping (§ request_fields) cares about the template type.
-    # Absent means "not sent" — on PUT the caller merges into the stored entry,
-    # so a key the client omitted must not be judged, let alone cleared.
+    # Optional reasoning-level declaration. The grammar is engine-independent,
+    # so it lives here rather than per template type; only the request mapping
+    # cares about the engine. Absent means "not sent", because PUT merges into
+    # the stored entry.
     if "reasoning_levels" in config:
         levels_ok, level_errors = validate_levels(config["reasoning_levels"])
         if not levels_ok:

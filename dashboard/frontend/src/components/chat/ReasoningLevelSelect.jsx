@@ -1,33 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import useServicesSSE from '../../hooks/useServicesSSE'
 
-// Per-conversation reasoning-level picker, rendered inside the composer.
-//
-// Renders nothing when the selected service declares no ladder: a control that
-// can only ever be ignored is worse than no control. The ladder comes from the
-// service payload, which is the same list the server validates against, so what
-// is offered here is exactly what can reach the model.
-//
-// Read from the unfiltered service list, not the running-services one: the
-// server accepts a level for a stopped service (that is what lets a level be
-// saved before the model starts), so filtering by status here would hide the
-// stored choice on precisely the conversations where it cannot be resent — and
-// a cleared ladder would leave a stale value with no way to clear it.
-//
-// "Model default" is not the same choice as an "off" level. It stores null,
-// which sends no reasoning field at all — the request an un-featured service
-// makes. `off`, when a service declares it, actively instructs the model not to
-// think. Levels are the model's own token names, shown verbatim and in the
-// order the operator declared them.
-//
-// A custom listbox rather than a <select> because icons are the whole point of
-// the control and native <option> elements cannot render them.
+// Per-conversation reasoning-level picker, in the composer's control rail.
+// Reads the unfiltered service list: the server accepts a level for a stopped
+// service, so a status filter would hide the control on exactly the
+// conversations that have one. Renders nothing with no ladder and nothing
+// stored. A listbox rather than a <select> because the icons are the point and
+// native <option> elements cannot render them.
 
-// Icons are derived from the level token, never hardcoded per service: the
-// ladder is operator-declared, so any name can appear. Names are limited to
-// icons in the free Font Awesome 6 set the app actually loads (6.5.1) —
-// fa-gauge-low is the obvious pick for a low rung and is pro-only, so it renders
-// an empty box.
+// Icons keyed off the level token, since any name can be declared. Free Font
+// Awesome 6.5.1 only — the natural fa-gauge-low is pro-only, so it renders empty.
 const ICON_RULES = [
   [/^off$/, 'fa-ban'],
   [/^(minimal|low|lite|quick)$/, 'fa-feather'],
@@ -39,9 +21,9 @@ const FALLBACK_ICON = 'fa-brain'
 const DEFAULT_ICON = 'fa-wand-magic-sparkles'
 const STALE_ICON = 'fa-triangle-exclamation'
 const LEVEL_HINT =
-  'Reasoning level. These are the model’s own level names, not token budgets: a '
-  + 'level is an instruction to the model’s chat template, and how much it thinks '
-  + 'is the model’s choice.'
+  'Reasoning level. These are the model’s own level names, not token budgets: '
+  + 'a level is an instruction to the model’s chat template, and how much it '
+  + 'thinks is the model’s choice.'
 
 function iconFor(id) {
   for (const [re, icon] of ICON_RULES) {
@@ -63,8 +45,8 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
     const onPointerDown = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false)
     }
-    // Capture phase + stopPropagation: Escape with the list open should close
-    // the list, not reach the conversation-level Escape handler (cancel run).
+    // Capture phase + stopPropagation, so Escape closes the list instead of
+    // reaching the conversation-level handler (cancel run).
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return
       e.stopPropagation()
@@ -84,13 +66,9 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
   const service = (services || []).find(s => s.name === mainService)
   const levels = service?.reasoning_levels || []
 
-  // A stored level the service no longer declares is still shown (and still
-  // will not be sent — the server drops it and says so on run_started). Hiding
-  // it would make the conversation look like it was thinking, and would leave
-  // the value with no way to clear it from here.
+  // A level the service stopped offering stays visible and clearable, though the
+  // server will not send it.
   const stale = !!value && !levels.some(l => l.id === value)
-  // Nothing declared and nothing stored: the control could only ever be
-  // ignored, so it stays out of the rail entirely.
   if (levels.length === 0 && !stale) return null
 
   const options = [
@@ -167,9 +145,8 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
         ].join(' ')}
       >
         <i className={`fa-solid ${triggerIcon}`} aria-hidden="true"></i>
-        {/* Truncate rather than hide: narrow viewports are exactly where the
-            current level matters most, and a hidden value leaves the control
-            meaning nothing while still costing its width. */}
+        {/* Truncated, not hidden: the current level matters most on narrow
+            viewports, exactly where hiding it would cost most. */}
         <span className="min-w-0 truncate max-w-[10ch] min-[420px]:max-w-[12ch]">{value || 'default'}</span>
         <i className="fa-solid fa-chevron-down text-[9px] opacity-60" aria-hidden="true"></i>
       </button>

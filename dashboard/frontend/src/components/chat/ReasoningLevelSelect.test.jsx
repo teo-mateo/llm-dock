@@ -51,10 +51,7 @@ describe('ReasoningLevelSelect', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  // The server accepts and applies a level for a service that is not running —
-  // that is what lets a level be saved before the model starts. Filtering by
-  // status here would hide the ladder on exactly those conversations, and would
-  // leave a cleared declaration unviewable and unclearable.
+  // A level for a stopped service is valid server-side, so the ladder must show.
   it('offers the ladder for a stopped service too', () => {
     setup({ services: withLevels(['off', 'low'], 'exited'), value: 'low' })
     expect(trigger().textContent).toContain('low')
@@ -63,9 +60,7 @@ describe('ReasoningLevelSelect', () => {
   })
 
   it('keeps a stored level visible and clearable after the ladder was cleared', () => {
-    // Same shape as a ladder edited down to nothing: the conversation still
-    // carries the old level, and hiding it would leave it unviewable and
-    // impossible to clear from the composer.
+    // A stored level with no ladder stays visible and clearable.
     const onChange = vi.fn()
     setup({ services: withLevels([]), value: 'low', onChange })
     expect(trigger().textContent).toContain('low')

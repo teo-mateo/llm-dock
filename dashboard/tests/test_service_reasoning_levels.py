@@ -69,13 +69,7 @@ def test_malformed_declaration_is_rejected_naming_the_field():
 
 
 def test_one_violation_produces_exactly_one_error():
-    """A single bad declaration must be reported once.
-
-    The rejection used to be duplicated by two identical blocks in
-    validate_service_config, and every assertion here was any(...), which is
-    the exact shape that hides a duplicate: the API echoes the same line twice
-    in `details` and every assertion still passed.
-    """
+    """One bad declaration, one error — a duplicate used to double the details."""
     for raw in ("low:512", "Ultra", "a,b,c,d,e,f,g,h,i"):
         valid, errors = validate_service_config("llamacpp", _llamacpp_cfg(reasoning_levels=raw))
         assert not valid, raw
@@ -117,8 +111,7 @@ def test_declaration_survives_a_compose_manager_round_trip(tmp_path):
 
     stored = mgr.get_service_from_db("llamacpp-qwen38")
     assert stored["reasoning_levels"] == "off,low,medium,xhigh"
-    # The rendered command must not mention the declaration: it is chat-side
-    # metadata, like `favorite`, not a container flag.
+    # Chat-side metadata, not a container flag.
     assert "reasoning" not in compose_path.read_text()
 
 
@@ -136,8 +129,7 @@ class _FakeComposeMgr:
 
 
 class _FakeContainer:
-    """One running container, so the container-exists branch is exercised too —
-    that is the branch a live chat turn reads, and the one that was broken."""
+    """One running container, so the container-exists branch is exercised too."""
 
     def __init__(self, service_name):
         self.labels = {"com.docker.compose.service": service_name}
@@ -163,9 +155,7 @@ class _FakeClient:
 def _payload_for(monkeypatch, entries, names, running=None):
     """Build the get_docker_services payload with no Docker and no files.
 
-    Everything Docker/compose-shaped is stubbed; the point is the mapping from
-    a stored entry to what a client sees. `running` names get a container, so
-    the container-exists branch and the not-created branch can both be read.
+    `running` names get a container, so both payload branches can be read.
     """
     import docker
     import docker_utils
@@ -192,8 +182,6 @@ def test_payload_carries_parsed_levels_in_both_branches(monkeypatch):
         {"id": "low", "effort": "low"},
         {"id": "medium", "effort": "medium"},
     ]
-    # Absent declaration exposes [] rather than omitting the key, so clients can
-    # read one shape unconditionally.
     assert services["llamacpp-b"]["reasoning_levels"] == []
     assert all(s["status"] == "not-created" for s in services.values())
 
@@ -208,8 +196,7 @@ def test_garbage_stored_value_degrades_to_empty_and_warns_once(monkeypatch, capl
         assert services["vllm-a"]["reasoning_levels"] == []
         assert any("vllm-a" in r.getMessage() and "reasoning_levels" in r.getMessage()
                    for r in caplog.records)
-        # This runs on every payload read, so an invalid entry must not log once
-        # per /api/services request and per SSE reconnect.
+        # One read per request and per reconnect: warn once, not every time.
         caplog.clear()
         _payload_for(monkeypatch, entries, ["vllm-a"])
         _payload_for(monkeypatch, entries, ["vllm-a"])
@@ -264,9 +251,8 @@ networks:
 def api(tmp_path, monkeypatch):
     """Client whose compose/services paths point at a throwaway directory.
 
-    routes.services binds COMPOSE_FILE at import, and ComposeManager derives
-    services.json from its parent dir — patching the module global isolates both
-    without touching this repo's real files.
+    ComposeManager derives services.json from the compose file's parent, so
+    patching the module global isolates both.
     """
     os.environ["DASHBOARD_TOKEN"] = TEST_TOKEN
     compose_path = tmp_path / "docker-compose.yml"
@@ -312,8 +298,8 @@ def test_post_rejects_malformed_and_stores_nothing(api, bad):
 def test_put_omitting_the_key_keeps_it_and_empty_string_clears(api):
     import routes.services as services_routes
 
-    # PUT validates the whole body, so every request here sends a complete
-    # config — what varies is only whether reasoning_levels is in it.
+    # PUT validates the whole body, so these send complete configs; only
+    # reasoning_levels varies.
     assert api.post("/api/services", json=_vllm_cfg(reasoning_levels="off,low", favorite=True),
                     headers=_headers()).status_code == 201
     mgr = services_routes.ComposeManager(services_routes.COMPOSE_FILE)
@@ -342,13 +328,7 @@ def _captured_events(monkeypatch):
 
 
 def test_put_broadcasts_the_ladder_to_every_sse_consumer(api, monkeypatch):
-    """The ladder must reach the other tab, not just the config form.
-
-    Chat reads levels off the service payload, and run creation drops a level the
-    service no longer declares, so a save that updated only this browser left the
-    composer offering a level the server then ignored. Broadcasting inside the PUT
-    is what closes that; the panel deliberately opens no stream of its own.
-    """
+    """A ladder edit must reach other consumers, not just this browser."""
     events = _captured_events(monkeypatch)
     assert api.post("/api/services", json=_vllm_cfg(reasoning_levels="off,low"),
                     headers=_headers()).status_code == 201
@@ -358,8 +338,7 @@ def test_put_broadcasts_the_ladder_to_every_sse_consumer(api, monkeypatch):
                    headers=_headers()).status_code == 200
     deltas = [e for e in events if e.get("action") == "metadata-changed"]
     assert len(deltas) == 1
-    # Payload shape, not the raw string: this merges straight into what the SSE
-    # snapshot carries for the service.
+    # Payload shape, not the raw string, so it merges into the snapshot copy.
     assert deltas[0]["metadata"]["reasoning_levels"] == [
         {"id": "off", "effort": "off"},
         {"id": "low", "effort": "low"},
@@ -424,14 +403,9 @@ def test_openrouter_resolution_carries_no_engine_fields(monkeypatch):
 
 
 def test_engine_survives_the_real_payload_into_request_fields(monkeypatch):
-    """Regression for the feature silently doing nothing on a live service.
-
-    template_type was an internal map in get_docker_services, never a payload
-    field, so resolve_service fell back to "", request_fields saw an unmapped
-    engine and returned {}, and a declared level was stored, reported on
-    run_started and then dropped at the last step. Everything upstream looked
-    healthy, which is exactly why this asserts on the payload the real builder
-    produces rather than on a hand-written service dict — a fake carrying
+    """Regression: template_type was never a payload field, so every declared
+    level was dropped as an unmapped engine with nothing logged. Asserted against
+    the payload the real builder produces — a hand-written dict carrying
     template_type hides this bug, and did.
     """
     entries = {"vllm-a": {"api_key": "k", "template_type": "vllm",

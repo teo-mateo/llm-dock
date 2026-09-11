@@ -321,9 +321,7 @@ describe('ChatArea — reasoning level', () => {
     )
   }
 
-  // The server drops a stored level the selected model stopped offering and
-  // sends no reasoning field at all. That is invisible in the answer, so the
-  // note it puts on run_started must reach the screen beside the picker.
+  // A dropped level is invisible in the answer, so the run_started note shows.
   it('shows the server note about a level this run ignored', () => {
     renderConversationExtra({
       id: 'conv-1', main_service: 'llamacpp-x', main_system_prompt: '',
@@ -360,13 +358,9 @@ describe('ChatArea — reasoning level', () => {
     })
     const slot = screen.getByTestId('reasoning-level-slot')
     const form = document.querySelector('textarea').closest('form')
-    // Inside the composer's form, next to the field — and the header's model
-    // picker is outside that form, which is what makes this a placement test
-    // rather than an existence test.
+    // Placement, not existence: the header's model picker sits outside the form.
     expect(form.contains(slot)).toBe(true)
-    // The attach button only exists in the composer row, so sharing a form with
-    // it is what proves placement rather than mere presence — ModelSelector is
-    // mocked out in this file and cannot anchor the header side.
+    // Shares the composer row with the attach button, which proves placement.
     expect(form.contains(screen.getByLabelText('Attach files'))).toBe(true)
   })
 

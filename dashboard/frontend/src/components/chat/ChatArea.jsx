@@ -198,9 +198,7 @@ export default function ChatArea({
     onReloadConversation?.(conversation.id)
   }
 
-  // The level is stored per conversation, so clearing it sends null ("say
-  // nothing to the model") rather than dropping a key that would survive the
-  // server-side merge.
+  // Clearing sends null explicitly: omitting the key would survive the merge.
   async function handleReasoningLevelChange(level) {
     await updateConversation(conversation.id, { reasoning_level: level })
     onReloadConversation?.(conversation.id)
@@ -313,10 +311,9 @@ export default function ChatArea({
           activeCritiqueId={critiqueTarget}
         />
 
-        {/* Something this run was told to do and was not: today a reasoning level
-            the selected model stopped offering. Server-phrased, shown next to the
-            control that named the level — a silently dropped level looks exactly
-            like a model that chose not to think. */}
+        {/* Server-phrased notice about what this run ignored, shown beside the
+            control that named it: a silently dropped level looks like a model
+            that chose not to think. */}
         {runNotice && (
           <div className="mx-4 mb-2 px-3 py-2 bg-warning-subtle border border-warning rounded text-xs text-warning-fg flex items-start gap-2">
             <i className="fa-solid fa-circle-info mt-0.5"></i>

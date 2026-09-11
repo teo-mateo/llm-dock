@@ -90,10 +90,8 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
     if (ta) {
       ta.style.height = 'auto'
       ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
-      // The field grows instead of scrolling, so a scrollbar is only real once
-      // the 200px cap is reached. Left on always it renders for an empty field
-      // too (height lands a rounding hair under scrollHeight), which reads as a
-      // clash next to the docked trailing control.
+      // Auto-sizing field: a scrollbar is only real past the growth cap, and
+      // always-on renders one for an empty field too.
       ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden'
     }
   }, [value])

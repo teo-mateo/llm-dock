@@ -112,9 +112,8 @@ class ChatTurnRequest:
     # resolution. The runner consumes it verbatim so manager scoping and
     # tool auto-enable can never disagree about the effective project.
     effective_project_id: Optional[str] = None
-    # Reasoning level id this run must apply, snapshotted at run creation and
-    # already re-checked against the service's declaration. None sends no
-    # reasoning field at all — the pre-feature request shape.
+    # Reasoning level id this run applies, snapshotted at run creation. None
+    # sends no reasoning field at all.
     reasoning_level: Optional[str] = None
 
 

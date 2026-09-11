@@ -195,10 +195,8 @@ class ChatDB:
             # No FK here: sqlite's ALTER TABLE can't add one, so project
             # detachment on delete is handled explicitly in delete_project.
             ("conversations", "project_id", "ALTER TABLE conversations ADD COLUMN project_id TEXT"),
-            # Per-conversation reasoning level. Stores the declared level id
-            # only, never anything derived from the service entry, so editing a
-            # service's ladder needs no conversation migration. NULL means
-            # "say nothing to the model", which is not the same as "off".
+            # Per-conversation reasoning level id. NULL means "send nothing",
+            # which is not the same as the declared level "off".
             ("conversations", "reasoning_level", "ALTER TABLE conversations ADD COLUMN reasoning_level TEXT"),
         ]
         for table, column, sql in migrations:

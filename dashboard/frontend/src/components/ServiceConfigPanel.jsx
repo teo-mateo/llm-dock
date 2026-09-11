@@ -107,9 +107,8 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
       })
 
       const wasRunning = runtime?.status === 'running'
-      // Nothing to pull here: the PUT broadcasts the new ladder as an SSE
-      // metadata delta, so every consumer's service payload — chat's picker
-      // included — updates on its own connection.
+      // Nothing to pull here: the PUT broadcasts the new ladder as a metadata
+      // delta, so every consumer's payload updates on its own connection.
       onSaved(wasRunning
         ? 'Configuration saved. Container will be recreated.'
         : 'Configuration saved.'

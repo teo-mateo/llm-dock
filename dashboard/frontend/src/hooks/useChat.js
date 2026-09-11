@@ -34,10 +34,8 @@ export default function useChat({ onConversationUpdated } = {}) {
   const [artifacts, setArtifacts] = useState({}) // {messageId: [artifact]}
   const [streamingArtifacts, setStreamingArtifacts] = useState([])
   const [streamingParseWarning, setStreamingParseWarning] = useState(null) // {kind, snippet, description} | null
-  // Why the run is not doing what the conversation asked, phrased by the server.
-  // Today: a reasoning level the selected model stopped offering, which the run
-  // then ignored. Shown because a dropped level is otherwise invisible — the
-  // answer arrives, it just didn't think.
+  // Server-phrased notice about what this run ignored (see run_started). A
+  // dropped reasoning level is otherwise invisible in the answer.
   const [runNotice, setRunNotice] = useState(null) // string | null
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
@@ -69,10 +67,8 @@ export default function useChat({ onConversationUpdated } = {}) {
   // kill a newer run that started after the one the user stopped. Reset at the
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
-  // run_started carries the run id plus whatever the server decided to drop for
-  // this run. Captured here, in one place, so every stream path (send, edit,
-  // reattach) records the note the same way — a note-less frame clears it, so a
-  // second send on a ladder that was fixed does not inherit the first run's.
+  // One handler for every stream path: records the run notice, and a note-less
+  // frame clears it so a later run can't inherit the previous one's.
   const handleRunStarted = useCallback((evt) => {
     runIdRef.current = evt.run_id
     setRunReady(true)

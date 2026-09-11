@@ -1,10 +1,8 @@
-"""Wire shape for reasoning levels (R5, R6, R7) — asserted on the payload dict.
+"""Wire shape for reasoning levels (R5, R6, R7), asserted on the payload dict.
 
-The rule these tests exist to protect: a reasoning key enters a request only
-from `request_fields`, only for a declared level, only for a mapped engine. So
-the interesting assertion is the negative one — with no level the payload has
-no new key at all, which is what makes the feature invisible to the 21 services
-that don't use it. Same fake-`requests.post` style as test_llm_proxy_stream.
+The interesting assertion is the negative one: with no level the payload gains
+no key at all, which is what makes the feature invisible to services that don't
+declare one.
 """
 import os
 import sys
@@ -128,8 +126,8 @@ def test_vllm_named_level_and_off(monkeypatch):
 
 
 def test_vllm_off_sends_no_kwargs(monkeypatch):
-    """vLLM derives enable_thinking from reasoning_effort itself
-    (protocol.py:574-592), so pushing the kwarg too would fight the server."""
+    """vLLM derives enable_thinking from reasoning_effort itself, so pushing the
+    kwarg too would fight the server."""
     svc = {"host_port": 1234, "api_key": "k", "template_type": "vllm",
            "reasoning_levels": [{"id": "off", "effort": "off"}]}
     captured = _send(monkeypatch, svc, "off")

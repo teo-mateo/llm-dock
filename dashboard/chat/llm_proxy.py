@@ -86,12 +86,8 @@ def resolve_service(service_name: str) -> dict:
     Local Docker services resolve to ``{host_port, api_key, template_type,
     reasoning_levels}`` via docker_utils; ``openrouter:<model-id>`` strings
     resolve to ``{base_url, api_key, model, extra_headers}`` (or None when no
-    OPENROUTER_API_KEY is configured).
-
-    The engine fields come from the same payload lookup the connection needs,
-    so a request never re-reads services.json to decide what it may send. An
-    OpenRouter resolution carries neither, which is what keeps reasoning fields
-    out of OpenRouter requests without a special case anywhere.
+    OPENROUTER_API_KEY is configured). An OpenRouter resolution carries no engine
+    fields, which keeps reasoning fields off those requests with no special case.
     """
     from . import openrouter
     if openrouter.is_openrouter_service(service_name):
@@ -310,10 +306,9 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     response, which must produce prose, not yet another tool call).
 
     `reasoning_level` is a level id the caller resolved for this request. It is
-    re-checked against what the service declares here, so an id that reached
-    this point by any other route still cannot go on the wire — and when it is
-    None the payload gains no key at all, which is the request shape every
-    service had before this feature existed.
+    re-checked against what the service declares here, so an id that reached this
+    point by another route still cannot go on the wire. None leaves the payload
+    exactly as it was before this feature.
     """
     svc = resolve_service(service_name)
     if svc is None:
@@ -343,9 +338,7 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         # "none" on the forced final response) for backends that honor it.
         payload["tool_choice"] = tool_choice
 
-    # Reasoning fields last, so a level can never disturb the fields above.
-    # find_level returns None for an id this service doesn't declare, which
-    # yields {} from request_fields regardless of engine.
+    # Reasoning fields go on last, so a level cannot disturb the fields above.
     reasoning_fields = request_fields(
         find_level(svc.get("reasoning_levels"), reasoning_level),
         svc.get("template_type"),

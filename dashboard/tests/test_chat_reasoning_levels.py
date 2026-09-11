@@ -25,8 +25,8 @@ from chat.routes import chat_bp
 TOKEN = "test-token-rl-chat"
 CONVERSATIONS_PATH = "/api/chat/conversations"
 
-# Two services, two different ladders: what one offers and the other does not
-# is the whole substance of R7.
+# Two services with different ladders: what one offers and the other does not
+# is the substance of R7.
 LEVELS = {
     "llamacpp-a": "off,low,medium,xhigh",
     "vllm-b": "off,minimal,max",
@@ -86,8 +86,7 @@ def test_level_is_stored_and_returned_on_reload(client):
 
 
 def test_level_survives_a_restart(tmp_path):
-    """The column is real storage, not run state: a fresh ChatDB on the same
-    file returns the same level."""
+    """Real storage, not run state: a fresh ChatDB on the same file returns it."""
     path = str(tmp_path / "chat.db")
     db = ChatDB(path)
     db.create_conversation(Conversation(id="c1", title="t", main_service="llamacpp-a",
@@ -96,8 +95,7 @@ def test_level_survives_a_restart(tmp_path):
 
 
 def test_migration_adds_the_column_to_a_pre_existing_database(tmp_path):
-    """A database written before this feature gets the column, and its old rows
-    read back as NULL — which means "say nothing", i.e. today's behavior."""
+    """A pre-feature database gets the column, and its old rows read back NULL."""
     path = str(tmp_path / "chat.db")
     conn = sqlite3.connect(path)
     conn.executescript("""
@@ -148,9 +146,8 @@ def test_level_not_offered_is_rejected_naming_service_and_ladder(client):
     msg = body["error"]
     assert "minimal" in msg and "llamacpp-a" in msg
     assert "off,low,medium,xhigh" in msg
-    # The composer retries a create without the level, and it must be able to
-    # tell this rejection from any other 400 — retrying on prose would duplicate
-    # a conversation whose first create actually went through.
+    # The create-retry must key off this code, not prose: a 500 can arrive after
+    # the first create succeeded, and retrying that duplicates a conversation.
     assert body["code"] == "invalid_reasoning_level"
 
 

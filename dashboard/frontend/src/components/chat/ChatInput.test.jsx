@@ -53,9 +53,8 @@ describe('ChatInput attachments', () => {
     const onSend = vi.fn()
     render(<ChatInput onSend={onSend} disabled={false} />)
 
-    // Type some text BEFORE the read settles — this is the race codex
-    // flagged: in the old code the message would send without the
-    // attachment, and the chip would reappear in the cleared composer.
+    // The race: sending before the read settles would drop the attachment and
+    // resurrect the chip in a cleared composer.
     fireEvent.change(screen.getByPlaceholderText(/type a message/i), {
       target: { value: 'hello' },
     })
@@ -158,8 +157,8 @@ describe('ChatInput — control rail', () => {
     const slot = screen.getByTestId('slot')
     const ta = document.querySelector('textarea')
     expect(rail().contains(slot)).toBe(true)
-    // Not inside the scroll box: the control must not travel with draft height
-    // or with scrolling once the field reaches its growth cap.
+    // Not in the scroll box: the control must not travel with draft height or
+    // with scrolling.
     expect(slot.closest('textarea')).toBeNull()
     expect(rail().parentElement).toBe(ta.parentElement)
   })
@@ -202,8 +201,8 @@ describe('ChatInput — control rail', () => {
 
   it('lets the level list open upward out of the card', () => {
     render(<ChatInput onSend={() => {}} trailing={<span data-testid="slot" />} />)
-    // overflow-hidden on the card would clip the listbox; the rounded corners
-    // temptation this is exactly the class that forbids.
+    // overflow-hidden on the card would clip the listbox — exactly what the
+    // rounded corners tempt you to add.
     expect(card().className).not.toContain('overflow-hidden')
   })
 

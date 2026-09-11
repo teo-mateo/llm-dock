@@ -160,10 +160,8 @@ export default function ChatPage() {
     setSelectedModel(prev => prev ?? defaultModelName)
   }, [defaultModelName])
 
-  // Reasoning level pre-selected in the empty-state composer, carried onto the
-  // new conversation. Cleared whenever the model changes: a level belongs to one
-  // model's chat template, so inheriting it across a model switch would carry
-  // over an instruction the new model may not accept.
+  // Pre-selected level for a new conversation. Cleared on model change: a level
+  // belongs to one model's template and may not exist on the next.
   const [selectedReasoningLevel, setSelectedReasoningLevel] = useState(null)
   const handleComposerModelChange = useCallback((model) => {
     setSelectedModel(model)
@@ -256,11 +254,8 @@ export default function ChatPage() {
         ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
       })
     } catch (err) {
-      // Retry only the rejection worth handling: a level the ladder lost between
-      // render and click, identified by its error code. The typed message is the
-      // user's work, so retry without the level rather than lose it. Retrying on
-      // any failure would duplicate a conversation whose create actually
-      // succeeded and failed afterwards.
+      // Retry on a level rejection only; any other failure may follow a create
+      // that succeeded, and retrying that would duplicate the conversation.
       if (!isReasoningLevelRejection(err)) throw err
       console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
       conv = await create({ main_service: selectedModel })

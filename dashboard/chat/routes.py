@@ -91,11 +91,10 @@ def _effective_project_id(conv):
 def _service_reasoning_levels(service_name):
     """Levels a service currently declares, as parsed dicts ([] when none).
 
-    Reads the same payload the chat model picker uses, so the ladder offered in
-    the UI and the ladder enforced here cannot drift. Works for a stopped
-    service too (the payload lists every compose service), which is what lets a
-    level be saved before the model is started. OpenRouter names never resolve
-    here, so an `openrouter:` conversation can never carry a level.
+    Reads the same payload the chat picker uses, so the ladder offered and the
+    ladder enforced cannot drift, and stopped services resolve like running ones.
+    OpenRouter names never resolve, so an `openrouter:` conversation can never
+    carry a level.
     """
     if openrouter.is_openrouter_service(service_name):
         return []
@@ -111,18 +110,15 @@ def _service_reasoning_levels(service_name):
     return []
 
 
-# Machine-readable identifier for "this level is not on the service's ladder",
-# carried on the 400 so a client can tell a level rejection from any other bad
-# request. The composer retries a create without the level, and doing that on any
-# failure would duplicate a conversation whose create actually went through.
+# Carried on the 400 so a client can tell a level rejection from any other bad
+# request; the composer retries a create on this code and nothing else.
 INVALID_LEVEL_CODE = "invalid_reasoning_level"
 
 
 def _reasoning_level_error(main_service, reasoning_level):
     """Rejection message for a level the service does not offer, else None.
 
-    `null` is always accepted: it means "say nothing to the model", which is
-    the pre-feature behaviour and needs no declaration to be legal.
+    `null` is always accepted: it means "say nothing to the model".
     """
     if reasoning_level is None:
         return None
@@ -140,12 +136,10 @@ def _reasoning_level_error(main_service, reasoning_level):
 def _effective_reasoning_level(conv):
     """(level to apply, note) for a run — the second enforcement point.
 
-    The write path already rejected an undeclared level, but the service can
-    have lost it since (ladder edited, model switched underneath the
-    conversation). Nothing is ever sent that the service does not declare now.
-    The stored column is left alone: the drop applies to this run only, so
-    switching the model back restores the user's choice. The note rides the
-    run_started frame so the UI can say so instead of silently ignoring it.
+    The service can have lost a stored level since the write path checked it, so
+    nothing undeclared is ever sent. The column is left alone: the drop is for
+    this run only, so switching the model back restores the choice. The note
+    rides the run_started frame so the UI can say the level was ignored.
     """
     stored = getattr(conv, "reasoning_level", None)
     if not stored:
@@ -476,15 +470,11 @@ def create_conversation():
     if not main_service:
         return jsonify({"error": "main_service is required"}), 400
 
-    # A reasoning level must be one the service declares. Checked again at run
-    # creation (_effective_reasoning_level) because the declaration can change
-    # between here and the first message.
+    # Re-checked at run creation too: the declaration can change between here
+    # and the first message.
     if "reasoning_level" in data:
         level_error = _reasoning_level_error(main_service, data["reasoning_level"])
         if level_error:
-            # code, not prose, is what the client branches on: the composer
-            # retries a create without the level on this rejection only, and a
-            # different 400 must not be swallowed as if it were a lost level.
             return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
     reasoning_level = data.get("reasoning_level")
 
@@ -572,9 +562,9 @@ def get_conversation(conv_id):
 def update_conversation(conv_id):
     data = request.get_json() or {}
     db = _get_db()
-    # reasoning_level: null clears it (back to sending nothing to the model).
-    # A non-null level must be offered by the service the conversation ends up
-    # on, which is the newly requested main_service when both keys arrive.
+    # null clears it; a non-null level must be offered by the service the
+    # conversation ends up on, which is the requested main_service when both
+    # keys arrive.
     if "reasoning_level" in data and data["reasoning_level"] is not None:
         existing = db.get_conversation(conv_id)
         if existing is None:
@@ -740,9 +730,8 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     if created is None:
         return jsonify({"error": "A run is already active for this conversation"}), 409
 
-    # Snapshot the reasoning level now, alongside the project: the value this
-    # run uses can never change underneath it, and a ladder edited mid-run
-    # affects only the next run.
+    # Snapshot the level alongside the project: it cannot change underneath
+    # this run, and a mid-run edit affects only the next one.
     reasoning_level, level_note = _effective_reasoning_level(conv)
 
     manager = _get_run_manager()

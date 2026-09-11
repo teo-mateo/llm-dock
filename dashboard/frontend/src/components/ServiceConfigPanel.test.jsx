@@ -8,9 +8,8 @@ const { fetchAPIMock, sseHookCalls } = vi.hoisted(() => ({
 }))
 
 vi.mock('../api', () => ({ fetchAPI: (...a) => fetchAPIMock(...a) }))
-// The panel must not subscribe: it renders nothing off the service list, and
-// each useServicesSSE() call is its own EventSource. Counting calls pins the
-// absence rather than mocking the hook's return value.
+// The panel must not subscribe: every useServicesSSE() call is its own
+// EventSource, so counting calls pins the absence rather than mocking a return.
 vi.mock('../hooks/useServicesSSE', () => ({
   default: () => {
     sseHookCalls.count += 1
@@ -93,10 +92,7 @@ describe('ServiceConfigPanel reasoning levels', () => {
   })
 
   it('opens no services stream of its own, before or after saving', async () => {
-    // The ladder reaches chat as the SSE metadata delta of the PUT itself. A
-    // refresh() here only ever reopened a second /services/stream whose state
-    // nothing in this panel rendered, while another already-open tab kept
-    // showing the old ladder.
+    // The ladder reaches chat as the PUT's own SSE delta, not a second stream.
     setup({ ...BASE, reasoning_levels: 'off' })
     expect(sseHookCalls.count).toBe(0)
     fireEvent.change(input(), { target: { value: 'off,low' } })

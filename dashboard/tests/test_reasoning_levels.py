@@ -1,9 +1,4 @@
-"""Pure reasoning-level layer: grammar, lookup, per-engine request mapping.
-
-Covers R1/R2 (declaration grammar + rejection) and the wire shape of R5/R6:
-the mapping is the only place a reasoning field can ever enter a request, and
-it returns nothing at all unless it gets both a level and a mapped engine.
-"""
+"""Pure reasoning-level layer: grammar, lookup, per-engine request mapping."""
 import os
 import sys
 
@@ -50,8 +45,8 @@ def test_internal_whitespace_is_rejected_not_trimmed():
 
 @pytest.mark.parametrize("raw", ["Low", "OFF", "Off", "medium, HIGH"])
 def test_case_is_never_silently_normalised(raw):
-    # Level tokens are case-sensitive to the chat template: silently lowering
-    # "Low" would send a different instruction than the operator declared.
+    # Tokens are case-sensitive to the template: lowering "Low" would send a
+    # different instruction than the operator declared.
     valid, errors = rl.validate_levels(raw)
     assert not valid
     assert any("Low" in e or "OFF" in e or "Off" in e or "HIGH" in e for e in errors)
@@ -70,7 +65,8 @@ def test_empty_entry_rejected():
 
 
 def test_colon_bearing_value_is_rejected_naming_the_grammar():
-    # A future `low:512` budget syntax must fail loudly, not truncate to "low".
+    # A future budget syntax (level name plus a token count) must fail loudly
+    # rather than truncate to the bare level name.
     valid, errors = rl.validate_levels("low:512")
     assert not valid
     assert "budget" in errors[0]
@@ -101,8 +97,7 @@ def test_too_long_declaration():
 
 
 def test_long_but_within_limits_is_accepted():
-    # 8 levels is the real cap, and it binds well before 120 chars; a long
-    # declaration that respects both must not be rejected for length.
+    # The level cap binds well before the char cap; both must be satisfiable.
     raw = ",".join(f"level{i}extra" for i in range(8))
     assert 60 < len(raw) < rl.MAX_RAW_CHARS
     assert rl.validate_levels(raw)[0]
@@ -122,8 +117,7 @@ def test_non_string_declaration_rejected(raw):
 
 
 def test_parses_tolerantly_so_a_hand_edited_file_cannot_break_a_read():
-    # validate_levels owns rejection at write time; parse_levels is the read
-    # path, and the Services page must survive a garbage value.
+    # The read path must survive a garbage value; validate owns rejection.
     assert rl.parse_levels("low, LOW") == []
     assert rl.parse_levels("low:512") == []
 
@@ -195,16 +189,13 @@ def test_unmapped_engines_send_nothing(engine):
 
 @pytest.mark.parametrize("level", [None, "", {}, {"id": ""}, {"id": None}, 0])
 def test_no_level_never_produces_fields(level):
-    # R6: the absence of a selection must not add a key to the payload, for any
-    # engine — this is the boundary the payload-level tests rely on.
+    # R6: no selection means no new key, on any engine.
     for engine in ("llamacpp", "vllm"):
         assert rl.request_fields(level, engine) == {}
 
 
 def test_no_numeric_budget_field_is_ever_emitted():
-    # Budgets are out of this release; the numeric knobs llama.cpp
-    # (thinking_budget_tokens) and vLLM (thinking_token_budget) accept must not
-    # appear anywhere in what we generate.
+    # No numeric budget field is ever generated, on any engine.
     for engine in ("llamacpp", "vllm", "tabbyapi"):
         for level_id in ("off", "low", "minimal", "xhigh", "max"):
             fields = rl.request_fields({"id": level_id}, engine)

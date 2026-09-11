@@ -115,22 +115,16 @@ def _service_kind(config):
     return "chat"
 
 
-# (service, raw, reason) triples already warned about by the reader below.
-# Bounded only by the number of distinct bad values an operator can hand-edit
-# into services.json.
+# (service, raw, reason) triples already warned about below.
 _level_warned: set = set()
 
 
 def _parsed_reasoning_levels(service_name: str, raw) -> list:
     """Parsed declaration for one service, [] when absent or unparsable.
 
-    A stored value can only be malformed by hand-editing services.json (every
-    write path validates it), so this reports and continues rather than
-    raising — the Services page must still render the other 20 services.
-
-    Warns once per offending value: this runs on every payload read, so a
-    hand-edited entry would otherwise log once per /api/services request and per
-    SSE reconnect, burying whatever else the log has to say.
+    Only a hand-edited services.json can be malformed here, so this reports and
+    continues rather than raising. Warns once per value: this runs on every
+    payload read.
     """
     valid, errors = validate_levels(raw)
     if not valid:
@@ -217,10 +211,8 @@ def get_docker_services():
                 "model_size_str": model_size_str,
                 "kind": kind_map.get(service_name, "chat"),
                 "favorite": favorite_map.get(service_name, False),
-                # Exposed because it is the engine key for request mapping
-                # (reasoning_levels.py). It was previously only an internal map
-                # here, so resolve_service fell back to "" and every declared
-                # reasoning level was dropped as an unmapped engine.
+                # Engine key for request mapping. It used to be an internal map
+                # only, so every declared level was dropped as an unmapped engine.
                 "template_type": template_type_map.get(service_name, ""),
                 "reasoning_levels": reasoning_levels_map.get(service_name, []),
             }

@@ -602,8 +602,8 @@ construction all call it, so they cannot disagree.
   `ik_llamacpp`, `tabbyapi`, `ds4` and **OpenRouter** get nothing: unverified
   mappings are worse than no mapping. No numeric field is ever sent.
 - **Ladder edits need no container restart.** llama.cpp merges request-level
-  `chat_template_kwargs` over the `--chat-template-kwargs` server default
-  (`server-common.cpp:1308-1311`), so R8 holds even though `update_service`
+  `chat_template_kwargs` over the `--chat-template-kwargs` server default,
+  so R8 holds even though `update_service`
   rebuilds `docker-compose.yml` (it recreates no container).
 - Excluded call sites keep sending no reasoning field because they pass no level:
   `auto_generate_title`, critique, `POST /api/chat/spinoff`.

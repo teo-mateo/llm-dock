@@ -350,12 +350,9 @@ def update_service(service_name):
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
 
-        # Broadcast the fields the service payload exposes from this config, so
-        # every SSE consumer (Services table, chat picker) sees them. Chat reads
-        # the ladder off the payload, not off this config fetch, and the level is
-        # rejected at run creation when the service stopped declaring it — an
-        # edited ladder that reached only the config tab would leave the composer
-        # offering levels the server then silently drops.
+        # Broadcast the ladder to every SSE consumer: chat reads it off the
+        # service payload, not off this config fetch, and rejects a level the
+        # service stopped declaring at run creation.
         from services import event_manager
         event_manager.emit({
             "service_name": service_name,
@@ -363,8 +360,6 @@ def update_service(service_name):
             "status": None,
             "container_id": None,
             "metadata": {
-                # Payload shape, not the raw services.json string: consumers read
-                # the same `[{id, effort}]` list the SSE snapshot carries.
                 "reasoning_levels": parse_levels(existing.get("reasoning_levels")),
             },
             "timestamp": time.time(),
