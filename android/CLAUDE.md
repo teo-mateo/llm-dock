@@ -8,9 +8,9 @@ things, reads logs, and reaches the dashboard running on the host.
 
 | What | Where |
 |---|---|
-| **Software requirements** — the spec being built | `docs/Plan_TOC.md`, then the `F00`–`F13` files beside it |
+| **Software requirements** — the spec being built | `docs/Plan_TOC.md`, then the per-feature files it indexes |
 | **Technical foundation** — architecture, verified deps, test strategy | `docs/Architecture.md` |
-| **How the work is run** — orchestration, agents, models, stop rules | `WORK_INSTRUCTIONS.md` |
+| **How the work is run** — orchestration, verification bar, stop rules | this file, "How work proceeds"; `docs/Plan_TOC.md` §3 defers to it |
 | Features deliberately excluded, and why | `docs/Dropped-Features.md` |
 | Validated screen designs (16 screens) | `../docs/android/chat-app-mockups.html` |
 | Screen → endpoint map | `../docs/android/README.md` — corrected, and lists the mockups' own factual errors |
@@ -20,16 +20,18 @@ surface the app may call, and the feature index.
 
 ## How work proceeds
 
-**Full protocol: [`WORK_INSTRUCTIONS.md`](WORK_INSTRUCTIONS.md).** Read it
-before starting a feature. The essentials:
+There is no separate protocol file — this section is it, and
+`docs/Plan_TOC.md` §3 points here.
 
-- **Serialized.** One feature at a time in `F00 → F13` dependency order.
-  The emulator is one shared device; two agents installing the same
-  package stomp each other.
+- **Serialized.** One feature at a time, in the dependency order recorded by
+  the `Plan_TOC.md` §6 index — that index is the single source for which
+  features exist and in what order they run; this file deliberately carries no
+  feature ids and no progress state. The emulator is one shared device; two
+  agents installing the same package stomp each other.
 - **The main session orchestrates and does not write feature code.** Each
   feature gets an implementation agent and a separate review-and-testing
-  agent. The orchestrator branches, commits, PRs, merges and marks
-  `[DONE]`.
+  agent. The orchestrator branches, commits, PRs, merges and records the
+  outcome in the `Plan_TOC.md` index.
 - **No codex pass, no human reviewer on Android work.** Those two agents
   are the entire quality gate, so verification has to be real: logic
   criteria need a passing JVM test, device criteria a screenshot or an
@@ -41,7 +43,14 @@ before starting a feature. The essentials:
 - **When the plan is wrong**, edit the requirement in its feature file and
   record why under *Deviations*, in the same commit. Never leave the plan
   describing something the app doesn't do.
-- **Stop rather than grind** — see `WORK_INSTRUCTIONS.md` §7.
+- **Stop rather than grind.** Stop, write up the state, leave the tree
+  clean, when: the same feature fails two consecutive attempts with no
+  material progress; a requirement proves impossible against the current
+  API (that is a spec bug — record it, don't work around it); the
+  infrastructure is gone (emulator won't start, dashboard down, no
+  chat-capable model running); or the call is genuinely the owner's —
+  product scope or an unsettled security trade-off. Finishing early is
+  fine; reporting a feature done that is not is not.
 
 ## The project
 
@@ -53,9 +62,13 @@ Studio; anything above it has no `settings.gradle.kts`.
 | Root project | `LLM-DockChat` |
 | Package / applicationId | `com.hpz.llmdockchat` |
 | minSdk / target / compile | 26 / 37 / 37 |
-| AGP | 9.3.1 · Gradle 9.5.1 · Java 17 |
+| AGP | 9.3.1 · Gradle 9.5.1 · Kotlin 2.4.10 · Java 17 |
 | UI | Compose (BOM 2026.06.01) |
 | Studio | Quail 2, build 261.25134.95, at `/opt/android-studio` |
+
+Versions come from `gradle/libs.versions.toml` and the wrapper's
+`distributionUrl`; there is no CI, no ktlint and no detekt, so nothing
+checks them but the build.
 
 Building from a shell needs the Studio JBR — **system `java` is 11, too
 old for AGP 9**:
@@ -64,17 +77,30 @@ old for AGP 9**:
 cd android/src
 export JAVA_HOME=/opt/android-studio/jbr
 ./gradlew assembleDebug        # APK → app/build/outputs/apk/debug/
-./gradlew installDebug         # build + push to the running emulator
+./gradlew testDebugUnitTest    # JVM suite
+./gradlew installDebug         # installs to EVERY attached device — prefer scripts/dev.sh install
 ```
+
+`dev.sh` is cwd-independent — it resolves the SDK, `JAVA_HOME`, the
+Gradle root and `dashboard/.env` from its own path, so any subcommand
+works from anywhere.
+
+`testDebugUnitTest` has to be read rather than counted: `ThreadToolsTest`
+fails intermittently in a full-suite run both on the reasoning-level branch
+and on its base, so a red suite is not automatically this change's regression
+(recorded under *Suite run* in the reasoning-level spec under `docs/`).
 
 ### AGP 9 differences that break old snippets
 
 Most Android build advice online predates AGP 9. In this project:
 
 - **There is no `org.jetbrains.kotlin.android` plugin.** Kotlin support is
-  built into AGP 9; applying the plugin is a hard error. Only
-  `com.android.application` and `org.jetbrains.kotlin.plugin.compose` are
-  applied.
+  built into AGP 9; applying the plugin is a hard error, even though
+  `libs.plugins.kotlin.android` is still declared in the catalog. The
+  applied set is `com.android.application`,
+  `org.jetbrains.kotlin.plugin.compose` and
+  `org.jetbrains.kotlin.plugin.serialization` (the compiler plugins do
+  apply cleanly — see `docs/Architecture.md` D7).
 - **`kotlinOptions { }` does not exist.** Kotlin's JVM target follows
   `compileOptions`. If it ever needs to differ, use a top-level
   `kotlin { compilerOptions { … } }` block, not the old `android {}` one.
@@ -87,7 +113,17 @@ Most Android build advice online predates AGP 9. In this project:
 
 `android/scripts/dev.sh` wraps everything below that gets run more than
 once. Prefer it over retyping raw `adb` incantations; it sets `PATH`,
-`JAVA_HOME` and the package name itself.
+`JAVA_HOME` and the package name itself, and takes its configuration
+from the environment:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ANDROID_SDK_ROOT` | `~/Android/Sdk` | where `adb` and `emulator` come from |
+| `JAVA_HOME` | `/opt/android-studio/jbr` | existing value is kept |
+| `DEVICE` | — | pin the adb target by serial |
+| `AVD` | `Medium_Phone_API_36.1` | which AVD `emu` starts |
+| `SHOT_DIR` | `/tmp/llm-dock-android` | screenshot target, created on every run |
+| `DASH` | `http://localhost:3399` | base URL for `token` |
 
 ```bash
 ./scripts/dev.sh emu              # start an emulator if none is running, wait for boot
@@ -96,21 +132,39 @@ once. Prefer it over retyping raw `adb` incantations; it sets `PATH`,
 ./scripts/dev.sh clear            # wipe THIS app's data — re-test Connect from cold
 ./scripts/dev.sh shot [name]      # screenshot -> $SHOT_DIR, prints the path
 ./scripts/dev.sh ui               # view hierarchy (exact bounds + resource ids)
-./scripts/dev.sh logs [-f]        # logcat, this app only
+./scripts/dev.sh logs [-f]        # logcat, this app only; fails if the app isn't running
 ./scripts/dev.sh token            # dashboard session token for curl work
 ```
 
-Four subcommands exist to exercise specific acceptance criteria:
+Seven subcommands exist to exercise specific acceptance criteria:
 
 ```bash
-./scripts/dev.sh theme dark|light   # F00-R7  follow the system theme
-./scripts/dev.sh fontscale 1.5      # F00-R8  text scaling
-./scripts/dev.sh net off|on         # F09-R4  offline behaviour
-./scripts/dev.sh clear              # F01     login from a clean install
+./scripts/dev.sh theme dark|light   # follow the system theme
+./scripts/dev.sh fontscale 1.5      # text scaling
+./scripts/dev.sh net off|on         # offline behaviour
+./scripts/dev.sh clear              # login from a clean install
+./scripts/dev.sh share-text "…" [title]   # inbound share, via the system chooser
+./scripts/dev.sh share-image <file>       # inbound share, pushed then shared as a MediaStore row
+./scripts/dev.sh share-file <file> [mime] # same for a text/code file
 ```
 
+The share helpers go through the chooser, which is the real inbound-share path. To
+hit the app directly, add `-n com.hpz.llmdockchat/.MainActivity` to the
+`am start` inside the helper.
+
+**Device targeting.** Every adb call is pinned to one target: `$DEVICE`,
+else the only attached device, else the emulator — and a physical device
+is never picked automatically while an emulator is present. The
+device-writing subcommands (`install`, `run`, `stop`, `clear`, `theme`,
+`fontscale`, `net`, `share-*`) then **refuse** to touch a physical device
+unless you named it in `$DEVICE`, because `clear` destroys that phone's
+stored credential and `net off` takes its network down. `emu`, `build`
+and `token` touch no device; `shot`, `ui` and `logs` read whatever
+resolves, physical or not.
+
 Screenshots land in `$SHOT_DIR` (default `/tmp/llm-dock-android`), never
-in the repo.
+in the repo. With no argument (or an unknown one) `dev.sh` prints its own
+usage, which is the header comment of the script.
 
 ## Talking to the dashboard
 
@@ -124,6 +178,14 @@ there.
   answers `/api/health` with an OpenAI-shaped
   `{"error":{"message":"Invalid API Key"}}`. The dashboard answers
   `/api/health` unauthenticated with `{"status":"healthy",…}`.
+- **The server owns the run-stream wire format:**
+  `dashboard/chat/run_manager.py` (`_sse_frames_for` writes frames,
+  `observe()` injects `run_started`, heartbeats and `run_status`); the
+  client's reader is `core/net/RunEvent.kt`. The client-facing frame table in
+  the chat-turn/streaming spec under `docs/` is a summary —
+  read its *Deviations* section with it, which records `run_status`
+  arriving on the send path too and carrying `error`. That table also predates
+  `reasoning_level` / `reasoning_level_note` on the `run_started` frame.
 
 ### Authentication
 
@@ -141,20 +203,19 @@ curl -X POST $DASH/api/auth/login -H "X-TOTP-Code: 123456"
 token. Then send `Authorization: Bearer totp-…` on every other call.
 
 - **`POST /api/totp/verify` is NOT login.** It is TOTP enrollment and
-  requires an existing token. The mockup README gets this wrong.
+  requires an existing token. The mockup README flags and corrects this
+  itself.
 - Sessions are held in a **process-memory dict** — restarting the
   dashboard invalidates every token. Expiry slides 8 h on each request.
 
 ### Test fixtures
 
-- Chat-capable model for testing: **`llamacpp-mimo-v2-5-q4`**, running on
-  `:3307`, `kind=chat` — it passes the F07-R1 picker filter. It replaced
-  `llamacpp-gemma-4-26b-a4b-it-q8` (which was on `:3301`) on 2026-07-25,
-  so any older thread or fixture naming gemma points at a model that is
-  no longer running. **Confirm what is actually up before assuming** —
-  the owner swaps this, and the port changes with the model. Run from the
-  repo root (`dev.sh token` returns empty elsewhere, and the call then
-  silently 401s):
+- **No fixture model is stable.** Which services exist, which are
+  `running`, and on which port, is machine-local `services.json` state
+  the owner swaps between sessions — this file used to name
+  `llamacpp-mimo-v2-5-q4` on `:3307`, and neither that service nor that
+  port exists now. Query rather than name, and treat the answer as good
+  for that turn only:
 
   ```
   TOKEN=$(android/scripts/dev.sh token)
@@ -162,7 +223,7 @@ token. Then send `Authorization: Bearer totp-…` on every other call.
     | python3 -c 'import sys,json
   for s in json.load(sys.stdin)["services"]:
       if s.get("status") == "running":
-          print(s["name"], s.get("host_port"), s.get("kind"))'
+          print(s["name"], s.get("host_port"), s.get("kind"), s.get("template_type"))'
   ```
 
 - **The port field is `host_port`, not `port`.** `GET /api/services`
@@ -170,11 +231,14 @@ token. Then send `Authorization: Bearer totp-…` on every other call.
   (an int) plus the raw Docker `ports` map. There is no `port` key —
   reading one yields `None` and looks like "the API doesn't expose the
   port". `services.json` is the other way round: keyed by name, with
-  `port`. F07-R1 renders `host_port`.
+  `port`. The model picker renders `host_port`. Entries also carry `template_type`
+  and `reasoning_levels`: a model's reasoning ladder travels on the service payload
+  and on the SSE `metadata-changed` delta, never on an endpoint of its
+  own.
 - **`kind=chat` alone is not the picker filter.** `open-webui` is
   `running` with `kind=chat` and is not a model. The name-prefix test
-  (`llamacpp-`/`vllm-`/`ds4-`) in F07-R1 is what excludes it — don't drop
-  it as redundant.`
+  (`llamacpp-`/`vllm-`/`ds4-`) in the picker is what excludes it — don't drop
+  it as redundant.
 - **Creating and deleting conversations is fine.** They share `chat.db`
   with the web UI, so prefix test threads to make them identifiable and
   clean up afterwards.
@@ -212,6 +276,10 @@ adb shell getprop ro.build.version.release
 ```
 
 With more than one device attached, target explicitly: `adb -s emulator-5554 …`.
+A physical phone is often attached alongside the emulator (a OnePlus was
+when this was last checked); bare `adb` picks arbitrarily among devices,
+which is what `dev.sh`'s targeting rules exist to prevent — they only
+cover `dev.sh`, not the raw commands below.
 
 ### Starting and stopping it
 
@@ -304,20 +372,27 @@ adb shell pm clear <pkg>                     # wipes app data — ask first
 adb uninstall <pkg>
 ```
 
-Gradle does install + launch in one step from the project root:
+`adb shell am start -n` takes the launcher activity, `.MainActivity`
+(`launchMode="singleTask"`, and it declares the `SEND` filters the inbound-share
+flow uses).
 
-```bash
-./gradlew installDebug
-```
+Gradle installs but does **not** launch, and it installs to every
+attached device — `dev.sh run` is install + launch on one pinned target.
 
 ## Logs
 
 ```bash
 adb logcat -c                                # clear, then reproduce
-adb logcat --pid=$(adb shell pidof -s <pkg>) # just our app
-adb logcat -s OkHttp:D LlmDock:D             # by tag
-adb logcat *:E                               # errors only
+adb logcat --pid=$(adb shell pidof -s <pkg>) # just our app — what dev.sh logs does
+adb logcat -d *:E                            # errors only, bounded
 ```
+
+The app itself emits **no logcat output**: no `android.util.Log`, no
+Timber, no OkHttp logging interceptor, so a tag filter like
+`-s OkHttp:D LlmDock:D` matches nothing. What shows up under our pid is
+system noise, crashes and ANRs. For behaviour, use `dev.sh shot` and
+`dev.sh ui`; the container logs the app displays come from
+`/api/services/<name>/logs`, not from logcat.
 
 `adb logcat` never exits — always bound it (`-d` to dump and quit, or run
 it as a background command).
@@ -335,8 +410,9 @@ it as a background command).
   desktop layout gets squeezed. Both metas are required on anything meant
   to be checked on-device.
 - `adb reverse` and `adb forward` are per-device and are lost on restart.
-- The AVD has no Play Store on `sdk_gphone64` system images unless the
-  playstore variant was installed.
+- The AVD runs the `google_apis_playstore` image — `com.android.vending`
+  is installed — so Play Store is present here, unlike a plain
+  `google_apis` image.
 - **The device has no `curl` and no `wget`** (toybox has neither), so
   host reachability can't be probed from `adb shell`. Verify it from the
   app's own first request, or trust `10.0.2.2`.
