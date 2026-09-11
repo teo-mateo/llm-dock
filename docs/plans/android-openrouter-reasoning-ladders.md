@@ -102,7 +102,7 @@ is configured in this project, so compile + tests are the whole of the static ga
 |---|---|
 | DTO → domain ladder, present and absent | `NewChatMapperTest` — `[{id, effort}]` yields `listOf("low","high")`; a key-free entry yields `emptyList()` and compares equal to `ModelOption.Remote("a/b", "A B", emptyList())` |
 | Remote thread resolves its ladder | `ThreadReasoningLevelTest` — `low,high,max` on an `openrouter:` thread, control visible |
-| Local ladder does not leak onto a remote thread | same test asserts `"off"` from the local row is absent — the key is the whole service string |
+| Local ladder does not leak onto a remote thread | the exact-equality assertion in `an openrouter thread resolves its ladder from the curated list` — the local row declares `off,low`, so an exact match on `low,high,max` proves the lookup used the whole service string. Review confirmed it is load-bearing: a fallback-to-first-map-entry mutant fails three tests, this one among them. A separate `contains("off")` line was dead weight inside that test and was deleted |
 | Nothing published → nothing offered | new case; the surviving half of the old R8 |
 | Stranded remote level reads amber and stays visible | new case, because the chip is how it gets cleared |
 | Remote **write** path | added after the PR was opened: choosing `high` on an `openrouter:` thread sends `{"reasoning_level":"high"}`. F15's own write test uses a local conversation, and the three remote cases above stop at the ladder, so nothing covered the client actually issuing the write — which the PR description had been letting the server-side probe stand in for. It also pins request order (`thread`, `services`, curated list, `PUT`), perturbed by the gated read |
@@ -134,7 +134,19 @@ they claimed**, and it proved that by building mutants in a throwaway copy of th
 | The two-map design's invariant had no test | The rejected design (`mergedLadders = ladders` **plus** routing remote writes into `ladders`, which keeps every remote test passing) left 546 tests green | New case: remote ladder resolved → picker's services snapshot wholesale-replaces the local map → assert the `openrouter:` key survives | Re-ran that exact mutant: fails only the new case, 16 / 1 |
 
 Also fixed from review: a duplicated `wireValue` import that compiled silently with no lint to catch it
-(this project has neither ktlint nor detekt, and no CI at all).
+(this project has neither ktlint nor detekt, and no CI at all), and a redundant `contains("off")`
+assertion that review showed was dead weight beside the equality check it duplicated.
+
+Review converted two of its own hedges into measurements in a follow-up, which are worth keeping
+because both are load-bearing facts about this feature:
+
+- **The request gate is enforced, not merely intended.** Removing the gate (so every thread pays the
+  curated-list read) fails **35 tests** — not because they care about ladders, but because MockWebServer
+  serves a fixed response queue and the extra request shifts it for every `Thread*Test`. "A local thread
+  issues exactly the requests it issued before" is therefore held by the suite's request-order
+  discipline, not just by reading the code.
+- **The flake is real and bounded:** the `Dispatchers.Main is used concurrently` teardown race appears on
+  mutant runs, not on the baseline. "548 green" is reproducible but not immune to it.
 
 Review's non-blocking point about §4 was accepted and corrected there rather than argued: the remote
 amber window is inherited *in kind* but **doubled in duration**, because the local read is awaited

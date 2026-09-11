@@ -211,7 +211,6 @@ class ThreadReasoningLevelTest {
 
         assertEquals(listOf("low", "high", "max"), state.ladder)
         assertEquals(true, state.reasoningControlVisible)
-        assertEquals(false, state.ladder.contains("off"))
     }
 
     @Test
