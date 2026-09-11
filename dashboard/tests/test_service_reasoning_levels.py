@@ -120,23 +120,43 @@ class _FakeComposeMgr:
         return self._entries.get(name)
 
 
+class _FakeContainer:
+    """One running container, so the container-exists branch is exercised too —
+    that is the branch a live chat turn reads, and the one that was broken."""
+
+    def __init__(self, service_name):
+        self.labels = {"com.docker.compose.service": service_name}
+        self.status = "running"
+        self.id = "deadbeefcafe"
+        self.attrs = {"Created": "2026-01-01T00:00:00Z", "State": {"ExitCode": 0}}
+        self.ports = {"8000/tcp": [{"HostPort": "3301"}]}
+
+
+class _FakeContainerList:
+    def __init__(self, containers):
+        self._containers = containers
+
+    def list(self, **kwargs):
+        return list(self._containers)
+
+
 class _FakeClient:
-    class containers:
-        @staticmethod
-        def list(**kwargs):
-            return []
+    def __init__(self, containers=None):
+        self.containers = _FakeContainerList(containers or [])
 
 
-def _payload_for(monkeypatch, entries, names):
+def _payload_for(monkeypatch, entries, names, running=None):
     """Build the get_docker_services payload with no Docker and no files.
 
     Everything Docker/compose-shaped is stubbed; the point is the mapping from
-    a stored entry to what a client sees.
+    a stored entry to what a client sees. `running` names get a container, so
+    the container-exists branch and the not-created branch can both be read.
     """
     import docker
     import docker_utils
 
-    monkeypatch.setattr(docker, "from_env", lambda: _FakeClient())
+    monkeypatch.setattr(docker, "from_env",
+                        lambda: _FakeClient([_FakeContainer(n) for n in (running or [])]))
     monkeypatch.setattr(docker_utils, "get_compose_services", lambda: names)
     monkeypatch.setattr(docker_utils, "get_compose_service_ports",
                         lambda: {n: 3300 + i for i, n in enumerate(names)})
@@ -314,3 +334,31 @@ def test_openrouter_resolution_carries_no_engine_fields(monkeypatch):
     assert "reasoning_levels" not in svc
     assert rl.request_fields(rl.find_level(svc.get("reasoning_levels"), "low"),
                             svc.get("template_type")) == {}
+
+
+# -- the seam that actually broke (regression) ---------------------------
+
+
+def test_engine_survives_the_real_payload_into_request_fields(monkeypatch):
+    """Regression for the feature silently doing nothing on a live service.
+
+    template_type was an internal map in get_docker_services, never a payload
+    field, so resolve_service fell back to "", request_fields saw an unmapped
+    engine and returned {}, and a declared level was stored, reported on
+    run_started and then dropped at the last step. Everything upstream looked
+    healthy, which is exactly why this asserts on the payload the real builder
+    produces rather than on a hand-written service dict — a fake carrying
+    template_type hides this bug, and did.
+    """
+    entries = {"vllm-a": {"api_key": "k", "template_type": "vllm",
+                         "reasoning_levels": "off,low,medium,xhigh"}}
+
+    for running in (["vllm-a"], []):  # both payload branches
+        svc = _payload_for(monkeypatch, entries, ["vllm-a"], running=running)["vllm-a"]
+        assert svc["template_type"] == "vllm"
+        # The exact expressions llm_proxy.stream_chat_completion uses.
+        fields = rl.request_fields(rl.find_level(svc["reasoning_levels"], "off"),
+                                   svc["template_type"])
+        assert fields == {"reasoning_effort": "none"}
+        assert rl.request_fields(rl.find_level(svc["reasoning_levels"], "medium"),
+                                 svc["template_type"]) == {"reasoning_effort": "medium"}

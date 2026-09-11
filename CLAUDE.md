@@ -608,6 +608,15 @@ construction all call it, so they cannot disagree.
   the operator declared, and the UI list is exactly that declaration. Before
   declaring a new ladder on a service, probe it (`/apply-template`, then one
   short completion per level).
+- **`template_type` must stay on the service payload.** `llm_proxy.resolve_service`
+  reads the engine from `get_docker_services()`, and reasoning levels are mapped
+  per engine — so when that field was only an internal map in `docker_utils`, the
+  engine resolved to `""`, `request_fields` returned `{}`, and every declared
+  level was silently dropped at the last step: stored fine, reported on
+  `run_started`, never sent. Nothing logged. Any per-engine request behaviour
+  needs the engine string to travel with the service, and a test that builds the
+  payload through the real `get_docker_services` — a hand-written service dict
+  carrying `template_type` hides exactly this bug (it did).
 - **A level is not a token budget.** The sweep showed the named ladder is not
   monotonic and sometimes inverted. That is why no numeric field is sent and the
   UI shows no token counts. If budgets are ever wanted, the hooks are

@@ -204,6 +204,11 @@ def get_docker_services():
                 "model_size_str": model_size_str,
                 "kind": kind_map.get(service_name, "chat"),
                 "favorite": favorite_map.get(service_name, False),
+                # Exposed because it is the engine key for request mapping
+                # (reasoning_levels.py). It was previously only an internal map
+                # here, so resolve_service fell back to "" and every declared
+                # reasoning level was dropped as an unmapped engine.
+                "template_type": template_type_map.get(service_name, ""),
                 "reasoning_levels": reasoning_levels_map.get(service_name, []),
             }
 
@@ -233,6 +238,7 @@ def get_docker_services():
                     "model_size_str": model_size_str,
                     "kind": kind_map.get(service_name, "chat"),
                     "favorite": favorite_map.get(service_name, False),
+                    "template_type": template_type_map.get(service_name, ""),
                     "reasoning_levels": reasoning_levels_map.get(service_name, []),
                 }
             )

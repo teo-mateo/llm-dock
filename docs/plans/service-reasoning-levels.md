@@ -1,12 +1,27 @@
 # Per-service reasoning levels: declared at config time, selectable at runtime
 
-**Implemented** (P1-P8). Deviations from this plan, both deliberate:
-`parse_levels`/`validate_levels` trim spaces **around** comma-separated entries
-(so `"off, low"` is accepted) while still rejecting case differences and
-internal whitespace — trimming a separator cannot change which token is sent,
-normalising case can, so §5's `"medium "` case is accepted rather than
-rejected. And §5's live gate is **not yet run**: it needs a GPU slot, so no
-ladder is declared on a production service by this change.
+**Implemented** (P1-P8). One deliberate deviation: `parse_levels`/`validate_levels`
+trim spaces **around** comma-separated entries (so `"off, low"` is accepted) while
+still rejecting case differences and internal whitespace — trimming a separator
+cannot change which token is sent, normalising case can, so §5's `"medium "` case
+is accepted rather than rejected.
+
+§5's live gate **has been run and passed** on `vllm-qwen3-8-flash-next-mixed-nvfp4-fp8`:
+`off` → no reasoning, `low` → brief reasoning, no level → default. Running it is
+what found the one real defect, and it was not in the mapping: `template_type` was
+never a field on the service payload, so `resolve_service` got `""`,
+`request_fields` treated the engine as unmapped, and every declared level was
+dropped at the last step with nothing logged.
+
+§3.4's claim that vLLM "derives `enable_thinking` itself, so one field is enough"
+is **confirmed correct** by that probe — top-level `reasoning_effort: "none"` does
+switch thinking off on this checkpoint, and `chat_template_kwargs` is not required.
+That was doubted mid-implementation on the strength of reading the chat template
+alone; reading the template shows what it accepts, not what the server forwards to
+it. The discriminating evidence was sending `chat_template_kwargs:
+{"reasoning_effort": "bogus"}` and getting the template's own `raise_exception`
+back (kwargs do reach it), against top-level `"none"` returning 200 (swallowed by
+the reasoning parser, then overridden by the derived `enable_thinking`).
 
 Original plan follows, as written before implementation.
 
