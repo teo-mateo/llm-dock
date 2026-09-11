@@ -23,6 +23,10 @@ BEGIN_DYNAMIC_MARKER = "# <<<<<<< BEGIN DYNAMIC"
 END_DYNAMIC_MARKER = "# >>>>>>> END DYNAMIC"
 
 
+def _valid_service_name(name: str) -> bool:
+    return name.replace("-", "").replace("_", "").replace(".", "").isalnum()
+
+
 class ComposeManager:
     """Manages docker-compose.yml with atomic updates and rollback"""
 
@@ -117,8 +121,8 @@ class ComposeManager:
         if len(service_name) > 63:
             return False, "Service name too long (max 63 characters)"
 
-        if not service_name.replace("-", "").replace("_", "").isalnum():
-            return False, "Service name must be alphanumeric with hyphens/underscores"
+        if not _valid_service_name(service_name):
+            return False, "Service name must be alphanumeric with hyphens, underscores or dots"
 
         if service_name in self.get_existing_services():
             return False, f"Service '{service_name}' already exists"
@@ -481,9 +485,9 @@ class ComposeManager:
             raise ValueError("Service name cannot be empty")
         if len(new_name) > 63:
             raise ValueError("Service name too long (max 63 characters)")
-        if not new_name.replace("-", "").replace("_", "").isalnum():
+        if not _valid_service_name(new_name):
             raise ValueError(
-                "Service name must be alphanumeric with hyphens/underscores"
+                "Service name must be alphanumeric with hyphens, underscores or dots"
             )
 
         services = self._load_services_db()

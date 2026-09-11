@@ -171,3 +171,26 @@ class TestAddServiceUsesValidation:
             config = compose_manager._load_services_db()
             config.pop("new-svc", None)
             compose_manager._save_services_db(config)
+
+
+class TestDottedServiceNames:
+    """Existing dotted names (e.g. 'llamacpp-glm-5.3-flash-q2kxl') must be renameable."""
+
+    def test_validate_service_name_accepts_dots(self, compose_manager):
+        valid, error = compose_manager.validate_service_name(
+            "llamacpp-glm-5.3-flash-q2kxl"
+        )
+        assert valid is True, error
+
+    def test_validate_service_name_rejects_other_characters(self, compose_manager):
+        valid, error = compose_manager.validate_service_name("llamacpp-glm/5")
+        assert valid is False
+        assert "hyphens" in error
+
+    @patch.object(ComposeManager, "rebuild_compose_file")
+    def test_rename_to_dotted_name(self, mock_rebuild, compose_manager):
+        compose_manager.rename_service("test-svc", "test-svc-5.3-flash-lru")
+
+        services = compose_manager._load_services_db()
+        assert "test-svc-5.3-flash-lru" in services
+        assert "test-svc" not in services
