@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.data.mapper
 
+import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.data.dto.ArtifactDto
 import com.hpz.llmdockchat.data.dto.ChatMessageDto
 import com.hpz.llmdockchat.data.dto.ConversationDetailDto
@@ -73,4 +74,25 @@ class ChatThreadMapperTest {
 
         assertEquals(emptyList<String>(), dto.toDomain().mcpServers)
     }
+
+    /**
+     * F15-R4: the level is read off the detail payload, and "model default"
+     * must survive as `null` — not `""`, which the mapper would then treat as a
+     * level name, and not `"off"`, which is an opposite instruction.
+     */
+    @Test
+    fun `a stored reasoning level is carried through to the domain model`() {
+        val dto = decodeDetail("""{"id":"c1","title":"t","main_service":"vllm-a","reasoning_level":"medium"}""")
+
+        assertEquals("medium", dto.toDomain().reasoningLevel)
+    }
+
+    @Test
+    fun `an absent or null reasoning_level both map to null, never an empty string`() {
+        assertEquals(null, decodeDetail("""{"id":"c1","title":"t","main_service":"vllm-a"}""").toDomain().reasoningLevel)
+        assertEquals(null, decodeDetail("""{"id":"c1","title":"t","main_service":"vllm-a","reasoning_level":null}""").toDomain().reasoningLevel)
+    }
 }
+
+private fun decodeDetail(json: String): ConversationDetailDto =
+    ApiJson.decodeFromString(ConversationDetailDto.serializer(), json)

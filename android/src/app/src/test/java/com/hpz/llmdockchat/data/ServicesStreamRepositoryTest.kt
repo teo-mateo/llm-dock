@@ -49,8 +49,7 @@ class ServicesStreamRepositoryTest {
     }
 
     @Test
-    fun `a delta for an unknown service name changes nothing`() {
-        val delta = ServiceStreamEvent.Delta(serviceName = "does-not-exist", status = "running", favorite = null)
+    fun `a delta for an unknown service name changes nothing`() {        val delta = ServiceStreamEvent.Delta(serviceName = "does-not-exist", status = "running", favorite = null)
         assertEquals(listOf(running, stopped), mergeServiceEvent(listOf(running, stopped), delta))
     }
 
@@ -59,6 +58,46 @@ class ServicesStreamRepositoryTest {
         val current = listOf(running, stopped)
         assertEquals(current, mergeServiceEvent(current, ServiceStreamEvent.Error("boom")))
         assertEquals(current, mergeServiceEvent(current, ServiceStreamEvent.Unknown("garbage")))
+    }
+
+    // -- F15: ladder deltas merge independently of status and favorite ------------
+
+    @Test
+    fun `a ladder delta replaces that service's ladder and nothing else on the row`() {
+        val withLadder = running.copy(reasoningLevels = listOf("off"))
+        val delta = ServiceStreamEvent.Delta(
+            serviceName = "llamacpp-a",
+            status = null,
+            favorite = null,
+            reasoningLevels = listOf("off", "low", "xhigh"),
+        )
+        val result = mergeServiceEvent(listOf(withLadder, stopped), delta)
+        assertEquals(withLadder.copy(reasoningLevels = listOf("off", "low", "xhigh")), result[0])
+        assertEquals("running", result[0].status)
+        assertEquals(false, result[0].favorite)
+        assertEquals(stopped, result[1])
+    }
+
+    /** F15-R5: the same action carries favourites, and must not empty a ladder. */
+    @Test
+    fun `a delta that says nothing about the ladder leaves it exactly as stored`() {
+        val withLadder = running.copy(reasoningLevels = listOf("off", "low"))
+        val delta = ServiceStreamEvent.Delta(serviceName = "llamacpp-a", status = "running", favorite = true)
+        val result = mergeServiceEvent(listOf(withLadder, stopped), delta)
+        assertEquals(listOf("off", "low"), result[0].reasoningLevels)
+        assertEquals(true, result[0].favorite)
+    }
+
+    @Test
+    fun `a delta carrying an empty ladder clears it, which is different from saying nothing`() {
+        val withLadder = running.copy(reasoningLevels = listOf("off", "low"))
+        val delta = ServiceStreamEvent.Delta(
+            serviceName = "llamacpp-a",
+            status = null,
+            favorite = null,
+            reasoningLevels = emptyList(),
+        )
+        assertEquals(emptyList<String>(), mergeServiceEvent(listOf(withLadder, stopped), delta)[0].reasoningLevels)
     }
 
     // -- the transport wiring --------------------------------------------------

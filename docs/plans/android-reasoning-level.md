@@ -254,11 +254,16 @@ rather than trying to display it.
 
 `RunEvent.RunStarted` gains `reasoningLevel: String?` and
 `reasoningLevelNote: String?` (both optional; the parser's `ignoreUnknownKeys`
-keeps old servers working). `TurnAccumulator` records the note,
-`StreamingTurn` gains `reasoningNote: String?`, and `ThreadScreen` renders it as
-a one-line notice directly above the composer row — a **new** slot, matching
+keeps old servers working), and **the note reaches `Loaded.reasoningNotice`** —
+written when the frame arrives, cleared by the next send. `ThreadScreen` renders
+it as a one-line notice directly above the composer row — a **new** slot, matching
 where the web client renders `runNotice` (`ChatArea.jsx`), test tag
-`thread_reasoning_notice`. It is *not* the `ReattachedBanner` slot: that one is a
+`thread_reasoning_notice`. *Implemented location, corrected at the device pass:*
+the first version put it on `StreamingTurn`, and a capture showed a completed
+turn with no notice — the turn is discarded at its terminal and refetched, so the
+notice was readable only while the answer happened to stream. Hoisting it to the
+screen state also matches the web client, whose `runNotice` is hook state and
+outlives the run. It is *not* the `ReattachedBanner` slot: that one is a
 `LazyColumn` item above the streaming bubble (`ThreadScreen.kt`, `item(key =
 "reattached_banner")`), which scrolls away with the turn, whereas this explains
 the next turn and must stay put beside the control that named the level.
@@ -314,7 +319,7 @@ Checks run so far: the source survey, the `services.json` read, a live
 | T6 | R8 | `data/model/ServiceSummaryTest.kt` | A service with no ladder and no new fields round-trips to the same `ServiceSummary` equality as before the change (additive field defaults keep every existing assertion green) |
 | T7 | R1, R2, R3 | new `feature/thread/ReasoningLevelSheetTest.kt` — **plain JUnit over extracted pure helpers**, the pattern `feature/modelpicker/ModelPickerSheetTest.kt` actually uses (it tests `runningChatCapable`/`NOTHING_RUNNING_TEXT` and its own docstring says it exists to be testable *without* Compose; there is no Robolectric dependency and no compose rule in `app/src/test`, `ui-test-junit4` is `androidTestImplementation` only) | `reasoningLevelOptions([off,low,xhigh], null)` → exactly default, off, low, xhigh, with default selected; `reasoningLevelOptions([off,low], "high")` → a stale row last, labelled "not offered by this model", selectable only to be replaced; `showsReasoningControl([], null)` → false; `([], "low")` → true; `([off], null)` on OpenRouter → false. Rendering itself is device-covered by D1/D3 |
 | T8 | R1, R5, R3 | new `feature/thread/ThreadReasoningLevelTest.kt` (same harness as `ThreadViewModelTest.kt`, fake repos) | Load a thread whose service has a ladder → `Loaded.ladder` non-empty; service missing from the payload → `ladder == []`; OpenRouter thread → `ladder == []` even when the payload has levels; a failed `ServicesRepository.list()` → the previous map **kept**, not cleared; `updateLadders` from a delta → `ladder` changes with no reload; **and the switch case: thread on service A (ladder `off,low`), `switchModel` to service B (no ladder) → `ladder == []` with no second `GET /api/services`, and back to A → `off,low` again without a fetch** |
-| T9 | R6 | `feature/thread/ThreadViewModelTest.kt` extension | Stream scripted with `run_started` + note → `thread.streaming.reasoningNote == note`; note absent → null; a reattach attempt (rebuilt accumulator) after the note → note cleared, not repeated |
+| T9 | R6 | `feature/thread/ThreadViewModelTest.kt` extension | Stream scripted with `run_started` + note → `Loaded.reasoningNotice == note`; note absent → null; the note survives the turn's terminal (it is screen state, cleared by the next send, not by the refetch) |
 | T10 | R4, R7 | `ThreadReasoningLevelTest.kt` | Choose `"low"` → PUT issued, state updated optimistically, sheet closes on success; repository fails → state back to the previous value **and** `actionError` non-null; a failing *superseded* write (second write already queued) does **not** revert the newest value |
 | T11 | R3, R6 interaction | `ThreadReasoningLevelTest.kt` | `selectReasoningLevel` refused while `runActive` (state unchanged, no request) — mirrors `toggleTool`'s guard |
 | T12 | P5 | `feature/models/ModelDetailViewModelTest.kt` or mapper test | Config with a raw `reasoning_levels` string renders the row; a config without it renders no row |

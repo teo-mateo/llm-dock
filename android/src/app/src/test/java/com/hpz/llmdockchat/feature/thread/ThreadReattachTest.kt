@@ -19,6 +19,7 @@ import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.testing.FakeDraftStore
@@ -77,6 +78,7 @@ class ThreadReattachTest {
     private lateinit var drafts: FakeDraftStore
     private lateinit var repository: ChatRepository
     private lateinit var servicesStreamRepository: ServicesStreamRepository
+    private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
@@ -101,6 +103,11 @@ class ThreadReattachTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
+        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // consume a queued MockWebServer response and move every takeRequest() assertion,
+        // so the ladder read is pointed at a store with no URL — which fails fast, keeps
+        // the last known (empty) map, and leaves the queue for the calls under test.
+        servicesRepository = ServicesRepository(ApiClient(client, FakeServerUrlStore(), ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
@@ -127,6 +134,7 @@ class ThreadReattachTest {
                     repository = repository,
                     drafts = drafts,
                     servicesStreamRepository = servicesStreamRepository,
+                    servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,

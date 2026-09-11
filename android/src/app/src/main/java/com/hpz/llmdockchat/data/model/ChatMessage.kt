@@ -92,6 +92,13 @@ data class ConversationDetail(
      * [com.hpz.llmdockchat.data.dto.PromptDto].
      */
     val mainSystemPrompt: String = "",
+    /**
+     * The reasoning level declared for this thread (F15), or null for "model
+     * default" — which is **not** the level `"off"`: `null` says nothing to the
+     * model, `"off"` actively tells it not to think. Server state, written only
+     * through [com.hpz.llmdockchat.data.ConversationsRepository.setReasoningLevel].
+     */
+    val reasoningLevel: String? = null,
 ) {
     val isGenerating: Boolean
         get() = activeRun != null && activeRun.status in GENERATING_STATUSES

@@ -100,6 +100,11 @@ data class ServicesStreamState(val services: List<ServiceSummary>, val stale: Bo
  * service in place, leaving every other row untouched; [ServiceStreamEvent.Error]
  * and [ServiceStreamEvent.Unknown] leave [current] as it was — an unrecognised
  * frame is exactly the case a live picker must not go blank over.
+ *
+ * Each delta field updates only what the frame actually carried, which for
+ * [ServiceStreamEvent.Delta.reasoningLevels] means `null` leaves the ladder
+ * alone (F15-R5: the favourite route reuses this action and sends no ladder,
+ * so a star on the dashboard must not empty a service's options).
  */
 fun mergeServiceEvent(current: List<ServiceSummary>, event: ServiceStreamEvent): List<ServiceSummary> =
     when (event) {
@@ -111,6 +116,7 @@ fun mergeServiceEvent(current: List<ServiceSummary>, event: ServiceStreamEvent):
                 service.copy(
                     status = event.status ?: service.status,
                     favorite = event.favorite ?: service.favorite,
+                    reasoningLevels = event.reasoningLevels ?: service.reasoningLevels,
                 )
             }
         }

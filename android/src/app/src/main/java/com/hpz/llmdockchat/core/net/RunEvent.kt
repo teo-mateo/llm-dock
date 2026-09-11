@@ -21,8 +21,22 @@ import kotlinx.serialization.json.intOrNull
  */
 sealed interface RunEvent {
 
-    /** Always the first frame, synthesized by `observe()` before the worker starts. */
-    data class RunStarted(val runId: String) : RunEvent
+    /**
+     * Always the first frame, synthesized by `observe()` before the worker starts.
+     *
+     * F15-R6: on the **send** path the server also reports which reasoning level
+     * the run resolved to, and a note when it dropped the one stored on the
+     * conversation (`chat/routes.py:_start_run_response` →
+     * `observe(run_started_extra=…)`). A **reattaching** client gets a plain
+     * frame with both null — `observe` only injects extras on the send path — so
+     * a reconnect legitimately loses the note (F15's stale chip is the durable
+     * half of the same fact).
+     */
+    data class RunStarted(
+        val runId: String,
+        val reasoningLevel: String? = null,
+        val reasoningLevelNote: String? = null,
+    ) : RunEvent
 
     /**
      * Text. Either half may be empty: models emit reasoning first and content
@@ -115,7 +129,9 @@ fun parseFrame(payload: String): RunEvent {
 
 /** Null when the type is unrecognised, or a required field is missing. */
 private fun JsonObject.typedFrame(type: String): RunEvent? = when (type) {
-    "run_started" -> string("run_id")?.let { RunEvent.RunStarted(it) }
+    "run_started" -> string("run_id")?.let {
+        RunEvent.RunStarted(it, string("reasoning_level"), string("reasoning_level_note"))
+    }
     "tool_call_pending" -> string("name")?.let { RunEvent.ToolCallPending(int("index") ?: 0, it) }
     "tool_call" -> string("name")?.let {
         RunEvent.ToolCall(it, rendered("arguments"), string("server_id"))

@@ -155,6 +155,9 @@ fun ThreadScreen(
         onCloseSettings = viewModel::closeSettings,
         onToggleTool = viewModel::toggleTool,
         onSelectPrompt = viewModel::selectPrompt,
+        onOpenReasoningPicker = viewModel::openReasoningPicker,
+        onCloseReasoningPicker = viewModel::closeReasoningPicker,
+        onSelectReasoningLevel = viewModel::selectReasoningLevel,
         onTextScaleChange = appearance::setTextScale,
         textScale = textScale,
         baseDensity = density,
@@ -192,6 +195,9 @@ private fun ThreadContent(
     onCloseSettings: () -> Unit,
     onToggleTool: (String) -> Unit,
     onSelectPrompt: (ManagedPrompt) -> Unit = {},
+    onOpenReasoningPicker: () -> Unit = {},
+    onCloseReasoningPicker: () -> Unit = {},
+    onSelectReasoningLevel: (String?) -> Unit = {},
     textScale: Float = ChatAppearance.DEFAULT,
     onTextScaleChange: (Float) -> Unit = {},
     baseDensity: Density = Density(1f, 1f),
@@ -226,6 +232,17 @@ private fun ThreadContent(
                 title = loaded?.conversation?.title ?: "Conversation",
                 model = loaded?.conversation?.modelRef?.displayName,
                 onBack = onBack,
+                levelChip = loaded?.takeIf { it.reasoningControlVisible }?.let { thread ->
+                    {
+                        ReasoningLevelChip(
+                            level = thread.conversation.reasoningLevel,
+                            stale = thread.reasoningStale,
+                            enabled = thread.canSwitchModel,
+                            pending = thread.reasoningPicker?.writePending == true,
+                            onClick = onOpenReasoningPicker,
+                        )
+                    }
+                },
                 action = {
                     if (loaded != null) {
                         IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
@@ -339,6 +356,19 @@ private fun ThreadContent(
         )
     }
 
+    // F15 — the level sheet. Opened from the header chip, and it dismisses on
+    // write success rather than on tap, so a send right after a choice cannot
+    // use the level before it (F15-R2's last criterion).
+    loaded?.reasoningPicker?.let { picker ->
+        ReasoningLevelSheet(
+            ladder = loaded.ladder,
+            stored = loaded.conversation.reasoningLevel,
+            writePending = picker.writePending,
+            onSelect = onSelectReasoningLevel,
+            onDismiss = onCloseReasoningPicker,
+        )
+    }
+
     // One sheet for everything about this chat (replaces the two-item overflow
     // menu). Selected tool ids come from the conversation itself, not local
     // sheet state: `mcpServers` is the server's own array, and `toggleTool`
@@ -375,6 +405,7 @@ private fun ThreadHeader(
     model: String?,
     onBack: () -> Unit,
     action: @Composable () -> Unit,
+    levelChip: (@Composable () -> Unit)? = null,
 ) {
     val colors = LlmTheme.colors
     Row(
@@ -399,17 +430,21 @@ private fun ThreadHeader(
                 modifier = Modifier.testTag("thread_title"),
             )
             // F04-R3: who is answering stays visible for the whole turn, not
-            // just at the moment it starts.
+            // just at the moment it starts. F15 hangs the reasoning level beside
+            // it — the two facts that jointly determine the next answer.
             if (model != null) {
-                Text(
-                    model,
-                    color = colors.subtle,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("thread_model"),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        model,
+                        color = colors.subtle,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false).testTag("thread_model"),
+                    )
+                    levelChip?.invoke()
+                }
             }
         }
         action()
@@ -869,6 +904,21 @@ private fun ThreadComposer(
                     ImageThumbnail(dataUrl, size = 58.dp, onRemove = { onRemoveAttachment(index) })
                 }
             }
+        }
+
+        // F15-R6 — the server ignored this turn's reasoning level. Phrased by the
+        // server, shown here rather than in the message list because it is about
+        // the request that was made, and it stays put beside the control that
+        // named the level (F15's Deviations). It outlives the turn and is cleared
+        // by the next send. A silently dropped level reads exactly like a model
+        // that chose not to think.
+        state.reasoningNotice?.let { note ->
+            Text(
+                note,
+                color = colors.amber,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().testTag("thread_reasoning_notice"),
+            )
         }
 
         ComposerRow(

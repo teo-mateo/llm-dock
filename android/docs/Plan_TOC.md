@@ -133,7 +133,7 @@ require `Authorization: Bearer <token>`.
 | GET | `/api/chat/conversations?limit&offset` | Conversation list, `updated_at DESC` |
 | POST | `/api/chat/conversations` | Create — `main_service` required |
 | GET | `/api/chat/conversations/<id>` | Full thread with messages |
-| PUT | `/api/chat/conversations/<id>` | Update title, `main_service`, `mcp_servers_json`, `project_id` |
+| PUT | `/api/chat/conversations/<id>` | Update title, `main_service`, `mcp_servers_json`, `project_id`, `reasoning_level` (F15 — `null` clears, a level the service does not declare is rejected) |
 | DELETE | `/api/chat/conversations/<id>` | Delete one |
 | POST | `/api/chat/conversations/delete` | Delete a batch — `{ids: [...]}` |
 | POST | `/api/chat/conversations/<id>/messages` | Send a turn → SSE stream |
@@ -188,6 +188,7 @@ Mark completed features `[DONE]` in the Status column.
 | F12 | Container logs | [F12-container-logs.md](F12-container-logs.md) | 10c | [DONE] — F11-R7 stays skipped, see the feature file |
 | F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] |
 | F14 | Share into app | [F14-share-into-app.md](F14-share-into-app.md) | — | [DONE] — R6 (Should) verified on device |
+| F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 
 ---

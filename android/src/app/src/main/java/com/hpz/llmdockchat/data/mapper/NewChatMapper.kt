@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.data.mapper
 
+import com.hpz.llmdockchat.core.net.parseReasoningLevels
 import com.hpz.llmdockchat.data.dto.McpServerDto
 import com.hpz.llmdockchat.data.dto.OpenRouterModelDto
 import com.hpz.llmdockchat.data.dto.PromptDto
@@ -19,6 +20,7 @@ fun ServiceDto.toDomain(): ServiceSummary =
         exitCode = exitCode,
         modelSizeStr = modelSizeStr,
         createdAt = created,
+        reasoningLevels = parseReasoningLevels(reasoningLevels),
     )
 
 fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder, content = content)

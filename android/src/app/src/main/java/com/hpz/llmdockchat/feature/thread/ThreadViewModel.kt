@@ -12,6 +12,7 @@ import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
@@ -54,6 +55,13 @@ class ThreadViewModel(
      */
     private val attachmentStore: SharedDraftStore? = null,
     private val servicesStreamRepository: ServicesStreamRepository,
+    /**
+     * F15: the one-shot `GET /api/services`, for the reasoning ladder. The live
+     * stream is scoped to the model picker's visible lifetime (F07's rule) and a
+     * thread outlives that by hours, so the ladder rides the one-shot read plus
+     * whatever the picker's stream happens to deliver while it is up.
+     */
+    private val servicesRepository: ServicesRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val mcpServersRepository: McpServersRepository,
@@ -92,6 +100,18 @@ class ThreadViewModel(
      */
     private var latestToolsToggle = 0L
 
+    /**
+     * F15-R7: same ordering discipline as [toolsWriteLock] and
+     * [latestToolsToggle], for the same reason. Two level writes in flight are
+     * two PUTs of the same column, and a stale failure reverting to what the
+     * user has since replaced would fight the newer write.
+     */
+    private val levelWriteLock = Mutex()
+    private var latestLevelWrite = 0L
+
+    /** The ladder by service name, from the last successful read of `/api/services`. */
+    private var ladders: Map<String, List<String>> = emptyMap()
+
     /** What the composer held before [beginEdit] overwrote it, restored by [cancelEdit]. */
     private var composerBeforeEdit: String = ""
     private var attachmentsBeforeEdit: List<String> = emptyList()
@@ -116,6 +136,11 @@ class ThreadViewModel(
                     }
                 },
             )
+            // After the thread, not before: the ladder is decoration on the
+            // header, not a prerequisite for drawing it, and a slow service
+            // listing must never delay the conversation. Its failure is silent by
+            // design (see [refreshLadders]) — the thread itself is what matters.
+            refreshLadders()
         }
     }
 
@@ -141,7 +166,85 @@ class ThreadViewModel(
             attachments = (current?.attachments.orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
             actionError = current?.actionError,
+            laddersByService = ladders,
         )
+    }
+
+    // -- reasoning ladder (F15) ------------------------------------------------
+
+    /**
+     * One-shot `GET /api/services` for the ladders, ignoring failure rather than
+     * reporting it: a failed read keeps the last known map ([ladders]) instead of
+     * clearing it, because an empty ladder hides the chip and the chip is the
+     * only way back to the sheet — clearing on a network hiccup would make the
+     * control unrecoverable without leaving the screen. The next successful read
+     * (sheet open, re-open, picker stream) replaces it wholesale, which is also
+     * how a service that stopped declaring levels disappears from the map.
+     */
+    private suspend fun refreshLadders() {
+        servicesRepository.list().getOrNull()?.let { services ->
+            ladders = services.associate { it.name to it.reasoningLevels }
+            loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
+        }
+    }
+
+    /** Folds the picker stream's live list in — the same map, from a snapshot or a delta. */
+    private fun mergeLadders(services: List<com.hpz.llmdockchat.data.model.ServiceSummary>) {
+        ladders = services.associate { it.name to it.reasoningLevels }
+        loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
+    }
+
+    /** Opens the level sheet and refreshes the ladder on the way in (F15-R5). */
+    fun openReasoningPicker() {
+        val current = loaded() ?: return
+        if (!current.canSwitchModel) return
+        _state.value = current.copy(reasoningPicker = ReasoningPickerState())
+        viewModelScope.launch { refreshLadders() }
+    }
+
+    fun closeReasoningPicker() {
+        loaded()?.let { _state.value = it.copy(reasoningPicker = null) }
+    }
+
+    /**
+     * F15-R2/R4/R7: choose a level, or `null` for "model default".
+     *
+     * Optimistic like [selectPrompt], ordered like [toggleTool], and the sheet
+     * closes on **write success** rather than on tap — so "pick a level, then
+     * immediately send" is well defined: the PUT has landed before the sheet is
+     * gone, and the next turn uses the new level. A failure reverts to what the
+     * server has and surfaces through [ThreadUiState.Loaded.actionError]
+     * (F00-R4), and only the newest write's failure does either.
+     */
+    fun selectReasoningLevel(level: String?) {
+        val current = loaded() ?: return
+        if (!current.canSwitchModel) return
+        if (current.conversation.reasoningLevel == level) {
+            closeReasoningPicker()
+            return
+        }
+        val previous = current.conversation.reasoningLevel
+        _state.value = current.copy(
+            conversation = current.conversation.copy(reasoningLevel = level),
+            reasoningPicker = ReasoningPickerState(writePending = true),
+        )
+        val write = ++latestLevelWrite
+        viewModelScope.launch {
+            levelWriteLock.withLock {
+                conversationsRepository.setReasoningLevel(conversationId, level).fold(
+                    onSuccess = { closeReasoningPicker() },
+                    onFailure = { failure ->
+                        if (write != latestLevelWrite) return@fold
+                        val latest = loaded() ?: return@fold
+                        _state.value = latest.copy(
+                            conversation = latest.conversation.copy(reasoningLevel = previous),
+                            reasoningPicker = ReasoningPickerState(),
+                            actionError = failure.appError.displayMessage,
+                        )
+                    },
+                )
+            }
+        }
     }
 
     /**
@@ -203,6 +306,7 @@ class ThreadViewModel(
             attachments = emptyList(),
             sending = true,
             actionError = null,
+            reasoningNotice = null,
             thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
         )
         drafts.clear(conversationId)
@@ -314,6 +418,11 @@ class ThreadViewModel(
                 )
             }
             servicesStreamRepository.stream().collect { services ->
+                // F15: the picker's live list is also the ladder's second
+                // source, so a dashboard edit reaches an open thread while the
+                // picker is up — and the service the user is about to pick
+                // already has its ladder in the map when the switch lands.
+                mergeLadders(services)
                 loaded()?.let {
                     _state.value = it.copy(modelPicker = it.modelPicker?.copy(services = services))
                 }
@@ -569,6 +678,7 @@ class ThreadViewModel(
             attachments = emptyList(),
             sending = true,
             actionError = null,
+            reasoningNotice = null,
             thread = ThreadState(
                 messages = messagesBeforeEdit.filter { it.seq < edit.message.seq },
                 streaming = StreamingTurn(userMessage = pending),
@@ -711,6 +821,19 @@ class ThreadViewModel(
                         scheduleFlush()
                     }
                     is RunEvent.Failed -> failureMessage = event.message
+                    /**
+                     * F15-R6: the note is hoisted onto the screen state the moment
+                     * it arrives rather than left on the turn — the turn is dropped
+                     * at its terminal and refetched, and a notice that dies with it
+                     * is only readable while the answer happens to be streaming.
+                     */
+                    is RunEvent.RunStarted -> {
+                        event.reasoningLevelNote?.let { note ->
+                            loaded()?.let { _state.value = it.copy(reasoningNotice = note) }
+                        }
+                        accumulator.apply(event)
+                        publishTurn(accumulator)
+                    }
                     is RunEvent.RunStatus -> {
                         if (event.status == "failed") failureMessage = event.error ?: failureMessage
                     }

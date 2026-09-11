@@ -31,6 +31,7 @@ fun ConversationDetailDto.toDomain(): ConversationDetail = ConversationDetail(
     updatedAt = updatedAt,
     mcpServers = mcpServers,
     mainSystemPrompt = mainSystemPrompt,
+    reasoningLevel = reasoningLevel,
 )
 
 private fun ChatMessageDto.toDomain(artifacts: List<ArtifactDto>): ChatMessage = ChatMessage(

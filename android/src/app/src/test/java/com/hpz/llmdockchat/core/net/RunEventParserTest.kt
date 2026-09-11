@@ -26,6 +26,49 @@ class RunEventParserTest {
         assertEquals(RunEvent.RunStarted("035d944d-5105"), event)
     }
 
+    /**
+     * F15-R6. `chat/routes.py:_start_run_response` puts the level the run
+     * resolved to, and a note when it dropped the stored one, on the
+     * synthesized frame — extras the send path alone receives.
+     */
+    @Test
+    fun `run started carries the resolved reasoning level and the server's drop note`() {
+        val event = parseFrame(
+            """{"type": "run_started", "run_id": "r1", "reasoning_level": "low",
+                 "reasoning_level_note": "Reasoning level 'xhigh' is not offered by this model and was ignored"}""",
+        )
+        assertEquals(
+            RunEvent.RunStarted(
+                runId = "r1",
+                reasoningLevel = "low",
+                reasoningLevelNote = "Reasoning level 'xhigh' is not offered by this model and was ignored",
+            ),
+            event,
+        )
+    }
+
+    @Test
+    fun `a plain run_started has no level and no note rather than an empty string`() {
+        val event = parseFrame("""{"type": "run_started", "run_id": "r1"}""") as RunEvent.RunStarted
+
+        assertEquals(null, event.reasoningLevel)
+        assertEquals(null, event.reasoningLevelNote)
+    }
+
+    /**
+     * The level travels as `"reasoning_level": null` when the run was told
+     * nothing (`chat/run_manager.py:observe` merges `run_started_extra`), and a
+     * JSON null must not turn into the string "null".
+     */
+    @Test
+    fun `a null level on the frame reads as no level, and an unknown sibling key still parses`() {
+        val nullLevel = parseFrame("""{"type": "run_started", "run_id": "r1", "reasoning_level": null}""")
+        assertEquals(RunEvent.RunStarted("r1"), nullLevel)
+
+        val futureKey = parseFrame("""{"type": "run_started", "run_id": "r1", "next_frame_type": true}""")
+        assertEquals(RunEvent.RunStarted("r1"), futureKey)
+    }
+
     @Test
     fun `a content delta is a raw OpenAI chunk with no type key`() {
         val event = parseFrame(
