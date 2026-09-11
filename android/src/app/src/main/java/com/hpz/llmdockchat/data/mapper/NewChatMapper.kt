@@ -28,7 +28,6 @@ fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, so
 fun McpServerDto.toDomain(): McpServerInfo =
     McpServerInfo(id = id, name = name, description = description, icon = icon)
 
-/** Falls back to the id when [OpenRouterModelDto.label] is blank — it's optional server-side. */
 fun OpenRouterModelDto.toDomain(): ModelOption.Remote =
     ModelOption.Remote(
         modelId = id,

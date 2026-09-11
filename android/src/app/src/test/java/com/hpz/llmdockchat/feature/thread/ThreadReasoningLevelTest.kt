@@ -47,18 +47,6 @@ import org.junit.Test
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-/**
- * F15 on the thread screen's state machine: where the ladder comes from, what
- * happens to it when the model changes, and what a level write does to the
- * conversation.
- *
- * Unlike every other `Thread*Test`, this one's [ServicesRepository] is live —
- * the ladder is the subject here, so the `GET /api/services` it issues is part
- * of the choreography rather than interference. Two consequences, both handled
- * below: every test enqueues its responses in the order the screen makes them
- * (thread, then services), and a test that asserts on a PUT body reads requests
- * in that same order.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadReasoningLevelTest {
 
@@ -107,7 +95,6 @@ class ThreadReasoningLevelTest {
         Dispatchers.resetMain()
     }
 
-    // -- payloads -------------------------------------------------------------
 
     private fun enqueue(body: String) = server.enqueue(MockResponse.Builder().body(body).build())
 
@@ -132,7 +119,6 @@ class ThreadReasoningLevelTest {
     private fun services(vararg rows: String) =
         enqueue("""{"services":[${rows.joinToString(",")}],"total":${rows.size}}""")
 
-    /** F15.1: the curated-list read that carries remote ladders. */
     private fun orSettings(vararg rows: String) =
         enqueue("""{"configured":true,"current":[${rows.joinToString(",")}]}""")
 
@@ -163,7 +149,6 @@ class ThreadReasoningLevelTest {
 
     private fun threadTest(body: suspend CoroutineScope.() -> Unit) = runBlocking { body() }
 
-    /** The screen's own entry: `ThreadScreen` calls `load()` on composition, so tests do too. */
     private suspend fun openedThread(): ThreadViewModel = viewModel().also { it.load() }.also { it.awaitLoaded() }
 
     private suspend fun ThreadViewModel.awaitLoaded(): ThreadUiState.Loaded =
@@ -177,7 +162,6 @@ class ThreadReasoningLevelTest {
 
     private fun RecordedRequest.body(): String = this.body?.utf8().orEmpty()
 
-    // -- F15-R1/R5 · where the ladder comes from --------------------------------
 
     @Test
     fun `the ladder for the thread's service arrives with the service snapshot`() = threadTest {
@@ -185,7 +169,6 @@ class ThreadReasoningLevelTest {
         services(ladderRow("vllm-a", "off", "low", "xhigh"), noLadderRow("vllm-b"))
         val viewModel = openedThread()
 
-        // The ladder arrives on its own request, after the thread is on screen.
         val state = viewModel.awaitState { it.ladder.isNotEmpty() }
 
         assertEquals(listOf("off", "low", "xhigh"), state.ladder)
@@ -193,19 +176,12 @@ class ThreadReasoningLevelTest {
         assertEquals(false, state.reasoningStale)
     }
 
-    /**
-     * F15-R1's fourth criterion, and the reason the state holds a map rather
-     * than one list: `switchModel` refetches the conversation and nothing else,
-     * so a ladder copied at load would still describe the service just left —
-     * offering a level the new model would reject.
-     */
     @Test
     fun `switching models re-resolves the ladder with no second services fetch`() = threadTest {
         conversation("vllm-a")
         services(ladderRow("vllm-a", "off", "low"), noLadderRow("vllm-b"))
         val viewModel = openedThread()
         viewModel.awaitState { it.ladder.isNotEmpty() }
-        // Both load requests have landed now: the thread, then the ladder.
         val afterLoad = server.requestCount
 
         enqueue("""{"id": "$CONVERSATION_ID"}""")
@@ -214,10 +190,8 @@ class ThreadReasoningLevelTest {
 
         val state = viewModel.awaitState { it.conversation.modelRef == ModelRef.Local("vllm-b") }
         assertEquals(emptyList<String>(), state.ladder)
-        // The switch itself: one PUT + one thread reload, and no new GET /api/services.
         assertEquals(afterLoad + 2, server.requestCount)
 
-        // And back again, still without a fetch — the choice survives a round trip.
         enqueue("""{"id": "$CONVERSATION_ID"}""")
         conversation("vllm-a")
         viewModel.switchModel(ModelRef.Local("vllm-a"))
@@ -226,15 +200,6 @@ class ThreadReasoningLevelTest {
         assertEquals(afterLoad + 4, server.requestCount)
     }
 
-    /**
-     * F15-R8 was: an OpenRouter thread resolves no ladder and shows no control.
-     * That held while the server resolved no ladder for an `openrouter:` service and
-     * rejected any level written to one. #132 made the server derive ladders from
-     * OpenRouter's own `supported_efforts` and accept them on the write path, so the
-     * rule is inverted rather than deleted — and the two halves the old test
-     * conflated are now tested apart: a declared ladder means a control, and an
-     * undeclared one still means none (F15-R7).
-     */
     @Test
     fun `an openrouter thread resolves its ladder from the curated list`() = threadTest {
         conversation("openrouter:anthropic/claude-sonnet-5")
@@ -246,12 +211,32 @@ class ThreadReasoningLevelTest {
 
         assertEquals(listOf("low", "high", "max"), state.ladder)
         assertEquals(true, state.reasoningControlVisible)
-        // The local snapshot's ladder must not leak onto a remote thread: the lookup
-        // key is the whole service string, so `vllm-a`'s ladder is simply absent here.
         assertEquals(false, state.ladder.contains("off"))
     }
 
-    /** F15-R7 on a remote model: nothing published, so nothing offered. */
+    @Test
+    fun `a local services refresh does not erase the remote ladder`() = threadTest {
+        conversation("openrouter:anthropic/claude-sonnet-5")
+        services(ladderRow("vllm-a", "off"))
+        orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high"))
+        val viewModel = openedThread()
+        viewModel.awaitState { it.ladder == listOf("low", "high") }
+
+        servicesTransport.payloads = listOf(
+            """{"type": "snapshot", "data": {"services": [{"name": "vllm-b", "status": "running",""" +
+                """"kind": "chat", "host_port": 3302, "reasoning_levels": [{"id": "off"}, {"id": "xhigh"}]}]}}""",
+        )
+        orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high"))
+        viewModel.openModelPicker()
+
+        val state = viewModel.awaitState { it.laddersByService.containsKey("vllm-b") }
+
+        assertEquals(listOf("off", "xhigh"), state.laddersByService["vllm-b"])
+        assertEquals(listOf("low", "high"), state.laddersByService["openrouter:anthropic/claude-sonnet-5"])
+        assertEquals(listOf("low", "high"), state.ladder)
+        assertEquals(false, state.laddersByService.containsKey("vllm-a"))
+    }
+
     @Test
     fun `an openrouter model with no published ladder shows no control`() = threadTest {
         conversation("openrouter:anthropic/claude-haiku-4.5")
@@ -259,32 +244,27 @@ class ThreadReasoningLevelTest {
         orSettings("""{"id":"anthropic/claude-haiku-4.5","label":"Claude Haiku 4.5"}""")
         val viewModel = openedThread()
 
-        val state = viewModel.awaitLoaded()
+        val state = viewModel.awaitState {
+            it.laddersByService.containsKey("openrouter:anthropic/claude-haiku-4.5")
+        }
 
         assertEquals(emptyList<String>(), state.ladder)
         assertEquals(false, state.reasoningControlVisible)
     }
 
-    /** F15-R3 on a remote model: a level the ladder no longer declares reads amber. */
     @Test
     fun `a remote level the ladder no longer declares reads stale`() = threadTest {
         conversation("openrouter:anthropic/claude-sonnet-5", reasoningLevel = "minimal")
         services(ladderRow("vllm-a", "off"))
         orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high"))
         val viewModel = openedThread()
-        // Await the ladder, not the staleness: a stored level reads stale against an
-        // *empty* ladder too, so `reasoningStale` alone cannot tell "not loaded yet"
-        // from "stranded". Same window F15 already accepts for local services, where
-        // the ladder likewise arrives after the first frame.
         val state = viewModel.awaitState { it.ladder.isNotEmpty() }
 
         assertEquals(listOf("low", "high"), state.ladder)
         assertEquals(true, state.reasoningStale)
-        // Visible precisely because it is stranded: the chip is how it gets cleared.
         assertEquals(true, state.reasoningControlVisible)
     }
 
-    /** F15-R5: a ladder delta on the picker's live stream reaches the thread. */
     @Test
     fun `a ladder delta reaches the thread while the picker stream is live`() = threadTest {
         conversation()
@@ -302,11 +282,6 @@ class ThreadReasoningLevelTest {
         assertEquals(listOf("off", "xhigh"), state.ladder)
     }
 
-    /**
-     * A failed ladder read keeps the ladder already on screen. Clearing it would
-     * hide the chip — and the chip is the only way back to the sheet, so a
-     * transient failure would make the control unrecoverable without leaving.
-     */
     @Test
     fun `a failed ladder refresh leaves the known ladder alone`() = threadTest {
         conversation()
@@ -324,7 +299,6 @@ class ThreadReasoningLevelTest {
         assertNotNull(viewModel.state.value.let { (it as ThreadUiState.Loaded).reasoningPicker })
     }
 
-    // -- F15-R2/R4/R7 · choosing a level ---------------------------------------
 
     @Test
     fun `choosing a level writes it, updates the chip at once, and closes the sheet on success`() = threadTest {
@@ -337,13 +311,30 @@ class ThreadReasoningLevelTest {
 
         val state = viewModel.awaitState { it.reasoningPicker == null && it.conversation.reasoningLevel == "low" }
         assertNull(state.reasoningPicker)
-        // GET thread, GET services, PUT level — in that order.
         server.takeRequest()
         server.takeRequest()
         assertEquals("""{"reasoning_level":"low"}""", server.takeRequest().body())
     }
 
-    /** F15-R4: clearing is the one write where the body's *null* is the payload. */
+    @Test
+    fun `choosing a level on a remote model writes it to the conversation`() = threadTest {
+        conversation("openrouter:anthropic/claude-sonnet-5")
+        services(ladderRow("vllm-a", "off"))
+        orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high", "max"))
+        enqueue("""{"id": "$CONVERSATION_ID"}""")
+        val viewModel = openedThread()
+        viewModel.awaitState { it.ladder.isNotEmpty() }
+
+        viewModel.selectReasoningLevel("high")
+
+        val state = viewModel.awaitState { it.reasoningPicker == null && it.conversation.reasoningLevel == "high" }
+        assertNull(state.reasoningPicker)
+        server.takeRequest()
+        server.takeRequest()
+        server.takeRequest()
+        assertEquals("""{"reasoning_level":"high"}""", server.takeRequest().body())
+    }
+
     @Test
     fun `choosing model default writes an explicit null and the chip reads default`() = threadTest {
         conversation(reasoningLevel = "low")
@@ -375,18 +366,14 @@ class ThreadReasoningLevelTest {
 
         val state = viewModel.awaitState { it.actionError != null }
         assertNull(state.conversation.reasoningLevel)
-        // F15-R2: the sheet stays open on failure, no longer pending, so the
-        // user sees the revert and can pick again.
         assertNotNull(state.reasoningPicker)
         assertEquals(false, state.reasoningPicker?.writePending)
     }
 
-    /** F15-R7: a stale write's failure must not fight the newer choice. */
     @Test
     fun `a superseded write's failure leaves the newest choice alone`() = threadTest {
         conversation()
         services(ladderRow("vllm-a", "off", "low", "xhigh"))
-        // Oldest write loses (the ladder moved under it), newest wins.
         enqueue(
             MockResponse.Builder().code(400)
                 .body("""{"error":"reasoning_level 'low' is not offered","code":"invalid_reasoning_level"}""")
@@ -403,7 +390,6 @@ class ThreadReasoningLevelTest {
         assertNull(state.actionError)
     }
 
-    /** F15-R7's third criterion, mirroring `toggleTool`'s guard. */
     @Test
     fun `choosing a level during a run is refused outright and sends nothing`() = threadTest {
         conversation()
@@ -424,7 +410,6 @@ class ThreadReasoningLevelTest {
         assertEquals(requests, server.requestCount)
     }
 
-    // -- F15-R6 · the dropped-level note ---------------------------------------
 
     @Test
     fun `the server's dropped-level note reaches the screen state above the composer`() = threadTest {
@@ -443,11 +428,6 @@ class ThreadReasoningLevelTest {
         assertEquals("Reasoning level 'xhigh' is not offered by this model and was ignored", state.reasoningNotice)
     }
 
-    /**
-     * The plain frame — what a reattaching client always gets — leaves the note
-     * absent rather than empty, so the notice row is not composed. F15 accepts
-     * losing the note across a reconnect; the stale chip is the durable half.
-     */
     @Test
     fun `a plain run_started carries no note`() = threadTest {
         conversation()

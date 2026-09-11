@@ -5,15 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * F15-R1/R2/R3 as pure functions — the whole decision behind the chip and the
- * sheet, with no Compose rule and no device.
- *
- * This is the split `feature/modelpicker/ModelPickerSheetTest` already uses
- * (`runningChatCapable` pulled out of the sheet for exactly this reason): the
- * rendering is verified on device, and the *rules* are verified where a failure
- * is a stack trace rather than a screenshot.
- */
 class ReasoningLevelSheetTest {
 
     @Test
@@ -29,13 +20,11 @@ class ReasoningLevelSheetTest {
         assertFalse(options.any { it.stale })
     }
 
-    /** F15-R1: the ladder is the operator's declaration — not sorted, not filled in. */
     @Test
     fun `nothing is invented between the declared rungs`() {
         val options = reasoningLevelOptions(listOf("xhigh", "off", "low"), null)
 
         assertEquals(listOf(null, "xhigh", "off", "low"), options.map { it.id })
-        // "high" exists on some models and is not offered by this one.
         assertFalse(options.any { it.id == "high" })
     }
 
@@ -46,7 +35,6 @@ class ReasoningLevelSheetTest {
         assertEquals(listOf<String?>(null), options.map { it.id })
     }
 
-    /** F15-R3: a stranded level is listed last, labelled, and marked stale. */
     @Test
     fun `a stored level the ladder lost appears last and is marked not offered`() {
         val options = reasoningLevelOptions(listOf("off", "low"), "high")
@@ -71,17 +59,11 @@ class ReasoningLevelSheetTest {
         assertFalse(isReasoningLevelStale(listOf("low", "off"), "off"))
     }
 
-    /**
-     * F15-R3 as amended by F15.1: a ladder or a stored level is the whole test.
-     * F15 added a fourth argument here to hide OpenRouter; the predicate no longer
-     * has one, so the same inputs cannot get a different answer per provider.
-     */
     @Test
     fun `the control shows only with a ladder or a stored level`() {
         assertTrue(showsReasoningControl(listOf("low"), null))
         assertTrue(showsReasoningControl(emptyList(), "low"))
         assertFalse(showsReasoningControl(emptyList(), null))
-        // The case F15 hid, now reachable: a remote model that does declare levels.
         assertTrue(showsReasoningControl(listOf("low", "high"), "low"))
     }
 
