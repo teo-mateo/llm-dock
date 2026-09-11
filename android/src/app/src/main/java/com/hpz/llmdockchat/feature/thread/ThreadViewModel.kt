@@ -22,6 +22,7 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
+import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import kotlinx.coroutines.CancellationException
@@ -182,14 +183,16 @@ class ThreadViewModel(
      * how a service that stopped declaring levels disappears from the map.
      */
     private suspend fun refreshLadders() {
-        servicesRepository.list().getOrNull()?.let { services ->
-            ladders = services.associate { it.name to it.reasoningLevels }
-            loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
-        }
+        servicesRepository.list().getOrNull()?.let(::updateLadders)
     }
 
-    /** Folds the picker stream's live list in — the same map, from a snapshot or a delta. */
-    private fun mergeLadders(services: List<com.hpz.llmdockchat.data.model.ServiceSummary>) {
+    /**
+     * The one place a ladder map is written, whether it arrived from the one-shot
+     * `GET /api/services` or from the picker's live stream: both carry a complete
+     * service list, so both replace the map wholesale and neither can half-cover
+     * the other (F15-R1).
+     */
+    private fun updateLadders(services: List<ServiceSummary>) {
         ladders = services.associate { it.name to it.reasoningLevels }
         loaded()?.let { _state.value = it.copy(laddersByService = ladders) }
     }
@@ -238,7 +241,11 @@ class ThreadViewModel(
                         val latest = loaded() ?: return@fold
                         _state.value = latest.copy(
                             conversation = latest.conversation.copy(reasoningLevel = previous),
-                            reasoningPicker = ReasoningPickerState(),
+                            // Only re-open a sheet that is still open: the user can dismiss a
+                            // pending write (scrim tap, drag-down), and a late failure must not
+                            // push it back over the composer. The revert and the error stand on
+                            // their own either way (F00-R4, F15-R7).
+                            reasoningPicker = latest.reasoningPicker?.let { ReasoningPickerState() },
                             actionError = failure.appError.displayMessage,
                         )
                     },
@@ -422,7 +429,7 @@ class ThreadViewModel(
                 // source, so a dashboard edit reaches an open thread while the
                 // picker is up — and the service the user is about to pick
                 // already has its ladder in the map when the switch lands.
-                mergeLadders(services)
+                updateLadders(services)
                 loaded()?.let {
                     _state.value = it.copy(modelPicker = it.modelPicker?.copy(services = services))
                 }

@@ -49,7 +49,8 @@ class ServicesStreamRepositoryTest {
     }
 
     @Test
-    fun `a delta for an unknown service name changes nothing`() {        val delta = ServiceStreamEvent.Delta(serviceName = "does-not-exist", status = "running", favorite = null)
+    fun `a delta for an unknown service name changes nothing`() {
+        val delta = ServiceStreamEvent.Delta(serviceName = "does-not-exist", status = "running", favorite = null)
         assertEquals(listOf(running, stopped), mergeServiceEvent(listOf(running, stopped), delta))
     }
 
