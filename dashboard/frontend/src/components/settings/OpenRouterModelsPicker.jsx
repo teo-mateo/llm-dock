@@ -18,10 +18,11 @@ import {
 // dropdown order. The short list is a convenience, not an allowlist — removing
 // a model here does not break conversations already using it.
 //
-// The list's storage shape is unchanged ([{id, label}]); everything from the
-// catalog is display-time enrichment. So the collapsed JSON panel below drives
-// the same state and stays the escape hatch for bulk pastes and for the case
-// where OpenRouter is unreachable.
+// What the editor owns is [{id, label}]; everything from the catalog is
+// display-time enrichment, and so is a model's reasoning ladder -- derived from the
+// catalog server-side, refreshed by the button below, never typed. The collapsed JSON
+// panel drives the same editable state and stays the escape hatch for bulk pastes and
+// for the case where OpenRouter is unreachable, so it carries no ladder either.
 
 // Shared empty array: `catalog.data?.models ?? []` would hand the memos below a
 // fresh array on every render while the catalog is still loading, which is the
@@ -253,7 +254,7 @@ function CatalogRow({ entry, added, onToggle, providers, rowRef }) {
   )
 }
 
-function ShortlistRow({ entry, index, count, knownIds, catalogEntry, onLabel, onMove, onRemove }) {
+function ShortlistRow({ entry, index, count, knownIds, catalogEntry, ladder, onLabel, onMove, onRemove, onRefreshLadder }) {
   const missing = knownIds.size > 0 && !knownIds.has(entry.id)
   return (
     <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border last:border-0">
@@ -287,7 +288,25 @@ function ShortlistRow({ entry, index, count, knownIds, catalogEntry, onLabel, on
           {missing && <span className="ml-1.5 text-warning-fg">not in catalog</span>}
           {catalogEntry?.deprecated && <span className="ml-1.5 text-warning-fg">deprecated</span>}
         </div>
+        {/* The ladder the model publishes, in the order the composer will offer it.
+            Derived server-side rather than typed, which is why it is read-only here and
+            why the absence of one is worth saying out loud. */}
+        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-fg-subtle">
+          {ladder?.length
+            ? ladder.map(level => (
+              <span key={level.id} className="px-1 rounded bg-sunken font-mono">{level.id}</span>
+            ))
+            : <span className="italic">no reasoning ladder</span>}
+        </div>
       </div>
+      <button
+        onClick={() => onRefreshLadder(entry.id)}
+        aria-label={`Re-read reasoning levels for ${entry.id}`}
+        title="Re-read this model's reasoning levels from OpenRouter"
+        className="text-xs text-fg-subtle hover:text-fg shrink-0 px-1"
+      >
+        <i className="fa-solid fa-rotate"></i>
+      </button>
       <button
         onClick={() => onRemove(index)}
         aria-label={`Remove ${entry.id}`}
@@ -342,7 +361,7 @@ export default function OpenRouterModelsPicker() {
 
   useEffect(() => {
     if (!data) return
-    const next = modelsToJson(data.current)
+    const next = modelsToJson(clone(data.current))
     setBaseline(next)
     if (!dirtyRef.current) {
       setDraft(clone(data.current))
@@ -407,6 +426,14 @@ export default function OpenRouterModelsPicker() {
   // field needed, and none to keep in step with it.
   const knownIds = useMemo(() => new Set(models.map((m) => m.id)), [models])
   const selectedIds = useMemo(() => new Set(draft.map((m) => m.id)), [draft])
+
+  // Read off the stored list rather than the draft: a ladder is server-derived, so a row
+  // shows what the server recorded even while its label is mid-edit. Reading it from the
+  // draft instead would need the editor to round-trip a field it cannot change.
+  const ladders = useMemo(
+    () => new Map((data?.current ?? []).map(m => [m.id, m.reasoning_levels])),
+    [data],
+  )
   const nonChatCount = useMemo(() => models.filter((m) => !m.chat_model).length, [models])
   const vendors = useMemo(() => {
     const counts = new Map()
@@ -491,6 +518,18 @@ export default function OpenRouterModelsPicker() {
     setDraft((prev) => prev.map((m, i) => (i === index ? { ...m, label } : m)))
   }
 
+  // Re-read one model's levels. Not routed through applyPayload on purpose: the hook
+  // already replaces the payload, and the sync-from-server guard in the effect is what
+  // lets an unsaved reorder survive a refresh.
+  async function refreshLadder(id) {
+    setActionError(null)
+    try {
+      await settings.refreshLadders([id])
+    } catch (e) {
+      setActionError(e.message || 'Could not refresh reasoning levels')
+    }
+  }
+
   function removeAt(index) {
     setDraft((prev) => prev.filter((_, i) => i !== index))
     setNote(null)
@@ -510,7 +549,7 @@ export default function OpenRouterModelsPicker() {
   }
 
   function applyPayload(d) {
-    const next = modelsToJson(d.current)
+    const next = modelsToJson(clone(d.current))
     setBaseline(next)
     setDraft(clone(d.current))
     setJsonText(next)
@@ -550,7 +589,7 @@ export default function OpenRouterModelsPicker() {
   function handleDiscard() {
     if (!data) return
     setDraft(clone(data.current))
-    setJsonText(modelsToJson(data.current))
+    setJsonText(modelsToJson(clone(data.current)))
     setJsonDirty(false)
     setActionError(null)
     setNote(null)
@@ -807,9 +846,11 @@ export default function OpenRouterModelsPicker() {
                 count={draft.length}
                 knownIds={knownIds}
                 catalogEntry={catalogById.get(entry.id)}
+                ladder={ladders.get(entry.id)}
                 onLabel={setLabel}
                 onMove={move}
                 onRemove={removeAt}
+                onRefreshLadder={refreshLadder}
               />
             ))}
             {!draft.length && (

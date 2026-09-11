@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getOpenRouterModels,
   putOpenRouterModels,
+  refreshOpenRouterLadders,
   resetOpenRouterModels,
 } from '../services/openrouterModels'
 
@@ -46,5 +47,14 @@ export default function useOpenRouterModels() {
     return d
   }, [])
 
-  return { data, loading, error, refresh, save, reset }
+  // Ladders are server-derived, so the editor re-reads them rather than editing them:
+  // the response replaces `data` wholesale, which is what keeps the ladder a row shows
+  // honest about what the server actually stored.
+  const refreshLadders = useCallback(async (ids) => {
+    const d = await refreshOpenRouterLadders(ids)
+    if (mountedRef.current) setData(d)
+    return d
+  }, [])
+
+  return { data, loading, error, refresh, save, reset, refreshLadders }
 }

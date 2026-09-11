@@ -158,6 +158,33 @@ def _variant(model_id: str):
     return suffix if suffix in _KNOWN_VARIANTS else suffix or None
 
 
+def _reasoning_meta(entry: dict):
+    """Upstream reasoning capability, kept for ladder derivation.
+
+    Distinct from the ``reasoning`` boolean beside it, which answers "does this model
+    take the reasoning parameter" and is rendered as a tag. This answers "which
+    efforts, and may reasoning be switched off" -- the two disagree for some models,
+    which is why the object gets its own key instead of widening the flag.
+
+    Only the three fields derivation reads are kept, so a change to the shape of the
+    rest upstream cannot reach the client. ``None`` when absent or malformed.
+    """
+    raw = entry.get("reasoning")
+    if not isinstance(raw, dict):
+        return None
+    efforts = raw.get("supported_efforts")
+    default_effort = raw.get("default_effort")
+    return {
+        "supported_efforts": (
+            [token for token in efforts if isinstance(token, str)]
+            if isinstance(efforts, list)
+            else None
+        ),
+        "default_effort": default_effort if isinstance(default_effort, str) else None,
+        "mandatory": bool(raw.get("mandatory")),
+    }
+
+
 def _normalize(raw: list) -> tuple:
     """Turn a raw upstream ``data`` array into picker records.
 
@@ -233,6 +260,7 @@ def _normalize(raw: list) -> tuple:
                 "tools": "tools" in params,
                 "structured_outputs": "structured_outputs" in params,
                 "reasoning": "reasoning" in params,
+                "reasoning_meta": _reasoning_meta(entry),
                 "input_modalities": input_modalities,
                 "tokenizer": arch.get("tokenizer") if isinstance(arch.get("tokenizer"), str) else None,
                 "hugging_face_id": (

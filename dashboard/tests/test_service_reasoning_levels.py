@@ -384,19 +384,39 @@ def test_put_rejects_malformed_without_touching_the_stored_value(api):
     assert mgr.get_service_from_db("vllm-qwen38")["reasoning_levels"] == "off,low"
 
 
-def test_openrouter_resolution_carries_no_engine_fields(monkeypatch):
-    # Exclusion by construction: no template_type means request_fields is never
-    # reached with an engine, so no reasoning key can be added for OpenRouter.
-    from chat import llm_proxy
+def test_openrouter_resolution_carries_engine_and_ladder_together(monkeypatch):
+    # The pair is the contract. request_fields maps per engine and the payload builder's
+    # find_level guard refuses an id the ladder does not offer, so a resolution carrying
+    # only one of the two sends nothing -- silently. Patched at openrouter, the real
+    # seams, rather than at resolve_service, which is the assertion being made.
+    from chat import llm_proxy, openrouter
 
-    monkeypatch.setattr(llm_proxy, "resolve_service",
+    monkeypatch.setattr(openrouter, "resolve",
                         lambda name: {"base_url": "https://openrouter.ai/api/v1",
-                                      "api_key": "k", "model": "x", "extra_headers": {}})
-    svc = llm_proxy.resolve_service("openrouter:x")
-    assert "template_type" not in svc
-    assert "reasoning_levels" not in svc
-    assert rl.request_fields(rl.find_level(svc.get("reasoning_levels"), "low"),
-                            svc.get("template_type")) == {}
+                                      "api_key": "k", "model": "vendor/model", "extra_headers": {}})
+    monkeypatch.setattr(openrouter, "ladder_for_model", lambda model: "off,low,high")
+
+    svc = llm_proxy.resolve_service("openrouter:vendor/model")
+    assert svc["template_type"] == rl.ENGINE_OPENROUTER
+    assert [level["id"] for level in svc["reasoning_levels"]] == ["off", "low", "high"]
+    assert rl.request_fields(rl.find_level(svc["reasoning_levels"], "low"),
+                             svc["template_type"]) == {"reasoning": {"effort": "low"}}
+
+
+def test_openrouter_model_without_a_ladder_sends_nothing(monkeypatch):
+    # A model that publishes no effort selection must be indistinguishable, on the wire,
+    # from one whose conversation has no level chosen.
+    from chat import llm_proxy, openrouter
+
+    monkeypatch.setattr(openrouter, "resolve",
+                        lambda name: {"base_url": "https://openrouter.ai/api/v1",
+                                      "api_key": "k", "model": "vendor/model", "extra_headers": {}})
+    monkeypatch.setattr(openrouter, "ladder_for_model", lambda model: "")
+
+    svc = llm_proxy.resolve_service("openrouter:vendor/model")
+    assert svc["reasoning_levels"] == []
+    assert rl.request_fields(rl.find_level(svc["reasoning_levels"], "low"),
+                             svc["template_type"]) == {}
 
 
 # -- the seam that actually broke (regression) ---------------------------

@@ -107,7 +107,7 @@ stored per conversation, OpenRouter deferred.
 | Auto-title | `chat/runtime.py:62` (own `stream_chat_completion` call) | — | — | excluded: passes no level |
 | Critique | `chat/critique.py` / `routes.py:~860` | — | — | excluded |
 | Ephemeral spin-off | `chat/routes.py:908 spinoff` (own payload) | — | — | excluded |
-| OpenRouter runs | `chat/openrouter.py:70 resolve` → same `stream_chat_completion` | curated list in `chat_settings.json` | OpenRouter | **excluded**: `resolve()` supplies no levels, so the mapping receives no level and sends nothing |
+| OpenRouter runs | `chat/openrouter.py:70 resolve` → same `stream_chat_completion` | curated list in `chat_settings.json` | OpenRouter | *superseded*: excluded as written; later picked up exactly as this plan predicted ("the entry point is a `reasoning_levels` string on curated `openrouter_models` entries") — see `docs/plans/openrouter-reasoning-levels.md` |
 
 Decisive evidence for the wire mechanism:
 
@@ -232,7 +232,8 @@ caller merges it into the payload at `llm_proxy.py:309-329`:
 |---|---|---|---|
 | `llamacpp` | `reasoning_effort: "none"` + `chat_template_kwargs: {"enable_thinking": false}` | `reasoning_effort: "<id>"` | server-common.cpp:1315-1331 |
 | `vllm` | `reasoning_effort: "none"` (server derives `enable_thinking: false`) | `reasoning_effort: "<id>"` | protocol.py:574-592; openapi enum |
-| `ik_llamacpp`, `tabbyapi`, `ds4`, `openrouter:*`, unknown | `{}` | `{}` | deliberate: unverified → nothing is sent |
+| `ik_llamacpp`, `tabbyapi`, `ds4`, unknown | `{}` | `{}` | deliberate: unverified → nothing is sent |
+| `openrouter:*` | `{"reasoning": {"effort": "none"}}` | `{"reasoning": {"effort": "<id>"}}` | *superseded*: mapped later; see `docs/plans/openrouter-reasoning-levels.md` |
 
 No numeric field is ever sent: llama.cpp's `thinking_budget_tokens` and vLLM's
 `thinking_token_budget` are the correct hooks and are recorded here for the later
@@ -276,6 +277,12 @@ that payload rather than re-reading `services.json`).
   built in `ServiceConfigPanel.jsx`.
 
 ### 3.6 OpenRouter: excluded by decision
+
+> **Superseded.** This decision was later reversed: OpenRouter publishes the ladder
+> (`reasoning.supported_efforts`) that a local engine keeps private, so it is derived
+> rather than typed, and the mapping is `{"reasoning": {"effort": …}}`. The mechanism is
+> the one anticipated at the end of this section. See
+> `docs/plans/openrouter-reasoning-levels.md` for what actually shipped.
 
 `openrouter.resolve()` (`chat/openrouter.py:70-84`) returns no `template_type`
 and no levels, so `request_fields` is never reached with a level for an

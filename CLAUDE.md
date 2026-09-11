@@ -614,9 +614,17 @@ construction all call it, so they cannot disagree.
   rewritten — switching the model back restores the choice.
 - **Wire mapping** (`request_fields`): `llamacpp` → `reasoning_effort` (plus
   `chat_template_kwargs.enable_thinking: false` for `off`); `vllm` →
-  `reasoning_effort` only, since the server derives `enable_thinking` itself.
-  `ik_llamacpp`, `tabbyapi`, `ds4` and **OpenRouter** get nothing: unverified
-  mappings are worse than no mapping. No numeric field is ever sent.
+  `reasoning_effort` only, since the server derives `enable_thinking` itself;
+  `openrouter` → `{"reasoning": {"effort": …}}`, OpenRouter's own spelling, with `off`
+  translated to `none` — sending the stored id is a 400. `ik_llamacpp`, `tabbyapi` and
+  `ds4` get nothing: unverified mappings are worse than no mapping. No numeric field is
+  ever sent, and no `enabled`/`max_tokens` member either — a level is not a budget.
+- **Where a remote ladder comes from.** A local ladder is typed by the operator because
+  the accepted tokens are a private property of each chat template. OpenRouter publishes
+  its own (`reasoning.supported_efforts` on `/api/v1/models`), so the ladder is derived
+  rather than typed: captured when a model joins the curated shortlist and stored on
+  that entry in `chat_settings.json`, which makes it static config at request time — no
+  request path depends on the catalogue. See *Chatting with OpenRouter models* below.
 - **Ladder edits need no container restart.** llama.cpp merges request-level
   `chat_template_kwargs` over the `--chat-template-kwargs` server default,
   so R8 holds even though `update_service`
@@ -829,6 +837,31 @@ appear in the chat pickers.
   same code paths as local models. OpenRouter requires an explicit
   `model` field in the payload; local single-model servers must NOT get
   one (regression-tested in `tests/test_openrouter_routes.py`).
+- **Reasoning levels are supported, and the ladder is derived, not typed.** Each
+  shortlist entry can carry `reasoning_levels`, derived from the model's
+  `reasoning.supported_efforts` by `openrouter.ladder_from_reasoning`: upstream's
+  descending order reversed to least-to-most, `none` translated to the reserved `off`
+  and placed first, `off` withheld unless upstream lists `none` **and** the model is not
+  `mandatory` (a mandatory model answers `effort: "none"` with a 400). An effort token
+  outside the declaration grammar is dropped rather than raising, so one surprising
+  upstream token costs a model a level and not the user their save. Owner of the
+  lifecycle is the same `reasoning_levels.py` that owns local ladders, so validation,
+  exposure and request construction still cannot disagree.
+  - **Server-owned**: a request body cannot set a ladder. `PUT` derives one only for a
+    model appearing for the first time and merges by id, so a picker that round-trips
+    `{id, label}` alone cannot wipe stored ladders — and cannot forge one.
+    `POST /api/chat/settings/openrouter-models/refresh` with `{ids}` re-derives named
+    entries from the catalogue; that endpoint is not polish, because derivation fires
+    only for new ids, so without it a shortlist saved during a catalogue outage (or
+    before the feature) could never acquire a ladder.
+  - Read through `openrouter.ladder_for_model`, the single reader behind both
+    enforcement points, mirroring the local invariant that the ladder offered and the
+    ladder enforced cannot drift. A resolution carries `template_type` and
+    `reasoning_levels` together for this reason: either alone sends nothing, silently.
+  - `reasoning_details` is **not** stored or replayed. Multi-turn conversations with
+    models that return encrypted reasoning may lose thinking continuity; that behaviour
+    predates this feature (nothing in llm-dock ever sent it) and is characterised, not
+    fixed, by the probe in `docs/plans/openrouter-reasoning-levels.md`.
 
 ## Reference: working embedding service
 

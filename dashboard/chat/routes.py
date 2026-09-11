@@ -19,7 +19,7 @@ from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import openrouter, openrouter_catalog, settings_store
 from .prompt_seed import seed_default_prompts
-from reasoning_levels import find_level, format_levels
+from reasoning_levels import find_level, format_levels, parse_levels
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +93,12 @@ def _service_reasoning_levels(service_name):
 
     Reads the same payload the chat picker uses, so the ladder offered and the
     ladder enforced cannot drift, and stopped services resolve like running ones.
-    OpenRouter names never resolve, so an `openrouter:` conversation can never
-    carry a level.
+    For an ``openrouter:`` name the ladder captured when the model joined the curated
+    shortlist stands in for a declaration, read through ``openrouter.ladder_for_model``
+    so this enforcement point and the request builder cannot disagree.
     """
     if openrouter.is_openrouter_service(service_name):
-        return []
+        return parse_levels(openrouter.ladder_for_model(openrouter.model_id(service_name)))
     from docker_utils import get_docker_services
     try:
         services = get_docker_services()
@@ -247,6 +248,66 @@ def delete_main_system_prompt_setting():
 
 # -- Settings: curated OpenRouter model list --
 
+def _catalog_reasoning_meta():
+    """Model id to upstream reasoning metadata, from the cached catalogue.
+
+    ``None`` means the catalogue could not be read, which the caller must distinguish
+    from "the model has no reasoning capability": the first is worth another try at
+    refresh, the second is the answer. Never raises -- a ladder is a network fact, and
+    losing one costs a model its control, not the user their save.
+    """
+    try:
+        payload = openrouter_catalog.fetch()
+    except openrouter_catalog.CatalogUnavailable:
+        logger.warning("openrouter: catalogue unavailable; storing models without ladders")
+        return None
+    return {
+        entry["id"]: entry.get("reasoning_meta")
+        for entry in payload.get("models", [])
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str)
+    }
+
+
+def _derive_ladders(models, known_ids):
+    """``(ladders, status)`` for the ids in ``models`` that have no stored ladder yet.
+
+    Derivation belongs here rather than in the store because only this layer can see the
+    catalogue, and it belongs to the write path because the field is server-owned: a
+    request body cannot set a ladder, so the server has to supply it at the moment a
+    model first appears.
+    """
+    meta_by_id = _catalog_reasoning_meta()
+    ladders, status = {}, {}
+    for entry in models:
+        model = entry.get("id") if isinstance(entry, dict) else None
+        if not isinstance(model, str) or not model.strip() or model.strip() in known_ids:
+            continue
+        model = model.strip()
+        if meta_by_id is None:
+            status[model] = "unavailable"
+            continue
+        ladders[model] = openrouter.ladder_from_reasoning(meta_by_id.get(model))
+        status[model] = "derived" if ladders[model] else "none"
+    return ladders, status
+
+
+def _openrouter_models_payload() -> list:
+    """The curated list as a projection, with every ladder parsed.
+
+    Deliberately not the stored string: this is the shape a local service's
+    ``reasoning_levels`` already has on ``GET /api/services``, so the composer offers one
+    shape for both providers instead of branching on where a model is hosted.
+    """
+    records = []
+    for entry in settings_store.get_openrouter_models():
+        levels = parse_levels(entry.get("reasoning_levels"))
+        record = {"id": entry["id"], "label": entry.get("label") or entry["id"]}
+        if levels:
+            record["reasoning_levels"] = levels
+        records.append(record)
+    return records
+
+
 def _openrouter_settings_payload() -> dict:
     """Shape returned by every openrouter-models settings endpoint.
 
@@ -256,7 +317,7 @@ def _openrouter_settings_payload() -> dict:
     """
     return {
         "configured": openrouter.is_configured(),
-        "current": settings_store.get_openrouter_models(),
+        "current": _openrouter_models_payload(),
         "builtin": openrouter.DEFAULT_MODELS,
         "customized": settings_store.is_openrouter_models_customized(),
     }
@@ -275,12 +336,59 @@ def put_openrouter_models_setting():
     if not isinstance(data, dict):
         return jsonify({"error": "body must be {models: [{id, label?}]}"}), 400
     models = data.get("models")
+    known_ids = {entry["id"] for entry in settings_store.get_openrouter_models()}
+    ladders, status = _derive_ladders(models if isinstance(models, list) else [], known_ids)
     try:
-        settings_store.set_openrouter_models(models)
+        settings_store.set_openrouter_models(models, ladders)
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
-    logger.info("openrouter model list updated (%d models)", len(models))
-    return jsonify(_openrouter_settings_payload())
+    logger.info(
+        "openrouter model list updated (%d models, %d ladders derived)", len(models), len(ladders)
+    )
+    payload = _openrouter_settings_payload()
+    payload["ladders"] = status
+    return jsonify(payload)
+
+
+@chat_bp.route("/api/chat/settings/openrouter-models/refresh", methods=["POST"])
+@require_auth
+def refresh_openrouter_ladders():
+    """Re-derive the ladder for named shortlist models from the live catalogue.
+
+    Derivation on the write path fires only for models appearing for the first time, and
+    the merge preserves what a model already has, so without this route a shortlist
+    saved before the feature could never gain a ladder, and a ladder could never follow
+    upstream changing a model's efforts. Ids outside the shortlist are reported rather
+    than added; the caller named models it believes it has.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("ids"), list):
+        return jsonify({"error": "body must be {ids: [model-id, ...]}"}), 400
+
+    stored = settings_store.get_openrouter_models()
+    known_ids = {entry["id"] for entry in stored}
+    meta_by_id = _catalog_reasoning_meta()
+    ladders, status, missing = {}, {}, []
+    for model in data["ids"]:
+        if not isinstance(model, str) or not model.strip():
+            continue
+        model = model.strip()
+        if model not in known_ids:
+            missing.append(model)
+            continue
+        if meta_by_id is None:
+            status[model] = "unavailable"
+            continue
+        ladders[model] = openrouter.ladder_from_reasoning(meta_by_id.get(model))
+        status[model] = "derived" if ladders[model] else "none"
+
+    if ladders:
+        settings_store.set_openrouter_models(stored, ladders)
+        logger.info("openrouter ladders refreshed for %d model(s)", len(ladders))
+    payload = _openrouter_settings_payload()
+    payload["ladders"] = status
+    payload["missing"] = missing
+    return jsonify(payload)
 
 
 @chat_bp.route("/api/chat/settings/openrouter-models", methods=["DELETE"])

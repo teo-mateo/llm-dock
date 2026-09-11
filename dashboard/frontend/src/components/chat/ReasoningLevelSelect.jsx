@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import useServicesSSE from '../../hooks/useServicesSSE'
+import { isOpenRouterService, serviceNameForModel } from '../../utils/openrouter'
 
 // Per-conversation reasoning-level picker, in the composer's control rail.
 // Reads the unfiltered service list: the server accepts a level for a stopped
@@ -32,7 +33,7 @@ function iconFor(id) {
   return FALLBACK_ICON
 }
 
-export default function ReasoningLevelSelect({ mainService, value, onChange, disabled }) {
+export default function ReasoningLevelSelect({ mainService, value, onChange, disabled, openRouterModels }) {
   const { services, loading } = useServicesSSE()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -63,8 +64,12 @@ export default function ReasoningLevelSelect({ mainService, value, onChange, dis
 
   if (loading || !onChange || !mainService) return null
 
-  const service = (services || []).find(s => s.name === mainService)
-  const levels = service?.reasoning_levels || []
+  // Two ladder sources, one shape. A local service declares its ladder in services.json;
+  // an OpenRouter model carries the one captured when it joined the curated shortlist.
+  // Both arrive parsed, so nothing below this has to know which provider a model is on.
+  const levels = isOpenRouterService(mainService)
+    ? ((openRouterModels || []).find(m => serviceNameForModel(m.id) === mainService)?.reasoning_levels || [])
+    : ((services || []).find(s => s.name === mainService)?.reasoning_levels || [])
 
   // A level the service stopped offering stays visible and clearable, though the
   // server will not send it.

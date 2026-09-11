@@ -5,7 +5,7 @@ import re
 
 import requests
 
-from reasoning_levels import find_level, request_fields
+from reasoning_levels import ENGINE_OPENROUTER, find_level, parse_levels, request_fields
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +85,24 @@ def resolve_service(service_name: str) -> dict:
 
     Local Docker services resolve to ``{host_port, api_key, template_type,
     reasoning_levels}`` via docker_utils; ``openrouter:<model-id>`` strings
-    resolve to ``{base_url, api_key, model, extra_headers}`` (or None when no
-    OPENROUTER_API_KEY is configured). An OpenRouter resolution carries no engine
-    fields, which keeps reasoning fields off those requests with no special case.
+    resolve to ``{base_url, api_key, model, extra_headers}`` plus the same two
+    reasoning fields (or None when no OPENROUTER_API_KEY is configured).
+
+    The OpenRouter branch carries an engine and a ladder together on purpose. A
+    resolution with only one of the two sends nothing, silently: ``request_fields``
+    maps per engine and the ``find_level`` guard below refuses an id the ladder does
+    not offer. That is the failure this repo already recorded for ``template_type``
+    travelling alone.
     """
     from . import openrouter
     if openrouter.is_openrouter_service(service_name):
-        return openrouter.resolve(service_name)
+        svc = openrouter.resolve(service_name)
+        if svc is not None:
+            svc["template_type"] = ENGINE_OPENROUTER
+            svc["reasoning_levels"] = parse_levels(
+                openrouter.ladder_for_model(openrouter.model_id(service_name))
+            )
+        return svc
     from docker_utils import get_docker_services
     services = get_docker_services()
     for svc in services:
