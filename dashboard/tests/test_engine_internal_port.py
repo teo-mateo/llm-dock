@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import openwebui_integration
-from flag_metadata import ENGINE_INTERNAL_PORTS, engine_internal_port
+from flag_metadata import ENGINE_INTERNAL_PORTS, engine_internal_port, openwebui_base_url
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -66,6 +66,96 @@ def test_table_matches_what_the_templates_publish():
         published[template.stem] = int(matches[0])
 
     assert published == ENGINE_INTERNAL_PORTS
+
+
+@pytest.mark.parametrize("engine", sorted(ENGINE_INTERNAL_PORTS))
+def test_base_url_pins_the_wire_format(engine):
+    """Scheme, port source and suffix have one owner; this is what it must emit."""
+    assert openwebui_base_url("svc-a", engine) == f"http://svc-a:{ENGINE_INTERNAL_PORTS[engine]}/v1"
+
+
+class _FakeComposeMgr:
+    """Stand-in for ComposeManager reading entries straight from a dict."""
+
+    def __init__(self, entries):
+        self._entries = entries
+
+    def get_service_from_db(self, name):
+        return self._entries.get(name)
+
+
+class _FakeContainer:
+    """One running container, so the container-exists branch is exercised too."""
+
+    def __init__(self, service_name):
+        self.labels = {"com.docker.compose.service": service_name}
+        self.status = "running"
+        self.id = "deadbeefcafe"
+        self.attrs = {"Created": "2026-01-01T00:00:00Z", "State": {"ExitCode": 0}}
+        self.ports = {}
+
+
+class _FakeContainerList:
+    def __init__(self, containers):
+        self._containers = containers
+
+    def list(self, **kwargs):
+        return list(self._containers)
+
+
+class _FakeClient:
+    def __init__(self, containers=None):
+        self.containers = _FakeContainerList(containers or [])
+
+
+def _payload_with_registered_urls(monkeypatch, engine, registered_urls):
+    """The get_docker_services payload for one service, with a fixed registered-URL list."""
+    import docker
+    import docker_utils
+
+    name = "svc-a"
+    monkeypatch.setattr(
+        docker, "from_env", lambda: _FakeClient([_FakeContainer(name)])
+    )
+    monkeypatch.setattr(docker_utils, "get_compose_services", lambda: [name])
+    monkeypatch.setattr(docker_utils, "get_compose_service_ports", lambda: {name: 3301})
+    monkeypatch.setattr(
+        docker_utils, "get_openwebui_registered_urls", lambda: list(registered_urls)
+    )
+    monkeypatch.setattr(docker_utils, "compute_model_size", lambda *a, **k: (None, None))
+    monkeypatch.setattr(
+        docker_utils, "ComposeManager",
+        lambda *a, **k: _FakeComposeMgr(
+            {name: {"api_key": "k", "template_type": engine}}
+        ),
+    )
+    return {s["name"]: s for s in docker_utils.get_docker_services()}[name]
+
+
+@pytest.mark.parametrize("engine", sorted(ENGINE_INTERNAL_PORTS))
+def test_payload_flag_and_registration_check_agree(monkeypatch, engine):
+    """The payload's openwebui_registered flag (docker_utils) and
+    is_service_registered_in_openwebui (openwebui_integration) compare the same
+    URL for every engine — today's drift class, where two modules each built
+    http://{name}:{port}/v1 by hand and could disagree, must not return."""
+    import openwebui_integration
+
+    name = "svc-a"
+    port = ENGINE_INTERNAL_PORTS[engine]
+    url = openwebui_base_url(name, engine)
+    wrong_port_url = url.replace(f":{port}", f":{port + 1}")
+
+    monkeypatch.setattr(
+        openwebui_integration, "get_openwebui_registered_urls", lambda: [url]
+    )
+    assert _payload_with_registered_urls(monkeypatch, engine, [url])["openwebui_registered"] is True
+    assert openwebui_integration.is_service_registered_in_openwebui(name, engine) is True
+
+    monkeypatch.setattr(
+        openwebui_integration, "get_openwebui_registered_urls", lambda: [wrong_port_url]
+    )
+    assert _payload_with_registered_urls(monkeypatch, engine, [wrong_port_url])["openwebui_registered"] is False
+    assert openwebui_integration.is_service_registered_in_openwebui(name, engine) is False
 
 
 @pytest.mark.parametrize(
