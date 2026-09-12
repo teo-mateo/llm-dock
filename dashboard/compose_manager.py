@@ -59,11 +59,6 @@ class ComposeManager:
         template_dir = Path(__file__).parent / "templates"
         self.jinja_env = Environment(loader=FileSystemLoader(str(template_dir)))
 
-    def get_existing_services(self) -> Set[str]:
-        """Get list of existing service names"""
-        config = self._read_compose()
-        return set(config.get("services", {}).keys())
-
     def get_used_ports(self) -> Set[int]:
         """
         Get set of all ports currently in use by services.
@@ -115,183 +110,10 @@ class ComposeManager:
 
         raise ValueError(f"No available ports in range {start_port}-{end_port}")
 
-    def validate_service_name(self, service_name: str) -> tuple[bool, Optional[str]]:
-        """
-        Validate service name.
-
-        Args:
-            service_name: Proposed service name
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        if not service_name:
-            return False, "Service name cannot be empty"
-
-        if len(service_name) > 63:
-            return False, "Service name too long (max 63 characters)"
-
-        if not _valid_service_name(service_name):
-            return False, _SERVICE_NAME_ERROR
-
-        if service_name in self.get_existing_services():
-            return False, f"Service '{service_name}' already exists"
-
-        return True, None
-
-    def validate_port(self, port: int) -> tuple[bool, Optional[str]]:
-        """
-        Validate port number.
-
-        Args:
-            port: Proposed port number
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        if not (1024 <= port <= 65535):
-            return False, "Port must be between 1024 and 65535"
-
-        if port in self.get_used_ports():
-            next_port = self.get_next_available_port()
-            return False, f"Port {port} already in use. Next available: {next_port}"
-
-        return True, None
-
-    def add_service(
-        self, service_name: str, service_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Add a new service to docker-compose.yml with atomic update.
-
-        Args:
-            service_name: Name of the service
-            service_config: Service configuration dict
-
-        Returns:
-            Dict with success status and message
-
-        Raises:
-            ValueError: If validation fails
-            IOError: If file operations fail
-        """
-        # Pre-flight validations
-        valid, error = self.validate_service_name(service_name)
-        if not valid:
-            raise ValueError(error)
-
-        # Extract and validate port
-        ports = service_config.get("ports", [])
-        if ports:
-            port_str = ports[0] if isinstance(ports[0], str) else str(ports[0])
-            host_port = int(port_str.split(":")[0])
-            valid, error = self.validate_port(host_port)
-            if not valid:
-                raise ValueError(error)
-
-        # Acquire lock and perform atomic update
-        lock_path = self.compose_path.with_suffix(".lock")
-        try:
-            with open(lock_path, "w") as lock_file:
-                # Acquire exclusive lock (blocks if another process has lock)
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-
-                try:
-                    result = self._atomic_add_service(service_name, service_config)
-                finally:
-                    # Release lock
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to add service: {e}")
-            raise
-
     def _read_compose(self) -> Dict[str, Any]:
         """Read and parse docker-compose.yml"""
         with open(self.compose_path, "r") as f:
             return yaml.safe_load(f) or {}
-
-    def _write_compose(self, config: Dict[str, Any], path: Path):
-        """Write docker-compose.yml with proper formatting"""
-        with open(path, "w") as f:
-            yaml.dump(
-                config, f, default_flow_style=False, sort_keys=False, allow_unicode=True
-            )
-
-    def _atomic_add_service(
-        self, service_name: str, service_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Atomic service addition with backup and rollback.
-
-        Returns:
-            Dict with success/error info
-        """
-        backup_path = self.compose_path.with_suffix(".yml.backup")
-        temp_path = self.compose_path.with_suffix(".yml.tmp")
-
-        try:
-            # Step 1: Create backup
-            shutil.copy2(self.compose_path, backup_path)
-            logger.info(f"Created backup: {backup_path}")
-
-            # Step 2: Read existing config
-            config = self._read_compose()
-
-            if "services" not in config:
-                raise ValueError("Invalid compose file: missing 'services' section")
-
-            # Step 3: Add new service
-            config["services"][service_name] = service_config
-
-            # Step 4: Write to temporary file
-            self._write_compose(config, temp_path)
-            logger.info(f"Wrote temporary file: {temp_path}")
-
-            # Step 5: Validate with docker compose
-            validation_result = self._validate_compose_file(temp_path)
-            if not validation_result["valid"]:
-                raise ValueError(
-                    f"Invalid compose configuration: {validation_result['error']}"
-                )
-
-            # Step 6: Atomic rename (replace original)
-            os.replace(temp_path, self.compose_path)
-            logger.info(f"Successfully added service: {service_name}")
-
-            return {
-                "success": True,
-                "message": f"Service '{service_name}' added successfully",
-                "service_name": service_name,
-                "backup_created": str(backup_path),
-            }
-
-        except Exception as e:
-            logger.error(f"Error adding service, attempting rollback: {e}")
-
-            # Rollback: restore from backup
-            if backup_path.exists():
-                try:
-                    os.replace(backup_path, self.compose_path)
-                    logger.info("Rollback successful")
-                except Exception as rollback_error:
-                    logger.error(f"CRITICAL: Rollback failed: {rollback_error}")
-                    raise IOError(
-                        f"Rollback failed after error: {e}. Manual recovery required."
-                    ) from rollback_error
-
-            # Clean up temp file
-            if temp_path.exists():
-                temp_path.unlink()
-
-            raise
-
-        finally:
-            # Clean up temp file if it still exists
-            if temp_path.exists():
-                temp_path.unlink()
 
     def _validate_compose_file(self, path: Path) -> Dict[str, Any]:
         """
@@ -328,84 +150,6 @@ class ComposeManager:
             return {"valid": True, "error": None}  # Allow if docker not available
         except Exception as e:
             return {"valid": False, "error": str(e)}
-
-    def remove_service(self, service_name: str) -> Dict[str, Any]:
-        """
-        Remove a service from docker-compose.yml.
-
-        Args:
-            service_name: Name of service to remove
-
-        Returns:
-            Dict with success status
-
-        Raises:
-            ValueError: If service doesn't exist
-        """
-        existing_services = self.get_existing_services()
-        if service_name not in existing_services:
-            raise ValueError(f"Service '{service_name}' does not exist")
-
-        lock_path = self.compose_path.with_suffix(".lock")
-        try:
-            with open(lock_path, "w") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-
-                try:
-                    result = self._atomic_remove_service(service_name)
-                finally:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error removing service: {e}")
-            raise
-
-    def _atomic_remove_service(self, service_name: str) -> Dict[str, Any]:
-        """Atomic service removal with temp file, validation, and rollback."""
-        backup_path = self.compose_path.with_suffix(".yml.backup")
-        temp_path = self.compose_path.with_suffix(".yml.tmp")
-
-        try:
-            shutil.copy2(self.compose_path, backup_path)
-
-            config = self._read_compose()
-            del config["services"][service_name]
-
-            self._write_compose(config, temp_path)
-
-            validation_result = self._validate_compose_file(temp_path)
-            if not validation_result["valid"]:
-                raise ValueError(
-                    f"Invalid compose configuration: {validation_result['error']}"
-                )
-
-            os.replace(temp_path, self.compose_path)
-            logger.info(f"Removed service: {service_name}")
-
-            return {
-                "success": True,
-                "message": f"Service '{service_name}' removed successfully",
-            }
-
-        except Exception as e:
-            logger.error(f"Error removing service, attempting rollback: {e}")
-
-            if backup_path.exists():
-                try:
-                    os.replace(backup_path, self.compose_path)
-                    logger.info("Rollback successful")
-                except Exception as rollback_error:
-                    logger.error(f"CRITICAL: Rollback failed: {rollback_error}")
-                    raise IOError(
-                        f"Rollback failed after error: {e}. Manual recovery required."
-                    ) from rollback_error
-
-            if temp_path.exists():
-                temp_path.unlink()
-
-            raise
 
     # ============================================
     # SERVICES DATABASE METHODS
@@ -489,8 +233,6 @@ class ComposeManager:
         Raises:
             ValueError: If old service doesn't exist or new name is invalid/taken
         """
-        # Validate new name (skip the "already exists" check done by validate_service_name
-        # since we do our own check)
         if not new_name:
             raise ValueError("Service name cannot be empty")
         if len(new_name) > 63:

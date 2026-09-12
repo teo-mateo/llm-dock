@@ -690,19 +690,20 @@ Nested dict options (`template_vars_default`, `template_vars_force`) and the
 `draft:` model block can't be expressed as CLI args; those need a real
 `config.yml` mounted at `/app/config.yml`.
 
-### `ComposeManager.add_service()` mangles `restart: no` — use add_service_to_db + rebuild
+### Compose edits are text-only — never round-trip `docker-compose.yml` through PyYAML
 
-`add_service()` → `_atomic_add_service()` round-trips the whole compose file
-through PyYAML, and YAML 1.1 parses `restart: no` as boolean `false`, which it
-then writes back as `restart: false`. `docker compose config` rejects that, so
-**any** add via that path fails with `services.<name>.restart must be a string` —
-including on this repo's existing `PAIR_*`/ds4 entries. The text-based path is
-unaffected: `mgr.add_service_to_db(name, cfg)` followed by
-`mgr.rebuild_compose_file()`, which only regenerates the region between the
-BEGIN/END DYNAMIC markers. That is both the documented CLI workflow below and
-what `POST /api/services` itself does; `add_service()` and `remove_service()` are
-the YAML-round-trip leftovers with no production caller, so nothing but
-`test_compose_manager.py` exercises them. Use the DB + rebuild path.
+Every compose change goes through the services DB and then
+`mgr.rebuild_compose_file()`, which regenerates only the region between the
+BEGIN/END DYNAMIC markers as text (`add_service_to_db` / `update_service_in_db` /
+`remove_service_from_db` first; that is what `POST /api/services` does and what the
+documented CLI workflow below does). A writer that parses the whole file with PyYAML
+and dumps it back is not equivalent: every engine template emits `restart: no`, YAML
+1.1 reads that as boolean `false`, and the dump writes `restart: false`, which
+`docker compose config` rejects — so the round-trip fails on **every** service,
+including this repo's `PAIR_*`/ds4 entries. `ComposeManager` once carried exactly such
+an `add_service()`/`remove_service()` pair; it had no production caller and was
+deleted. The constraint is now held by `TestRebuildKeepsRestartFlag` in
+`test_compose_manager.py`, not only by this paragraph.
 
 ### Every `services.json` + compose write must take `SERVICES_DB_LOCK`
 
