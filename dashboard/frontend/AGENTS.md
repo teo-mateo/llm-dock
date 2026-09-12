@@ -192,7 +192,7 @@ Key mechanics:
 | File | Purpose |
 |------|---------|
 | `src/api.js` | `fetchAPI` wrapper: bearer token from localStorage (`dashboard_token`), `X-TOTP-Token` refresh, `handleAuthFailure`/`logout` → v1 login redirect, stable `err.code` for UI branching. `API_BASE` is `<scheme>://<host>:3399/api` on `localhost`/`127.0.0.1` and same-origin `/api` on any other host, so a non-local deployment needs a reverse proxy mapping `/api` to the dashboard |
-| `src/utils.js` | `getValue`/`totalValue` (metric access), `timeAgo` |
+| `src/utils.js` | `getValue`/`totalValue` (metric access) |
 | `src/utils/fence.js` | Fence helpers for markdown/code fences |
 | `src/utils/openrouter.js` | Pure helpers for the `openrouter:<model-id>` service-string convention (`isOpenRouterService`, `openRouterModelId`, `serviceNameForModel`, `formatModelLabel`) |
 | `src/utils/openrouterModels.js` | Curated-list helpers shared by the picker and its JSON panel: `validateModelsJson`/`validateModels` (mirror of the server rules), `modelsToJson`, `deriveLabel`, `formatPricePerMtok`, `formatContext`, `CONTEXT_PRESETS` |

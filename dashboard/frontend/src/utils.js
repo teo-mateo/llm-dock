@@ -13,11 +13,3 @@ export function totalValue(metrics, metricName) {
   if (vals.length === 0) return null
   return vals.reduce((a, b) => a + b, 0)
 }
-
-export function timeAgo(iso) {
-  if (!iso) return '—'
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60) return `${Math.round(diff)}s ago`
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
-  return `${Math.round(diff / 3600)}h ago`
-}

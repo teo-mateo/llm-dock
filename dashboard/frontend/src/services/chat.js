@@ -169,21 +169,7 @@ export async function requestCritique(messageId, { contextWindow = 10, extraInst
   })
 }
 
-export async function getCritique(messageId) {
-  return fetchAPI(`/chat/messages/${messageId}/critique`)
-}
-
-// -- Runs (background-run observation + cancellation, issue #58) --
-
-export async function getRun(runId) {
-  return fetchAPI(`/chat/runs/${runId}`)
-}
-
-export async function cancelRun(runId) {
-  return fetchAPI(`/chat/runs/${runId}/cancel`, {
-    method: 'POST',
-  })
-}
+// -- Runs (cancellation, issue #58) --
 
 // Cancel a conversation's active run by conversation id. The Stop button uses
 // this so cancellation never depends on having captured the run id from the
