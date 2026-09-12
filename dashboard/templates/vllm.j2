@@ -21,10 +21,7 @@
       - VLLM_CACHE_ROOT=/root/.cache/vllm
       - TORCHINDUCTOR_CACHE_DIR=/root/.cache/torch/inductor
       - TRITON_CACHE_DIR=/root/.triton/cache
-{% if attention_backend %}
-      - VLLM_ATTENTION_BACKEND={{ attention_backend }}
-{% endif %}
-{% for k, v in (extra_env or {}).items() if k != "VLLM_ATTENTION_BACKEND" %}
+{% for k, v in (extra_env or {}).items() %}
       - {{ k }}={{ v }}
 {% endfor %}
     volumes:

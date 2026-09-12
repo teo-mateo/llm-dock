@@ -150,6 +150,45 @@ class TestVllmRender:
         assert cfg["volumes"][1] in out
 
 
+class TestVllmEnvParams:
+    """An `env:` param is the only way to set a vLLM container environment variable."""
+
+    def _render(self, mgr, params):
+        cfg = {
+            "template_type": "vllm",
+            "alias": "qwen",
+            "port": 3301,
+            "model_name": "org/model",
+            "api_key": "test-key",
+            "params": params,
+        }
+        return mgr._render_service("vllm-qwen", cfg)
+
+    def test_env_param_renders_exactly_once(self, compose_manager):
+        out = self._render(compose_manager, {"env:VLLM_ATTENTION_BACKEND": "FLASHINFER"})
+        assert out.count("- VLLM_ATTENTION_BACKEND=FLASHINFER") == 1
+
+    def test_env_name_is_not_mirrored_unprefixed(self, compose_manager):
+        out = self._render(compose_manager, {"env:VLLM_ATTENTION_BACKEND": "XFORMERS"})
+        assert "\n      - ATTENTION_BACKEND=" not in out
+
+    def test_no_env_param_is_dropped(self, compose_manager):
+        out = self._render(
+            compose_manager,
+            {
+                "env:VLLM_ATTENTION_BACKEND": "TORCH",
+                "env:VLLM_DISABLED_KERNELS": "a,b",
+            },
+        )
+        assert "- VLLM_ATTENTION_BACKEND=TORCH" in out
+        assert "- VLLM_DISABLED_KERNELS=a,b" in out
+
+    def test_metadata_advertises_the_spelling_that_renders(self):
+        from flag_metadata import VLLM_FLAGS
+
+        assert VLLM_FLAGS["attention_backend"]["cli"] == "env:VLLM_ATTENTION_BACKEND"
+
+
 class TestDottedServiceNames:
     """Existing dotted names (e.g. 'llamacpp-glm-5.3-flash-q2kxl') must be renameable."""
 

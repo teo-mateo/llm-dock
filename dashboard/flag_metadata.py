@@ -1044,7 +1044,7 @@ VLLM_FLAGS = {
     },
     # ========== ATTENTION & OPTIMIZATION ==========
     "attention_backend": {
-        "cli": "VLLM_ATTENTION_BACKEND",
+        "cli": "env:VLLM_ATTENTION_BACKEND",
         "type": "env",
         "category": "Attention & Optimization",
         "description": "Attention backend (FLASHINFER, XFORMERS, TORCH, etc.). FLASHINFER is fastest.",
