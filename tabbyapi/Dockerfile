@@ -13,9 +13,8 @@
 # (exllamav3 v1.4.5+cu128.torch2.9.0 as of the pin below), ENTRYPOINT ["python3"],
 # CMD ["main.py","--host","0.0.0.0"]. curl is installed, so HEALTHCHECK works.
 #
-# To re-pin: resolve the current digest of :latest, replace it in BOTH ARG lines
-# below (an ARG declared before FROM does not cross the FROM boundary), then
-# rebuild and re-verify the service template — TabbyAPI's CLI surface is
+# To re-pin: resolve the current digest of :latest, replace it in the ARG line
+# below, then rebuild and re-verify the service template — TabbyAPI's CLI surface is
 # generated from its pydantic config model, so an upstream release can add or
 # rename flags that tabbyapi.j2 passes.
 #
@@ -31,8 +30,9 @@
 ARG TABBYAPI_REF=ghcr.io/theroyallab/tabbyapi@sha256:3a1418a7a2828fc405d592b54107cc3b9f6fef78235022494eaa7e9114809f67
 FROM ${TABBYAPI_REF}
 
-# Re-declared so the labels below can see it (keep in sync with the ARG above FROM).
-ARG TABBYAPI_REF=ghcr.io/theroyallab/tabbyapi@sha256:3a1418a7a2828fc405d592b54107cc3b9f6fef78235022494eaa7e9114809f67
+# Re-declared for stage scope: an ARG declared before FROM cannot be used after it.
+# Value-less, so it inherits the default above and any --build-arg — one literal to edit.
+ARG TABBYAPI_REF
 
 # Build metadata
 ARG BUILD_DATE
