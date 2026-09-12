@@ -25,6 +25,23 @@ SERVICE_NAME_PREFIXES = {
     "tabbyapi": "exl3",
 }
 
+# Container-internal port, which the compose template publishes as the right-hand side of
+# its `"<host port>:<this>"` mapping and Open WebUI dials to reach the service. Deriving
+# it a second way is what registered `ik_llamacpp` at `:8000` while the container served
+# 8080: a live endpoint, a dead registration. A new engine adds a row here.
+ENGINE_INTERNAL_PORTS = {
+    "llamacpp": 8080,
+    "ik_llamacpp": 8080,
+    "vllm": 8000,
+    "ds4": 8000,
+    "tabbyapi": 8000,
+}
+
+
+def engine_internal_port(template_type: str) -> int:
+    """Port the engine's container listens on, defaulting to 8000 for an unknown type."""
+    return ENGINE_INTERNAL_PORTS.get(template_type, 8000)
+
 # ============================================
 # FLAG METADATA FOR llama-server
 # Defines CLI mapping and type for each flag

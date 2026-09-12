@@ -311,7 +311,7 @@ maps a type to its service-name prefix where they differ (`ik_llamacpp` →
 `ik`, `tabbyapi` → `exl3`); every other type is its own prefix.
 
 ### Open WebUI Integration
-Registration is explicit, not part of service creation: `POST /api/services/<name>/register-openwebui` (the button on the service detail page) adds the service as an OpenAI-compatible endpoint, `…/unregister-openwebui` removes it. A rename re-registers under the new name. The URL is `http://<service>:<internal-port>/v1`, and `add_service_to_openwebui()` picks that port with `8080 if engine == "llamacpp" else 8000` — while the container port comes from the template. `ik_llamacpp` serves 8080 but takes the `else` branch, so it registers a dead `:8000` URL and `is_registered_in_openwebui()` (which does check for `ik_llamacpp`) never sees it. Any new engine needs its internal port in both places. Each service keeps its own API key in `services.json`.
+Registration is explicit, not part of service creation: `POST /api/services/<name>/register-openwebui` (the button on the service detail page) adds the service as an OpenAI-compatible endpoint, `…/unregister-openwebui` removes it. A rename re-registers under the new name. The URL is `http://<service>:<internal-port>/v1`, and the port has one owner: `flag_metadata.ENGINE_INTERNAL_PORTS`, read through `engine_internal_port()` by both `openwebui_integration` and `docker_utils`. It is the value each template publishes in its `"<host>:<port>"` mapping, and `tests/test_engine_internal_port.py` fails if the table and the templates disagree — so a new engine adds a row there and nowhere else. A second rule for the same port is what registered `ik_llamacpp` at a dead `:8000` while its container served 8080. Each service keeps its own API key in `services.json`.
 
 ## Supported Engines
 
@@ -564,6 +564,10 @@ requires `model_name` instead.
 ### Container-internal Ports
 - llama.cpp and ik_llama.cpp: `8080` (mapped via `"<host>:8080"`)
 - vLLM, ds4, TabbyAPI: `8000` (mapped via `"<host>:8000"`)
+
+Declared once as `flag_metadata.ENGINE_INTERNAL_PORTS`; every consumer reads
+`engine_internal_port()`. The templates publish these ports themselves, and
+`tests/test_engine_internal_port.py` is what keeps the two in step.
 
 ## Checking Service Logs
 

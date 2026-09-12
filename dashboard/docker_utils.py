@@ -5,6 +5,7 @@ import docker
 
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
+from flag_metadata import engine_internal_port
 from model_discovery import compute_model_size
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
@@ -177,7 +178,7 @@ def get_docker_services():
         engine = template_type_map.get(svc_name, "")
         if not engine:
             return False
-        internal_port = 8080 if engine in ("llamacpp", "ik_llamacpp") else 8000
+        internal_port = engine_internal_port(engine)
         expected_url = f"http://{svc_name}:{internal_port}/v1"
         return expected_url in openwebui_urls
 
