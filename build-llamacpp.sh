@@ -33,13 +33,19 @@ if command -v nvidia-smi &> /dev/null; then
         *"RTX 40"*|*"RTX 4090"*|*"RTX 4080"*|*"RTX 4070"*|*"RTX 4060"*|*"Ada"*)
             DETECTED_ARCH="89"
             ;;
-        *"RTX 30"*|*"RTX 3090"*|*"RTX 3080"*|*"RTX 3070"*|*"RTX 3060"*|*"A100"*|*"A10"*|*"A30"*)
+        *"A100"*|*"A30"*)
+            DETECTED_ARCH="80"
+            ;;
+        *"RTX 30"*|*"RTX 3090"*|*"RTX 3080"*|*"RTX 3070"*|*"RTX 3060"*|*"A10"*)
             DETECTED_ARCH="86"
             ;;
         *"RTX 20"*|*"RTX 2080"*|*"RTX 2070"*|*"RTX 2060"*|*"T4"*|*"Turing"*)
             DETECTED_ARCH="75"
             ;;
-        *"GTX 10"*|*"GTX 1080"*|*"GTX 1070"*|*"GTX 1060"*|*"P100"*|*"Pascal"*)
+        *"P100"*)
+            DETECTED_ARCH="60"
+            ;;
+        *"GTX 10"*|*"GTX 1080"*|*"GTX 1070"*|*"GTX 1060"*|*"P40"*)
             DETECTED_ARCH="61"
             ;;
         *"V100"*)
@@ -56,8 +62,8 @@ echo "────────────────────────�
 echo -e "  ${CYAN}120${NC} - RTX 50 series (Blackwell)"
 echo -e "  ${CYAN}90${NC}  - H100, H200 (Hopper)"
 echo -e "  ${CYAN}89${NC}  - RTX 40 series (Ada Lovelace)"
-echo -e "  ${CYAN}86${NC}  - RTX 30 series, A100, A10, A30 (Ampere)"
-echo -e "  ${CYAN}80${NC}  - A100 (Ampere - datacenter)"
+echo -e "  ${CYAN}86${NC}  - RTX 30 series, A10 (Ampere)"
+echo -e "  ${CYAN}80${NC}  - A100, A30 (Ampere - datacenter)"
 echo -e "  ${CYAN}75${NC}  - RTX 20 series, T4 (Turing)"
 echo -e "  ${CYAN}70${NC}  - V100 (Volta)"
 echo -e "  ${CYAN}61${NC}  - GTX 10 series, P40 (Pascal)"

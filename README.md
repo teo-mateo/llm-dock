@@ -258,10 +258,12 @@ The script will:
 | 120 | RTX 50 series (Blackwell) |
 | 90 | H100, H200 (Hopper) |
 | 89 | RTX 40 series (Ada Lovelace) |
-| 86 | RTX 30 series, A100, A10 (Ampere) |
+| 86 | RTX 30 series, A10 (Ampere) |
+| 80 | A100, A30 (Ampere - datacenter) |
 | 75 | RTX 20 series, T4 (Turing) |
 | 70 | V100 (Volta) |
-| 61 | GTX 10 series (Pascal) |
+| 61 | GTX 10 series, P40 (Pascal) |
+| 60 | P100 (Pascal) |
 
 Find your GPU's compute capability: https://developer.nvidia.com/cuda-gpus
 
