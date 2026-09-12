@@ -1,12 +1,12 @@
 import json
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from compose_manager import ComposeManager
+from compose_manager import ComposeManager, _SERVICE_NAME_ERROR, _valid_service_name
 
 TEST_TOKEN = "test-token"
 
@@ -49,31 +49,41 @@ def compose_manager(tmp_path):
     return ComposeManager(str(compose_path), services_db_file=str(services_path))
 
 
-class TestRemoveServiceUsesValidation:
-    """Prove remove_service validates the compose file — unlike current behavior."""
-
-    @patch.object(ComposeManager, "_validate_compose_file")
-    def test_remove_service_calls_validate(self, mock_validate, compose_manager):
-        """remove_service should call _validate_compose_file before writing.
-
-        _atomic_add_service and _rebuild_compose_file_locked both call
-        _validate_compose_file on a temp file before replacing the real one.
-        remove_service does not — it writes directly to compose_path.
+class TestRebuildKeepsRestartFlag:
+    def test_restart_no_survives_a_rebuild(self, compose_manager):
+        """Every engine template emits `restart: no`; YAML 1.1 reads that as False, so a
+        round-trip writes `restart: false` and `docker compose config` then rejects the
+        whole file. Only the marker-delimited text path may rewrite it.
         """
-        compose_manager.remove_service("test-svc")
-        mock_validate.assert_called_once()
+        with patch.object(
+            ComposeManager,
+            "_validate_compose_file",
+            return_value={"valid": True, "error": None},
+        ):
+            compose_manager.rebuild_compose_file()
 
-    @patch("os.replace")
-    @patch.object(ComposeManager, "_validate_compose_file")
-    def test_remove_service_uses_temp_file_before_replace(
-        self, mock_validate, mock_replace, compose_manager
-    ):
-        """remove_service should write to a temp file and then os.replace,
-        not write directly to compose_path.
+        written = compose_manager.compose_path.read_text()
+        assert "restart: no" in written
+        assert "restart: false" not in written
+
+
+class TestRebuildValidatesBeforePromoting:
+    def test_generated_file_rejected_by_docker_is_never_promoted(self, compose_manager):
+        """The temp file is validated before os.replace, so a rejected render leaves the
+        live compose file untouched rather than swapped for an unusable one — every
+        later service write, and every container start, reads that file.
         """
-        compose_manager.remove_service("test-svc")
-        # os.replace should be called once (temp -> final path)
-        mock_replace.assert_called_once()
+        before = compose_manager.compose_path.read_text()
+        with patch.object(
+            ComposeManager,
+            "_validate_compose_file",
+            return_value={"valid": False, "error": "boom"},
+        ):
+            with pytest.raises(ValueError):
+                compose_manager.rebuild_compose_file()
+
+        assert compose_manager.compose_path.read_text() == before
+        assert not compose_manager.compose_path.with_suffix(".yml.tmp").exists()
 
 
 class TestTabbyapiRender:
@@ -140,63 +150,23 @@ class TestVllmRender:
         assert cfg["volumes"][1] in out
 
 
-class TestAddServiceUsesValidation:
-    """Confirm _atomic_add_service does use validation as a baseline."""
-
-    @patch("os.replace")
-    @patch.object(ComposeManager, "_validate_compose_file")
-    def test_add_service_calls_validate(
-        self, mock_validate, mock_replace, compose_manager
-    ):
-        mock_validate.return_value = {"valid": True, "error": None}
-
-        config = compose_manager._load_services_db()
-        if "new-svc" in config:
-            pytest.skip("Service name collision")
-
-        try:
-            compose_manager.add_service(
-                "new-svc",
-                {
-                    "template_type": "llamacpp",
-                    "alias": "new",
-                    "port": 3390,
-                    "model_path": "/models/new.gguf",
-                    "api_key": "k",
-                    "params": {},
-                },
-            )
-            mock_validate.assert_called_once()
-        finally:
-            config = compose_manager._load_services_db()
-            config.pop("new-svc", None)
-            compose_manager._save_services_db(config)
-
-
 class TestDottedServiceNames:
     """Existing dotted names (e.g. 'llamacpp-glm-5.3-flash-q2kxl') must be renameable."""
 
-    def test_validate_service_name_accepts_dots(self, compose_manager):
-        valid, error = compose_manager.validate_service_name(
-            "llamacpp-glm-5.3-flash-q2kxl"
-        )
-        assert valid is True, error
+    def test_valid_service_name_accepts_dots(self):
+        assert _valid_service_name("llamacpp-glm-5.3-flash-q2kxl") is True
 
-    def test_validate_service_name_rejects_other_characters(self, compose_manager):
-        valid, error = compose_manager.validate_service_name("llamacpp-glm/5")
-        assert valid is False
-        assert "hyphens" in error
+    def test_valid_service_name_rejects_other_characters(self):
+        assert _valid_service_name("llamacpp-glm/5") is False
+        assert "hyphens" in _SERVICE_NAME_ERROR
 
     @pytest.mark.parametrize(
         "name",
         [".llamacpp-glm-5.3", "-llamacpp-glm-5.3", "_llamacpp-glm-5.3", "服务"],
     )
-    def test_validate_service_name_rejects_names_docker_rejects(
-        self, compose_manager, name
-    ):
-        valid, error = compose_manager.validate_service_name(name)
-        assert valid is False
-        assert "start with a letter or digit" in error
+    def test_valid_service_name_rejects_names_docker_rejects(self, name):
+        assert _valid_service_name(name) is False
+        assert "start with a letter or digit" in _SERVICE_NAME_ERROR
 
     @patch.object(ComposeManager, "rebuild_compose_file")
     def test_rename_to_dotted_name(self, mock_rebuild, compose_manager):
