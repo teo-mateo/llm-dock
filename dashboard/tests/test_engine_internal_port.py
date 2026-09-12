@@ -53,12 +53,17 @@ def test_unknown_engine_defaults_to_8000():
 
 
 def test_table_matches_what_the_templates_publish():
-    """The port Open WebUI dials has to be the port the compose file publishes."""
+    """The port Open WebUI dials has to be the port the compose file publishes —
+    and exactly one: a second published port (a metrics port beside the API
+    port) would drift the table the guard exists to pin."""
     published = {}
     for template in sorted(TEMPLATES_DIR.glob("*.j2")):
-        match = PUBLISHED_PORT.search(template.read_text())
-        assert match, f"{template.name} publishes no container port"
-        published[template.stem] = int(match.group(1))
+        matches = PUBLISHED_PORT.findall(template.read_text())
+        assert len(matches) == 1, (
+            f"{template.name} publishes {len(matches)} container ports; "
+            "the table pins exactly one"
+        )
+        published[template.stem] = int(matches[0])
 
     assert published == ENGINE_INTERNAL_PORTS
 
