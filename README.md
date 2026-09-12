@@ -226,7 +226,7 @@ Parameters are configured as CLI flags directly (e.g. `-ngl 99`, `-fa 1`). The e
 
 ### vLLM
 - Format: safetensors (HuggingFace models)
-- Image: `vllm/vllm-openai:v0.11.0`
+- Image: Custom build (`llm-dock-vllm`), from `vllm/vllm-openai:v0.24.0-cu129`
 
 ![vLLM Service Configuration](docs/images/service-edit-vllm.png)
 
