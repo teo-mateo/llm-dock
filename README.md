@@ -151,7 +151,7 @@ llm-dock/
 │   ├── compose_manager.py      # Docker Compose management
 │   ├── flag_metadata.py        # Engine flag definitions & validation
 │   ├── model_discovery.py      # Model scanning
-│   ├── service_templates.py    # Service generators
+│   ├── service_templates.py    # API key generation + Docker-safe name sanitizer
 │   ├── openwebui_integration.py
 │   ├── requirements.txt
 │   ├── .env.example
