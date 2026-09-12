@@ -10,6 +10,8 @@ import json
 import logging
 import subprocess
 
+from flag_metadata import engine_internal_port
+
 logger = logging.getLogger(__name__)
 
 # Enable more verbose logging for this module
@@ -71,7 +73,7 @@ def is_service_registered_in_openwebui(service_name: str, engine: str) -> bool:
     Returns:
         True if registered, False otherwise
     """
-    internal_port = 8080 if engine == "llamacpp" else 8000
+    internal_port = engine_internal_port(engine)
     base_url = f"http://{service_name}:{internal_port}/v1"
 
     registered_urls = get_openwebui_registered_urls()
@@ -101,9 +103,7 @@ def add_service_to_openwebui(service_name: str, port: int, api_key: str, engine:
 
     try:
         # Construct the base URL (internal docker network address)
-        # For llamacpp: http://service:8080/v1
-        # For vllm: http://service:8000/v1
-        internal_port = 8080 if engine == "llamacpp" else 8000
+        internal_port = engine_internal_port(engine)
         base_url = f"http://{service_name}:{internal_port}/v1"
 
         logger.info(f"Constructed base URL: {base_url}")
@@ -249,7 +249,7 @@ def remove_service_from_openwebui(service_name: str, engine: str):
 
     try:
         # Construct the base URL
-        internal_port = 8080 if engine == "llamacpp" else 8000
+        internal_port = engine_internal_port(engine)
         base_url = f"http://{service_name}:{internal_port}/v1"
 
         logger.info(f"Constructed base URL to remove: {base_url}")
