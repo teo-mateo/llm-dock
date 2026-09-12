@@ -92,13 +92,6 @@ echo "Building llama.cpp with CUDA architecture: $CUDA_ARCH"
 echo "This may take 10-15 minutes..."
 echo ""
 
-# Update Dockerfile with selected architecture
-DOCKERFILE_PATH="$(dirname "$0")/llama.cpp/Dockerfile"
-
-# Create a temporary Dockerfile with the correct architecture
-sed "s/CMAKE_CUDA_ARCHITECTURES=[0-9]*/CMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH/" "$DOCKERFILE_PATH" > "$DOCKERFILE_PATH.tmp"
-mv "$DOCKERFILE_PATH.tmp" "$DOCKERFILE_PATH"
-
 # Capture build metadata
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 BUILD_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -111,6 +104,7 @@ echo ""
 # Build the image
 cd "$(dirname "$0")"
 docker build --no-cache \
+    --build-arg CUDA_ARCH="$CUDA_ARCH" \
     --build-arg BUILD_DATE="$BUILD_DATE" \
     --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
     -t llm-dock-llamacpp ./llama.cpp/
