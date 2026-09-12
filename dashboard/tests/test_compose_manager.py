@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -50,8 +50,6 @@ def compose_manager(tmp_path):
 
 
 class TestRebuildKeepsRestartFlag:
-    """Compose edits take the text path, never a PyYAML round-trip."""
-
     def test_restart_no_survives_a_rebuild(self, compose_manager):
         """Every engine template emits `restart: no`; YAML 1.1 reads that as False, so a
         round-trip writes `restart: false` and `docker compose config` then rejects the
@@ -67,6 +65,25 @@ class TestRebuildKeepsRestartFlag:
         written = compose_manager.compose_path.read_text()
         assert "restart: no" in written
         assert "restart: false" not in written
+
+
+class TestRebuildValidatesBeforePromoting:
+    def test_generated_file_rejected_by_docker_is_never_promoted(self, compose_manager):
+        """The temp file is validated before os.replace, so a rejected render leaves the
+        live compose file untouched rather than swapped for an unusable one — every
+        later service write, and every container start, reads that file.
+        """
+        before = compose_manager.compose_path.read_text()
+        with patch.object(
+            ComposeManager,
+            "_validate_compose_file",
+            return_value={"valid": False, "error": "boom"},
+        ):
+            with pytest.raises(ValueError):
+                compose_manager.rebuild_compose_file()
+
+        assert compose_manager.compose_path.read_text() == before
+        assert not compose_manager.compose_path.with_suffix(".yml.tmp").exists()
 
 
 class TestTabbyapiRender:
