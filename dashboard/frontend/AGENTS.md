@@ -337,7 +337,6 @@ critique panel and delete handling. It is heavily engineered around races:
 | `ContextMenu.jsx` / `TextContextMenu.jsx` | Context menus |
 | `formatDrift.js` | Format-drift patterns mirrored from `FORMAT_DRIFT_PATTERNS` in `dashboard/chat/llm_proxy.py` — same kinds, same priorities; detection also runs client-side so conversations predating the `parse_warning` column still surface the chip |
 | `pendingFlush.js` | Empty-state composer flush decision helper |
-| `toolCallUtils.js` | Tool-call rendering helpers |
 | `FormatDriftChip.jsx` | Drift indicator chip |
 
 ### Projects feature
