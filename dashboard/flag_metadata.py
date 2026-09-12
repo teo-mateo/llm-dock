@@ -1090,38 +1090,6 @@ VLLM_FLAGS = {
 }
 
 # ============================================
-# VALIDATION RULES
-# ============================================
-
-LLAMACPP_LLAMA_SERVER_VALIDATION = {
-    "context_length": {"type": "int", "min": 512, "max": 1000000},
-    "gpu_layers": {"type": "int", "min": 0, "max": 999},
-    "batch_size": {"type": "int", "min": 1, "max": 16384},
-    "ubatch_size": {"type": "int", "min": 1, "max": 16384},
-    "repeat_penalty": {"type": "float", "min": 0.0, "max": 2.0},
-    "top_p": {"type": "float", "min": 0.0, "max": 1.0},
-    "top_k": {"type": "float", "min": 1.0, "max": 100.0},
-    "temperature": {"type": "float", "min": 0.0, "max": 2.0},
-    "rope_freq_base": {"type": "int", "min": 1, "max": 1000000},
-    "rope_freq_scale": {"type": "float", "min": 0.0, "max": 10.0},
-    "cpu_mask": {"type": "string"},
-    "cpu_strict": {"type": "int", "min": 0, "max": 1},
-    "numa_mode": {"type": "string"},
-    "mmap": {"type": "bool"},
-    "direct_io": {"type": "bool"},
-    "embeddings": {"type": "bool"},
-    "cpu_moe": {"type": "int", "min": 0, "max": 100},
-    "no_op_offload": {"type": "bool"},
-}
-
-VLLM_VALIDATION = {
-    "max_model_len": {"type": "int", "min": 512, "max": 1000000},
-    "gpu_memory_utilization": {"type": "float", "min": 0.1, "max": 1.0},
-    "max_num_batched_tokens": {"type": "int", "min": 1, "max": 100000},
-    "max_num_seqs": {"type": "int", "min": 1, "max": 1000},
-}
-
-# ============================================
 # LLAMACPP CATEGORIES (applied programmatically)
 # ============================================
 
@@ -1317,17 +1285,6 @@ DS4_FLAGS = {
         "impact": "Low",
     },
 }
-
-DS4_VALIDATION = {
-    "ctx": {"type": "int", "min": 512, "max": 1000000},
-    "tokens": {"type": "int", "min": 1, "max": 1000000},
-    "threads": {"type": "int", "min": 1, "max": 256},
-    "power": {"type": "int", "min": 1, "max": 100},
-    "prefill_chunk": {"type": "int", "min": 1, "max": 65536},
-    "kv_disk_space_mb": {"type": "int", "min": 1, "max": 1048576},
-    "kv_cache_min_tokens": {"type": "int", "min": 1, "max": 1000000},
-}
-
 
 # ============================================
 # FLAG METADATA FOR tabbyapi (TabbyAPI / ExLlamaV3)
@@ -1557,18 +1514,6 @@ TABBYAPI_FLAGS = {
     },
 }
 
-TABBYAPI_VALIDATION = {
-    "max_seq_len": {"type": "int", "min": -1, "max": 10000000},
-    "cache_size": {"type": "int", "min": 256, "max": 10000000},
-    "chunk_size": {"type": "int", "min": 1, "max": 65536},
-    "max_batch_size": {"type": "int", "min": 1, "max": 256},
-    "cpu_moe_offload_layers": {"type": "int", "min": 0, "max": 10000},
-    "cpu_moe_split_experts": {"type": "int", "min": 0, "max": 10000},
-    "cpu_moe_threads": {"type": "int", "min": 1, "max": 256},
-    "sse_ping_interval": {"type": "int", "min": 0, "max": 3600},
-}
-
-
 # ============================================
 # HELPER FUNCTIONS
 # ============================================
@@ -1586,20 +1531,6 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return DS4_FLAGS
     elif template_type == "tabbyapi":
         return TABBYAPI_FLAGS
-    else:
-        return {}
-
-
-def get_validation_rules(template_type: str) -> Dict[str, Any]:
-    """Get validation rules for template type"""
-    if template_type in ("llamacpp", "ik_llamacpp"):
-        return LLAMACPP_LLAMA_SERVER_VALIDATION
-    elif template_type == "vllm":
-        return VLLM_VALIDATION
-    elif template_type == "ds4":
-        return DS4_VALIDATION
-    elif template_type == "tabbyapi":
-        return TABBYAPI_VALIDATION
     else:
         return {}
 
