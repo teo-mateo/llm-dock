@@ -42,6 +42,11 @@ def engine_internal_port(template_type: str) -> int:
     """Port the engine's container listens on, defaulting to 8000 for an unknown type."""
     return ENGINE_INTERNAL_PORTS.get(template_type, 8000)
 
+
+def openwebui_base_url(service_name: str, template_type: str) -> str:
+    """The URL Open WebUI dials for a service — one owner for scheme, port and suffix."""
+    return f"http://{service_name}:{engine_internal_port(template_type)}/v1"
+
 # ============================================
 # FLAG METADATA FOR llama-server
 # Defines CLI mapping and type for each flag

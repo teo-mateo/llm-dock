@@ -10,7 +10,7 @@ import json
 import logging
 import subprocess
 
-from flag_metadata import engine_internal_port
+from flag_metadata import openwebui_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,7 @@ def is_service_registered_in_openwebui(service_name: str, engine: str) -> bool:
     Returns:
         True if registered, False otherwise
     """
-    internal_port = engine_internal_port(engine)
-    base_url = f"http://{service_name}:{internal_port}/v1"
+    base_url = openwebui_base_url(service_name, engine)
 
     registered_urls = get_openwebui_registered_urls()
     return base_url in registered_urls
@@ -103,8 +102,7 @@ def add_service_to_openwebui(service_name: str, port: int, api_key: str, engine:
 
     try:
         # Construct the base URL (internal docker network address)
-        internal_port = engine_internal_port(engine)
-        base_url = f"http://{service_name}:{internal_port}/v1"
+        base_url = openwebui_base_url(service_name, engine)
 
         logger.info(f"Constructed base URL: {base_url}")
 
@@ -249,8 +247,7 @@ def remove_service_from_openwebui(service_name: str, engine: str):
 
     try:
         # Construct the base URL
-        internal_port = engine_internal_port(engine)
-        base_url = f"http://{service_name}:{internal_port}/v1"
+        base_url = openwebui_base_url(service_name, engine)
 
         logger.info(f"Constructed base URL to remove: {base_url}")
 
