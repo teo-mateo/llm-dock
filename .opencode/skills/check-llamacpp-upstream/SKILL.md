@@ -100,7 +100,7 @@ Check `dashboard/flag_metadata.py` to see which flags are already exposed in the
 
 Check `llama.cpp/Dockerfile` to understand the build process:
 - The Dockerfile uses `git clone --depth 1` so it always pulls the latest upstream
-- CUDA architecture is set dynamically by `build-llamacpp.sh` via sed
+- CUDA architecture arrives as `--build-arg CUDA_ARCH` from `build-llamacpp.sh`; the Dockerfile defaults to `120`, so a bare `docker build ./llama.cpp/` still builds for Blackwell
 - Build metadata (date, llm-dock commit) is stored as Docker labels
 
 ### 6. Summarize findings

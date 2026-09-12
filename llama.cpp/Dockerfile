@@ -30,9 +30,13 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
     echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/cuda-stubs.conf && \
     ldconfig
 
+# 120 = Blackwell (RTX PRO 6000). Override with --build-arg CUDA_ARCH=<arch>;
+# build-llamacpp.sh passes the arch it detected, so a committed value here only has to
+# be right for a bare `docker build ./llama.cpp/`.
+ARG CUDA_ARCH=120
 RUN cmake -B build \
    -DGGML_CUDA=ON \
-   -DCMAKE_CUDA_ARCHITECTURES=120 \
+   -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
    -DLLAMA_BUILD_EXAMPLES=OFF \
    -DLLAMA_BUILD_TESTS=OFF \
    -DCMAKE_BUILD_TYPE=Release
