@@ -5,13 +5,12 @@ import useServicesSSE from './useServicesSSE'
  * Hook for getting running inference services (llama.cpp and vLLM only).
  * Derives state from the SSE stream via useServicesSSE.
  *
- * By default returns only chat-capable services — embedding pooling
- * services (vLLM `--runner pooling` / `--convert embed`, llama.cpp
- * `--embedding`) can't serve `/v1/chat/completions` and shouldn't appear
- * in the chat composer's default-model slot. Pass `kind: 'all'` for the
- * Services dashboard which needs every running container.
+ * Returns only chat-capable services — embedding pooling services
+ * (vLLM `--runner pooling` / `--convert embed`, llama.cpp `--embedding`)
+ * can't serve `/v1/chat/completions` and shouldn't appear in the chat
+ * composer's default-model slot.
  */
-export default function useRunningServices({ kind = 'chat' } = {}) {
+export default function useRunningServices() {
   const { services, loading } = useServicesSSE()
 
   const runningServices = useMemo(() => {
@@ -19,12 +18,11 @@ export default function useRunningServices({ kind = 'chat' } = {}) {
     return services.filter(s => {
       if (s.status !== 'running') return false
       if (!s.name.startsWith('llamacpp-') && !s.name.startsWith('ik-') && !s.name.startsWith('vllm-') && !s.name.startsWith('ds4-') && !s.name.startsWith('exl3-') && !s.name.startsWith('PAIR_')) return false
-      if (kind === 'all') return true
       // Snapshot pre-rollout: treat missing kind as 'chat' so old payloads
       // don't filter everything out.
-      return (s.kind || 'chat') === kind
+      return (s.kind || 'chat') === 'chat'
     })
-  }, [services, kind])
+  }, [services])
 
   return { services: runningServices, loading }
 }
