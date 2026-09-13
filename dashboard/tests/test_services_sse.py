@@ -115,7 +115,12 @@ class TestSSEEndpoint:
         """Verify that SSE stream sends delta events when containers start/stop."""
         client, _ = client_and_services_path
         docker_client = docker.from_env()
-        project_name = os.environ.get("COMPOSE_PROJECT_NAME", "llm-dock")
+        # Label with the project name the app's event_manager singleton actually
+        # filters on. It bakes config.COMPOSE_PROJECT at config-import time, which
+        # in a full-suite run predates this fixture's env-var set — the env var
+        # and the baked value only agree if the var was already exported.
+        from config import COMPOSE_PROJECT
+        project_name = COMPOSE_PROJECT
 
         response = client.get("/api/services/stream", headers=_auth_headers())
         assert response.status_code == 200
