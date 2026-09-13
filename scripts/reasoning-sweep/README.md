@@ -155,7 +155,7 @@ curl -s -X POST http://localhost:3329/apply-template \
 ## Tests
 
 ```bash
-cd scripts/reasoning-sweep && python3 -m pytest test_sweep.py -q   # 28 tests
+cd scripts/reasoning-sweep && python3 -m pytest test_sweep.py -q   # 30 tests
 ```
 
 Covers: session JSONL parsing (multi-block, multi-turn, truncated lines,
