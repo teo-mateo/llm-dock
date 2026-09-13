@@ -108,6 +108,8 @@
   --color-badge-ds4-fg:      #fdba74;
   --color-badge-exl3-bg:     rgb(219 39 119 / 0.30);
   --color-badge-exl3-fg:     #f9a8d4;
+  --color-badge-ninfer-bg:   rgb(13 148 136 / 0.30);
+  --color-badge-ninfer-fg:   #5eead4;
   --color-badge-webui-bg:    rgb(5 150 105 / 0.30);
   --color-badge-webui-fg:    #6ee7b7;
   --color-badge-neutral-bg:  rgb(75 85 99 / 0.30);
@@ -173,6 +175,8 @@
   --color-badge-ds4-fg:      #c2410c;
   --color-badge-exl3-bg:     rgb(219 39 119 / 0.12);
   --color-badge-exl3-fg:     #be185d;
+  --color-badge-ninfer-bg:   rgb(13 148 136 / 0.12);
+  --color-badge-ninfer-fg:   #0f766e;
   --color-badge-webui-bg:    rgb(5 150 105 / 0.12);
   --color-badge-webui-fg:    #047857;
   --color-badge-neutral-bg:  rgb(100 116 139 / 0.12);

@@ -341,6 +341,12 @@ class ComposeManager:
             # LLM_DOCK_TABBY_KEYS_DIR; a relative ./dashboard/... path would not
             # track the override and Docker would create a directory at the mount.
             context["key_file"] = str(key_path)
+        elif template_type == "ninfer":
+            # One .ninfer artifact file, named positionally in the template; the
+            # image is fixed at llm-dock-ninfer, so there is no image override.
+            context["model_path"] = config["model_path"]
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
 
         rendered_flags = []
         extra_env = {}

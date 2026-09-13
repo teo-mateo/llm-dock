@@ -387,6 +387,13 @@ function renderCommandPreview(config, apiKey, params) {
       parts.push(`--model-dir ${trimmed.slice(0, trimmed.length - name.length - 1)}`)
       parts.push(`--model-name ${name}`)
     }
+  } else if (config.template_type === 'ninfer') {
+    // NInfer takes the .ninfer artifact positionally; auth is --api-key like llama.cpp.
+    parts.push('ninfer-serve')
+    if (config.model_path) parts.push(config.model_path)
+    parts.push('--host 0.0.0.0')
+    parts.push('--port 8080')
+    parts.push(`--api-key ${apiKey || '***'}`)
   } else {
     parts.push('vllm serve')
     if (config.model_name) parts.push(config.model_name)

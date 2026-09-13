@@ -17,7 +17,7 @@ export default function useRunningServices() {
     if (!services) return []
     return services.filter(s => {
       if (s.status !== 'running') return false
-      if (!s.name.startsWith('llamacpp-') && !s.name.startsWith('ik-') && !s.name.startsWith('vllm-') && !s.name.startsWith('ds4-') && !s.name.startsWith('exl3-') && !s.name.startsWith('PAIR_')) return false
+      if (!s.name.startsWith('llamacpp-') && !s.name.startsWith('ik-') && !s.name.startsWith('vllm-') && !s.name.startsWith('ds4-') && !s.name.startsWith('exl3-') && !s.name.startsWith('ninfer-') && !s.name.startsWith('PAIR_')) return false
       // Snapshot pre-rollout: treat missing kind as 'chat' so old payloads
       // don't filter everything out.
       return (s.kind || 'chat') === 'chat'

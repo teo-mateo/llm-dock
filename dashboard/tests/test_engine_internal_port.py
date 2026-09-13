@@ -42,6 +42,7 @@ def captured_docker_exec(monkeypatch):
         ("vllm", 8000),
         ("ds4", 8000),
         ("tabbyapi", 8000),
+        ("ninfer", 8080),
     ],
 )
 def test_table_pins_each_engine(template_type, port):

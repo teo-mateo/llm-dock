@@ -127,6 +127,37 @@ class TestTabbyapiRender:
         assert "--max-seq-len 32768" in out
 
 
+class TestNinferRender:
+    """Cover the ninfer template rendering path."""
+
+    def _render(self, mgr, params):
+        cfg = {
+            "template_type": "ninfer",
+            "alias": "qwen38-nvfp4",
+            "port": 3340,
+            "model_path": "/hf-cache/hub/models--neroued--Qwen3.8-27B-nvfp4-NInfer"
+            "/snapshots/abc123/qwen3_8_27b_nvfp4.ninfer",
+            "api_key": "llmd-ninfer",
+            "params": params,
+        }
+        return mgr._render_service("ninfer-qwen38-nvfp4", cfg)
+
+    def test_artifact_is_positional_and_host_is_bound(self, compose_manager):
+        """ninfer-serve defaults to 127.0.0.1, so the template must pass 0.0.0.0."""
+        out = self._render(compose_manager, {})
+        assert "/snapshots/abc123/qwen3_8_27b_nvfp4.ninfer" in out
+        assert "--host 0.0.0.0" in out
+        assert "--port 8080" in out
+        assert "--api-key llmd-ninfer" in out
+
+    def test_bool_params_render_bare(self, compose_manager):
+        """NInfer's parser takes bare booleans, unlike TabbyAPI's value-taking ones."""
+        out = self._render(compose_manager, {"--vision": "", "--kv-dtype": "fp8"})
+        assert "--vision" in out
+        assert "--vision True" not in out
+        assert "--kv-dtype fp8" in out
+
+
 class TestVllmRender:
     """Cover optional vLLM runtime-overlay mounts."""
 

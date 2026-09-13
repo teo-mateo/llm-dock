@@ -1,0 +1,48 @@
+  {{ service_name }}:
+    image: llm-dock-ninfer
+    container_name: {{ service_name }}
+    restart: no
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8080"
+
+    ipc: host
+
+    environment:
+      # Artifact and media inputs are already on disk (or fetched by the request
+      # itself); nothing in this container talks to the HF Hub.
+      - HF_HUB_OFFLINE=1
+{% for k, v in (extra_env or {}).items() %}
+      - {{ k }}={{ v }}
+{% endfor %}
+    volumes:
+      # The `.ninfer` artifact is one self-contained file (weights, tokenizer,
+      # chat template, media frontend) and normally lives in the HF cache. The
+      # WHOLE hub is mounted rather than a snapshot subdir: HF snapshots are
+      # directories of relative symlinks into ../../blobs, so a narrower bind
+      # mount breaks the artifact link. model_path then reads
+      # /hf-cache/hub/models--<org>--<name>/snapshots/<rev>/<name>.ninfer.
+      - ${HOME}/.cache/huggingface:/hf-cache:ro
+      - ${HOME}/.cache/models:/local-models:ro
+
+    networks:
+      - llm-network
+
+    # Entrypoint is `ninfer-serve` (set in the image), so everything below is its
+    # argv: the artifact path first, then flags. `--host 0.0.0.0` is mandatory —
+    # the binary defaults to 127.0.0.1, which no other container can dial.
+    command: >
+      {{ model_path }}
+      --host 0.0.0.0
+      --port 8080
+      --api-key {{ api_key }}
+      {% for flag in rendered_flags %}{{ flag }}
+      {% endfor %}
