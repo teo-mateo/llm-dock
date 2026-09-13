@@ -225,7 +225,7 @@ Key mechanics:
 | `useProjects.js` | Project list CRUD |
 | `useChatPrompts.js` | Saved prompts with optimistic create/update/remove/reorder |
 | `useCritique.js` | Request/store per-message critiques |
-| `useRunningServices.js` | Filters running chat-capable services by name prefix (`llamacpp-`, `ik-`, `vllm-`, `ds4-`, `exl3-`, `PAIR_`), excludes embedding-pooling ones via `kind`; `kind: 'all'` for the dashboard |
+| `useRunningServices.js` | Filters running chat-capable services by name prefix (`llamacpp-`, `ik-`, `vllm-`, `ds4-`, `exl3-`, `PAIR_`), excludes embedding-pooling ones via `kind` |
 | `useOpenRouterModels.js` | OpenRouter model list load/save/reset + `refreshLadders(ids)`, which re-derives ladders server-side and replaces `data` wholesale so what a row shows is what the server stored |
 | `useOpenRouterCatalog.js` | Live OpenRouter catalog, loaded once on mount; `refresh(true)` is the explicit Refresh |
 | `useModelProviders.js` | Provider detail for the catalog rows the picker reports as in view; fetched once per id per session, `retry()` forces a refetch of the ids in view |
@@ -429,6 +429,5 @@ critique panel and delete handling. It is heavily engineered around races:
 - **Optimistic mutations must revert on failure** — see `useChatPrompts`
   and `useServicesSSE` favorites.
 - **`dist/` is gitignored** — rebuild before deploying.
-- **`useRunningServices` defaults to `kind: 'chat'`** — embedding-pooling
-  services are filtered out of the chat composer's default model; pass
-  `kind: 'all'` for the dashboard.
+- **`useRunningServices` returns only chat-capable services** — embedding-pooling
+  services are filtered out of the chat composer's default model.
