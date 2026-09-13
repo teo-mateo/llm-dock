@@ -28,15 +28,53 @@ class _FakeResp:
         self.closed = True
 
 
-def _patch(monkeypatch, resp, captured=None):
+def _patch(monkeypatch, resp, captured=None, service=None):
     monkeypatch.setattr(llm_proxy, "resolve_service",
-                        lambda name: {"host_port": 1234, "api_key": "k"})
+                        lambda name: service or {"host_port": 1234, "api_key": "k"})
 
     def _post(*a, **k):
         if captured is not None:
             captured.update(k.get("json", {}))
         return resp
     monkeypatch.setattr(llm_proxy.requests, "post", _post)
+
+
+def _stream_once(monkeypatch, service):
+    captured = {}
+    resp = _FakeResp(['data: {"choices":[{"delta":{"content":"hi"}}]}', '', 'data: [DONE]'])
+    _patch(monkeypatch, resp, captured, service=service)
+    list(llm_proxy.stream_chat_completion("svc", []))
+    return captured
+
+
+def test_ninfer_request_carries_the_aliased_model_id(monkeypatch):
+    """NInfer 400s a request without `model`; its template pins the served id to
+    the alias, so the alias is what has to go on the wire."""
+    captured = _stream_once(
+        monkeypatch,
+        {"host_port": 1234, "api_key": "k", "template_type": "ninfer",
+         "alias": "qwen3.8-27b-nvfp4"},
+    )
+    assert captured["model"] == "qwen3.8-27b-nvfp4"
+
+
+def test_engines_that_tolerate_a_missing_model_still_get_none(monkeypatch):
+    """A blanket `model` field would regress vLLM, which validates the string when
+    it is present, so only engines that require one may receive it."""
+    captured = _stream_once(
+        monkeypatch,
+        {"host_port": 1234, "api_key": "k", "template_type": "vllm",
+         "alias": "qwen3-8-27b"},
+    )
+    assert "model" not in captured
+
+
+def test_declared_model_wins_for_remote_providers(monkeypatch):
+    captured = _stream_once(
+        monkeypatch,
+        {"base_url": "https://example.invalid", "api_key": "k", "model": "org/model-x"},
+    )
+    assert captured["model"] == "org/model-x"
 
 
 def test_response_closed_on_normal_completion(monkeypatch):

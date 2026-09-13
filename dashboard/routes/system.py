@@ -101,6 +101,7 @@ def get_images_metadata():
             "vllm": get_image_build_metadata("llm-dock-vllm"),
             "ds4": get_image_build_metadata("llm-dock-ds4"),
             "tabbyapi": get_image_build_metadata("llm-dock-tabbyapi"),
+            "ninfer": get_image_build_metadata("llm-dock-ninfer"),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )

@@ -17,6 +17,7 @@ MANDATORY_FIELDS = {
     "vllm": ["port", "model_name", "alias", "api_key"],
     "ds4": ["port", "model_path", "alias", "api_key"],
     "tabbyapi": ["port", "model_path", "alias", "api_key"],
+    "ninfer": ["port", "model_path", "alias", "api_key"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
@@ -35,6 +36,7 @@ ENGINE_INTERNAL_PORTS = {
     "vllm": 8000,
     "ds4": 8000,
     "tabbyapi": 8000,
+    "ninfer": 8080,
 }
 
 
@@ -1520,6 +1522,349 @@ TABBYAPI_FLAGS = {
 }
 
 # ============================================
+# FLAG METADATA FOR ninfer-serve
+# The mandatory artifact path is positional and rendered by ninfer.j2, so it is
+# not a param. Every key here is a long flag with a value except the bools
+# (--vision, --greedy, --no-cuda-graph, …), which render bare.
+# ============================================
+
+NINFER_FLAGS = {
+    # ========== CONTEXT & RUNTIME ==========
+    "max_context": {
+        "cli": "--max-context",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Logical token ceiling for one request.",
+        "default": "8192",
+        "impact": "Critical",
+    },
+    "kv_capacity": {
+        "cli": "--kv-capacity",
+        "type": "string",
+        "category": "Context & Runtime",
+        "description": "Shared Main Text KV pool size in tokens, or 'auto' for the largest legal capacity after weights (1024 MiB headroom kept).",
+        "default": "8192",
+        "impact": "Critical",
+    },
+    "prefill_chunk": {
+        "cli": "--prefill-chunk",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Token window per prefill chunk.",
+        "impact": "Medium",
+    },
+    "max_concurrency": {
+        "cli": "--max-concurrency",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Startup-fixed active-request lanes, 1..8. Each lane has a 240k-capable reservation; higher lanes need more KV.",
+        "default": "1",
+        "impact": "Critical",
+    },
+    "max_pending_requests": {
+        "cli": "--max-pending-requests",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "Bound on the FIFO ingress queue.",
+        "default": "16",
+        "impact": "Low",
+    },
+    "pending_timeout_ms": {
+        "cli": "--pending-timeout-ms",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "How long a queued request may wait before it is rejected.",
+        "default": "30000",
+        "impact": "Low",
+    },
+    "device": {
+        "cli": "--device",
+        "type": "int",
+        "category": "Context & Runtime",
+        "description": "CUDA device ordinal to load the model on.",
+        "default": "0",
+        "impact": "Medium",
+    },
+    # ========== KV CACHE ==========
+    "kv_dtype": {
+        "cli": "--kv-dtype",
+        "type": "string",
+        "category": "KV Cache",
+        "description": "KV storage format: bf16, int8, fp8, nvfp4, k8v4. Lower precision raises capacity and bandwidth.",
+        "default": "int8",
+        "impact": "High",
+    },
+    # ========== SPECULATIVE DECODING ==========
+    "spec": {
+        "cli": "--spec",
+        "type": "string",
+        "category": "Speculative Decoding",
+        "description": "Speculative backend: mtp, dflash, dflash2. It must be present in the artifact and is residency-fixed at startup.",
+        "impact": "Critical",
+    },
+    "draft_tokens": {
+        "cli": "--draft-tokens",
+        "type": "int",
+        "category": "Speculative Decoding",
+        "description": "Startup-fixed draft window: MTP 1..5, DFlash/DFlash2 1..15.",
+        "impact": "High",
+    },
+    "lm_head_draft": {
+        "cli": "--lm-head-draft",
+        "type": "bool",
+        "category": "Speculative Decoding",
+        "description": "Use the full proposal head (the target's own head) instead of the artifact's optimized draft head.",
+        "impact": "Medium",
+    },
+    # ========== CONTEXT CACHE ==========
+    "device_state_slots": {
+        "cli": "--device-state-slots",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Device-resident checkpoint slots beyond the active lanes.",
+        "impact": "High",
+    },
+    "host_state_slots": {
+        "cli": "--host-state-slots",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Pinned Host State checkpoint slots (0 disables the tier).",
+        "default": "8",
+        "impact": "Medium",
+    },
+    "host_kv_mib": {
+        "cli": "--host-kv-mib",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Pinned Host KV capacity in MiB.",
+        "default": "8192",
+        "impact": "Medium",
+    },
+    "max_private_continuations": {
+        "cli": "--max-private-continuations",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Cap on retained private prefix continuations.",
+        "impact": "Low",
+    },
+    "max_shared_prefixes": {
+        "cli": "--max-shared-prefixes",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Cap on retained shared exact-prefix continuations.",
+        "impact": "Low",
+    },
+    "max_long_anchors_per_continuation": {
+        "cli": "--max-long-anchors-per-continuation",
+        "type": "int",
+        "category": "Context Cache",
+        "description": "Long-context anchors retained per continuation for resume.",
+        "impact": "Low",
+    },
+    "no_prefix_reuse": {
+        "cli": "--no-prefix-reuse",
+        "type": "bool",
+        "category": "Context Cache",
+        "description": "Disable compatible-prefix caching (enabled by default).",
+        "impact": "Medium",
+    },
+    # ========== MEDIA ==========
+    "vision": {
+        "cli": "--vision",
+        "type": "bool",
+        "category": "Media",
+        "description": "Load the fixed Vision GPU allocations so image/video prompts are accepted.",
+        "impact": "Critical",
+    },
+    "media_cache_mib": {
+        "cli": "--media-cache-mib",
+        "type": "int",
+        "category": "Media",
+        "description": "Retained media cache in MiB (0 disables reuse).",
+        "default": "1024",
+        "impact": "Low",
+    },
+    "media_live_mib": {
+        "cli": "--media-live-mib",
+        "type": "int",
+        "category": "Media",
+        "description": "Bound on all live BF16 patch payloads in MiB.",
+        "default": "2048",
+        "impact": "Low",
+    },
+    "media_preprocess_threads": {
+        "cli": "--media-preprocess-threads",
+        "type": "int",
+        "category": "Media",
+        "description": "Media preprocessing workers (0 = auto, at most 16).",
+        "default": "0",
+        "impact": "Low",
+    },
+    "max_request_mib": {
+        "cli": "--max-request-mib",
+        "type": "int",
+        "category": "Media",
+        "description": "Request body ceiling in MiB, enforced before JSON parsing.",
+        "default": "384",
+        "impact": "Low",
+    },
+    # ========== SAMPLING DEFAULTS ==========
+    "temperature": {
+        "cli": "--temperature",
+        "type": "float",
+        "category": "Sampling",
+        "description": "Server-wide sampling default; a request field overrides it.",
+        "impact": "Medium",
+    },
+    "top_p": {
+        "cli": "--top-p",
+        "type": "float",
+        "category": "Sampling",
+        "description": "Nucleus sampling default.",
+        "impact": "Medium",
+    },
+    "top_k": {
+        "cli": "--top-k",
+        "type": "int",
+        "category": "Sampling",
+        "description": "Top-k sampling default.",
+        "impact": "Medium",
+    },
+    "min_p": {
+        "cli": "--min-p",
+        "type": "float",
+        "category": "Sampling",
+        "description": "Min-p sampling default.",
+        "impact": "Low",
+    },
+    "presence_penalty": {
+        "cli": "--presence-penalty",
+        "type": "float",
+        "category": "Sampling",
+        "description": "Presence penalty default.",
+        "impact": "Low",
+    },
+    "frequency_penalty": {
+        "cli": "--frequency-penalty",
+        "type": "float",
+        "category": "Sampling",
+        "description": "Frequency penalty default.",
+        "impact": "Low",
+    },
+    "seed": {
+        "cli": "--seed",
+        "type": "int",
+        "category": "Sampling",
+        "description": "Sampling seed default.",
+        "impact": "Low",
+    },
+    "greedy": {
+        "cli": "--greedy",
+        "type": "bool",
+        "category": "Sampling",
+        "description": "Force temperature 0 (exact argmax).",
+        "impact": "Medium",
+    },
+    "default_max_tokens": {
+        "cli": "--default-max-tokens",
+        "type": "int",
+        "category": "Sampling",
+        "description": "Output-token default when a request omits the limit.",
+        "default": "8192",
+        "impact": "Medium",
+    },
+    # ========== THINKING ==========
+    "no_thinking": {
+        "cli": "--no-thinking",
+        "type": "bool",
+        "category": "Thinking",
+        "description": "Serve the non-thinking prompt mode for every request.",
+        "impact": "Medium",
+    },
+    "preserve_thinking": {
+        "cli": "--preserve-thinking",
+        "type": "bool",
+        "category": "Thinking",
+        "description": "Retain closed-turn assistant reasoning in later prompts.",
+        "impact": "Low",
+    },
+    "default_thinking_budget": {
+        "cli": "--default-thinking-budget",
+        "type": "int",
+        "category": "Thinking",
+        "description": "Cap on model-origin thinking tokens for enabled requests.",
+        "impact": "Medium",
+    },
+    # ========== SERVER ==========
+    "model_id": {
+        "cli": "--model-id",
+        "type": "string",
+        "category": "Server",
+        "description": "Override the artifact identity reported by the server.",
+        "impact": "Low",
+    },
+    "cors": {
+        "cli": "--cors",
+        "type": "bool",
+        "category": "Server",
+        "description": "Answer CORS preflight for browser clients.",
+        "impact": "Low",
+    },
+    "log_stats_interval_ms": {
+        "cli": "--log-stats-interval-ms",
+        "type": "int",
+        "category": "Server",
+        "description": "Periodic throughput log interval (0 disables).",
+        "default": "5000",
+        "impact": "Low",
+    },
+    "request_log_jsonl": {
+        "cli": "--request-log-jsonl",
+        "type": "path",
+        "category": "Server",
+        "description": "Append full-precision server/request records to this JSONL file.",
+        "impact": "Low",
+    },
+    "response_store_max_records": {
+        "cli": "--response-store-max-records",
+        "type": "int",
+        "category": "Server",
+        "description": "Cap on process-local response-state records.",
+        "impact": "Low",
+    },
+    "response_store_max_mib": {
+        "cli": "--response-store-max-mib",
+        "type": "int",
+        "category": "Server",
+        "description": "Cap on process-local response-state bytes in MiB.",
+        "impact": "Low",
+    },
+    "context_cost_presets": {
+        "cli": "--context-cost-presets",
+        "type": "path",
+        "category": "Server",
+        "description": "Preset cost model for the resource planner.",
+        "impact": "Low",
+    },
+    "log_level": {
+        "cli": "--log-level",
+        "type": "string",
+        "category": "Server",
+        "description": "trace, debug, info, warning, error, critical or off.",
+        "default": "info",
+        "impact": "Low",
+    },
+    # ========== DEBUG ==========
+    "no_cuda_graph": {
+        "cli": "--no-cuda-graph",
+        "type": "bool",
+        "category": "Debug",
+        "description": "Disable exact-batch CUDA Graph decode (diagnosis only; large decode slowdown).",
+        "impact": "High",
+    },
+}
+
+# ============================================
 # HELPER FUNCTIONS
 # ============================================
 
@@ -1536,6 +1881,8 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return DS4_FLAGS
     elif template_type == "tabbyapi":
         return TABBYAPI_FLAGS
+    elif template_type == "ninfer":
+        return NINFER_FLAGS
     else:
         return {}
 

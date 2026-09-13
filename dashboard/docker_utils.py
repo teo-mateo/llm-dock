@@ -164,6 +164,7 @@ def get_docker_services():
     compose_mgr = ComposeManager(_compose_file())
     api_key_map = {}
     template_type_map = {}
+    alias_map = {}
     model_path_map = {}
     model_name_map = {}
     kind_map = {}
@@ -174,6 +175,7 @@ def get_docker_services():
         if config:
             api_key_map[service_name] = config.get("api_key", "")
             template_type_map[service_name] = config.get("template_type", "")
+            alias_map[service_name] = config.get("alias", "")
             model_path_map[service_name] = config.get("model_path")
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
@@ -226,6 +228,10 @@ def get_docker_services():
                 # Engine key for request mapping. It used to be an internal map
                 # only, so every declared level was dropped as an unmapped engine.
                 "template_type": template_type_map.get(service_name, ""),
+                # Alias travels with the engine: an engine whose server pins its
+                # served model id to the alias (ninfer) cannot be addressed with
+                # anything else.
+                "alias": alias_map.get(service_name, ""),
                 "reasoning_levels": reasoning_levels_map.get(service_name, []),
             }
 

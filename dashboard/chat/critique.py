@@ -6,7 +6,7 @@ import re
 import requests
 
 from .constants import CRITIQUE_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
-from .llm_proxy import build_endpoint, resolve_service, unreachable_message
+from .llm_proxy import build_endpoint, request_model, resolve_service, unreachable_message
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,11 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
         ],
         "temperature": 0.3,
     }
-    if svc.get("model"):
-        # Remote multi-model providers (OpenRouter) require an explicit model.
-        payload["model"] = svc["model"]
+    model = request_model(svc)
+    if model:
+        # Remote multi-model providers (OpenRouter) require an explicit model;
+        # NInfer requires the id it serves (aliased by its template).
+        payload["model"] = model
 
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=120)

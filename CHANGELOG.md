@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-13
+- **NInfer engine** - New sixth inference engine for `.ninfer` Qwen artifacts (`llm-dock-ninfer` image, `ninfer.j2` template, `NINFER_FLAGS` metadata), built from source by `build-ninfer.sh` with the CUDA 12.9 port patch
+- **NInfer services** - `template_type: "ninfer"` services on port 8080 with `--api-key` auth, artifact as a positional argument, and the HF cache mounted read-only at `/hf-cache`
+
 ## 2026-02-15
 - **Service rename** - Rename services directly from the dashboard with a modal UI
 - **Rename API endpoint** - New `/api/v2/services/<name>/rename` endpoint

@@ -18,13 +18,15 @@ what changed, and whether a rebuild is warranted.
 | vllm | `vllm-project/vllm` | `llm-dock-vllm` | `build-vllm.sh` | pinned by base image **release tag** |
 | ds4 | `antirez/ds4` | `llm-dock-ds4` | `build-ds4.sh` | pinned by **commit** + 2 local patches |
 | ik_llama | `ikawrakow/ik_llama.cpp` | `llm-dock-ik-llamacpp` | none (manual `docker build`) | tracks latest (clone of `main`) |
+| NInfer | `Neroued/ninfer` | `llm-dock-ninfer` | `build-ninfer.sh` | pinned by **commit** + CUDA 12.9 port **patch** |
 
-All four upstream repos have local checkouts under `/github/`:
+All upstream repos have local checkouts under `/github/`:
 
 - `/github/ggml-org/llama.cpp`
 - `/github/vllm-project/vllm`
 - `/github/antirez/ds4`
 - `/github/ikawrakow/ik_llama.cpp`
+- `/github/Neroued/ninfer`
 
 ## General workflow
 
@@ -114,6 +116,30 @@ git log --oneline <image_commit>..origin/<branch>      # what changed
 
   If the fix is now upstream, remove the corresponding `sed` from the Dockerfile; if not, keep it.
 - **Rebuild:** `./build-ds4.sh` (`CUDA_ARCH=sm_120` default; override for other GPUs).
+
+## NInfer
+
+- **Dockerfile:** `ninfer/Dockerfile` — pinned `ARG NINFER_COMMIT=<sha>` (== `origin/master` when the patch was cut) plus the **CUDA 12.9 port patch** `ninfer/ninfer-cu129-port.patch`, applied with `git apply` at build time. Upstream requires CUDA ≥ 13.1 and this host's driver tops out at 12.9.
+- **Find the runner commit:** the label `org.llm-dock.ninfer.commit` records the NInfer commit.
+
+  ```bash
+  docker inspect llm-dock-ninfer:latest --format '{{ index .Config.Labels "org.llm-dock.ninfer.commit" }}'
+  ```
+
+- **Compare:**
+
+  ```bash
+  cd /github/Neroued/ninfer
+  git fetch origin master
+  git log --oneline <pinned_commit>..origin/master
+  ```
+
+- **Check whether the patch is still needed** — upstream may lift its CUDA 13.1 requirement or accept the dynamic-shared port. Both halves have to be re-checked before bumping:
+  1. the version gate in `CMakeLists.txt` (`if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.1)` → currently patched to 12.9);
+  2. the four kernel families that stage > 48 KiB of shared memory (`nvfp4_w4a4_mma`, `w8_small_t_mma`, `w8_rowsplit_gemm_medium_t_splitk`, `w8_rowsplit_gemm_mma`) — CUDA ≤ 12.9's ptxas/nvlink reject those statically, which is what the rest of the patch moves onto the dynamic-shared path.
+
+  A cheap check that a new tree still needs the patch: clone it, `git apply --check ninfer/ninfer-cu129-port.patch`, and `grep -c 'cudaFuncSetAttribute' src/ops/linear/w8/w8_small_t.cu`. If the patch no longer applies, regenerate it from the local checkout (`git -C /github/Neroued/ninfer diff`) and bump `NINFER_COMMIT` with it.
+- **Rebuild:** `./build-ninfer.sh` (`NINFER_COMMIT=<sha>` overrides the pin; the patch must still apply).
 
 ## ik_llama
 
