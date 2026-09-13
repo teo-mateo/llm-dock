@@ -93,7 +93,6 @@ def parse_session(path):
     out_tokens = 0
     prompt_tokens = 0
     recorded_level = None
-    recorded_provider = None
     recorded_model = None
     assistant_turns = 0
     stop_reasons = []
@@ -111,7 +110,6 @@ def parse_session(path):
             if etype == "thinking_level_change":
                 recorded_level = entry.get("thinkingLevel")
             elif etype == "model_change":
-                recorded_provider = entry.get("provider")
                 recorded_model = entry.get("modelId")
             elif etype == "message":
                 msg = entry.get("message") or {}
@@ -142,7 +140,6 @@ def parse_session(path):
         "out_tokens": out_tokens,
         "prompt_tokens": prompt_tokens,
         "recorded_level": recorded_level,
-        "recorded_provider": recorded_provider,
         "recorded_model": recorded_model,
         "assistant_turns": assistant_turns,
         "stop_reason": stop_reasons[-1] if stop_reasons else "",
@@ -537,7 +534,6 @@ def cmd_merge(args):
             "dirs": [str(d) for d in args.dirs],
             "finished": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
-        merged_meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         persist(out_dir, merged_meta, rows, extra_columns=("dir",))
         print(f"merged {len(rows)} rows from {len(metas)} dirs -> {out_dir}")
     print(build_summary({"model": (metas[0].get("model") if metas else "?"), "levels": levels,

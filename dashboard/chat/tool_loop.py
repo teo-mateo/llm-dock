@@ -50,7 +50,6 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                 tool_calls_received = True
                 tool_calls = data["tool_calls"]
 
-                # Build assistant message with tool_calls for conversation history
                 assistant_tool_msg = {
                     "role": "assistant",
                     "content": None,
@@ -70,7 +69,6 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                     assistant_tool_msg["reasoning_content"] = data["reasoning_content"]
                 messages_array.append(assistant_tool_msg)
 
-                # Execute each tool call
                 for i, tc in enumerate(tool_calls):
                     namespaced_name = tc["function"]["name"]
                     server_id, tool_name = parse_tool_name(namespaced_name)
@@ -79,14 +77,12 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                     except (json.JSONDecodeError, TypeError):
                         arguments = {}
 
-                    # Notify frontend about the tool call
                     yield ("tool_call", {
                         "name": tool_name,
                         "arguments": arguments,
                         "server_id": server_id,
                     })
 
-                    # Execute the tool
                     if server_id:
                         async def _progress(progress, total, message, _tool_name=tool_name):
                             if progress_callback:
@@ -98,14 +94,12 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                         result_text = f"Error: Could not determine server for tool '{namespaced_name}'"
                         artifacts = []
 
-                    # Notify frontend about the result
                     yield ("tool_result", {
                         "name": tool_name,
                         "result": result_text,
                         "server_id": server_id,
                     })
 
-                    # Yield any artifacts
                     for artifact in artifacts:
                         yield ("artifact", {
                             "tool_name": tool_name,
@@ -113,7 +107,6 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                             **artifact,
                         })
 
-                    # Add tool result to conversation history
                     call_id = tc["id"] or f"call_{round_num}_{i}"
                     messages_array.append({
                         "role": "tool",
@@ -121,7 +114,6 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                         "content": result_text,
                     })
 
-                # Break inner loop to start next round with updated messages
                 break
 
             elif event_type == "done":

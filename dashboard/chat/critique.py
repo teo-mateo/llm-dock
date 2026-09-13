@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 def build_critique_context(messages: list, target_msg: Message, context_window: int = DEFAULT_CONTEXT_WINDOW) -> str:
     """Build the critique context from recent messages.
     Only includes role + content (no reasoning)."""
-    # Get messages up to and including the target
     relevant = [m for m in messages if m.seq <= target_msg.seq]
-    # Take last N messages
     if len(relevant) > context_window:
         relevant = relevant[-context_window:]
 

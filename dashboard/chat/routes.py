@@ -656,7 +656,6 @@ def get_conversation(conv_id):
     conv = db.get_conversation(conv_id)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
-    # Include critiques and artifacts
     critiques = db.get_critiques_for_conversation(conv_id)
     artifacts = db.get_artifacts_for_conversation(conv_id)
     result = conv.to_dict(include_messages=True)
@@ -1071,17 +1070,14 @@ def create_critique(msg_id):
     context_window = data.get("context_window", DEFAULT_CONTEXT_WINDOW)
     extra_instructions = data.get("extra_instructions", "")
 
-    # Build context from conversation messages
     messages = db.get_messages(conv.id)
     context = build_critique_context(messages, msg, context_window)
 
-    # Request critique from sidekick
     result = request_critique(conv.sidekick_service, context, extra_instructions=extra_instructions)
 
     if "error" in result and "verdict" not in result:
         return jsonify(result), 502
 
-    # Validate annotation spans against original content
     annotations = result.get("annotations", [])
     validated = validate_annotations(annotations, msg.content)
 

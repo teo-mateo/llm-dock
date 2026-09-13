@@ -1020,9 +1020,6 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
-    def complete_chat_run(self, run_id: str) -> Optional[ChatRun]:
-        return self.update_chat_run_status(run_id, ChatRunStatus.COMPLETED)
-
     def fail_chat_run(self, run_id: str, error: str) -> Optional[ChatRun]:
         return self.update_chat_run_status(run_id, ChatRunStatus.FAILED, error=error)
 
