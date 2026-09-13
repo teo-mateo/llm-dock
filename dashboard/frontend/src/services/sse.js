@@ -1,8 +1,4 @@
-import { getToken, handleAuthFailure } from '../api'
-
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? `${window.location.protocol}//${window.location.hostname}:3399/api`
-  : `${window.location.protocol}//${window.location.hostname}/api`
+import { getToken, handleAuthFailure, API_BASE } from '../api'
 
 /**
  * Stream a chat completion via SSE.
