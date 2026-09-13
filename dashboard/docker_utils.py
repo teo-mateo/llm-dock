@@ -3,6 +3,8 @@ import subprocess
 import yaml
 import docker
 
+from flask import current_app
+
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
 from flag_metadata import openwebui_base_url
@@ -50,10 +52,20 @@ def get_image_build_metadata(image_name: str) -> dict:
         }
 
 
+def _compose_file() -> str:
+    # App config wins so a deployed or test app can point the compose readers
+    # at another file; the module constant is the fallback for callers outside
+    # a request context (current_app raises RuntimeError there).
+    try:
+        return current_app.config.get("COMPOSE_FILE", COMPOSE_FILE)
+    except RuntimeError:
+        return COMPOSE_FILE
+
+
 def get_compose_services():
     """Load service names from docker-compose.yml"""
     try:
-        with open(COMPOSE_FILE) as f:
+        with open(_compose_file()) as f:
             config = yaml.safe_load(f)
             return set(config.get("services", {}).keys())
     except Exception as e:
@@ -64,7 +76,7 @@ def get_compose_services():
 def get_compose_service_ports():
     """Load service port mappings from docker-compose.yml"""
     try:
-        with open(COMPOSE_FILE) as f:
+        with open(_compose_file()) as f:
             config = yaml.safe_load(f)
             services = config.get("services", {})
 
@@ -149,7 +161,7 @@ def get_docker_services():
     port_map = get_compose_service_ports()
 
     # Get API keys and template types from services.json
-    compose_mgr = ComposeManager(COMPOSE_FILE)
+    compose_mgr = ComposeManager(_compose_file())
     api_key_map = {}
     template_type_map = {}
     model_path_map = {}
@@ -286,7 +298,7 @@ def control_service(service_name, action):
 
             # Always use docker compose up -d to ensure container is recreated if config changed
             result = subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "up", "-d", service_name],
+                ["docker", "compose", "-f", _compose_file(), "up", "-d", service_name],
                 capture_output=True,
                 text=True,
                 timeout=60,
