@@ -55,7 +55,6 @@ def init_config():
     global _config_initialized
     if _config_initialized:
         return
-    _config_initialized = True
 
     if not DASHBOARD_TOKEN:
         raise ValueError("DASHBOARD_TOKEN environment variable is required")
@@ -79,3 +78,8 @@ def init_config():
     root_logger.setLevel(log_level)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+
+    # Set only after validation and handler setup have both succeeded, so a
+    # failed first call can't disable re-validation (and logging setup) for
+    # the rest of the process.
+    _config_initialized = True
