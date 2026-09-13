@@ -107,6 +107,34 @@ def gpu_mem_mib():
         return None
 
 
+def gpu_sm_clock_mhz():
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=clocks.sm,clocks.max.sm",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        sm, sm_max = (float(x) for x in out.splitlines()[0].split(","))
+        return sm, sm_max
+    except Exception:
+        return None, None
+
+
+def gpu_power_limits():
+    """(limit, default limit) in watts — a capped GPU is not comparable to an
+    uncapped one, so every record carries the cap it ran under."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=power.limit,power.default_limit",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        limit, default = (float(x) for x in out.splitlines()[0].split(","))
+        return limit, default
+    except Exception:
+        return None, None
+
+
 def host_ram_used_gib():
     try:
         for line in pathlib.Path("/proc/meminfo").read_text().splitlines():
@@ -175,6 +203,10 @@ def main():
                     help="repetitions of the decode test (median reported)")
     ap.add_argument("--depth-gen", type=int, default=64,
                     help="tokens generated after each prefill (decode at depth)")
+    ap.add_argument("--repeat", type=int, default=2,
+                    help="per-size measurements, best kept: the first one after an "
+                         "idle gap runs at unboosted SM clocks (prefill is "
+                         "compute-bound), so the second is the steady-state number")
     ap.add_argument("--concurrency", type=int, default=2,
                     help="lanes for the aggregate decode test (0 disables)")
     ap.add_argument("--timeout", type=int, default=3600)
@@ -197,8 +229,13 @@ def main():
 
     corpus = CORPUS.read_text(errors="ignore")
 
+    # Warm with a real prefill, not a toy prompt: an idle GPU ramps its clocks
+    # during the first sizeable request, which lands on the first measurement
+    # (a 2k prefill read ~4x low on an uncapped card) if the warmup is tiny.
     print("warmup ...")
-    chat(base, api_key, model, "warmup", 8, args.timeout)
+    chat(base, api_key, model,
+         sized_prompt(base, api_key, model, corpus, 4096, "\nwarmup ", args.timeout),
+         8, args.timeout)
 
     decode_speeds, drafts, accepts = [], 0, 0
     for i in range(args.runs):
@@ -214,20 +251,29 @@ def main():
     prefill = []
     for i, size in enumerate(sizes):
         print(f"  prefill {size} tokens ...", flush=True)
-        prompt = sized_prompt(base, api_key, model, corpus, size, f"\nsuite {i} ", args.timeout)
-        t, usage = chat(base, api_key, model, prompt, args.depth_gen, args.timeout)
-        cached = usage.get("prompt_tokens_details", {}).get("cached_tokens", 0)
-        entry = {
-            "n_prompt": t["prompt_n"],
-            "pp_tps": round(t["prompt_per_second"], 1),
-            "pp_ms": round(t["prompt_ms"], 0),
-            "tg_at_depth_tps": round(t["predicted_per_second"], 1),
-            "cached": cached,
-        }
-        prefill.append(entry)
-        print(f"    pp {entry['pp_tps']} t/s ({entry['pp_ms'] / 1000:.1f}s), "
-              f"tg@{entry['n_prompt']}: {entry['tg_at_depth_tps']} t/s"
-              + ("  [CACHE HIT — prefill not measured]" if cached else ""))
+        best = None
+        for attempt in range(max(1, args.repeat)):
+            prompt = sized_prompt(base, api_key, model, corpus, size,
+                                  f"\nsuite {i}.{attempt} ", args.timeout)
+            t, usage = chat(base, api_key, model, prompt, args.depth_gen, args.timeout)
+            clock, clock_max = gpu_sm_clock_mhz()
+            entry = {
+                "n_prompt": t["prompt_n"],
+                "pp_tps": round(t["prompt_per_second"], 1),
+                "pp_ms": round(t["prompt_ms"], 0),
+                "tg_at_depth_tps": round(t["predicted_per_second"], 1),
+                "cached": usage.get("prompt_tokens_details", {}).get("cached_tokens", 0),
+                "clocks_sm_mhz": clock,
+                "clocks_sm_max_mhz": clock_max,
+            }
+            print(f"    run {attempt + 1}/{args.repeat}: pp {entry['pp_tps']} t/s "
+                  f"({entry['pp_ms'] / 1000:.1f}s), sm {clock:.0f}/{clock_max:.0f} MHz")
+            if best is None or entry["pp_tps"] > best["pp_tps"]:
+                best = entry
+        prefill.append(best)
+        print(f"    kept pp {best['pp_tps']} t/s ({best['pp_ms'] / 1000:.1f}s), "
+              f"tg@{best['n_prompt']}: {best['tg_at_depth_tps']} t/s"
+              + ("  [CACHE HIT — prefill not measured]" if best["cached"] else ""))
 
     concurrency = None
     if args.concurrency > 1:
@@ -250,6 +296,7 @@ def main():
         print(f"    {concurrency['aggregate_tps']} t/s aggregate "
               f"({', '.join(f'{r:.0f}' for r in rates)} per request, {wall:.1f}s wall)")
 
+    power_limit, power_default = gpu_power_limits()
     record = {
         "ts": datetime.datetime.now().isoformat(timespec="seconds"),
         "service": args.service,
@@ -266,6 +313,8 @@ def main():
         "concurrency": concurrency,
         "vram_mib": gpu_mem_mib(),
         "ram_used_gib": host_ram_used_gib(),
+        "gpu_power_limit_w": power_limit,
+        "gpu_power_default_limit_w": power_default,
         "container_cmd": container_config(args.service),
         "params": svc.get("params"),
         **image_metadata(args.service),
@@ -284,7 +333,7 @@ def main():
     hdr += [f"tg@{s // 1024}k" for s in all_sizes]
     if any(r.get("concurrency") for r in rows):
         hdr += ["C agg t/s"]
-    hdr += ["vram MiB"]
+    hdr += ["power W", "vram MiB"]
     table = [hdr]
     for r in rows:
         by_size = {p["n_prompt"]: p for p in r["prefill"]}
@@ -297,6 +346,8 @@ def main():
         if any(x.get("concurrency") for x in rows):
             c = r.get("concurrency")
             row += [f"{c['aggregate_tps']:.0f}" if c else "-"]
+        limit = r.get("gpu_power_limit_w")
+        row += [f"{limit:.0f}" if limit else "-"]
         row += [str(r["vram_mib"] or "-")]
         table.append(row)
     widths = [max(len(row[i]) for row in table) for i in range(len(hdr))]
