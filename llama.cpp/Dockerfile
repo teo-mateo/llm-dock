@@ -18,9 +18,6 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libomp-dev
 
-# Make the CUDA stub library visible as libcuda.so.1 for the linker
-#RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
-
 RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /llama.cpp
 
 WORKDIR /llama.cpp
