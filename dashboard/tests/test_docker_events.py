@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 
 import pytest
 import docker
@@ -10,6 +11,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.docker_events import DockerEventConsumer
 from services.event_manager import DockerEventManager
+
+
+def _pre_clean_stopped(client, name_prefix: str):
+    # A run interrupted between container creation and its finally leaves an
+    # exited corpse under the test's name prefix; with unique per-run names
+    # only corpses (never live containers) can accumulate, so clean exited only.
+    for c in client.containers.list(filters={"name": name_prefix, "status": "exited"}):
+        try:
+            c.remove(force=True)
+        except Exception:
+            pass
 
 
 @pytest.fixture(autouse=True)
@@ -48,9 +60,10 @@ def test_list_events_captures_container_lifecycle():
 
     time.sleep(0.5)
 
+    _pre_clean_stopped(client, "llm-dock-test-integration-svc")
     container = client.containers.run(
         "hello-world",
-        name="llm-dock-test-integration-svc",
+        name=f"llm-dock-test-integration-svc-{uuid.uuid4().hex[:8]}",
         labels={
             "com.docker.compose.project": project_name,
             "com.docker.compose.service": "test-integration-svc",
@@ -58,26 +71,27 @@ def test_list_events_captures_container_lifecycle():
         detach=True,
     )
 
-    time.sleep(2)
-
-    stop_event.set()
-    collector.join(timeout=5)
-
-    assert len(events) > 0, "No events captured from real Docker"
-
-    test_events = [e for e in events if e.get("service_name") == "test-integration-svc"]
-    assert len(test_events) > 0, f"No events for test-integration-svc. Got events: {events}"
-
-    for evt in test_events:
-        assert "status" in evt, f"Event missing 'status': {evt}"
-        assert "action" in evt, f"Event missing 'action': {evt}"
-        assert "container_id" in evt, f"Event missing 'container_id': {evt}"
-        assert "timestamp" in evt, f"Event missing 'timestamp': {evt}"
-
     try:
-        container.remove(force=True)
-    except Exception:
-        pass
+        time.sleep(2)
+
+        stop_event.set()
+        collector.join(timeout=5)
+
+        assert len(events) > 0, "No events captured from real Docker"
+
+        test_events = [e for e in events if e.get("service_name") == "test-integration-svc"]
+        assert len(test_events) > 0, f"No events for test-integration-svc. Got events: {events}"
+
+        for evt in test_events:
+            assert "status" in evt, f"Event missing 'status': {evt}"
+            assert "action" in evt, f"Event missing 'action': {evt}"
+            assert "container_id" in evt, f"Event missing 'container_id': {evt}"
+            assert "timestamp" in evt, f"Event missing 'timestamp': {evt}"
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
 
 
 def test_event_manager_callbacks_fire_on_container_lifecycle():
@@ -103,9 +117,10 @@ def test_event_manager_callbacks_fire_on_container_lifecycle():
 
     time.sleep(0.5)
 
+    _pre_clean_stopped(client, "llm-dock-test-mgr-svc")
     container = client.containers.run(
         "hello-world",
-        name="llm-dock-test-mgr-svc",
+        name=f"llm-dock-test-mgr-svc-{uuid.uuid4().hex[:8]}",
         labels={
             "com.docker.compose.project": project_name,
             "com.docker.compose.service": "test-mgr-svc",
@@ -113,20 +128,21 @@ def test_event_manager_callbacks_fire_on_container_lifecycle():
         detach=True,
     )
 
-    time.sleep(2)
-
     try:
-        container.remove(force=True)
-    except Exception:
-        pass
+        time.sleep(2)
 
-    manager.stop()
+        manager.stop()
 
-    assert not manager.is_running
-    assert len(received_events) > 0
+        assert not manager.is_running
+        assert len(received_events) > 0
 
-    mgr_events = [e for e in received_events if e.get("service_name") == "test-mgr-svc"]
-    assert len(mgr_events) > 0, f"No events for test-mgr-svc. Got events: {received_events}"
+        mgr_events = [e for e in received_events if e.get("service_name") == "test-mgr-svc"]
+        assert len(mgr_events) > 0, f"No events for test-mgr-svc. Got events: {received_events}"
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
 
 
 def test_event_manager_start_stop_idempotent():
