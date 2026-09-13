@@ -288,14 +288,33 @@ class TestIterLogEvents:
         log_lines = [e[1] for e in events if e[0] == "log"]
         assert log_lines == ["alpha", "beta"]
 
-    def test_stop_event_terminates_reader(self):
-        """Reader thread should respect stop_event during phase 2."""
+    def test_consumer_abort_force_closes_follow_stream(self):
+        """Abandoning the generator must force-close the follow stream and stop
+        the reader from producing — the thread/socket leak guard in the
+        generator's finally, which no other test covers."""
         from services.log_stream import iter_log_events
 
         stop = threading.Event()
+        ticks = {"n": 0}
+        closed = {"n": 0}
+
+        class _RecordingStream:
+            """Wraps the fake follow generator; records every close()."""
+
+            def __init__(self, gen):
+                self._gen = gen
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                return next(self._gen)
+
+            def close(self):
+                closed["n"] += 1
+                self._gen.close()
 
         container = MagicMock()
-        container.logs.side_effect = None
 
         def logs_se(*a, **kw):
             if kw.get("stream") or kw.get("follow"):
@@ -304,24 +323,29 @@ class TestIterLogEvents:
                         if stop.is_set():
                             return
                         time.sleep(0.05)
+                        ticks["n"] += 1
                         yield b"tick\n"
-                return _slow()
+                return _RecordingStream(_slow())
             return b""
         container.logs.side_effect = logs_se
 
-        events = []
+        gen = iter_log_events(container, 10, stop)
         deadline = time.monotonic() + 1.0
-        for item in iter_log_events(container, 10, stop):
-            events.append(item)
+        for item in gen:
             if item[0] == "snapshot_end":
-                stop.set()
                 break
             if time.monotonic() > deadline:
                 break
+        gen.close()
 
-        # After stop, reader must finish quickly
+        # The production finally must have force-closed the follow stream.
+        assert closed["n"] >= 1
+        # The reader must have stopped producing: the tick count freezes
+        # after the abort (one in-flight tick is absorbed by the first sample).
         time.sleep(0.3)
-        assert stop.is_set()
+        n1 = ticks["n"]
+        time.sleep(0.2)
+        assert ticks["n"] == n1
 
     def test_invalid_utf8_replaced_not_crashed(self):
         container = MagicMock()

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isReasoningLevelRejection, INVALID_LEVEL_CODE } from './levelRejection'
+import { isReasoningLevelRejection } from './levelRejection'
 
 function withCode(code) {
   const err = new Error('boom')
@@ -9,7 +9,10 @@ function withCode(code) {
 
 describe('isReasoningLevelRejection', () => {
   it('matches the server code for a level the service does not offer', () => {
-    expect(isReasoningLevelRejection(withCode(INVALID_LEVEL_CODE))).toBe(true)
+    // Literal, not the production constant: the server pins this exact string
+    // (dashboard/tests/test_chat_reasoning_levels.py), and a rename that broke
+    // the contract must fail here, not move both sides together.
+    expect(isReasoningLevelRejection(withCode('invalid_reasoning_level'))).toBe(true)
   })
 
   // The retry in ChatPage creates the conversation a second time, so it must
