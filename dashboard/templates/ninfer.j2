@@ -39,10 +39,15 @@
     # Entrypoint is `ninfer-serve` (set in the image), so everything below is its
     # argv: the artifact path first, then flags. `--host 0.0.0.0` is mandatory —
     # the binary defaults to 127.0.0.1, which no other container can dial.
+    # `--model-id` pins the id the server reports and accepts to the service alias:
+    # NInfer 400s a request without `model` and 404s one it does not serve, and the
+    # alias is the only id the dashboard already knows (chat sends it — see
+    # `request_model` in chat/llm_proxy.py).
     command: >
       {{ model_path }}
       --host 0.0.0.0
       --port 8080
       --api-key {{ api_key }}
+      --model-id {{ alias }}
       {% for flag in rendered_flags %}{{ flag }}
       {% endfor %}

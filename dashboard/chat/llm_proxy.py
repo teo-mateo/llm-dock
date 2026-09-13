@@ -80,11 +80,30 @@ def detect_format_drift(content: str, reasoning: str = "", had_tool_calls: bool 
     return None
 
 
+def request_model(svc: dict) -> str | None:
+    """The model id to put on the wire, or None to leave the field out.
+
+    Remote multi-model providers (OpenRouter) need the provider's model id, which
+    ``resolve_service`` already carries. NInfer is the one local engine that both
+    rejects a missing ``model`` (400) and 404s a string it does not serve: its
+    template pins the server's public id to the service alias
+    (``--model-id {{ alias }}``), so the alias is exactly the id to send. Every
+    other local engine ignores the field, and sending one it does not advertise
+    (vLLM validates the string when it is present) would be a regression, so they
+    keep receiving a payload without it.
+    """
+    if svc.get("model"):
+        return svc["model"]
+    if svc.get("template_type") == "ninfer":
+        return svc.get("alias") or None
+    return None
+
+
 def resolve_service(service_name: str) -> dict:
     """Resolve a service name to connection details.
 
     Local Docker services resolve to ``{host_port, api_key, template_type,
-    reasoning_levels}`` via docker_utils; ``openrouter:<model-id>`` strings
+    alias, reasoning_levels}`` via docker_utils; ``openrouter:<model-id>`` strings
     resolve to ``{base_url, api_key, model, extra_headers}`` plus the same two
     reasoning fields (or None when no OPENROUTER_API_KEY is configured).
 
@@ -111,6 +130,7 @@ def resolve_service(service_name: str) -> dict:
                 "host_port": svc["host_port"],
                 "api_key": svc["api_key"],
                 "template_type": svc.get("template_type", ""),
+                "alias": svc.get("alias", ""),
                 "reasoning_levels": svc.get("reasoning_levels") or [],
             }
     return None
@@ -332,10 +352,9 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         "messages": messages_array,
         "stream": True,
     }
-    if svc.get("model"):
-        # Remote multi-model providers (OpenRouter) require an explicit model;
-        # local single-model servers don't get one and ignore its absence.
-        payload["model"] = svc["model"]
+    model = request_model(svc)
+    if model:
+        payload["model"] = model
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice or "auto"

@@ -150,6 +150,12 @@ class TestNinferRender:
         assert "--port 8080" in out
         assert "--api-key llmd-ninfer" in out
 
+    def test_served_model_id_is_the_service_alias(self, compose_manager):
+        """The id the server accepts must be one the dashboard can send: chat
+        sends the alias for ninfer, so the template pins the id to it."""
+        out = self._render(compose_manager, {})
+        assert "--model-id qwen38-nvfp4" in out
+
     def test_bool_params_render_bare(self, compose_manager):
         """NInfer's parser takes bare booleans, unlike TabbyAPI's value-taking ones."""
         out = self._render(compose_manager, {"--vision": "", "--kv-dtype": "fp8"})
