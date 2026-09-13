@@ -141,7 +141,7 @@ def test_cancel_completed_run_is_noop(ctx):
     app, db, _ = ctx
     conv = _conv(db)
     run = _run_row(db, conv, ChatRunStatus.RUNNING)
-    db.complete_chat_run(run.id)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
     r = app.test_client().post(f"/api/chat/runs/{run.id}/cancel", headers=_auth())
     assert r.status_code == 200
     assert r.get_json()["status"] == "completed"  # unchanged, harmless no-op
@@ -187,7 +187,7 @@ def test_cancel_active_run_by_conversation_no_active_run_is_noop(ctx):
     app, db, _ = ctx
     conv = _conv(db)
     run = _run_row(db, conv, ChatRunStatus.RUNNING)
-    db.complete_chat_run(run.id)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
     r = app.test_client().post(
         f"/api/chat/conversations/{conv.id}/cancel-active-run", headers=_auth())
     assert r.status_code == 200
@@ -214,7 +214,7 @@ def test_cancel_active_run_by_conversation_stale_expected_run_id_is_noop(ctx):
     app, db, _ = ctx
     conv = _conv(db)
     run_a = _run_row(db, conv, ChatRunStatus.RUNNING)
-    db.complete_chat_run(run_a.id)
+    db.update_chat_run_status(run_a.id, ChatRunStatus.COMPLETED)
     run_b = _run_row(db, conv, ChatRunStatus.RUNNING)  # newer active run
     r = app.test_client().post(
         f"/api/chat/conversations/{conv.id}/cancel-active-run",
@@ -333,7 +333,7 @@ def test_observe_backstop_closes_when_run_goes_terminal(ctx, monkeypatch):
     first = next(gen)  # active, no events -> heartbeat
     assert "heartbeat" in first
 
-    db.complete_chat_run(run.id)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
     nxt = next(gen)  # backstop detects terminal
     assert "run_status" in nxt and "completed" in nxt
     with pytest.raises(StopIteration):
@@ -423,7 +423,7 @@ def test_reattach_after_completion_drops_replay(ctx, monkeypatch):
 
     bus.publish(run.id, _delta_evt("partial"))
     bus.publish(run.id, runtime.ChatRuntimeEvent(run_manager_module.STREAM_END, {}))
-    db.complete_chat_run(run.id)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
 
     q, replay = manager.subscribe_with_replay(run.id)
     assert replay == []  # history dropped on STREAM_END

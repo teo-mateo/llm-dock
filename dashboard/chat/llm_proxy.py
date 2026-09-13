@@ -304,7 +304,8 @@ def build_messages_array(system_prompt: str, messages: list) -> list:
 
 def stream_chat_completion(service_name: str, messages_array: list, tools: list = None,
                            tool_choice: str = None, *, reasoning_level: str = None):
-    """Stream a chat completion from a llama.cpp service.
+    """Stream a chat completion from a model service — a local engine container
+    (any template_type) or an ``openrouter:<model-id>`` model.
 
     Yields (event_type, data) tuples:
       - ("delta", {"content": ..., "reasoning_content": ..., "raw": ...})

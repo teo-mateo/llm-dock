@@ -236,7 +236,7 @@ def test_recover_interrupted_runs_marks_active_failed(tmp_path):
                                         status=ChatRunStatus.QUEUED))
     done = db.create_chat_run(ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
                                       status=ChatRunStatus.RUNNING))
-    db.complete_chat_run(done.id)  # terminal — must be left alone
+    db.update_chat_run_status(done.id, ChatRunStatus.COMPLETED)  # terminal — must be left alone
 
     manager = ChatRunManager(db, EventBus())
     try:

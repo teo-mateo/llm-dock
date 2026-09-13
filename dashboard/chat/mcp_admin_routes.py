@@ -152,7 +152,6 @@ def test_mcp_registry():
     mgr = _get_mcp()
 
     if tool_name is None:
-        # Discovery — list_tools only.
         try:
             tools = mgr.run_with_timeout(mgr._discover_tools(cfg, server_id), DISCOVER_TIMEOUT)
         except FuturesTimeoutError:
@@ -173,7 +172,6 @@ def test_mcp_registry():
             ],
         })
 
-    # Call.
     try:
         result_text, artifacts = mgr.run_with_timeout(
             mgr._execute_tool(cfg, tool_name, arguments), CALL_TIMEOUT

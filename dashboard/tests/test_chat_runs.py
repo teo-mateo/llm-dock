@@ -90,7 +90,7 @@ def test_complete_fail_cancel_helpers_stamp_timestamps():
     conv = _conv(db)
 
     r1 = db.create_chat_run(_run(conv))
-    done = db.complete_chat_run(r1.id)
+    done = db.update_chat_run_status(r1.id, ChatRunStatus.COMPLETED)
     assert done.status == "completed" and done.completed_at is not None
 
     r2 = db.create_chat_run(_run(conv))
@@ -226,7 +226,7 @@ def test_completed_run_clears_active_run_in_list():
     db = ChatDB(":memory:")
     conv = _conv(db)
     run = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
-    db.complete_chat_run(run.id)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
 
     convs, _ = db.list_conversations()
     assert convs[0].active_run is None
@@ -263,7 +263,7 @@ def test_get_conversation_last_run_is_most_recent_by_insertion():
     older = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
     db.fail_chat_run(older.id, "old failure")
     newer = db.create_chat_run(_run(conv, ChatRunStatus.RUNNING))
-    db.complete_chat_run(newer.id)
+    db.update_chat_run_status(newer.id, ChatRunStatus.COMPLETED)
 
     fetched = db.get_conversation(conv.id)
     # Most recent run wins, so a later success hides the earlier failure.
