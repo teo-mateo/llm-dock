@@ -239,12 +239,9 @@ def _snapshot_locked() -> dict:
 
 def get_registry() -> dict:
     """Return the full merged registry (built-in + external, enabled and not)."""
-    with _lock:
-        if not _state["merged"]:
-            # Lazy init on first read so callers don't have to remember to
-            # invoke reload() at startup. After this the explicit reload()
-            # is what refreshes state.
-            pass
+    # Lazy init on first read so callers don't have to remember to
+    # invoke reload() at startup. After this the explicit reload()
+    # is what refreshes state.
     if not _state["merged"] and _state["load_error"] is None:
         reload()
     with _lock:

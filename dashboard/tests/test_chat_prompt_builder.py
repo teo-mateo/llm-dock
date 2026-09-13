@@ -54,10 +54,14 @@ def test_date_line_appended_by_default(monkeypatch):
     assert arr[1] == {"role": "user", "content": "hi"}
 
 
-def test_date_line_can_be_disabled(monkeypatch):
+def test_empty_tool_hints_leave_no_separator_residue(monkeypatch):
+    # An enabled server whose hint comes back empty must not leave a stray
+    # blank line between the base prompt and the date line.
     monkeypatch.setattr(prompt_builder, "get_tool_hints", lambda s: "")
-    arr = prompt_builder.build_chat_messages("Base.", [_user()], [], include_date_line=False)
-    assert _system_text(arr) == "Base."
+    arr = prompt_builder.build_chat_messages("Base.", [_user()], ["sympy-math"])
+    sys_text = _system_text(arr)
+    assert sys_text.startswith("Base.\n\nCurrent date: ")
+    assert "\n\n\n" not in sys_text
 
 
 def test_tool_hints_prepended_before_date_line(monkeypatch):
@@ -93,10 +97,10 @@ def test_empty_system_prompt_yields_date_line_only(monkeypatch):
 def test_images_delegated_to_multipart(monkeypatch):
     monkeypatch.setattr(prompt_builder, "get_tool_hints", lambda s: "")
     msg = _user(content="look", images_json='["data:image/png;base64,AAAA"]')
-    arr = prompt_builder.build_chat_messages("", [msg], [], include_date_line=False)
-    # System prompt is empty + no date line -> only the user message remains.
-    assert len(arr) == 1
-    content = arr[0]["content"]
+    arr = prompt_builder.build_chat_messages("", [msg], [])
+    # Empty base prompt -> the system slot carries the date line only.
+    assert _system_text(arr).startswith("Current date:")
+    content = arr[1]["content"]
     assert {"type": "text", "text": "look"} in content
     assert {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}} in content
 
@@ -107,9 +111,10 @@ def test_assistant_reasoning_preserved_in_history(monkeypatch):
         "",
         [_user(), _assistant(reasoning_content="Consider the alternatives."), _user("continue")],
         [],
-        include_date_line=False,
     )
-    assert arr == [
+    # The date-line-only system slot leads; the history rows follow unchanged.
+    assert _system_text(arr).startswith("Current date:")
+    assert arr[1:] == [
         {"role": "user", "content": "hi"},
         {
             "role": "assistant",

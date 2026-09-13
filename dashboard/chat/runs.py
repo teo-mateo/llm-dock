@@ -26,7 +26,3 @@ TERMINAL_STATUSES = frozenset(
 )
 
 ALL_STATUSES = ACTIVE_STATUSES | TERMINAL_STATUSES
-
-
-def is_active(status: str) -> bool:
-    return status in ACTIVE_STATUSES

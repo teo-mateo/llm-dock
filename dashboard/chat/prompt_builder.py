@@ -24,7 +24,6 @@ def build_chat_messages(
     system_prompt: str,
     messages: list,
     enabled_servers: list,
-    include_date_line: bool = True,
 ) -> list:
     """Build the OpenAI-compatible message array for a chat turn.
 
@@ -32,9 +31,7 @@ def build_chat_messages(
     and an explicit current-date line, then delegates row->dict shaping
     (including image multipart content) to build_messages_array.
 
-    Mirrors the behavior previously inlined in _stream_response; the only
-    new affordance is `include_date_line`, which defaults to the historical
-    always-on behavior.
+    Mirrors the behavior previously inlined in _stream_response.
     """
     prompt = system_prompt or ""
 
@@ -43,8 +40,7 @@ def build_chat_messages(
         if hints:
             prompt = f"{prompt}\n\n{hints}" if prompt else hints
 
-    if include_date_line:
-        line = _date_line(datetime.date.today())
-        prompt = f"{prompt}\n\n{line}" if prompt else line
+    line = _date_line(datetime.date.today())
+    prompt = f"{prompt}\n\n{line}" if prompt else line
 
     return build_messages_array(prompt, messages)
