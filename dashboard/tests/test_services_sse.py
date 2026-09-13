@@ -26,7 +26,7 @@ def _auth_headers():
 @pytest.fixture
 def client_and_services_path(tmp_path):
     """Create a test client using the app factory."""
-    compose_content = """services:
+    compose_content = """services: {}
   # <<<<<<< BEGIN DYNAMIC
   # >>>>>>> END DYNAMIC
 
