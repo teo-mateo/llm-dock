@@ -35,7 +35,7 @@ full chat experience. It talks to the Flask dashboard API on port 3399
 | Markdown | `react-markdown` 10 + `remark-gfm`, `remark-math`, `rehype-katex`, `rehype-raw`, `katex` |
 | Icons | Font Awesome 6 (loaded from CDN in `index.html`) |
 | Fonts | Google Fonts: Archivo (UI), Newsreader (prose), IBM Plex Mono (code) |
-| Testing | Vitest 4 + Testing Library (`@testing-library/react`, `user-event`, `jest-dom`), `jsdom`, `vitest-canvas-mock` |
+| Testing | Vitest 4 + Testing Library (`@testing-library/react`, `jest-dom`), `jsdom`, `vitest-canvas-mock` |
 | Lint | ESLint 9, flat config in `eslint.config.js` (`js.configs.recommended` + `eslint-plugin-react-hooks` 7 + `eslint-plugin-react-refresh`), `dist` ignored |
 
 ### Key `package.json` scripts
@@ -162,7 +162,6 @@ Key mechanics:
 | `index.html` | HTML shell; anti-FOUC theme script; CDN Font Awesome + Google Fonts; mounts `#root` |
 | `src/main.jsx` | Entry: `createRoot`, `StrictMode`, `ThemeProvider`, `BrowserRouter basename="/v2"`, `App` |
 | `src/App.jsx` | Root layout: `Sidebar` + `MobileNav` + `Header` + `<Routes>` |
-| `src/App.css` | Empty and imported nowhere — only `index.css` is loaded |
 | `src/index.css` | Tailwind entry + full semantic theme token system (`@theme static`), dark/light overrides |
 | `vite.config.js` | Vite config: `base: '/v2/'`, sourcemaps, and an `/api` → `:5000` proxy that no request uses (see [Dev mode](#dev-mode)) |
 | `vitest.config.js` | Test config: jsdom, setup file |
