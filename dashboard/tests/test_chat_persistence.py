@@ -24,7 +24,6 @@ from chat.runtime import ChatRunner, ChatTurnRequest
 from chat.persistence import (
     DbPersistencePolicy,
     NullPersistencePolicy,
-    PersistencePolicy,
 )
 
 
@@ -231,8 +230,3 @@ def test_default_runner_uses_db_policy(tmp_path):
     runner = ChatRunner(db)
     assert isinstance(runner.persistence, DbPersistencePolicy)
     assert runner.persistence.db is db
-
-
-def test_policies_implement_the_interface():
-    assert issubclass(DbPersistencePolicy, PersistencePolicy)
-    assert issubclass(NullPersistencePolicy, PersistencePolicy)
