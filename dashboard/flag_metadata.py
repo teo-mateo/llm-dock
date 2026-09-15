@@ -1039,7 +1039,6 @@ VLLM_FLAGS = {
         "type": "bool",
         "category": "Features & Tools",
         "description": "Enable automatic tool choice in function calling.",
-        "default": "true",
         "impact": "Low",
     },
     "tool_call_parser": {
@@ -2072,6 +2071,16 @@ def get_bool_cli_flags(template_type: str) -> Set[str]:
         for meta in get_flag_metadata(template_type).values()
         if isinstance(meta, dict) and meta.get("type") == "bool" and "cli" in meta
     }
+
+
+# Engines whose boolean flags reject a value (argparse `--flag, --no-flag` pair;
+# `--flag true` is an unrecognized argument). A non-empty `default` in bool metadata
+# is unsafe here: ParameterReference's click-to-add inserts the default as the
+# flag's value, so the command the panel just built is what the parser refuses.
+# llamacpp bench is deliberately excluded — its parser accepts values for its
+# bools (<0|1> metavars) — and so is tabbyapi, the value-required class that
+# get_bool_cli_flags models.
+BOOL_FLAG_VALUE_REJECTED: Set[str] = {"vllm", "llamacpp", "ik_llamacpp", "ds4", "ninfer"}
 
 
 def generate_service_name(template_type: str, alias: str) -> str:
