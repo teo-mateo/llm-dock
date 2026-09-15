@@ -227,4 +227,37 @@ class ConversationsRepositoryTest {
         assertEquals(400, http.status)
         assertTrue(http.message.contains("not offered"))
     }
+
+    // -- setPrompt (F03 follow-up: prompt_id reference) --
+
+    @Test
+    fun `selecting a prompt PUTs the id as the whole body`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "conv-1"}""").build())
+
+        repository.setPrompt("conv-1", "c2efe71a-cd7b").getOrThrow()
+
+        val request = server.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/chat/conversations/conv-1", request.url.encodedPath)
+        val body = request.body?.utf8().orEmpty()
+        assertEquals("""{"prompt_id":"c2efe71a-cd7b"}""", body)
+        assertFalse(body.contains("main_system_prompt"))
+    }
+
+    /**
+     * The load-bearing detach case: with `explicitNulls = false` a null
+     * `promptId` on a serialized data class would be **omitted**, and the
+     * accompanying `main_system_prompt: ""` would never reach the wire — the
+     * detach would no-op against a 200. Both the explicit `JsonNull` and the
+     * empty string must be present (the same trap as the reasoning-level clear).
+     */
+    @Test
+    fun `detaching sends an explicit prompt_id null alongside an empty prompt`() = runTest {
+        server.enqueue(MockResponse.Builder().body("""{"id": "conv-1"}""").build())
+
+        repository.setPrompt("conv-1", null).getOrThrow()
+
+        val body = server.takeRequest().body?.utf8().orEmpty()
+        assertEquals("""{"prompt_id":null,"main_system_prompt":""}""", body)
+    }
 }

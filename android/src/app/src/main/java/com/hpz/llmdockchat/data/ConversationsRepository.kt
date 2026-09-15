@@ -11,7 +11,6 @@ import com.hpz.llmdockchat.data.dto.DeleteConversationsRequestDto
 import com.hpz.llmdockchat.data.dto.DeleteConversationsResponseDto
 import com.hpz.llmdockchat.data.dto.OkResponseDto
 import com.hpz.llmdockchat.data.dto.UpdateMcpServersRequestDto
-import com.hpz.llmdockchat.data.dto.UpdateSystemPromptRequestDto
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import kotlinx.serialization.builtins.ListSerializer
@@ -105,18 +104,27 @@ open class ConversationsRepository(private val api: ApiClient) {
     }
 
     /**
-     * `PUT /api/chat/conversations/<id>` with `main_system_prompt`.
+     * `PUT /api/chat/conversations/<id>` with `prompt_id` (F03 follow-up).
+     * The id alone is the whole selection body — the server resolves the
+     * content and stores its copy. Detach (`promptId == null`) adds
+     * `main_system_prompt: ""` so the stored text clears to the default,
+     * matching the React picker (`ChatArea.handlePromptSelect`).
      *
-     * The text, not a prompt id: `db.update_conversation`'s allowed set has no
-     * `prompt_id`, and the conversation row stores the resolved content anyway.
-     * Takes effect on the next turn, like every other conversation setting.
+     * Hand-built, for the same reason as [setReasoningLevel]: with
+     * `explicitNulls = false` a null DTO field is omitted, and a detach of
+     * `{}` answers 200 while changing nothing. Takes effect on the next turn,
+     * like every other conversation setting.
      */
-    open suspend fun setMainSystemPrompt(id: String, content: String): Result<Unit> = apiCall {
+    open suspend fun setPrompt(id: String, promptId: String?): Result<Unit> = apiCall {
+        val body = buildJsonObject {
+            put("prompt_id", promptId?.let { JsonPrimitive(it) } ?: JsonNull)
+            if (promptId == null) put("main_system_prompt", JsonPrimitive(""))
+        }.toString()
         api.request(
             method = "PUT",
             path = Endpoints.conversation(id),
             deserializer = ConversationIdResponseDto.serializer(),
-            body = ApiJson.encodeToString(UpdateSystemPromptRequestDto(mainSystemPrompt = content)),
+            body = body,
         )
         Unit
     }

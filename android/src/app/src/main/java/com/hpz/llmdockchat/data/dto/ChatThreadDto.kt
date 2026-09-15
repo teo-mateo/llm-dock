@@ -77,6 +77,8 @@ data class ConversationDetailDto(
     @SerialName("main_service") val mainService: String = "",
     @SerialName("main_system_prompt") val mainSystemPrompt: String = "",
     @SerialName("mcp_servers") val mcpServers: List<String> = emptyList(),
+    /** The managed prompt this conversation references, or null for none. */
+    @SerialName("prompt_id") val promptId: String? = null,
     /** F15: null / absent = "model default" (the server sends no reasoning field). */
     @SerialName("reasoning_level") val reasoningLevel: String? = null,
     @SerialName("active_run") val activeRun: ActiveRunDto? = null,

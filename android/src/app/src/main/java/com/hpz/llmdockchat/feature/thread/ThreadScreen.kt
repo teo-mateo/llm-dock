@@ -78,7 +78,6 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
-import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
@@ -194,7 +193,7 @@ private fun ThreadContent(
     onOpenSettings: () -> Unit,
     onCloseSettings: () -> Unit,
     onToggleTool: (String) -> Unit,
-    onSelectPrompt: (ManagedPrompt) -> Unit = {},
+    onSelectPrompt: (String?) -> Unit = {},
     onOpenReasoningPicker: () -> Unit = {},
     onCloseReasoningPicker: () -> Unit = {},
     onSelectReasoningLevel: (String?) -> Unit = {},
@@ -386,7 +385,7 @@ private fun ThreadContent(
             canToggleTools = loaded.canToggleTools,
             onToggleTool = onToggleTool,
             prompts = settings.prompts,
-            activePromptContent = loaded.conversation.mainSystemPrompt,
+            activePromptId = loaded.conversation.promptId,
             onSelectPrompt = onSelectPrompt,
             textScale = textScale,
             onTextScaleChange = onTextScaleChange,

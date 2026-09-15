@@ -19,7 +19,6 @@ import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.PromptsRepository
-import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
@@ -356,21 +355,21 @@ class ThreadViewModel(
         loaded()?.let { _state.value = it.copy(settings = null) }
     }
 
-    fun selectPrompt(prompt: ManagedPrompt) {
+    fun selectPrompt(promptId: String?) {
         val current = loaded() ?: return
         if (!current.canToggleTools) return
-        val previous = current.conversation.mainSystemPrompt
-        if (previous == prompt.content) return
+        if (current.conversation.promptId == promptId) return
+        val previous = current.conversation.promptId
         _state.value = current.copy(
-            conversation = current.conversation.copy(mainSystemPrompt = prompt.content),
+            conversation = current.conversation.copy(promptId = promptId),
         )
         viewModelScope.launch {
-            conversationsRepository.setMainSystemPrompt(conversationId, prompt.content).fold(
+            conversationsRepository.setPrompt(conversationId, promptId).fold(
                 onSuccess = {},
                 onFailure = { failure ->
                     val latest = loaded() ?: return@fold
                     _state.value = latest.copy(
-                        conversation = latest.conversation.copy(mainSystemPrompt = previous),
+                        conversation = latest.conversation.copy(promptId = previous),
                         actionError = failure.appError.displayMessage,
                     )
                 },
