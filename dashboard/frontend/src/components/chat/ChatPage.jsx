@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useBlocker, NavigationType } from 'react-router-dom'
 import ChatArea from './ChatArea'
 import ProjectPage from './ProjectPage'
 import ProjectChatSplit from './ProjectChatSplit'
@@ -194,6 +194,23 @@ export default function ChatPage() {
     return window.confirm('Discard unsaved changes?')
   }, [])
 
+  // Browser Back/Forward is the one navigation class the explicit guards
+  // above never see: a history POP unmounts a dirty editor (both the
+  // ProjectPage editor and the chat-split overlay feed this same ref via
+  // onEditorDirtyChange) without going through any handler, so useBlocker
+  // intercepts POPs. Armed for POP only — every PUSH/REPLACE entry point
+  // already runs confirmDiscardEdits() before navigating, and blocking
+  // those would prompt twice (handler + blocker).
+  const blocker = useBlocker((arg) =>
+    arg.historyAction === NavigationType.Pop ? editorDirtyRef.current : false)
+  const handleBlockerStay = useCallback(() => {
+    blocker.reset()
+  }, [blocker])
+  const handleBlockerLeave = useCallback(() => {
+    if (!window.confirm('Discard unsaved changes?')) return
+    blocker.proceed()
+  }, [blocker])
+
   const handleCreate = useCallback(async () => {
     if (!defaultModelName) {
       window.alert('No model available. Start a local model or configure OpenRouter.')
@@ -358,7 +375,8 @@ export default function ChatPage() {
   }, [])
 
   return (
-    <SidebarSplit
+    <>
+      <SidebarSplit
       ref={sidebarRef}
       conversations={conversations}
       activeId={convId}
@@ -425,6 +443,29 @@ export default function ChatPage() {
       />
       </ProjectChatSplit>
       )}
-    </SidebarSplit>
+      </SidebarSplit>
+      {blocker.state === "blocked" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="nav-blocker-modal">
+          <div className="bg-surface border border-border rounded-xl shadow-lg p-5 max-w-sm w-full mx-4">
+            <h2 className="text-sm font-semibold text-fg mb-1">Unsaved changes</h2>
+            <p className="text-xs text-fg-muted mb-4">
+              Leaving this page discards the unsaved edits in the file editor.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handleBlockerStay}
+                className="px-3 py-1.5 bg-surface hover:bg-surface-muted border border-border rounded-lg text-xs text-fg transition-colors"
+                data-testid="nav-blocker-stay"
+              >Stay</button>
+              <button
+                onClick={handleBlockerLeave}
+                className="px-3 py-1.5 bg-danger-subtle text-danger-fg hover:opacity-80 rounded-lg text-xs font-medium transition-opacity"
+                data-testid="nav-blocker-leave"
+              >Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

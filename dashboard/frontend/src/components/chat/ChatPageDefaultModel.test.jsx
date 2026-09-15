@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, waitFor, cleanup } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { render, waitFor, cleanup, act } from '@testing-library/react'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { createContext, useContext } from 'react'
 import ChatPage from './ChatPage'
 
 // This file covers the default-model fallback: with zero local services
@@ -32,14 +33,26 @@ vi.mock('../../services/chat', async (importActual) => ({
   listConversations: (...a) => mockListConversations(...a),
 }))
 
+
+// The data router does not propagate parent rerenders into the route tree
+// (the legacy MemoryRouter did), so the route element consumes a tick
+// context that the tests can change to force a ChatPage rerender.
+const TickContext = createContext(0)
+function ChatPageHost() {
+  useContext(TickContext)
+  return <ChatPage />
+}
+
 function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={['/chat']}>
-      <Routes>
-        <Route path="/chat/:conversationId?" element={<ChatPage />} />
-      </Routes>
-    </MemoryRouter>
+  const router = createMemoryRouter([
+    { path: "/chat/:conversationId?", element: <ChatPageHost /> },
+  ], { initialEntries: ['/chat'] })
+  const result = render(
+    <TickContext.Provider value={0}>
+      <RouterProvider router={router} />
+    </TickContext.Provider>
   )
+  return { ...result, router }
 }
 
 beforeEach(() => {
@@ -96,20 +109,21 @@ describe('ChatPage default model fallback', () => {
       data: { configured: true, current: [{ id: 'vendor/model-a', label: 'Model A' }], builtin: [], customized: false },
       loading: false,
     })
-    const { rerender } = renderPage()
+    const { rerender, router } = renderPage()
     await waitFor(() => expect(capturedAreaProps.current).not.toBeNull())
     // User picks a different model in the empty-state dropdown.
     capturedAreaProps.current.onModelChange('vllm-other')
     await waitFor(() => expect(capturedAreaProps.current.selectedModel).toBe('vllm-other'))
     // The default changes (a new service starts) — the user's choice wins.
     servicesRef.current = [{ name: 'vllm-new', status: 'running', kind: 'chat' }]
-    rerender(
-      <MemoryRouter initialEntries={['/chat']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
-    )
+    // Bumping the tick re-renders ChatPage with the new servicesRef value.
+    await act(async () => {
+      rerender(
+        <TickContext.Provider value={1}>
+          <RouterProvider router={router} />
+        </TickContext.Provider>
+      )
+    })
     await waitFor(() => expect(capturedAreaProps.current.defaultModelName).toBe('vllm-new'))
     expect(capturedAreaProps.current.selectedModel).toBe('vllm-other')
   })
