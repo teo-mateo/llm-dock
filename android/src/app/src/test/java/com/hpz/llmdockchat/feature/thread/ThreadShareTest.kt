@@ -131,7 +131,6 @@ class ThreadShareTest {
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
                     coalesceWindowMs = 0,
-                    titleSettleDelayMs = 1,
                 )
             }
         },

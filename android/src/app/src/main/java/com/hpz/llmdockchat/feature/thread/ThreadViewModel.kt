@@ -50,7 +50,6 @@ class ThreadViewModel(
     private val mcpServersRepository: McpServersRepository,
     private val promptsRepository: PromptsRepository,
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
-    private val titleSettleDelayMs: Long = DEFAULT_TITLE_SETTLE_DELAY_MS,
     private val reconnectInitialMs: Long = ReconnectBackoff.DEFAULT_INITIAL_MS,
     private val reconnectMaxMs: Long = ReconnectBackoff.DEFAULT_MAX_MS,
 ) : ViewModel() {
@@ -200,7 +199,6 @@ class ThreadViewModel(
         collectRun(
             first = repository.reattach(run.id),
             restoreOnEarlyFailure = null,
-            titleBefore = conversation.title,
             initialRunId = run.id,
             reattach = true,
         )
@@ -235,7 +233,6 @@ class ThreadViewModel(
         collectRun(
             first = repository.send(conversationId, pending.content, pending.images),
             restoreOnEarlyFailure = pending,
-            titleBefore = current.conversation.title,
         )
     }
 
@@ -500,7 +497,6 @@ class ThreadViewModel(
         collectRun(
             first = repository.editAndResend(conversationId, edit.message.id, pending.content, pending.images),
             restoreOnEarlyFailure = pending,
-            titleBefore = current.conversation.title,
             messagesBeforeEdit = messagesBeforeEdit,
         )
     }
@@ -509,7 +505,6 @@ class ThreadViewModel(
     private fun collectRun(
         first: Flow<RunEvent>,
         restoreOnEarlyFailure: PendingUserMessage?,
-        titleBefore: String,
         messagesBeforeEdit: List<ChatMessage>? = null,
         initialRunId: String? = null,
         reattach: Boolean = false,
@@ -518,7 +513,6 @@ class ThreadViewModel(
         streamJob = viewModelScope.launch {
             var source: Flow<RunEvent> = first
             var runId: String? = initialRunId
-            var titleFrameSeen = false
             var failureMessage: String? = null
             var sawAnyFrame = false
             var error: Throwable?
@@ -527,7 +521,6 @@ class ThreadViewModel(
             while (true) {
                 val attempt = collectAttempt(source, runId)
                 runId = attempt.runId ?: runId
-                titleFrameSeen = titleFrameSeen || attempt.titleFrameSeen
                 failureMessage = attempt.failureMessage ?: failureMessage
                 sawAnyFrame = sawAnyFrame || attempt.sawAnyFrame
                 error = attempt.error
@@ -546,7 +539,6 @@ class ThreadViewModel(
                 sawAnyFrame = sawAnyFrame,
                 failureMessage = failureMessage,
                 restoreOnEarlyFailure = restoreOnEarlyFailure,
-                expectTitle = !titleFrameSeen && titleBefore == UNTITLED,
                 messagesBeforeEdit = messagesBeforeEdit,
                 reattach = reattach,
             )
@@ -558,7 +550,6 @@ class ThreadViewModel(
         knownRunId: String?,
     ): RunAttempt {
         val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage, knownRunId)
-        var titleFrameSeen = false
         var failureMessage: String? = null
 
         var pendingFlush: Job? = null
@@ -591,10 +582,7 @@ class ThreadViewModel(
                     is RunEvent.RunStatus -> {
                         if (event.status == "failed") failureMessage = event.error ?: failureMessage
                     }
-                    is RunEvent.ConversationUpdated -> {
-                        titleFrameSeen = true
-                        applyTitle(event.title)
-                    }
+                    is RunEvent.ConversationUpdated -> applyTitle(event.title)
                     RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
                     is RunEvent.Unknown -> Unit
                     else -> {
@@ -618,7 +606,6 @@ class ThreadViewModel(
             error = error,
             runId = accumulator.runId,
             failureMessage = failureMessage,
-            titleFrameSeen = titleFrameSeen,
             sawAnyFrame = accumulator.sawAnyFrame,
         )
     }
@@ -635,7 +622,6 @@ class ThreadViewModel(
         sawAnyFrame: Boolean,
         failureMessage: String?,
         restoreOnEarlyFailure: PendingUserMessage?,
-        expectTitle: Boolean,
         messagesBeforeEdit: List<ChatMessage>? = null,
         reattach: Boolean = false,
     ) {
@@ -690,18 +676,6 @@ class ThreadViewModel(
             thread = ThreadState(messages = refetched.messages, streaming = null),
             actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
         )
-        if (expectTitle) awaitAutoTitle()
-    }
-
-    private suspend fun awaitAutoTitle() {
-        repeat(TITLE_SETTLE_ATTEMPTS) {
-            delay(titleSettleDelayMs)
-            val conversation = repository.load(conversationId).getOrNull() ?: return
-            if (conversation.title != UNTITLED) {
-                applyTitle(conversation.title)
-                return
-            }
-        }
     }
 
     private fun applyTitle(title: String) {
@@ -729,10 +703,6 @@ class ThreadViewModel(
 
     companion object {
         const val DEFAULT_COALESCE_WINDOW_MS = 24L
-        const val DEFAULT_TITLE_SETTLE_DELAY_MS = 1_500L
-        const val TITLE_SETTLE_ATTEMPTS = 4
-
-        const val UNTITLED = "New Conversation"
     }
 }
 
@@ -740,7 +710,6 @@ private class RunAttempt(
     val error: Throwable?,
     val runId: String?,
     val failureMessage: String?,
-    val titleFrameSeen: Boolean,
     val sawAnyFrame: Boolean,
 )
 

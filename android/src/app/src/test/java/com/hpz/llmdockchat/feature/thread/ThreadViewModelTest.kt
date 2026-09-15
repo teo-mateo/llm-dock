@@ -137,7 +137,6 @@ class ThreadViewModelTest {
                     // dispatcher; the window itself is asserted in
                     // ThreadCoalescingTest.
                     coalesceWindowMs = 0,
-                    titleSettleDelayMs = 1,
                 )
             }
         },
@@ -413,44 +412,6 @@ class ThreadViewModelTest {
         viewModel.awaitState { it.thread.streaming == null }
     }
 
-    /**
-     * The frame is frequently never delivered: `auto_generate_title` runs after
-     * the run is already marked complete, and the SSE observer closes on the
-     * durable status after three idle seconds. So the app polls briefly instead
-     * of trusting the frame — see F04's *Deviations*.
-     */
-    @Test
-    fun `a title that arrives only after the stream closed is still picked up`() = threadTest {
-        conversation("conversation_untitled.json")
-        transport.payloads = listOf(RUN_STARTED, delta("hello"), DONE, MESSAGE_SAVED, RUN_STATUS_COMPLETED)
-        conversation("conversation_untitled.json") // refetch: title not generated yet
-        conversation() // settle poll: the auto-title has landed
-        val viewModel = viewModel()
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-
-        val state = viewModel.awaitState { it.conversation.title == "Testing Specific Greeting Request" }
-        assertNull(state.thread.streaming)
-    }
-
-    @Test
-    fun `a thread that already has a title is not polled for one`() = threadTest {
-        conversation()
-        transport.payloads = listOf(RUN_STARTED, delta("hello"), DONE, MESSAGE_SAVED)
-        conversation()
-        val viewModel = viewModel()
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-
-        viewModel.awaitState { it.thread.streaming == null }
-        // load + refetch, and no settle polls on top.
-        assertEquals(2, server.requestCount)
-    }
-
     // -- F04-R8 · failure ----------------------------------------------------
 
     @Test
@@ -637,7 +598,6 @@ class ThreadViewModelTest {
                     mcpServersRepository,
                     promptsRepository,
                     coalesceWindowMs,
-                    titleSettleDelayMs = 1,
                 )
             }
         },
@@ -774,7 +734,6 @@ class ThreadViewModelTest {
         const val RUN_STARTED = """{"type": "run_started", "run_id": "run-1"}"""
         const val DONE = "[DONE]"
         const val MESSAGE_SAVED = """{"type": "message_saved", "message_id": "m2", "seq": 2}"""
-        const val RUN_STATUS_COMPLETED = """{"type": "run_status", "status": "completed", "error": null}"""
         const val ERROR_FRAME =
             """{"error": "Service 'llamacpp-f04-test-missing' is not reachable. Is it running?"}"""
 

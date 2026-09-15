@@ -128,7 +128,6 @@ class ThreadReconnectTeardownTest {
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
                     coalesceWindowMs = 0,
-                    titleSettleDelayMs = 1L,
                     reconnectInitialMs = backoffMs,
                     reconnectMaxMs = backoffMs,
                 )

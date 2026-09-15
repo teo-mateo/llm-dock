@@ -54,8 +54,7 @@ import java.util.concurrent.TimeUnit
  * The three probes that documented broken behaviour — a failed refetch losing
  * the turn, and the coalescing tail being dropped — moved to
  * [ThreadTerminalPathTest] with their assertions inverted when those two were
- * fixed. What is left here is the title backstop's bounds, D3's no-leak rule
- * and the 409 rollback.
+ * fixed. What is left here is D3's no-leak rule and the 409 rollback.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadStreamingEdgeTest {
@@ -112,10 +111,7 @@ class ThreadStreamingEdgeTest {
     private fun conversation(fixture: String = "conversation_completed.json") =
         server.enqueue(MockResponse.Builder().body(readFixture(fixture)).build())
 
-    private fun serverError(code: Int = 500) =
-        server.enqueue(MockResponse.Builder().code(code).body("""{"error":"boom"}""").build())
-
-    private fun viewModel(titleSettleDelayMs: Long = 1L): ThreadViewModel = ViewModelProvider.create(
+    private fun viewModel(): ThreadViewModel = ViewModelProvider.create(
         store,
         viewModelFactory {
             initializer {
@@ -130,7 +126,6 @@ class ThreadStreamingEdgeTest {
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
                     coalesceWindowMs = 0,
-                    titleSettleDelayMs = titleSettleDelayMs,
                 )
             }
         },
@@ -143,86 +138,6 @@ class ThreadStreamingEdgeTest {
 
     private suspend fun ThreadViewModel.awaitState(p: (ThreadUiState.Loaded) -> Boolean) =
         withTimeout(10_000) { state.first { it is ThreadUiState.Loaded && p(it) } as ThreadUiState.Loaded }
-
-    // -- the title backstop ---------------------------------------------------
-
-    /** Bounded: at most TITLE_SETTLE_ATTEMPTS extra loads, then it stops for good. */
-    @Test
-    fun `the title backstop gives up after a bounded number of polls`() = threadTest {
-        conversation("conversation_untitled.json")
-        transport.payloads = listOf(RUN_STARTED, delta("hello"), DONE, MESSAGE_SAVED, RUN_STATUS_COMPLETED)
-        // refetch + every poll returns a still-untitled thread
-        repeat(1 + ThreadViewModel.TITLE_SETTLE_ATTEMPTS + 2) { conversation("conversation_untitled.json") }
-        val viewModel = viewModel()
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-        viewModel.awaitState { it.thread.streaming == null }
-
-        // load + refetch + at most the four polls, and no more once it settles.
-        withTimeout(5_000) {
-            while (server.requestCount < 2 + ThreadViewModel.TITLE_SETTLE_ATTEMPTS) {
-                kotlinx.coroutines.delay(20)
-            }
-        }
-        kotlinx.coroutines.delay(500)
-        assertEquals(2 + ThreadViewModel.TITLE_SETTLE_ATTEMPTS, server.requestCount)
-    }
-
-    /** A poll that fails aborts the backstop rather than retrying forever. */
-    @Test
-    fun `a failing title poll stops the backstop`() = threadTest {
-        conversation("conversation_untitled.json")
-        transport.payloads = listOf(RUN_STARTED, delta("hello"), DONE, MESSAGE_SAVED, RUN_STATUS_COMPLETED)
-        conversation("conversation_untitled.json") // refetch
-        serverError() // first poll fails
-        val viewModel = viewModel()
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-        viewModel.awaitState { it.thread.streaming == null }
-        kotlinx.coroutines.delay(500)
-        assertEquals(3, server.requestCount)
-    }
-
-    /** Leaving the screen must kill the backstop too — no polling a dead screen. */
-    @Test
-    fun `leaving the thread stops the title backstop`() = threadTest {
-        conversation("conversation_untitled.json")
-        transport.payloads = listOf(RUN_STARTED, delta("hello"), DONE, MESSAGE_SAVED, RUN_STATUS_COMPLETED)
-        repeat(8) { conversation("conversation_untitled.json") }
-        val viewModel = viewModel(titleSettleDelayMs = 300)
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-        viewModel.awaitState { it.thread.streaming == null }
-        store.clear() // navigate away
-        val atClear = server.requestCount
-        kotlinx.coroutines.delay(1_500)
-        assertEquals("polled after the screen went away", atClear, server.requestCount)
-    }
-
-    // -- a cancel on an untitled thread --------------------------------------
-
-    /** A cancelled first turn generates no title, so the backstop just burns polls. */
-    @Test
-    fun `a cancelled first turn still triggers the title backstop`() = threadTest {
-        conversation("conversation_untitled.json")
-        transport.payloads = listOf(RUN_STARTED, delta("Once upon"))
-        repeat(8) { conversation("conversation_untitled.json") }
-        val viewModel = viewModel()
-        viewModel.load()
-        viewModel.awaitLoaded()
-        viewModel.onComposerChange("hi")
-        viewModel.send()
-        viewModel.awaitState { it.thread.streaming == null }
-        kotlinx.coroutines.delay(500)
-        // load + refetch + the four wasted polls.
-        assertEquals(2 + ThreadViewModel.TITLE_SETTLE_ATTEMPTS, server.requestCount)
-    }
 
     // -- streamed text is never in `messages` --------------------------------
 
@@ -287,7 +202,6 @@ class ThreadStreamingEdgeTest {
         const val RUN_STARTED = """{"type": "run_started", "run_id": "run-1"}"""
         const val DONE = "[DONE]"
         const val MESSAGE_SAVED = """{"type": "message_saved", "message_id": "m2", "seq": 2}"""
-        const val RUN_STATUS_COMPLETED = """{"type": "run_status", "status": "completed", "error": null}"""
         const val ERROR_FRAME = """{"error": "Service 'x' is not reachable. Is it running?"}"""
 
         fun delta(text: String) = """{"choices":[{"index":0,"delta":{"content":"$text"}}]}"""
