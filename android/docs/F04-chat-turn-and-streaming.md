@@ -234,13 +234,19 @@ persists the reply. Reattachment is F09.
   at 1.5 s intervals, only while the thread was still titled exactly
   `New Conversation`) — issue #111 recorded the race, PR #210 fixed the
   server side (`observe()` now holds the stream open while the run's worker
-  is still executing, so the frame can no longer be dropped), and #211
-  removed the now-dead backstop. The `conversation_updated` frame is still
+  is still executing, so the frame can no longer be dropped), and PR #214
+  (which closed #211) removed the now-dead backstop. The
+  `conversation_updated` frame is still
   handled when it arrives: that path is what R7's title criterion rides on.
 - **`run_status` is not reattach-only.** The wire table lists it under
-  "reattach to an already-finished run". The idle backstop above emits it
-  on the *send* path too, so one reader has to accept it from any of the
-  three endpoints.
+  "reattach to an already-finished run", but one of the two current server
+  emitters sits on the shared path: `observe()`'s durable-state backstop
+  (`run_manager.py`) yields a `run_status` frame when a subscriber finds
+  the run already terminal, and `observe()` is exactly what the send and
+  edit endpoints subscribe through. The reattach endpoint adds a second
+  emitter — the terminal shortcut in `stream_run` (`routes.py`), which
+  emits the frame (with `error`) before subscribing at all. One client
+  reader has to accept the frame from any of the three endpoints.
 - **`run_status` also carries `error`.** The table shows
   `{"type":"run_status","status":"…"}`; `chat/routes.py:stream_run` sends
   `{"type":"run_status","status":…,"error":…}`, which is how a reattach to

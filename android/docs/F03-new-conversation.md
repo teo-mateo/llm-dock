@@ -147,7 +147,7 @@ empty slots.
 
 | Criterion | Verify in |
 |---|---|
-| R5 · "…then shows the generated one without a manual refresh" | **CLOSED in F04** — seen live on device. The server-side race behind it (#111) is fixed in PR #210, and the client backstop that covered it was removed in #211. |
+| R5 · "…then shows the generated one without a manual refresh" | **CLOSED in F04** — seen live on device. The server-side race behind it (#111) is fixed in PR #210, and the client backstop that covered it was removed in PR #214, which closed #211. |
 
 Unit-tested rather than device-verified, deliberately: the
 remembered-model-not-running branch (would need a container stopped), and
