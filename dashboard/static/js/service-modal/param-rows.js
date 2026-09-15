@@ -92,7 +92,7 @@ function resetServiceParams() {
     if (engine === 'llamacpp') {
         loadServiceParams({ '-ngl': '999', '-c': '8192' });
     } else if (engine === 'ds4') {
-        loadServiceParams({ '--ctx': '65536', '--warm-weights': '' });
+        loadServiceParams({ '--ctx': '65536' });
     } else {
         loadServiceParams({});
     }

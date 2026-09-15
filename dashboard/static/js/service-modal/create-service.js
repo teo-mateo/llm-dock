@@ -83,8 +83,7 @@ function getSmartDefaults(engine, modelSizeGB, vramTotalMB) {
         else if (vramGB >= 16) params['--max-model-len'] = '4096';
         else params['--max-model-len'] = '2048';
     } else if (engine === 'ds4') {
-        // Make weights resident in VRAM before serving; pick a context that fits headroom.
-        params['--warm-weights'] = '';
+        // Pick a context that fits the VRAM headroom after the model.
         const headroomGB = vramGB - (modelSizeGB * 1.05);
         if (headroomGB >= 24) params['--ctx'] = '65536';
         else if (headroomGB >= 12) params['--ctx'] = '32768';
