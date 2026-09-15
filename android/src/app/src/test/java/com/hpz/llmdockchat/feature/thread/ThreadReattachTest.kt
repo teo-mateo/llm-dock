@@ -140,7 +140,6 @@ class ThreadReattachTest {
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
                     coalesceWindowMs = 0,
-                    titleSettleDelayMs = 1L,
                     // Real backoff arithmetic is asserted in ReconnectBackoffTest;
                     // here the schedule is compressed so the *loop* can be, without
                     // any test waiting on a real second.

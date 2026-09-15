@@ -223,22 +223,20 @@ persists the reply. Reattachment is F09.
 
 ## Deviations found while implementing
 
-- **`conversation_updated` is frequently never delivered, so the app polls
-  for the title as a backstop.** `auto_generate_title` runs *after* the run
-  has already been marked complete (`run_manager._execute`), and
-  `observe()`'s idle backstop closes the stream the moment a 3 s silence
-  finds the run in a terminal state. Titling with a local model takes
-  longer than that as often as not: measured 4 s on
-  `llamacpp-gemma-4-26b-a4b-it-q8`, in which case the client gets
-  `{"type":"run_status","status":"completed"}` and the stream closes with
-  the title frame published to a bus nobody is subscribed to. The frame is
-  still handled when it does arrive (and it did on one of the two turns
-  measured); when it does not, the app refetches the conversation a few
-  times over the next six seconds, but only for a thread still titled
-  exactly `New Conversation` — the same guard the server itself uses — so
-  no other thread is ever polled. This is a dashboard-side bug the app
-  works around rather than something F04 changes; without the workaround
-  F04-R7's first criterion fails on this rig.
+- **The title frame once raced the stream close; the client backstop that
+  covered it is gone.** When F04 shipped, `auto_generate_title` ran *after*
+  the run was already marked complete (`run_manager._execute`), and
+  `observe()`'s idle backstop closed the stream the moment a 3 s silence
+  found the run in a terminal state — titling a local model takes longer as
+  often as not (measured 4 s on `llamacpp-gemma-4-26b-a4b-it-q8`), so the
+  `conversation_updated` frame was published to a bus nobody was
+  subscribed to. The app then carried a bounded backstop (up to 4 refetches
+  at 1.5 s intervals, only while the thread was still titled exactly
+  `New Conversation`) — issue #111 recorded the race, PR #210 fixed the
+  server side (`observe()` now holds the stream open while the run's worker
+  is still executing, so the frame can no longer be dropped), and #211
+  removed the now-dead backstop. The `conversation_updated` frame is still
+  handled when it arrives: that path is what R7's title criterion rides on.
 - **`run_status` is not reattach-only.** The wire table lists it under
   "reattach to an already-finished run". The idle backstop above emits it
   on the *send* path too, so one reader has to accept it from any of the
