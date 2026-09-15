@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import ChatSidebar from './ChatSidebar'
 
 // ThemeSwitcher pulls in unrelated context (icons, theme store). Stub it.
@@ -26,18 +27,20 @@ const conversations = [
 
 function renderSidebar(overrides) {
   return render(
-    <ChatSidebar
-      conversations={conversations}
-      activeId={null}
-      onSelect={() => {}}
-      onCreate={() => {}}
-      onDelete={() => {}}
-      onDeleteMany={() => {}}
-      collapsed={false}
-      onCollapse={() => {}}
-      onExpand={() => {}}
-      {...overrides}
-    />
+    <MemoryRouter>
+      <ChatSidebar
+        conversations={conversations}
+        activeId={null}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+        onDeleteMany={() => {}}
+        collapsed={false}
+        onCollapse={() => {}}
+        onExpand={() => {}}
+        {...overrides}
+      />
+    </MemoryRouter>
   )
 }
 
@@ -168,24 +171,26 @@ describe('ChatSidebar project grouping', () => {
 
   function renderWithProjects(overrides = {}) {
     return render(
-      <ChatSidebar
-        conversations={convs}
-        activeId={null}
-        onSelect={() => {}}
-        onCreate={() => {}}
-        onDelete={() => {}}
-        onDeleteMany={() => {}}
-        projects={projects}
-        onCreateProject={() => {}}
-        onRenameProject={() => {}}
-        onDeleteProject={() => {}}
-        onCreateInProject={() => {}}
-        onMoveMany={() => {}}
-        collapsed={false}
-        onCollapse={() => {}}
-        onExpand={() => {}}
-        {...overrides}
-      />
+      <MemoryRouter>
+        <ChatSidebar
+          conversations={convs}
+          activeId={null}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onDelete={() => {}}
+          onDeleteMany={() => {}}
+          projects={projects}
+          onCreateProject={() => {}}
+          onRenameProject={() => {}}
+          onDeleteProject={() => {}}
+          onCreateInProject={() => {}}
+          onMoveMany={() => {}}
+          collapsed={false}
+          onCollapse={() => {}}
+          onExpand={() => {}}
+          {...overrides}
+        />
+      </MemoryRouter>
     )
   }
 
@@ -214,18 +219,20 @@ describe('ChatSidebar project grouping', () => {
     // show a "not loaded" placeholder (and the authoritative count), not
     // "Empty project".
     render(
-      <ChatSidebar
-        conversations={[]}
-        activeId={null}
-        onSelect={() => {}}
-        onCreate={() => {}}
-        onDelete={() => {}}
-        onDeleteMany={() => {}}
-        projects={[{ id: 'p9', name: 'Ghost', conversation_count: 3 }]}
-        collapsed={false}
-        onCollapse={() => {}}
-        onExpand={() => {}}
-      />
+      <MemoryRouter>
+        <ChatSidebar
+          conversations={[]}
+          activeId={null}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onDelete={() => {}}
+          onDeleteMany={() => {}}
+          projects={[{ id: 'p9', name: 'Ghost', conversation_count: 3 }]}
+          collapsed={false}
+          onCollapse={() => {}}
+          onExpand={() => {}}
+        />
+      </MemoryRouter>
     )
     expect(screen.queryByText('Empty project')).toBeNull()
     expect(screen.getByText('3 conversations not loaded')).toBeTruthy()
@@ -326,17 +333,19 @@ describe('ChatSidebar project grouping', () => {
 
   it('without projects the sidebar renders the flat list as before', () => {
     render(
-      <ChatSidebar
-        conversations={convs}
-        activeId={null}
-        onSelect={() => {}}
-        onCreate={() => {}}
-        onDelete={() => {}}
-        onDeleteMany={() => {}}
-        collapsed={false}
-        onCollapse={() => {}}
-        onExpand={() => {}}
-      />
+      <MemoryRouter>
+        <ChatSidebar
+          conversations={convs}
+          activeId={null}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onDelete={() => {}}
+          onDeleteMany={() => {}}
+          collapsed={false}
+          onCollapse={() => {}}
+          onExpand={() => {}}
+        />
+      </MemoryRouter>
     )
     for (const t of ['A', 'A1', 'B', 'C', 'D']) {
       expect(screen.getByText(t)).toBeTruthy()
@@ -348,17 +357,19 @@ describe('ChatSidebar project grouping', () => {
 describe('ChatSidebar active-run indicator', () => {
   function renderWith(convs) {
     return render(
-      <ChatSidebar
-        conversations={convs}
-        activeId={null}
-        onSelect={() => {}}
-        onCreate={() => {}}
-        onDelete={() => {}}
-        onDeleteMany={() => {}}
-        collapsed={false}
-        onCollapse={() => {}}
-        onExpand={() => {}}
-      />
+      <MemoryRouter>
+        <ChatSidebar
+          conversations={convs}
+          activeId={null}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onDelete={() => {}}
+          onDeleteMany={() => {}}
+          collapsed={false}
+          onCollapse={() => {}}
+          onExpand={() => {}}
+        />
+      </MemoryRouter>
     )
   }
 
@@ -403,5 +414,26 @@ describe('ChatSidebar collapse', () => {
     renderSidebar({ onCollapse })
     fireEvent.click(screen.getByLabelText('Hide conversations'))
     expect(onCollapse).toHaveBeenCalled()
+  })
+})
+
+describe('ChatSidebar ghost chat entry', () => {
+  // The ghost route is entered with replace — asserting the navigation by
+  // actually landing on a route element, not by spying on useNavigate.
+  function renderWithGhostRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <Routes>
+          <Route path="/chat" element={<ChatSidebar conversations={[]} activeId={null} onSelect={() => {}} onCreate={() => {}} onDelete={() => {}} onDeleteMany={() => {}} onCollapse={() => {}} onExpand={() => {}} />} />
+          <Route path="/chat/ghost" element={<div>ghost-route</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('navigates to /chat/ghost', () => {
+    renderWithGhostRoute()
+    fireEvent.click(screen.getByText('Ghost Chat'))
+    expect(screen.getByText('ghost-route')).toBeTruthy()
   })
 })

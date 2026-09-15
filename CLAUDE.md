@@ -1197,6 +1197,29 @@ Key gotchas summarized here:
 - **Persistence policy seam** -- same runner works with `DbPersistencePolicy`
   (durable) or `NullPersistencePolicy` (ephemeral/Ghost Chat).
 
+### Ghost chat (ephemeral, zero-trace)
+
+`POST /api/chat/ghost` is the stateless sibling of `/api/chat/spinoff` (#57):
+the request carries the full message history and the reply streams back with
+zero DB writes — no conversation, no message, no artifacts (pinned by
+`test_ghost_chat.py` against a scratch DB). Same wire surface as a normal
+turn — raw deltas, `tool_call` / `tool_result` / `artifact`, `[DONE]`, legacy
+error frame — minus the run machinery: no `run_started`, no reattach, no
+server-side cancel; Stop aborts the fetch and the generator is torn down.
+`mcp_servers` (a list of ids) enables the tool loop through the global MCP
+manager; unknown ids contribute no tools and degrade to the plain path. The
+reply carries `Cache-Control: no-store` (plus `Pragma` / `Expires`) because a
+cached ghost body would itself be a trace.
+
+The client side is `useGhostChat` + `GhostChatPage` on `/chat/ghost`, reached
+from the sidebar's Ghost Chat button with `replace: true` so the route never
+becomes a history entry. Messages live only in React state and are re-sent in
+full on every request, so earlier tool rounds are reconstructed client-side:
+the hook mints the `tool_call_id`s (they only need to agree within one
+request) and re-namespaces names as `server_id__name` the way the tool loop
+does. No localStorage, no conversation row, no sidebar entry — a refresh
+erases the thread by design.
+
 ## Projects feature
 
 Projects are organizational containers in the chat subsystem with two

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-09-15
+- **Ghost chats** - New ephemeral chat mode that leaves no trace: `POST /api/chat/ghost` streams a reply from a stateless request (full history in the body, MCP tools supported) with zero DB writes and `Cache-Control: no-store` on the SSE response; the v2 UI adds a Ghost Chat page (`/chat/ghost`, sidebar button, entered with `replace: true`) whose `useGhostChat` hook keeps every message in React state only — no localStorage, no conversation row, no history entry. A refresh or tab close erases the thread by design
 - **NInfer metrics** - Live Metrics panel enabled for `template_type: "ninfer"` services: the image now ships an authed `GET /metrics` route (second build-time patch, `ninfer/ninfer-metrics.patch`, 12 Prometheus families from the engine's runtime stats), the dashboard whitelists them via `NINFER_CURATED_METRICS`, and the v2 panel renders running/waiting requests, token rates, the Active KV and prefix-hit gauges. Spec-acceptance and preemption cells stay "—" (the engine keeps no service-level aggregate for either); `/slots` stays llama.cpp-only
 
 ## 2026-09-13
