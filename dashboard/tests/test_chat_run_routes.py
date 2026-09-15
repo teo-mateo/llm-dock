@@ -340,6 +340,79 @@ def test_observe_backstop_closes_when_run_goes_terminal(ctx, monkeypatch):
         next(gen)
 
 
+def test_observe_backstop_holds_open_while_worker_in_flight(ctx, monkeypatch):
+    """A run already terminal in the DB whose worker is still executing it
+    (flag present — including the post-completion title tail) keeps the
+    stream open on heartbeats; only a gone worker lets the backstop close on
+    the durable state."""
+    app, db, manager = ctx
+    monkeypatch.setattr(run_manager_module, "HEARTBEAT_INTERVAL_S", 0.02)
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+    db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
+
+    with manager._flags_lock:
+        manager._cancel_flags[run.id] = threading.Event()
+
+    q = manager.subscribe(run.id)
+    gen = manager.observe(run.id, q)
+    assert "run_started" in next(gen)
+    for _ in range(2):
+        frame = next(gen)  # terminal DB + in-flight worker -> heartbeat
+        assert "heartbeat" in frame
+
+    with manager._flags_lock:
+        manager._cancel_flags.pop(run.id, None)
+    nxt = next(gen)  # worker gone -> backstop closes on the durable state
+    assert "run_status" in nxt and "completed" in nxt
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_title_tail_reaches_observer_past_backstop_window(ctx, monkeypatch):
+    """Issue #111: the title tail publishes no frames of its own, so a slow
+    auto_generate_title outran the idle backstop and the trailing
+    conversation_updated was delivered to no one. The stream must stay open
+    for the tail and close on STREAM_END, not the backstop."""
+    app, db, manager = ctx
+    monkeypatch.setattr(run_manager_module, "HEARTBEAT_INTERVAL_S", 0.02)
+    conv = _conv(db)
+    run = _run_row(db, conv, ChatRunStatus.RUNNING)
+
+    def slow_title(db_arg, conv_id, *a, **k):
+        time.sleep(0.15)
+        db_arg.update_conversation(conv_id, title="My Title")
+        return "My Title"
+    monkeypatch.setattr(run_manager_module, "auto_generate_title", slow_title)
+
+    class _DoneRunner:
+        def run(self, run, request, cancel_check=None):
+            db.update_chat_run_status(run.id, ChatRunStatus.COMPLETED)
+            manager.event_bus.publish(run.id, runtime.ChatRuntimeEvent(
+                "run_completed", {"message_id": "m", "seq": 1}))
+            return "reply"
+    manager.runner = _DoneRunner()
+
+    q = manager.subscribe(run.id)
+    worker = threading.Thread(target=manager._execute,
+                              args=(conv, run, None, True, "hello"))
+    worker.start()
+
+    gen = manager.observe(run.id, q)
+    assert "run_started" in next(gen)
+    frames = []
+    while True:
+        try:
+            frames.append(next(gen))
+        except StopIteration:
+            break
+    worker.join(timeout=3)
+
+    assert any("conversation_updated" in f and "My Title" in f for f in frames)
+    assert not any("run_status" in f for f in frames)
+    assert db.get_conversation(conv.id).title == "My Title"
+
+
 def _delta_evt(content):
     return runtime.ChatRuntimeEvent(
         "delta", {"content": content, "reasoning_content": "",

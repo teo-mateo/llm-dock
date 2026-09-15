@@ -547,6 +547,70 @@ describe('useChat stop/cancel wiring', () => {
     expect(result.current.streaming).toBe(false)
   })
 
+  it('send path clears streaming state on a terminal run_status frame', async () => {
+    // The server used to close the stream at the idle backstop while the title
+    // tail was still running (issue #111): a terminal run_status could arrive
+    // instead of the tail. The reply is already persisted, so the composer must
+    // unblock and refetch either way instead of the stream ending silently.
+    let handlers
+    mockStreamChat.mockImplementation((_url, _body, h) => {
+      handlers = h
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    act(() => { result.current.setConversation(CONV) })
+    await act(async () => {
+      result.current.sendMessage('hello')
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(true)
+
+    const refetchesBefore = mockGetConversation.mock.calls.length
+    await act(async () => {
+      handlers.onRunStatus({ type: 'run_status', status: 'completed' })
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(false)
+    expect(mockGetConversation.mock.calls.length).toBeGreaterThan(refetchesBefore)
+  })
+
+  it('edit path reloads the conversation on a terminal run_status frame', async () => {
+    // Issue #111, edit path: a terminal run_status means the optimistic
+    // truncation is stale relative to the DB — reload the whole conversation,
+    // as this path's error case does.
+    mockGetConversation.mockResolvedValue({
+      ...CONV,
+      active_run: null,
+      messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }],
+      critiques: {},
+      artifacts: {},
+    })
+    let handlers
+    mockStreamChat.mockImplementation((_url, _body, h) => {
+      handlers = h
+      return new Promise(() => {})
+    })
+    const { result } = renderHook(() => useChat({}))
+
+    await act(async () => { await result.current.loadConversation('conv-1') })
+    await act(async () => {
+      // Do not await editMessage's streamChat promise — the fake stream never
+      // resolves, and the terminal frame must arrive while it is still open.
+      result.current.editMessage('u1', 'edited')
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(true)
+
+    const refetchesBefore = mockGetConversation.mock.calls.length
+    await act(async () => {
+      handlers.onRunStatus({ type: 'run_status', status: 'completed' })
+      await Promise.resolve()
+    })
+    expect(result.current.streaming).toBe(false)
+    expect(mockGetConversation.mock.calls.length).toBeGreaterThan(refetchesBefore)
+  })
+
   it('reattach reconciles when the run is cancelled elsewhere (silent stream close)', async () => {
     // Codex iter 1 P1: a cancel from another tab emits no frame, so the reattach
     // stream just closes. The hook must still drop streaming + refetch.

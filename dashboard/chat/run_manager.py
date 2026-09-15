@@ -235,13 +235,21 @@ class ChatRunManager:
                 try:
                     event = q.get(timeout=HEARTBEAT_INTERVAL_S)
                 except queue.Empty:
-                    # Backstop for a reattaching observer that subscribed after
-                    # the run already published STREAM_END: close on the durable
-                    # DB state instead of heartbeating forever.
-                    run = self.db.get_chat_run(run_id)
-                    if run is None or run.status in TERMINAL_STATUSES:
-                        yield encode_sse_event("run_status", {"status": run.status if run else "unknown"})
-                        return
+                    # A worker still executing this run keeps the stream open,
+                    # including the post-completion title tail, which publishes
+                    # no frames of its own: closing on the terminal DB state here
+                    # would drop the trailing conversation_updated that the
+                    # tail is still about to publish.
+                    with self._flags_lock:
+                        in_flight = run_id in self._cancel_flags
+                    if not in_flight:
+                        # Backstop for a reattaching observer that subscribed
+                        # after the run already published STREAM_END: close on
+                        # the durable DB state instead of heartbeating forever.
+                        run = self.db.get_chat_run(run_id)
+                        if run is None or run.status in TERMINAL_STATUSES:
+                            yield encode_sse_event("run_status", {"status": run.status if run else "unknown"})
+                            return
                     yield encode_sse_event("heartbeat", {"elapsed_s": round(time.monotonic() - start, 1)})
                     continue
                 for frame in _sse_frames_for(event):
