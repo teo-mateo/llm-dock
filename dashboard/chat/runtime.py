@@ -115,6 +115,9 @@ class ChatTurnRequest:
     # Reasoning level id this run applies, snapshotted at run creation. None
     # sends no reasoning field at all.
     reasoning_level: Optional[str] = None
+    # Sampling params this run applies, snapshotted at run creation and already
+    # narrowed to what the engine can take. None sends no sampling field at all.
+    sampling_params: Optional[dict] = None
 
 
 class ChatRunner:
@@ -132,7 +135,7 @@ class ChatRunner:
             self.event_bus.publish(run_id, ChatRuntimeEvent(type, data or {}))
 
     def _build_stream(self, conv: Conversation, mcp_manager, effective_project_id=None, run_id=None,
-                      reasoning_level=None):
+                      reasoning_level=None, sampling_params=None):
         messages = self.persistence.load_messages(conv)
         enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
         # Project conversations always get the project-files tools —
@@ -160,9 +163,11 @@ class ChatRunner:
                     }))
             return stream_with_tools(conv.main_service, messages_array, tools, mcp_manager,
                                      progress_callback=_progress,
-                                     reasoning_level=reasoning_level)
+                                     reasoning_level=reasoning_level,
+                                     sampling_params=sampling_params)
         return stream_chat_completion(conv.main_service, messages_array,
-                                      reasoning_level=reasoning_level)
+                                      reasoning_level=reasoning_level,
+                                      sampling_params=sampling_params)
 
     def run(self, run, request: ChatTurnRequest, cancel_check=None) -> Optional[Message]:
         """Execute the turn for an existing (queued) run.
@@ -214,7 +219,7 @@ class ChatRunner:
 
         try:
             stream = self._build_stream(conv, mcp_manager, request.effective_project_id,
-                                        run_id, request.reasoning_level)
+                                        run_id, request.reasoning_level, request.sampling_params)
             for event_type, data in stream:
                 if cancel_check is not None and cancel_check():
                     # Stop the model/tool loop promptly: closing the generator

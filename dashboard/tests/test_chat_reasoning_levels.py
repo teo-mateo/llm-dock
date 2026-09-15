@@ -342,4 +342,4 @@ def test_run_started_frame_carries_the_level_when_it_holds(client, monkeypatch):
     assert r.status_code == 200
     # What the worker was told and what the client was told are the same value.
     assert calls["start"]["reasoning_level"] == "medium"
-    assert calls["observe_extra"] == {"reasoning_level": "medium"}
+    assert calls["observe_extra"] == {"reasoning_level": "medium", "sampling_params": None}

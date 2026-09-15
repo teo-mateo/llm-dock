@@ -98,7 +98,7 @@ class ChatRunManager:
     # -- starting a run ---------------------------------------------------
 
     def start(self, conv, run, mcp_manager=None, is_first=False, first_user_content="",
-              effective_project_id=None, reasoning_level=None):
+              effective_project_id=None, reasoning_level=None, sampling_params=None):
         """Submit the run to the worker pool and return immediately.
 
         The caller should already have subscribed an observer to the bus for
@@ -112,7 +112,7 @@ class ChatRunManager:
         """
         self._executor.submit(
             self._execute, conv, run, mcp_manager, is_first, first_user_content,
-            effective_project_id, reasoning_level,
+            effective_project_id, reasoning_level, sampling_params,
         )
 
     def request_cancel(self, run_id):
@@ -157,7 +157,7 @@ class ChatRunManager:
         return self.request_cancel(run.id)
 
     def _execute(self, conv, run, mcp_manager, is_first, first_user_content,
-                 effective_project_id=None, reasoning_level=None):
+                 effective_project_id=None, reasoning_level=None, sampling_params=None):
         cancel_event = threading.Event()
         with self._flags_lock:
             self._cancel_flags[run.id] = cancel_event
@@ -165,7 +165,8 @@ class ChatRunManager:
             msg = self.runner.run(
                 run, ChatTurnRequest(conversation=conv, mcp_manager=mcp_manager,
                                      effective_project_id=effective_project_id,
-                                     reasoning_level=reasoning_level),
+                                     reasoning_level=reasoning_level,
+                                     sampling_params=sampling_params),
                 cancel_check=cancel_event.is_set,
             )
             # Auto-title runs here (not in the SSE response) so a first-message

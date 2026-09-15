@@ -13,9 +13,10 @@ vi.mock('../../hooks/useRunningServices', () => ({
 // Heavy children that fetch or need extra context — not under test here.
 // ModelSelector captures its props so the empty-state dropdown wiring can be
 // asserted without rendering the real (hook-fetching) component.
-const { capturedModelSelectorProps, capturedReasoningLevelProps } = vi.hoisted(() => ({
+const { capturedModelSelectorProps, capturedReasoningLevelProps, capturedSamplingProps } = vi.hoisted(() => ({
   capturedModelSelectorProps: { current: null },
   capturedReasoningLevelProps: { current: null },
+  capturedSamplingProps: { current: null },
 }))
 vi.mock('./ModelSelector', () => ({
   default: (props) => { capturedModelSelectorProps.current = props; return null },
@@ -24,6 +25,12 @@ vi.mock('./ReasoningLevelSelect', () => ({
   default: (props) => {
     capturedReasoningLevelProps.current = props
     return <span data-testid="reasoning-level-slot" />
+  },
+}))
+vi.mock('./SamplingParamsControl', () => ({
+  default: (props) => {
+    capturedSamplingProps.current = props
+    return <span data-testid="sampling-slot" />
   },
 }))
 vi.mock('./McpToggle', () => ({ default: () => null }))
@@ -398,6 +405,51 @@ describe('ChatArea — reasoning level', () => {
     capturedReasoningLevelProps.current.onChange(null)
     await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledWith(
       'conv-1', { reasoning_level: null }))
+  })
+
+  it('shows the sampling control with the conversation and its stored set', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'vllm-x', main_system_prompt: '',
+      mcp_servers: [], sampling_params: { temperature: 0.4, seed: 9 },
+    })
+    const props = capturedSamplingProps.current
+    expect(props).not.toBeNull()
+    expect(props.mainService).toBe('vllm-x')
+    expect(props.value).toEqual({ temperature: 0.4, seed: 9 })
+    expect(props.disabled).toBe(false)
+  })
+
+  it('mounts the sampling control in the composer, not the header', () => {
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'vllm-x', main_system_prompt: '',
+      mcp_servers: [], sampling_params: null,
+    })
+    const form = document.querySelector('textarea').closest('form')
+    expect(form.contains(screen.getByTestId('sampling-slot'))).toBe(true)
+  })
+
+  it('saves the set the control returns and reloads the conversation', async () => {
+    const onReload = vi.fn()
+    mockUpdateConversation.mockResolvedValue({})
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'vllm-x', main_system_prompt: '',
+      mcp_servers: [], sampling_params: { temperature: 0.4 },
+    }, onReload)
+    capturedSamplingProps.current.onChange({ top_k: 20 })
+    await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledWith(
+      'conv-1', { sampling_params: { top_k: 20 } }))
+    await waitFor(() => expect(onReload).toHaveBeenCalledWith('conv-1'))
+  })
+
+  it('passes null straight through when the sampling set is cleared', async () => {
+    mockUpdateConversation.mockResolvedValue({})
+    renderConversationExtra({
+      id: 'conv-1', main_service: 'vllm-x', main_system_prompt: '',
+      mcp_servers: [], sampling_params: { temperature: 0.4 },
+    })
+    capturedSamplingProps.current.onChange(null)
+    await waitFor(() => expect(mockUpdateConversation).toHaveBeenCalledWith(
+      'conv-1', { sampling_params: null }))
   })
 
   it('disables the picker while a run is active', () => {

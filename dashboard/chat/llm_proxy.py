@@ -6,6 +6,7 @@ import re
 import requests
 
 from reasoning_levels import ENGINE_OPENROUTER, find_level, parse_levels, request_fields
+import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,14 @@ PENDING_ARGS_STEP_CHARS = 512
 # actually ran; the replay only has to preserve that the call happened and
 # roughly what came back.
 MAX_REPLAYED_TOOL_RESULT_CHARS = 4000
+
+# Default temperature for a tool-bearing turn. Measured on this host: at vLLM's
+# default 1.0 the model leaves the structured tool-call format for XML-in-content
+# ghost calls; 0.3 keeps the format on-rails without flattening the prose answer.
+# A default, not a ceiling - conversation sampling params are applied over it, so
+# reversing that order would let the tool loop outvote the operator on every
+# tool-using turn (docs/plans/chat-sampling-params.md, decision 4).
+TOOL_TURN_TEMPERATURE = 0.3
 
 # Same idea for a replayed call's arguments, per string value. Write tools put
 # the entire file body here, so this is what stops a large create_file from
@@ -323,7 +332,8 @@ def build_messages_array(system_prompt: str, messages: list) -> list:
 
 
 def stream_chat_completion(service_name: str, messages_array: list, tools: list = None,
-                           tool_choice: str = None, *, reasoning_level: str = None):
+                           tool_choice: str = None, *, reasoning_level: str = None,
+                           sampling_params: dict = None):
     """Stream a chat completion from a model service — a local engine container
     (any template_type) or an ``openrouter:<model-id>`` model.
 
@@ -341,6 +351,12 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     re-checked against what the service declares here, so an id that reached this
     point by another route still cannot go on the wire. None leaves the payload
     exactly as it was before this feature.
+
+    `sampling_params` is the run's snapshot, narrowed to the engine by the caller.
+    It is mapped through ``sampling_params.request_fields`` here rather than pasted
+    in, so an engine with no verified mapping for a field cannot receive it, and it
+    is applied over the tool-turn temperature default — an explicit temperature is
+    the user's, not something the tool loop talks them out of.
     """
     svc = resolve_service(service_name)
     if svc is None:
@@ -358,16 +374,16 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice or "auto"
-        # Tool-using turns are sensitive to sampling variance: at vLLM's
-        # default temperature=1.0, the model occasionally drifts from the
-        # structured tool-call format into XML-in-content (`<arg_key>...`
-        # `</function>` ghost calls, etc.). 0.3 keeps the format on-rails
-        # without making the answer prose feel robotic.
-        payload["temperature"] = 0.3
+        payload["temperature"] = TOOL_TURN_TEMPERATURE
     elif tool_choice is not None:
         # No tool schemas in the request, but still pin tool_choice (e.g.
         # "none" on the forced final response) for backends that honor it.
         payload["tool_choice"] = tool_choice
+
+    # Sampling fields land over the tool-turn default and under the reasoning
+    # fields, in that order on purpose: an explicit temperature is the user's, and a
+    # level still cannot be disturbed by anything above it.
+    payload.update(sampling.request_fields(sampling_params, svc.get("template_type")))
 
     # Reasoning fields go on last, so a level cannot disturb the fields above.
     reasoning_fields = request_fields(

@@ -19,7 +19,8 @@ from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
 from . import openrouter, openrouter_catalog, settings_store
 from .prompt_seed import seed_default_prompts
-from reasoning_levels import find_level, format_levels, parse_levels
+from reasoning_levels import ENGINE_OPENROUTER, find_level, format_levels, parse_levels
+import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,72 @@ def _effective_reasoning_level(conv):
         conv.id, stored, conv.main_service,
     )
     return None, f"Reasoning level '{stored}' is not offered by this model and was ignored"
+
+
+# Carried on the 400 for the same reason as the level code: the composer retries
+# a rejected save on this code alone, never on prose.
+INVALID_SAMPLING_CODE = "invalid_sampling_params"
+
+
+def _service_engine(service_name):
+    """Engine (``template_type``) a service runs on, None when it is unknown.
+
+    Reads the same service payload the chat picker uses, so what the composer
+    offers and what the runner sends are the same answer - and a stopped service
+    resolves like a running one, which is what lets params be saved before the
+    model starts. See the ``template_type`` gotcha in AGENTS.md: an engine that
+    does not travel with the service silently unmaps every per-engine field.
+    """
+    if openrouter.is_openrouter_service(service_name):
+        return ENGINE_OPENROUTER
+    from docker_utils import get_docker_services
+    try:
+        services = get_docker_services()
+    except Exception:
+        logger.exception("engine lookup failed for service %s", service_name)
+        return None
+    for svc in services:
+        if svc["name"] == service_name:
+            return svc.get("template_type") or None
+    return None
+
+
+def _sampling_params_error(value):
+    """Rejection message for a request body's sampling params, else None.
+
+    Absent, null and empty are all accepted: they mean "send nothing", which is
+    the pre-feature request rather than a change to it.
+    """
+    valid, errors = sampling.validate(value)
+    if valid:
+        return None
+    return "; ".join(errors)
+
+
+def _effective_sampling_params(conv):
+    """(params to apply, note) for a run — the second enforcement point.
+
+    The engine can have changed under a stored set since the write path checked
+    it, so a field the current engine cannot take is dropped for this run only and
+    the column is left alone; switching the model back restores the choice. The
+    note rides the run_started frame naming each dropped field, because a silently
+    dropped temperature is otherwise indistinguishable from a model that ignored
+    it - which is the outcome the whole two-enforcement-points design exists to
+    avoid.
+    """
+    stored = sampling.from_storage(getattr(conv, "sampling_params_json", None))
+    if not stored:
+        return None, None
+    applicable, dropped = sampling.drop_unsupported(stored, _service_engine(conv.main_service))
+    if not dropped:
+        return applicable, None
+    logger.info(
+        "run for conversation %s: sampling params %s not applicable to '%s', ignored",
+        conv.id, ",".join(dropped), conv.main_service,
+    )
+    return applicable, (
+        f"Sampling params ignored by this model: {', '.join(dropped)}"
+    )
 
 
 def _mcp_for_conversation(conv, enabled_servers, project_id):
@@ -568,6 +635,26 @@ def delete_project(project_id):
     return jsonify({"error": "Project not found"}), 404
 
 
+@chat_bp.route("/api/chat/sampling-fields", methods=["GET"])
+@require_auth
+def get_sampling_fields():
+    """Fields the composer may offer for one service, with their bounds.
+
+    Read from the same module that builds the request, so a knob the engine has no
+    verified mapping for is absent here and absent from the payload — the picker
+    cannot offer what the runner would drop. Unverified is indistinguishable from
+    absent, on purpose: offering a knob an engine ignores is the failure this
+    endpoint exists to prevent.
+    """
+    service = request.args.get("service") or ""
+    engine = _service_engine(service)
+    return jsonify({
+        "service": service,
+        "engine": engine,
+        "fields": sampling.fields_descriptor(sampling.supported_fields(engine)),
+    })
+
+
 # -- Conversations CRUD --
 
 @chat_bp.route("/api/chat/conversations", methods=["POST"])
@@ -585,6 +672,11 @@ def create_conversation():
         if level_error:
             return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
     reasoning_level = data.get("reasoning_level")
+    # Whole-blob replace: the body carries the complete set, and anything absent
+    # from it is unset rather than left at a previous value.
+    sampling_error = _sampling_params_error(data.get("sampling_params"))
+    if sampling_error:
+        return jsonify({"error": sampling_error, "code": INVALID_SAMPLING_CODE}), 400
 
     project_id = data.get("project_id")
     if project_id is not None:
@@ -623,6 +715,7 @@ def create_conversation():
         selected_text=data.get("selected_text"),
         project_id=project_id,
         reasoning_level=reasoning_level,
+        sampling_params_json=sampling.to_storage(data.get("sampling_params")),
     )
     try:
         conv = _get_db().create_conversation(conv)
@@ -681,6 +774,12 @@ def update_conversation(conv_id):
         )
         if level_error:
             return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
+    if "sampling_params" in data:
+        # null and {} both clear: the column keeps one empty state, NULL.
+        sampling_error = _sampling_params_error(data["sampling_params"])
+        if sampling_error:
+            return jsonify({"error": sampling_error, "code": INVALID_SAMPLING_CODE}), 400
+        data["sampling_params_json"] = sampling.to_storage(data.pop("sampling_params"))
     # project_id: null detaches (back to unfiled); a non-null value must be
     # a string naming an existing project, and only root conversations can
     # be assigned — spin-offs follow their parent's project.
@@ -840,17 +939,22 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     # Snapshot the level alongside the project: it cannot change underneath
     # this run, and a mid-run edit affects only the next one.
     reasoning_level, level_note = _effective_reasoning_level(conv)
+    sampling_params, sampling_note = _effective_sampling_params(conv)
 
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
     manager.start(conv, run, mcp_manager=mcp_manager, is_first=is_first,
                   first_user_content=first_user_content,
                   effective_project_id=effective_project_id,
-                  reasoning_level=reasoning_level)
+                  reasoning_level=reasoning_level,
+                  sampling_params=sampling_params)
 
-    started_extra = {"reasoning_level": reasoning_level}
+    started_extra = {"reasoning_level": reasoning_level,
+                     "sampling_params": sampling_params}
     if level_note:
         started_extra["reasoning_level_note"] = level_note
+    if sampling_note:
+        started_extra["sampling_params_note"] = sampling_note
 
     return Response(
         stream_with_context(manager.observe(run.id, q, run_started_extra=started_extra)),

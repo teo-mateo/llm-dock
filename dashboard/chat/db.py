@@ -198,6 +198,10 @@ class ChatDB:
             # Per-conversation reasoning level id. NULL means "send nothing",
             # which is not the same as the declared level "off".
             ("conversations", "reasoning_level", "ALTER TABLE conversations ADD COLUMN reasoning_level TEXT"),
+            # Per-conversation sampling params, one JSON object. NULL means send no
+            # sampling field at all, which is today's request unchanged; an empty
+            # object clears rather than stores, so NULL is the only empty state.
+            ("conversations", "sampling_params_json", "ALTER TABLE conversations ADD COLUMN sampling_params_json TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -317,6 +321,7 @@ class ChatDB:
             mcp_servers_json=row["mcp_servers_json"],
             project_id=row["project_id"],
             reasoning_level=row["reasoning_level"],
+            sampling_params_json=row["sampling_params_json"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -329,12 +334,12 @@ class ChatDB:
                    (id, title, main_service, sidekick_service,
                     main_system_prompt, sidekick_system_prompt,
                     parent_conversation_id, selected_text, mcp_servers_json, project_id,
-                    reasoning_level)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    reasoning_level, sampling_params_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (conv.id, conv.title, conv.main_service, conv.sidekick_service,
                  conv.main_system_prompt, conv.sidekick_system_prompt,
                  conv.parent_conversation_id, conv.selected_text, conv.mcp_servers_json,
-                 conv.project_id, conv.reasoning_level),
+                 conv.project_id, conv.reasoning_level, conv.sampling_params_json),
             )
             conn.commit()
             return self.get_conversation(conv.id)
@@ -419,7 +424,7 @@ class ChatDB:
     def update_conversation(self, conv_id: str, **kwargs) -> Optional[Conversation]:
         allowed = {"title", "main_service", "sidekick_service",
                     "main_system_prompt", "sidekick_system_prompt", "mcp_servers_json",
-                    "project_id", "reasoning_level"}
+                    "project_id", "reasoning_level", "sampling_params_json"}
         fields = []
         params = []
         for key, val in kwargs.items():

@@ -230,7 +230,8 @@ def test_tool_loop_forwards_the_level_to_every_request_including_the_forced_fina
     thinking posture halfway through, and the forced call is still this turn."""
     seen = []
 
-    def _scripted(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None):
+    def _scripted(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None,
+                  sampling_params=None):
         seen.append({"tool_choice": tool_choice, "reasoning_level": reasoning_level,
                      "rounds": len(messages_array)})
         if len(seen) <= tool_loop.MAX_TOOL_ROUNDS:
@@ -256,7 +257,8 @@ def test_tool_loop_forwards_the_level_to_every_request_including_the_forced_fina
 def test_tool_loop_defaults_to_no_level(monkeypatch):
     seen = {}
 
-    def _scripted(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None):
+    def _scripted(service_name, messages_array, tools=None, tool_choice=None, *, reasoning_level=None,
+                  sampling_params=None):
         seen["reasoning_level"] = reasoning_level
         yield ("done", {"content": "x", "reasoning_content": ""})
 

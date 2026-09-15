@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isReasoningLevelRejection } from './levelRejection'
+import { isReasoningLevelRejection, isSamplingParamsRejection } from './levelRejection'
 
 function withCode(code) {
   const err = new Error('boom')
@@ -24,5 +24,22 @@ describe('isReasoningLevelRejection', () => {
     expect(isReasoningLevelRejection(withCode('revision_conflict'))).toBe(false)
     expect(isReasoningLevelRejection(withCode(null))).toBe(false)
     expect(isReasoningLevelRejection(undefined)).toBe(false)
+  })
+})
+
+describe('isSamplingParamsRejection', () => {
+  it('matches the server code for params the engine or the grammar refuses', () => {
+    // Literal again: dashboard/tests/test_chat_sampling_params.py pins the same string.
+    expect(isSamplingParamsRejection(withCode('invalid_sampling_params'))).toBe(true)
+  })
+
+  it('does not match a level rejection, so the retry drops the right field', () => {
+    // ChatPage's retry creates the conversation a second time with exactly one
+    // composer field removed; reading a level rejection as a params rejection
+    // would drop the params and keep the rejected level.
+    expect(isSamplingParamsRejection(withCode('invalid_reasoning_level'))).toBe(false)
+    expect(isReasoningLevelRejection(withCode('invalid_sampling_params'))).toBe(false)
+    expect(isSamplingParamsRejection(withCode('revision_conflict'))).toBe(false)
+    expect(isSamplingParamsRejection(undefined)).toBe(false)
   })
 })
