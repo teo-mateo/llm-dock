@@ -11,6 +11,19 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_ROUNDS = 5
 
 
+def _namespaced_index(tools: list) -> dict:
+    """server_id -> [namespaced names] advertised to the model, from the
+    OpenAI tool dicts. The only names the model was told it can call."""
+    index = {}
+    for t in tools or []:
+        name = (t.get("function") or {}).get("name") or ""
+        if "__" not in name:
+            continue
+        server_id, _ = name.split("__", 1)
+        index.setdefault(server_id, []).append(name)
+    return index
+
+
 def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_manager: MCPClientManager,
                       progress_callback=None, *, reasoning_level: str = None,
                       sampling_params: dict = None):
@@ -98,7 +111,23 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
                             server_id, tool_name, arguments,
                             progress_callback=_progress)
                     else:
-                        result_text = f"Error: Could not determine server for tool '{namespaced_name}'"
+                        # The model emitted a name without the server_id__ prefix.
+                        # Classify it and answer instructively: a tool result is
+                        # ground truth for the model, so naming what it SHOULD
+                        # have called usually fixes the retry in one round.
+                        index = _namespaced_index(tools)
+                        if namespaced_name in index:
+                            result_text = (
+                                f"Error: '{namespaced_name}' is a server, not a tool. "
+                                f"Call one of: {', '.join(index[namespaced_name])}"
+                            )
+                        else:
+                            available = [n for names in index.values() for n in names]
+                            result_text = (
+                                f"Error: Could not determine server for tool "
+                                f"'{namespaced_name}'. Available tools: "
+                                f"{', '.join(available)}"
+                            )
                         artifacts = []
 
                     yield ("tool_result", {

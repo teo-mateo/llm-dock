@@ -57,6 +57,65 @@ def _run(monkeypatch, scripts):
     return events, record
 
 
+def _namespaced_tools():
+    return [
+        {"type": "function", "function": {"name": "render-html__render_html"}},
+        {"type": "function", "function": {"name": "render-html__render_html_from_markdown"}},
+        {"type": "function", "function": {"name": "sympy-math__solve_equation"}},
+    ]
+
+
+def _bare_name_stream(monkeypatch, bad_name, tools=None):
+    """One round of a single (mis)named tool call, then a clean done."""
+    scripts = [[_tool_calls_event(bad_name)],
+               [("done", {"content": "ok", "reasoning_content": None})]]
+    mcp = _MCP()
+    monkeypatch.setattr(tool_loop, "stream_chat_completion", _scripted_stream(scripts, []))
+    events = list(tool_loop.stream_with_tools("svc", [{"role": "user", "content": "hi"}],
+                                             tools=tools or _namespaced_tools(),
+                                             mcp_manager=mcp))
+    results = [e for e in events if e[0] == "tool_result"]
+    return results, mcp
+
+
+def test_bare_server_id_error_names_its_tools(monkeypatch):
+    """#21: the model called the toggle name instead of a tool. The tool
+    result must classify that and list exactly that server's namespaced
+    names — the model treats tool results as ground truth, so the retry
+    usually self-corrects in one round."""
+    results, mcp = _bare_name_stream(monkeypatch, "render-html")
+    assert len(results) == 1
+    assert mcp.calls == 0  # nothing was executed
+    msg = results[0][1]["result"]
+    assert "is a server, not a tool" in msg
+    assert "render-html__render_html" in msg
+    assert "render-html__render_html_from_markdown" in msg
+    assert "sympy-math__solve_equation" not in msg
+
+
+def test_unknown_bare_name_error_lists_available_tools(monkeypatch):
+    """#21: a bare tool name (no prefix at all) gets the same treatment,
+    with the full advertised list so the model can self-correct."""
+    results, mcp = _bare_name_stream(monkeypatch, "render_html")
+    assert len(results) == 1
+    assert mcp.calls == 0
+    msg = results[0][1]["result"]
+    assert "Could not determine server" in msg
+    for name in ("render-html__render_html", "render-html__render_html_from_markdown",
+                 "sympy-math__solve_equation"):
+        assert name in msg
+
+
+def test_namespaced_call_still_executes(monkeypatch):
+    """#21 regression: a correctly namespaced call is unchanged — executed
+    and its real result returned."""
+    results, mcp = _bare_name_stream(monkeypatch, "render-html__render_html")
+    assert len(results) == 1
+    assert mcp.calls == 1
+    assert results[0][1]["result"] == "search result text"
+    assert results[0][1]["server_id"] == "render-html"
+
+
 def test_forced_final_tool_call_still_yields_done(monkeypatch):
     """Regression for #70: 5 rounds of tool calls, then the forced final call
     emits ANOTHER tool call (backend ignored tool_choice). The turn must still

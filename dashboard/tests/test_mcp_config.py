@@ -215,3 +215,42 @@ class TestFileLoading:
         assert "rf" not in {
             sid for sid, c in state["merged"].items() if c.get("external")
         }
+
+
+class TestToolHints:
+    """The system-prompt suffix must present tools by their callable names.
+
+    #21: the model emitted bare names (the server id, or the tool name
+    without the prefix) because the hints anchored on the bare form. The
+    hint is where the model learns the contract, so it must show the full
+    namespaced names, plus a contract line up front.
+    """
+
+    def test_suffix_starts_with_the_naming_contract(self, mcp_config):
+        from chat import mcp_registry
+        out = mcp_registry.get_tool_hints(["render-html"])
+        assert out.startswith("Tools are named `<server_id>__<tool_name>`")
+        assert "render-html__render_html" in out
+        assert "render-html__render_html_from_markdown" in out
+
+    def test_suffix_is_empty_when_no_hint_survives(self, mcp_config):
+        from chat import mcp_registry
+        assert mcp_registry.get_tool_hints(["does-not-exist"]) == ""
+        assert mcp_registry.get_tool_hints([]) == ""
+
+    def test_builtin_hints_reference_namespaced_names(self, mcp_config):
+        from chat import mcp_registry
+        expected = {
+            "schemdraw-circuits": ("schemdraw-circuits__draw_circuit",
+                                   "schemdraw-circuits__list_schemdraw_elements"),
+            "project-files": ("project-files__list_files", "project-files__read_file",
+                              "project-files__search_files", "project-files__create_file",
+                              "project-files__write_file", "project-files__edit_file",
+                              "project-files__insert_text"),
+            "render-html": ("render-html__render_html",
+                            "render-html__render_html_from_markdown"),
+        }
+        for sid, names in expected.items():
+            hint = mcp_registry.MCP_SERVERS[sid]["tool_hint"]
+            for name in names:
+                assert name in hint, f"{sid} hint lost its {name} reference"
