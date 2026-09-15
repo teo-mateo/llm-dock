@@ -691,16 +691,24 @@ def create_conversation():
     # Resolve the system prompt for the new conversation. Precedence:
     # 1. An explicit main_system_prompt in the request body wins outright.
     # 2. Otherwise, if a prompt_id is given, fetch that managed prompt's
-    #    content from the DB (404 if it doesn't exist).
+    #    content from the DB (404 if it doesn't exist) and record the id.
     # 3. Otherwise fall back to the global default system prompt.
+    # The id is stored only where the text was actually resolved from it:
+    # it names the prompt the stored copy came from, so a body that carries
+    # its own text establishes no reference.
+    prompt_id = data.get("prompt_id")
+    if prompt_id is not None and not isinstance(prompt_id, str):
+        return jsonify({"error": "prompt_id must be a string or null"}), 400
     if "main_system_prompt" in data:
         main_system_prompt = data["main_system_prompt"]
-    elif data.get("prompt_id"):
-        prompt = _get_db().get_prompt(data["prompt_id"])
+        prompt_id = None
+    elif prompt_id:
+        prompt = _get_db().get_prompt(prompt_id)
         if prompt is None:
-            logger.info("create_conversation: prompt_id %s not found", data["prompt_id"])
+            logger.info("create_conversation: prompt_id %s not found", prompt_id)
             return jsonify({"error": "Prompt not found"}), 404
         main_system_prompt = prompt.content
+        prompt_id = prompt.id
     else:
         main_system_prompt = settings_store.get_main_system_prompt()
 
@@ -714,12 +722,18 @@ def create_conversation():
         parent_conversation_id=data.get("parent_conversation_id"),
         selected_text=data.get("selected_text"),
         project_id=project_id,
+        prompt_id=prompt_id,
         reasoning_level=reasoning_level,
         sampling_params_json=sampling.to_storage(data.get("sampling_params")),
     )
     try:
         conv = _get_db().create_conversation(conv)
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError as e:
+        # A prompt deleted between the existence check above and the insert
+        # — the DB trigger rejected the orphan reference (same race as
+        # projects).
+        if "prompt not found" in str(e):
+            return jsonify({"error": "Prompt not found"}), 404
         # The project was deleted between the existence check above and the
         # insert — the DB trigger rejected the orphan reference.
         return jsonify({"error": "Project not found"}), 400
@@ -793,9 +807,28 @@ def update_conversation(conv_id):
             return jsonify({"error": "Spin-off conversations inherit their parent's project"}), 400
         if db.get_project(data["project_id"]) is None:
             return jsonify({"error": "Project not found"}), 400
+    # prompt_id: null detaches (the stored text stays, which is exactly the
+    # hand-written case); a non-null value resolves the prompt's content into
+    # main_system_prompt, so the run path keeps reading the stored copy. An
+    # explicit main_system_prompt in the same body wins and establishes no
+    # reference — same precedence as create.
+    if "prompt_id" in data and data["prompt_id"] is not None:
+        if not isinstance(data["prompt_id"], str):
+            return jsonify({"error": "prompt_id must be a string or null"}), 400
+        if "main_system_prompt" in data:
+            data.pop("prompt_id")
+        else:
+            prompt = db.get_prompt(data["prompt_id"])
+            if prompt is None:
+                return jsonify({"error": "Prompt not found"}), 404
+            data["main_system_prompt"] = prompt.content
     try:
         conv = db.update_conversation(conv_id, **data)
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError as e:
+        # A prompt deleted between the existence check above and the write —
+        # the DB trigger rejected the orphan reference.
+        if "prompt not found" in str(e):
+            return jsonify({"error": "Prompt not found"}), 404
         # The project was deleted between the existence check above and the
         # write — the DB trigger rejected the orphan reference.
         return jsonify({"error": "Project not found"}), 400

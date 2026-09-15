@@ -156,13 +156,14 @@ describe('ChatArea — prompt selection', () => {
     mockUpdateConversation.mockReset()
   })
 
-  function renderConversation(mainSystemPrompt = '', onSend) {
+  function renderConversation(onSend, { mainSystemPrompt = '', promptId = null } = {}) {
     return render(
       <ChatArea
         conversation={{
           id: 'conv-1',
           main_service: 'vllm-test',
           main_system_prompt: mainSystemPrompt,
+          prompt_id: promptId,
           mcp_servers: [],
         }}
         awaitingConversation={false}
@@ -177,40 +178,44 @@ describe('ChatArea — prompt selection', () => {
   }
 
   it('shows the selected prompt name in the selector button', () => {
-    renderConversation('You are a helpful assistant.', vi.fn())
+    renderConversation(vi.fn(), { mainSystemPrompt: 'You are a helpful assistant.', promptId: 'prompt-1' })
     expect(screen.getByText('Prompt 1')).toBeTruthy()
   })
 
-  it('shows None when the system prompt does not match any managed prompt', () => {
-    renderConversation('custom prompt', vi.fn())
+  it('shows None for a legacy conversation whose text only matches a prompt', () => {
+    // The selection is the stored reference, not a content match: a
+    // pre-feature conversation with no prompt_id is custom text even when
+    // it happens to equal a managed prompt's content.
+    renderConversation(vi.fn(), { mainSystemPrompt: 'You are a helpful assistant.' })
     expect(screen.getByText('None')).toBeTruthy()
   })
 
-  it('selecting a prompt calls updateConversation with its content', () => {
-    renderConversation('', vi.fn())
+  it('selecting a prompt calls updateConversation with the id only', () => {
+    renderConversation(vi.fn())
 
     fireEvent.click(screen.getByRole('button', { name: /System Prompt/ }))
     fireEvent.click(screen.getByRole('radio', { name: /Prompt 1/ }))
 
     expect(mockUpdateConversation).toHaveBeenCalledWith('conv-1', {
-      main_system_prompt: 'You are a helpful assistant.',
+      prompt_id: 'prompt-1',
     })
   })
 
-  it('selecting None calls updateConversation with empty string', () => {
-    renderConversation('You are a helpful assistant.', vi.fn())
+  it('selecting None detaches the reference and clears the text', () => {
+    renderConversation(vi.fn(), { mainSystemPrompt: 'You are a helpful assistant.', promptId: 'prompt-1' })
 
     fireEvent.click(screen.getByRole('button', { name: /System Prompt/ }))
     fireEvent.click(screen.getByRole('radio', { name: /^None/ }))
 
     expect(mockUpdateConversation).toHaveBeenCalledWith('conv-1', {
+      prompt_id: null,
       main_system_prompt: '',
     })
   })
 
   it('sends a message immediately without any prompt-save flush', async () => {
     const onSend = vi.fn()
-    const { container } = renderConversation('', onSend)
+    const { container } = renderConversation(onSend)
 
     const composer = container.querySelector('textarea')
     fireEvent.change(composer, { target: { value: 'hello' } })

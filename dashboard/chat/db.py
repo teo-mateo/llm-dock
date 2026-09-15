@@ -140,6 +140,33 @@ WHEN NEW.parent_conversation_id IS NOT NULL AND NEW.project_id IS NOT NULL
 BEGIN
     SELECT RAISE(ABORT, 'spin-off conversations cannot carry a project');
 END;
+
+-- Same validate-then-write race guard as the project triggers: the routes
+-- check prompt existence first, these make a dangling id fail the write
+-- instead of persisting it.
+CREATE TRIGGER IF NOT EXISTS trg_conversations_prompt_fk_insert
+BEFORE INSERT ON conversations
+WHEN NEW.prompt_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM chat_prompts WHERE id = NEW.prompt_id)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt not found');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_conversations_prompt_fk_update
+BEFORE UPDATE OF prompt_id ON conversations
+WHEN NEW.prompt_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM chat_prompts WHERE id = NEW.prompt_id)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt not found');
+END;
+
+-- ON DELETE SET NULL for the reference: a deleted managed prompt leaves
+-- every conversation pointing at it with its stored copy, prompt_id NULL.
+CREATE TRIGGER IF NOT EXISTS trg_conversations_prompt_setnull_delete
+AFTER DELETE ON chat_prompts
+BEGIN
+    UPDATE conversations SET prompt_id = NULL WHERE prompt_id = OLD.id;
+END;
 """
 
 
@@ -202,6 +229,10 @@ class ChatDB:
             # sampling field at all, which is today's request unchanged; an empty
             # object clears rather than stores, so NULL is the only empty state.
             ("conversations", "sampling_params_json", "ALTER TABLE conversations ADD COLUMN sampling_params_json TEXT"),
+            # Managed-prompt reference. No FK here either: sqlite's ALTER TABLE
+            # can't add one, so the triggers below are the referential half,
+            # including the ON DELETE SET NULL a deleted prompt needs.
+            ("conversations", "prompt_id", "ALTER TABLE conversations ADD COLUMN prompt_id TEXT"),
         ]
         for table, column, sql in migrations:
             try:
@@ -320,6 +351,7 @@ class ChatDB:
             selected_text=row["selected_text"],
             mcp_servers_json=row["mcp_servers_json"],
             project_id=row["project_id"],
+            prompt_id=row["prompt_id"],
             reasoning_level=row["reasoning_level"],
             sampling_params_json=row["sampling_params_json"],
             created_at=row["created_at"],
@@ -334,12 +366,12 @@ class ChatDB:
                    (id, title, main_service, sidekick_service,
                     main_system_prompt, sidekick_system_prompt,
                     parent_conversation_id, selected_text, mcp_servers_json, project_id,
-                    reasoning_level, sampling_params_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    prompt_id, reasoning_level, sampling_params_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (conv.id, conv.title, conv.main_service, conv.sidekick_service,
                  conv.main_system_prompt, conv.sidekick_system_prompt,
                  conv.parent_conversation_id, conv.selected_text, conv.mcp_servers_json,
-                 conv.project_id, conv.reasoning_level, conv.sampling_params_json),
+                 conv.project_id, conv.prompt_id, conv.reasoning_level, conv.sampling_params_json),
             )
             conn.commit()
             return self.get_conversation(conv.id)
@@ -424,7 +456,7 @@ class ChatDB:
     def update_conversation(self, conv_id: str, **kwargs) -> Optional[Conversation]:
         allowed = {"title", "main_service", "sidekick_service",
                     "main_system_prompt", "sidekick_system_prompt", "mcp_servers_json",
-                    "project_id", "reasoning_level", "sampling_params_json"}
+                    "project_id", "prompt_id", "reasoning_level", "sampling_params_json"}
         fields = []
         params = []
         for key, val in kwargs.items():

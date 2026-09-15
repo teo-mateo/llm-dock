@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import DebugOverlay from './DebugOverlay'
@@ -54,12 +54,9 @@ export default function ChatArea({
 }) {
   const { critique, loading: critiqueLoading } = useCritique(setCritiques)
   const { prompts } = useChatPrompts()
-  const currentPrompt = conversation?.main_system_prompt || ''
-  const selectedPromptId = useMemo(() => {
-    if (!currentPrompt) return null
-    const match = prompts.find(p => p.content === currentPrompt)
-    return match ? match.id : null
-  }, [currentPrompt, prompts])
+  // The reference, not a content match: the conversation records which managed
+  // prompt its copy came from; legacy and hand-written ones simply have none.
+  const selectedPromptId = conversation?.prompt_id || null
   const [critiqueTarget, setCritiqueTarget] = useState(null)
   const [pendingInserts, setPendingInserts] = useState([])
   const [debugOpen, setDebugOpen] = useState(false)
@@ -225,10 +222,13 @@ export default function ChatArea({
   }
 
   async function handlePromptSelect(promptId) {
-    const nextPrompt = promptId === null
-      ? ''
-      : prompts.find(p => p.id === promptId)?.content || ''
-    await updateConversation(conversation.id, { main_system_prompt: nextPrompt })
+    // The id alone is the change; the server resolves the content. Null
+    // detaches the reference and keeps today's picker semantics of clearing
+    // the text to the default.
+    const body = promptId === null
+      ? { prompt_id: null, main_system_prompt: '' }
+      : { prompt_id: promptId }
+    await updateConversation(conversation.id, body)
     onReloadConversation?.(conversation.id)
   }
 
