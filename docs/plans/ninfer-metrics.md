@@ -85,7 +85,7 @@ NInfer side (pinned `d4929686`, source inspected; the host's running service
   `/v1/responses*`, `/v1/messages*` (`http_server.cpp:register_routes`).
 - **The data exists in-process.** `GenerationService` exposes
   `runtime_stats()` / `memory_summary()` / `is_available()`
-  (`src/serve/generation_service.h:116-124`). `RuntimeStats`
+  (`src/serve/generation_service.h:107/109/111`). `RuntimeStats`
   (`include/ninfer/types.h:885`) carries: `running_requests`, `prefilling_requests`,
   `decode_ready_requests`, `waiting_requests`, `computed_prefill_tokens`,
   `committed_decode_tokens`, `decode_rounds`, `reused_prompt_tokens`,
@@ -97,7 +97,7 @@ NInfer side (pinned `d4929686`, source inspected; the host's running service
   same access pattern.
 - **No service-level spec aggregation** (see §1 exclusions): per-request
   `draft_n` / `draft_n_accepted` only (`src/serve/openai_chat_response.cpp:69-71`).
-- **Patch discipline precedent:** `ninfer/Dockerfile:36-37` applies
+- **Patch discipline precedent:** `ninfer/Dockerfile:34-35` applies
   `ninfer-cu129-port.patch` with `git apply` at build time; a build-time apply failure
   fails the image build loudly. ds4 carries two independent patches the same way.
 - **Upstream:** `git rev-list --count d4929686..origin/master` → 0 (2026-09-13). There
@@ -129,7 +129,7 @@ Patch contents (minimal, two files, no CMake change):
 - `src/serve/http_server.cpp` — route registration
   `server_.Get("/metrics", …)` next to `/health`, plus the handler:
   - `service_ == nullptr || !service_->is_available()` → **503** (mirrors `/health`,
-    `http_server.cpp:434-439`);
+    `http_server.cpp:428-433`);
   - otherwise read `service_->runtime_stats()` and `service_->memory_summary()` and
     render Prometheus text (`# HELP` / `# TYPE` + one sample line per family, no
     labels) from an anonymous-namespace formatter.
@@ -147,7 +147,7 @@ Patch contents (minimal, two files, no CMake change):
 | `ninfer:decode_rounds_total` | counter | `RuntimeStats.decode_rounds` | extra, debug |
 | `ninfer:num_requests_running` | gauge | `RuntimeStats.running_requests` | RequestStrip "Running" |
 | `ninfer:num_requests_waiting` | gauge | `RuntimeStats.waiting_requests` | RequestStrip "Waiting" |
-| `ninfer:num_requests_prefilling` | gauge | `RuntimeStats.prefilling_requests` | extra; see §3.3 gate G2 |
+| `ninfer:num_requests_prefilling` | gauge | `RuntimeStats.prefilling_requests` | extra; see §5 gate G3 |
 | `ninfer:kv_cache_usage_perc` | gauge | `device_main_kv_occupied_pages / kv_capacity_page_groups`, clamped 0..1 (0 when denominator 0) | "Active KV" donut (0..1, like vLLM) |
 | `ninfer:kv_occupied_pages` | gauge | `RuntimeStats.device_main_kv_occupied_pages` | extra, raw |
 | `ninfer:kv_capacity_page_groups` | gauge | `MemorySummary.kv_capacity_page_groups` | extra, raw |
@@ -178,7 +178,7 @@ Notes on the mapping:
   uninteresting families out, matching the existing mechanism). The curated-set
   selection in `_parse_metrics` is currently a binary expression
   (`VLLM_CURATED_METRICS if engine == "vllm" else LLAMACPP_CURATED_METRICS`,
-  `routes/metrics.py:59`); it becomes a 3-way lookup keyed on `engine`.
+  `routes/metrics.py:60`); it becomes a 3-way lookup keyed on `engine`.
 - `engine` payload value: `"ninfer"`; the vLLM-only `per_pos` flattening branch in
   `_parse_metrics` stays vLLM-only (ninfer emits no labeled samples in phase 1).
 - `/slots` route unchanged; a ninfer service hits the existing 400 branch.
@@ -240,7 +240,7 @@ repo root.
 
 | Step | Files / symbols | Behavior | Depends on | Acceptance test |
 |---|---|---|---|---|
-| 1. Engine patch | `ninfer/ninfer-metrics.patch` (new), `ninfer/Dockerfile` (two lines), `.pi/skills/check-upstream/SKILL.md` | `GET /metrics` route per §3.1; build-time apply | — | G1 live probe: unauth 401, authed 200 with all 12 families, 503 while unavailable (probe before `attach`, or a stopped-then-starting container); `git -C /github/Neroued/ninfer apply --check` passes on the pinned tree |
+| 1. Engine patch | `ninfer/ninfer-metrics.patch` (new), `ninfer/Dockerfile` (two lines), `.pi/skills/check-upstream/SKILL.md` | `GET /metrics` route per §3.1; build-time apply | — | G1 live probe: unauth 401, authed 200 with all 12 families, 503 while unavailable (probe before `attach`, or a stopped-then-starting container); `git apply --check` passes on a fresh clone of the pin |
 | 2. Dashboard | `dashboard/routes/metrics.py` (`NINFER_CURATED_METRICS`, gate, engine pass-through); `dashboard/tests/test_metrics.py` (`TestNinferMetrics` + ninfer service in fixture, slots-400 case) | R1, R4 | 1 (for the live gate; unit tests mock the fetch and need no image) | `venv/bin/python -m pytest tests/test_metrics.py -q` |
 | 3. Frontend | `dashboard/frontend/src/hooks/useServiceMetrics.js` (`NINFER_TO_VLLM`, table-driven `normalizeMetrics`), `…/ServiceDetailsPage.jsx:184`; `…/hooks/useServiceMetrics.test.js` (ninfer rename test mirroring the llamacpp one; assert no `/slots` fetch for `engine: "ninfer"`) | R2, R3 | 2 | `npm test`, `npm run build` |
 | 4. Docs | CLAUDE.md NInfer section, `CHANGELOG.md` | R5 | 1-3 | Manual: copy still matches code (review gate) |
@@ -280,9 +280,15 @@ steps 2-3 are short and land in the same PR.
 - **G2 — KV gauge units.** `device_main_kv_occupied_pages` is a target-level physical
   page count while `kv_capacity_page_groups` is the capacity resolver's unit
   (`src/targets/qwen3_6/impl/runtime/program_impl.h:9482`,
-  `src/runtime/engine/causal_score_core.h:86`). NInfer's own logs pair the two as the
-  main-KV occupancy pair (`operational_log.cpp:457-459`), so the ratio is the proposal
-  — but the units are not proven 1:1 from source. Gate: run a growing-context workload
+  `src/runtime/engine/causal_score_core.h:86`). NInfer's own logs do not pair them:
+  the occupancy field is only compared between snapshots to decide whether a stats
+  report is worth emitting (`src/serve/http_server.cpp:109-110`), and exported to the
+  request JSONL as `device_main_kv_pages` (`src/serve/request_log.cpp:790`); the one
+  `pages {}/{}` log line is `OperationalLog::engine_capacity`
+  (`src/serve/operational_log.cpp:455-461`) pairing `kv_capacity_page_groups` with
+  `kv_capacity_max_page_groups` — capacity against capacity, both `MemorySummary`
+  fields. The ratio therefore has no in-tree precedent and its units are not proven
+  1:1 from source. Gate: run a growing-context workload
   and confirm the gauge climbs with context, stays within [0, 1], and tracks
   `nvidia-smi` VRAM growth. If the scale is wrong, expose the raw pair (already
   curated) and fix the ratio before declaring R2 done.

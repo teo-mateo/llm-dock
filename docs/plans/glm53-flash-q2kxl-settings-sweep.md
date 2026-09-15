@@ -1,8 +1,11 @@
 # GLM-5.3-Flash UD-Q2_K_XL — llama.cpp settings sweep
 
-Probe behind the `llamacpp-glm-5.3-flash-q2kxl` service config (port 3339,
-image `llm-dock-llamacpp:glm5next-lru` = ggml-org PR #27754 glm5next +
-PR #27861 MoE expert LRU cache, commit `ffe1bae08`).
+Probe behind the `llamacpp-glm-5.3-flash-q2kxl` service config (port 3336).
+The sweep ran on image `llm-dock-llamacpp:glm5next-lru` = ggml-org PR #27754
+glm5next + PR #27861 MoE expert LRU cache, commit `ffe1bae08`; both
+`llamacpp-glm-5.3-flash-q2kxl` (3336) and `llamacpp-glm-5.3-flash-q2kxl-lru`
+(3339) now run `llm-dock-llamacpp:glm5next-0910-lru` — the newer base the last
+section of this document landed — with the final config below.
 
 Objective: highest prefill (PP) and generation (TG) throughput on the host
 below, for a 101.25 GiB model on a 97,887 MiB GPU.
@@ -156,10 +159,15 @@ change, but a free one.
 
 ```
 -ngl 999 -c 131072 -fa auto -b 2048 -ub 1024 -t 12 -tb 12
---no-mmap --parallel 1 --fit off --spec-type none
+--load-mode none --parallel 1 --fit off --spec-type none
 -ncmoe 10 --moe-expert-cache 48 --moe-expert-cache-inserts 1
 -ctk q8_0 -ctv q8_0 -lv 4
 ```
+
+As applied today, on `glm5next-0910-lru`. It was measured on the old base as
+`--no-mmap`, which that base takes and the new one rejects (see the flag
+rename above). Perf-relevant flags only — both services also carry `--jinja`,
+`--temp 1.0` and `--top-p 0.95`.
 
 vs baseline: **PP 2.5x** (301 -> 751 t/s at 32k; 820 at 8k), **TG parity at
 depth** (35-39 vs 36-38 cold-cache; 59 -> 51.6 t/s steady-state, -12%),
