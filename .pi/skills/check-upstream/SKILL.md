@@ -139,7 +139,9 @@ git log --oneline <image_commit>..origin/<branch>      # what changed
   2. the four kernel families that stage > 48 KiB of shared memory (`nvfp4_w4a4_mma`, `w8_small_t_mma`, `w8_rowsplit_gemm_medium_t_splitk`, `w8_rowsplit_gemm_mma`) — CUDA ≤ 12.9's ptxas/nvlink reject those statically, which is what the rest of the patch moves onto the dynamic-shared path.
 
   A cheap check that a new tree still needs the patch: clone it, `git apply --check ninfer/ninfer-cu129-port.patch`, and `grep -c 'cudaFuncSetAttribute' src/ops/linear/w8/w8_small_t.cu`. If the patch no longer applies, regenerate it from the local checkout (`git -C /github/Neroued/ninfer diff`) and bump `NINFER_COMMIT` with it.
-- **Rebuild:** `./build-ninfer.sh` (`NINFER_COMMIT=<sha>` overrides the pin; the patch must still apply).
+
+- **Second patch — metrics route.** `ninfer/ninfer-metrics.patch` adds an authed `GET /metrics` route (12 Prometheus families sourced from `RuntimeStats` + `MemorySummary`) on top of the port patch. It dies when upstream ships a stats endpoint of its own — a different retirement condition than the port patch, so it is tracked separately. Cheap check that a new tree still needs it: `git apply --check ninfer/ninfer-metrics.patch` on the fresh clone (after the port patch, since the two touch disjoint files). If it no longer applies, regenerate it (`git -C /github/Neroued/ninfer diff`) and bump `NINFER_COMMIT` with it; if upstream now has a native `/metrics`, drop the Dockerfile's `COPY`/`RUN` pair for it and retire the dashboard whitelist accordingly (see `docs/plans/ninfer-metrics.md`).
+- **Rebuild:** `./build-ninfer.sh` (`NINFER_COMMIT=<sha>` overrides the pin; both patches must still apply).
 
 ## ik_llama
 

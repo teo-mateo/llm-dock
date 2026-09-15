@@ -1,0 +1,126 @@
+diff --git a/src/serve/http_server.cpp b/src/serve/http_server.cpp
+index e1c12dcd..641e323d 100644
+--- a/src/serve/http_server.cpp
++++ b/src/serve/http_server.cpp
+@@ -139,6 +139,78 @@ std::string response_request_id(const httplib::Response& response) {
+     return {};
+ }
+ 
++void emit_prometheus_family(std::string& out, const std::string& name, const char* type,
++                            const char* help, const std::string& value) {
++    out += "# HELP ";
++    out += name;
++    out += ' ';
++    out += help;
++    out += "\n# TYPE ";
++    out += name;
++    out += ' ';
++    out += type;
++    out += "\n";
++    out += name;
++    out += ' ';
++    out += value;
++    out += '\n';
++}
++
++// Unlabeled families: the server hosts one model, and the dashboard scrapes one
++// family set per service. Counters are process-lifetime; a container restart
++// resets them, which the dashboard's Math.max(0, delta) clamp already handles.
++std::string render_metrics_snapshot(const ninfer::RuntimeStats& stats,
++                                    const ninfer::MemorySummary& memory) {
++    // Occupied pages over the page-group capacity; clamped to [0, 1] and 0 when
++    // the capacity is unknown. The raw pair is emitted alongside (kv_occupied_pages
++    // / kv_capacity_page_groups), so a wrong unit ratio is visible and fixable.
++    double kv_usage = 0.0;
++    if (memory.kv_capacity_page_groups > 0) {
++        kv_usage = static_cast<double>(stats.device_main_kv_occupied_pages) /
++                   static_cast<double>(memory.kv_capacity_page_groups);
++        if (kv_usage < 0.0) { kv_usage = 0.0; }
++        if (kv_usage > 1.0) { kv_usage = 1.0; }
++    }
++    std::string out;
++    emit_prometheus_family(
++        out, "ninfer:prompt_tokens_total", "counter",
++        "Prompt tokens evaluated by prefill; reused checkpoint-prefix tokens excluded.",
++        std::to_string(stats.computed_prefill_tokens));
++    emit_prometheus_family(out, "ninfer:generation_tokens_total", "counter",
++                           "Tokens committed by decode rounds.",
++                           std::to_string(stats.committed_decode_tokens));
++    emit_prometheus_family(out, "ninfer:decode_rounds_total", "counter",
++                           "Decode batch executions.", std::to_string(stats.decode_rounds));
++    emit_prometheus_family(out, "ninfer:num_requests_running", "gauge",
++                           "Requests actively decoding.",
++                           std::to_string(stats.running_requests));
++    emit_prometheus_family(out, "ninfer:num_requests_waiting", "gauge",
++                           "Requests waiting for capacity.",
++                           std::to_string(stats.waiting_requests));
++    emit_prometheus_family(out, "ninfer:num_requests_prefilling", "gauge",
++                           "Requests in prefill.", std::to_string(stats.prefilling_requests));
++    emit_prometheus_family(out, "ninfer:kv_cache_usage_perc", "gauge",
++                           "Device main KV occupancy over capacity, clamped to [0, 1].",
++                           std::to_string(kv_usage));
++    emit_prometheus_family(out, "ninfer:kv_occupied_pages", "gauge",
++                           "Device main KV occupied pages (raw).",
++                           std::to_string(stats.device_main_kv_occupied_pages));
++    emit_prometheus_family(out, "ninfer:kv_capacity_page_groups", "gauge",
++                           "Device main KV capacity in page groups (raw).",
++                           std::to_string(memory.kv_capacity_page_groups));
++    emit_prometheus_family(
++        out, "ninfer:prefix_cache_queries_total", "counter",
++        "Prompt tokens presented, computed plus reused (monotonic by construction).",
++        std::to_string(stats.computed_prefill_tokens + stats.reused_prompt_tokens));
++    emit_prometheus_family(out, "ninfer:prefix_cache_hits_total", "counter",
++                           "Prompt tokens served from reused prefixes.",
++                           std::to_string(stats.reused_prompt_tokens));
++    emit_prometheus_family(out, "ninfer:host_kv_occupied_bytes", "gauge",
++                           "Host KV residency in bytes (raw).",
++                           std::to_string(stats.host_kv_occupied_bytes));
++    return out;
++}
++
+ } // namespace
+ 
+ void write_openai_error(httplib::Response& response, const ApiError& error) {
+@@ -431,6 +503,9 @@ void HttpServer::register_routes() {
+         res.set_content(nlohmann::json{{"status", available ? "ok" : "unavailable"}}.dump(),
+                         "application/json");
+     });
++    server_.Get("/metrics", [this](const httplib::Request& req, httplib::Response& res) {
++        handle_metrics(req, res);
++    });
+     server_.Get("/v1/models", [this](const httplib::Request& req, httplib::Response& res) {
+         handle_models(req, res);
+     });
+@@ -497,6 +572,20 @@ void HttpServer::handle_model(const httplib::Request& req, httplib::Response& re
+                     "application/json");
+ }
+ 
++void HttpServer::handle_metrics(const httplib::Request&, httplib::Response& res) const {
++    // /health mirror: 503 until the service is attached and ready. Auth is the
++    // pre-routing handler's job (it guards every path but /health and OPTIONS),
++    // so no key check here.
++    if (service_ == nullptr || !service_->is_available()) {
++        res.status = 503;
++        res.set_content(nlohmann::json{{"status", "unavailable"}}.dump(), "application/json");
++        return;
++    }
++    res.set_content(render_metrics_snapshot(service_->runtime_stats(),
++                                            service_->memory_summary()),
++                    "text/plain; version=0.0.4; charset=utf-8");
++}
++
+ bool HttpServer::bind() { return server_.bind_to_port(options_.host, options_.port); }
+ 
+ void HttpServer::attach(GenerationService& service) {
+diff --git a/src/serve/http_server.h b/src/serve/http_server.h
+index 24314949..80552f55 100644
+--- a/src/serve/http_server.h
++++ b/src/serve/http_server.h
+@@ -87,6 +87,7 @@ private:
+     void handle_response_compact(const httplib::Request& req, httplib::Response& res);
+     void handle_models(const httplib::Request& req, httplib::Response& res) const;
+     void handle_model(const httplib::Request& req, httplib::Response& res) const;
++    void handle_metrics(const httplib::Request& req, httplib::Response& res) const;
+ 
+     void record_request_start(const RequestLogContext& context);
+     void record_request_rejected(const RequestRejectionLogContext& context);

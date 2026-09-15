@@ -45,6 +45,32 @@ LLAMACPP_CURATED_METRICS = {
     "llamacpp:n_busy_slots_per_decode",
 }
 
+# Emitted by the ninfer-metrics.patch engine route (12 unlabeled families
+# rendered from RuntimeStats + MemorySummary). Spec-acceptance and preemption
+# families are deliberately absent: NInfer has no service-level aggregate for
+# either, so the panel renders those as "—" (see docs/plans/ninfer-metrics.md).
+NINFER_CURATED_METRICS = {
+    "ninfer:prompt_tokens_total",
+    "ninfer:generation_tokens_total",
+    "ninfer:decode_rounds_total",
+    "ninfer:num_requests_running",
+    "ninfer:num_requests_waiting",
+    "ninfer:num_requests_prefilling",
+    "ninfer:kv_cache_usage_perc",
+    "ninfer:kv_occupied_pages",
+    "ninfer:kv_capacity_page_groups",
+    "ninfer:prefix_cache_queries_total",
+    "ninfer:prefix_cache_hits_total",
+    "ninfer:host_kv_occupied_bytes",
+}
+
+# Curated set per engine: the whitelist keeps uninteresting families out.
+CURATED_METRICS = {
+    "vllm": VLLM_CURATED_METRICS,
+    "llamacpp": LLAMACPP_CURATED_METRICS,
+    "ninfer": NINFER_CURATED_METRICS,
+}
+
 
 def _get_service_config(service_name: str):
     from config import COMPOSE_FILE
@@ -57,7 +83,9 @@ def _get_service_config(service_name: str):
 def _parse_metrics(text: str, engine: str) -> dict:
     from prometheus_client.parser import text_string_to_metric_families
 
-    curated = VLLM_CURATED_METRICS if engine == "vllm" else LLAMACPP_CURATED_METRICS
+    curated = CURATED_METRICS.get(engine)
+    if curated is None:
+        return {}
     result = {}
     try:
         families = text_string_to_metric_families(text)
@@ -152,14 +180,13 @@ def get_service_metrics(service_name):
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     template_type = config.get("template_type")
-    if template_type not in ("vllm", "llamacpp"):
+    engine = {"vllm": "vllm", "llamacpp": "llamacpp", "ninfer": "ninfer"}.get(template_type)
+    if engine is None:
         return jsonify({
             "metrics": {},
             "engine": template_type,
             "scraped_at": datetime.now(timezone.utc).isoformat(),
         })
-
-    engine = "vllm" if template_type == "vllm" else "llamacpp"
 
     host_port = config.get("port")
     if not host_port:
