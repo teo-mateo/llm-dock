@@ -7,6 +7,7 @@ import ServiceConfigPanel from './ServiceConfigPanel'
 import ServiceLogsPanel from './ServiceLogsPanel'
 import ParameterReference from './ParameterReference'
 import MetricsPanel from './MetricsPanel'
+import BenchmarkTab from './BenchmarkTab'
 
 function Toast({ message, type, onDone }) {
   useEffect(() => {
@@ -23,11 +24,12 @@ function Toast({ message, type, onDone }) {
   )
 }
 
-function TabBar({ serviceName, isLogsRoute, isMetricsRoute }) {
+function TabBar({ serviceName, isLogsRoute, isMetricsRoute, isBenchmarkRoute, showBenchmark }) {
   const isActive = (route) => {
-    if (route === 'config') return !isLogsRoute && !isMetricsRoute
+    if (route === 'config') return !isLogsRoute && !isMetricsRoute && !isBenchmarkRoute
     if (route === 'logs') return isLogsRoute
     if (route === 'metrics') return isMetricsRoute
+    if (route === 'benchmark') return isBenchmarkRoute
     return false
   }
 
@@ -38,6 +40,7 @@ function TabBar({ serviceName, isLogsRoute, isMetricsRoute }) {
       <Link to={`/services/${serviceName}`} className={tabClass('config')}>Configuration</Link>
       <Link to={`/services/${serviceName}/logs`} className={tabClass('logs')}>Logs</Link>
       <Link to={`/services/${serviceName}/metrics`} className={tabClass('metrics')}>Metrics</Link>
+      {showBenchmark && <Link to={`/services/${serviceName}/benchmark`} className={tabClass('benchmark')}>Benchmark</Link>}
     </div>
   )
 }
@@ -121,6 +124,7 @@ export default function ServiceDetailsPage() {
 
   const isLogsRoute = location.pathname.endsWith('/logs')
   const isMetricsRoute = location.pathname.endsWith('/metrics')
+  const isBenchmarkRoute = location.pathname.endsWith('/benchmark')
   const templateType = config?.template_type
 
   // Fetch flag metadata at page level for both ConfigPanel and ParameterReference
@@ -177,11 +181,21 @@ export default function ServiceDetailsPage() {
         onError={handleError}
       />
 
-      <TabBar serviceName={serviceName} isLogsRoute={isLogsRoute} isMetricsRoute={isMetricsRoute} />
+      <TabBar
+        serviceName={serviceName}
+        isLogsRoute={isLogsRoute}
+        isMetricsRoute={isMetricsRoute}
+        isBenchmarkRoute={isBenchmarkRoute}
+        showBenchmark={templateType === 'llamacpp'}
+      />
 
       {isMetricsRoute ? (
         <div className="flex-1 overflow-auto">
           <MetricsPanel serviceName={serviceName} enabled={(templateType === 'vllm' || templateType === 'llamacpp' || templateType === 'ik_llamacpp') && runtime?.status === 'running'} />
+        </div>
+      ) : isBenchmarkRoute && templateType === 'llamacpp' ? (
+        <div className="flex-1 overflow-auto">
+          <BenchmarkTab serviceName={serviceName} modelPath={config?.model_path} />
         </div>
       ) : isLogsRoute ? (
         <div className="flex-1 min-h-0">
