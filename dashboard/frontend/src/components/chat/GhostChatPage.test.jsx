@@ -21,6 +21,17 @@ vi.mock('../../hooks/useGhostChat', () => ({
   default: () => ({ ...hookState, sendMessage: mockSendMessage, stopStreaming: mockStopStreaming }),
 }))
 
+const svcState = vi.hoisted(() => ({
+  running: [{ name: 'vllm-a', status: 'running', kind: 'chat' }],
+  openRouter: { configured: false, current: [] },
+}))
+vi.mock('../../hooks/useRunningServices', () => ({
+  default: () => ({ services: svcState.running, loading: false }),
+}))
+vi.mock('../../hooks/useOpenRouterModels', () => ({
+  default: () => ({ data: svcState.openRouter, loading: false }),
+}))
+
 function resetHookState() {
   Object.assign(hookState, {
     messages: [
@@ -35,11 +46,19 @@ function resetHookState() {
   })
 }
 
+function resetSvcState() {
+  Object.assign(svcState, {
+    running: [{ name: 'vllm-a', status: 'running', kind: 'chat' }],
+    openRouter: { configured: false, current: [] },
+  })
+}
+
 vi.mock('./ModelSelector', () => ({
   default: ({ mainService, onChangeMain }) => (
     <select
       data-testid="ghost-model"
-      value={mainService}
+      data-model={mainService ?? ''}
+      value={mainService || ''}
       onChange={e => onChangeMain(e.target.value)}
     >
       <option value="">no model</option>
@@ -81,6 +100,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   resetHookState()
+  resetSvcState()
 })
 
 describe('GhostChatPage', () => {
@@ -91,9 +111,29 @@ describe('GhostChatPage', () => {
     expect(screen.getByTestId('ghost-streaming')).toHaveTextContent('thinking…')
   })
 
-  it('disables sending until a model is chosen', () => {
+  it('preselects the first running service so the composer is enabled on load', () => {
     resetHookState()
     hookState.streaming = false
+    render(<GhostChatPage />)
+    expect(screen.getByTestId('ghost-model')).toHaveValue('vllm-a')
+    expect(screen.getByTestId('ghost-disabled')).toHaveTextContent('false')
+  })
+
+  it('falls back to the first curated OpenRouter model when nothing local is running', () => {
+    resetHookState()
+    hookState.streaming = false
+    svcState.running = []
+    svcState.openRouter = { configured: true, current: [{ id: 'vendor/model-a' }] }
+    render(<GhostChatPage />)
+    expect(screen.getByTestId('ghost-model')).toHaveAttribute('data-model', 'openrouter:vendor/model-a')
+    expect(screen.getByTestId('ghost-disabled')).toHaveTextContent('false')
+  })
+
+  it('disables sending until a model is chosen when no model is available', () => {
+    resetHookState()
+    hookState.streaming = false
+    svcState.running = []
+    svcState.openRouter = { configured: false, current: [] }
     render(<GhostChatPage />)
     expect(screen.getByTestId('ghost-disabled')).toHaveTextContent('true')
     fireEvent.change(screen.getByTestId('ghost-model'), { target: { value: 'vllm-a' } })

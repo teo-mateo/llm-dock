@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import ModelSelector from './ModelSelector'
 import McpToggle from './McpToggle'
 import useGhostChat from '../../hooks/useGhostChat'
+import useRunningServices from '../../hooks/useRunningServices'
+import useOpenRouterModels from '../../hooks/useOpenRouterModels'
+import { serviceNameForModel } from '../../utils/openrouter'
 
 /**
  * Ghost chat: an ephemeral conversation that leaves no trace. The page keeps
@@ -15,8 +18,27 @@ import useGhostChat from '../../hooks/useGhostChat'
  * become a "go back" destination.
  */
 export default function GhostChatPage() {
-  const [model, setModel] = useState('')
+  const [model, setModel] = useState(null)
   const [mcpServers, setMcpServers] = useState([])
+
+  // The ghost endpoint 400s a turn without a service_name, and the
+  // "new-chat" selector promises a pre-selected model — so default like the
+  // empty-state composer: first running local service, else first curated
+  // OpenRouter model. The user's explicit choice is never overridden by a
+  // later default change.
+  const { services: runningServices } = useRunningServices()
+  const { data: openRouterData } = useOpenRouterModels()
+  const openRouterModels = openRouterData?.configured ? openRouterData.current : []
+  const defaultModelName =
+    runningServices[0]?.name ||
+    (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null)
+
+  useEffect(() => {
+    // set-state-in-effect: one-shot init from the default once it arrives; a render-time
+    // derivation would override a user's explicit choice on every default change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setModel(prev => prev ?? defaultModelName)
+  }, [defaultModelName])
 
   const {
     messages,
