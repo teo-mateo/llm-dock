@@ -95,6 +95,12 @@ NInfer side (pinned `d4929686`, source inspected; the host's running service
   snapshots every `--log-stats-interval-ms` (default 5000) —
   `http_server.cpp:run_stats_reporter` — so a second reader at scrape frequency is the
   same access pattern.
+  **[Corrected 2026-09-15, see §8: not the same access pattern.]** The reporter reads
+  only `runtime_stats()`. `memory_summary()` is *not* a peer of `runtime_stats()`: it
+  takes `execution_mutex_`, while `runtime_stats()` takes `stats_mutex_`. Reading the
+  pair at scrape frequency is therefore not a read-only variant of the reporter's
+  pattern — it contends with generation. §8 records what that cost and how the patch now
+  avoids it.
 - **No service-level spec aggregation** (see §1 exclusions): per-request
   `draft_n` / `draft_n_accepted` only (`src/serve/openai_chat_response.cpp:69-71`).
 - **Patch discipline precedent:** `ninfer/Dockerfile:34-35` applies
@@ -132,7 +138,8 @@ Patch contents (minimal, two files, no CMake change):
     `http_server.cpp:428-433`);
   - otherwise read `service_->runtime_stats()` and `service_->memory_summary()` and
     render Prometheus text (`# HELP` / `# TYPE` + one sample line per family, no
-    labels) from an anonymous-namespace formatter.
+    labels) from an anonymous-namespace formatter. **(Revision 1 drops the
+    `memory_summary()` call from the scrape path — see §8.)**
 - **No auth-handler change.** The pre-routing guard already protects `/metrics`
   (verified live: 401 before the route exists, so it will 401 after too until the key
   is presented), and `_fetch_metrics` already presents the service key. This is the
@@ -150,7 +157,7 @@ Patch contents (minimal, two files, no CMake change):
 | `ninfer:num_requests_prefilling` | gauge | `RuntimeStats.prefilling_requests` | extra; see §5 gate G3 |
 | `ninfer:kv_cache_usage_perc` | gauge | `device_main_kv_occupied_pages / kv_capacity_page_groups`, clamped 0..1 (0 when denominator 0) | "Active KV" donut (0..1, like vLLM) |
 | `ninfer:kv_occupied_pages` | gauge | `RuntimeStats.device_main_kv_occupied_pages` | extra, raw |
-| `ninfer:kv_capacity_page_groups` | gauge | `MemorySummary.kv_capacity_page_groups` | extra, raw |
+| `ninfer:kv_capacity_page_groups` | gauge | `MemorySummary.kv_capacity_page_groups`, captured at attach since revision 1 | extra, raw |
 | `ninfer:prefix_cache_queries_total` | counter | `computed_prefill_tokens + reused_prompt_tokens` (prompt tokens presented) | prefix-hit ratio denominator |
 | `ninfer:prefix_cache_hits_total` | counter | `RuntimeStats.reused_prompt_tokens` | prefix-hit ratio numerator |
 | `ninfer:host_kv_occupied_bytes` | gauge | `RuntimeStats.host_kv_occupied_bytes` | extra, debug |
@@ -312,6 +319,8 @@ steps 2-3 are short and land in the same PR.
 - **Risk — 200 ms scrape on the engine:** bounded (two struct reads, ~12-line render);
   same access pattern as the 5 s reporter. No lock added in the patch; if the live
   checks show contention, that is a patch revision, not a dashboard workaround.
+  **Realised:** live checks showed contention, and the contingency was followed — see §8.
+  The claim that the scrape had the reporter's access pattern was wrong (§2 correction).
 - **Risk — KV ratio unit mismatch (G2)** is the one contract in this plan not fully
   proven from source; the raw counters are emitted regardless, so a wrong ratio is a
   visible fix, not a silent one.
@@ -324,3 +333,58 @@ they do not block starting step 1. The only open question worth a decision befor
 coding is deliberately none: the exclusions in §1 (spec metrics, slots, preemption)
 are the scope, and the follow-up spec-counter patch is recorded there for whoever
 picks it up next.
+
+## 8. Revision 1 — the scrape blocked behind generation (2026-09-15)
+
+The first live run reproduced the symptom the operator reported: points arrive very
+slowly, spike, and disappear for the duration of a generation. Measured against the
+deployed image (pin `d4929686`), one 3000-token generation:
+
+| Event | Wall clock | Detail |
+|---|---|---|
+| generation start | `1789501831.854` | 3000 tokens, non-streaming |
+| scrape issued | `1789501833.882` | t+2.0 s into the generation |
+| scrape returned | `1789501858.008` | **24.117 s — exactly at generation end** |
+
+Four consecutive dashboard-shaped scrapes (2 s timeout) all timed out during a
+1500-token generation; the first success afterwards came back in 0.663 s. Idle, the
+same endpoint answers in 0.4–0.7 ms. During the blocked window the engine's own
+reporter kept ticking (`decode 106.6 tok/s … 110.8 … 115.4`), and `/v1/models` answered
+in under 1 ms — so the counters were live and published; only the HTTP pull was stuck.
+
+**Cause.** `handle_metrics` rendered from `runtime_stats()` **and** `memory_summary()`.
+`runtime_stats()` takes `stats_mutex_` and returns the published snapshot; `memory_summary()`
+takes `execution_mutex_` (`engine_core.h:235-236`), the same mutex `worker_loop()` holds
+across every execution unit, releasing it only for a 1 ms condition-variable wait between
+units (`engine_core.h:1962-2034`). A metrics thread waiting on it is barged until the
+request finishes — hence a scrape latency equal to the remainder of the generation, the
+dashboard's 2 s timeout firing for the whole request, and the pool of
+`max_concurrency + max_pending_requests + 1 = 19` worker threads parking one scrape at a
+time at 5 scrapes/s. The patch added no lock; it inherited one from an existing API.
+
+**Fix (this revision).** The only value `MemorySummary` contributed was
+`kv_capacity_page_groups`, which `KvCapacityResolution` fixes at load. `attach()` already
+read `MemorySummary` once for the startup log line and runs before `listen()`, so the
+capacity is now captured there into `HttpServer::kv_capacity_page_groups_`, and
+`render_metrics_snapshot` takes that integer instead of a `MemorySummary`. `/metrics` now
+reads `runtime_stats()` alone: sub-ms regardless of load, and no dependency on
+`execution_mutex_`. Scrapes stay cheap enough that the 200 ms poll rate is still right.
+
+**Also fixed, because a slow scrape can still happen on any engine.** The dashboard now
+returns `scrape_error` instead of collapsing a failed scrape into `{}` (the panel had no
+way to tell "engine idle" from "engine unreachable"), and logs the first failure of a
+streak at warning rather than every one at debug. The frontend holds one scrape in flight
+instead of letting 200 ms ticks stack up, and skips the datapoint on a failed scrape so
+the counter baseline survives the gap — previously a gap zeroed the rate and the next
+success divided the whole gap's counter delta by one 200 ms window, which is what the
+"spikes" were.
+
+**Not the cause.** The engine's 5 s reporter cadence (counters publish per execution
+unit, so they advance mid-generation) and a frozen snapshot. Both were hypotheses in
+earlier passes; the probe above shows live counters and a blocked pull.
+
+**Verification.** Image rebuilt from the revised patch. `./build-ninfer.sh` compiles it.
+`useServiceMetrics.test.js` pins single-flight, gap-spanning rates, and the no-point-on-
+failure rule; `test_metrics.py::TestScrapeErrorSurface` pins `scrape_error` and the log
+streak. G2/G3 (KV ratio units, running-request semantics) are unaffected by this revision
+and remain open.

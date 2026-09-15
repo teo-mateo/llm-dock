@@ -276,12 +276,15 @@ describe('useServiceMetrics llama.cpp slots', () => {
     await act(async () => {
       vi.advanceTimersByTime(100)
     })
-    await act(async () => {
-      vi.advanceTimersByTime(3000)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(result.current.history.length).toBeGreaterThanOrEqual(3)
+    // One scrape per window: the hook holds a single request in flight, so a timer burst during a
+    // slow scrape yields one point when it lands rather than one per tick.
+    for (let scrape = 0; scrape < 2; scrape++) {
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+        for (let flush = 0; flush < 4; flush++) await Promise.resolve()
+      })
+    }
+    expect(result.current.history.length).toBe(3)
     // first scrape establishes the baseline — no delta yet
     expect(result.current.history[0].generationTokensRate).toBe(0)
     // second scrape sees n_decoded 1000 -> 1200
@@ -546,6 +549,94 @@ describe('useServiceMetrics ninfer', () => {
       vi.advanceTimersByTime(100)
     })
     expect(result.current.metrics).toEqual({ 'ninfer:prompt_tokens_total': { '{}': 1 } })
+  })
+})
+
+function ninferPayload(promptTokens, generationTokens) {
+  return {
+    metrics: {
+      ...ninferMetricsBase.metrics,
+      'ninfer:prompt_tokens_total': { '{}': promptTokens },
+      'ninfer:generation_tokens_total': { '{}': generationTokens }
+    },
+    engine: 'ninfer',
+    scraped_at: new Date().toISOString()
+  }
+}
+
+const SCRAPE_TIMED_OUT = {
+  metrics: {},
+  engine: 'ninfer',
+  scrape_error: 'engine scrape timed out',
+  scraped_at: new Date().toISOString()
+}
+
+function queueScrapes(payloads) {
+  const queue = payloads.slice()
+  mockFetchAPI.mockImplementation(() => {
+    const next = queue.length > 1 ? queue.shift() : queue[0]
+    return Promise.resolve(next)
+  })
+}
+
+describe('useServiceMetrics scrape gaps', () => {
+  it('appends no point and keeps the gauges when the engine scrape fails', async () => {
+    queueScrapes([ninferPayload(1000, 2000), SCRAPE_TIMED_OUT])
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.history.length).toBe(1)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history.length).toBe(1)
+    expect(result.current.metrics).toHaveProperty('vllm:prompt_tokens_total')
+    expect(result.current.error).toBe('engine scrape timed out')
+  })
+
+  it('divides the counter delta across the whole gap, not one poll interval', async () => {
+    queueScrapes([ninferPayload(1000, 2000), SCRAPE_TIMED_OUT, ninferPayload(11000, 2000)])
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history.length).toBe(1)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history.length).toBe(2)
+    // 10000 prompt tokens accrued across ~10.2 s of stalled scrapes. Dividing by the 200 ms
+    // poll instead of the real interval would put this near 50000.
+    const rate = result.current.history[1].promptTokensRate
+    expect(rate).toBeGreaterThan(900)
+    expect(rate).toBeLessThan(1100)
+    expect(result.current.error).toBeNull()
+  })
+
+  it('holds one request in flight while a scrape is pending', async () => {
+    mockFetchAPI.mockImplementation(() => new Promise(() => {}))
+    renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(2000)
+      await Promise.resolve()
+    })
+    expect(mockFetchAPI).toHaveBeenCalledTimes(1)
   })
 })
 })
