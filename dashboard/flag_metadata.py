@@ -620,7 +620,6 @@ LLAMACPP_LLAMA_BENCH_FLAGS = {
         "cli": "-v",
         "type": "bool",
         "description": "Verbose output",
-        "default": "off",
         "tip": "Enables <b>detailed diagnostic logging</b> during test execution, showing model loading details, device configuration, and per-iteration metrics. Enable when troubleshooting performance issues or verifying test parameters.",
     },
     "delay": {
