@@ -56,6 +56,9 @@ export default function ServiceLogsPanel({ serviceName, runtime }) {
   // Track last activity time for footer display
   const [lastUpdated, setLastUpdated] = useState(null)
   useEffect(() => {
+    // set-state-in-effect: lastUpdated is the moment an external change (new log lines)
+    // happened; recording a timestamp is inherently an effect-time observation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (lines.length > 0) setLastUpdated(new Date())
   }, [lines.length])
 

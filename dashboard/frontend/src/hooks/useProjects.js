@@ -18,6 +18,8 @@ export default function useProjects() {
 
   useEffect(() => {
     mountedRef.current = true
+    // set-state-in-effect: fetch on mount (refresh is a stable useCallback([])).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh()
     return () => { mountedRef.current = false }
   }, [refresh])

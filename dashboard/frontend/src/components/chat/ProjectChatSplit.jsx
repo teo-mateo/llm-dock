@@ -55,6 +55,9 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
   // which fires before the route changes — by the time this effect runs
   // the discard is already confirmed.
   useEffect(() => {
+    // set-state-in-effect: resets user state when the conversation/project prop changes;
+    // a render-time reset cannot distinguish "changed" from "same value again".
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditing(null)
     notifyDirty(false)
   }, [conversationId, projectId, notifyDirty])

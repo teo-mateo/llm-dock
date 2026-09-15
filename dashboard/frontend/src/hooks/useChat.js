@@ -715,10 +715,14 @@ export default function useChat({ onConversationUpdated } = {}) {
   // the auto-title event could land. Without the liveControllersRef sweep,
   // those fetches would outlive the component and keep firing callbacks
   // against an unmounted React tree.
+  //
+  // The Set is only mutated in place (add/delete/clear), never reassigned, so
+  // capturing it once here is the same object the cleanup reads.
   useEffect(() => {
+    const liveControllers = liveControllersRef.current
     return () => {
-      for (const c of liveControllersRef.current) c.abort()
-      liveControllersRef.current.clear()
+      for (const c of liveControllers) c.abort()
+      liveControllers.clear()
       abortRef.current = null
     }
   }, [])

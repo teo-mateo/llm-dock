@@ -43,6 +43,9 @@ export default function useModelProviders(ids, { limit = MAX_PROVIDER_BATCH } = 
     const missing = wanted.filter((id) => force || !requested.current.has(id))
     if (!missing.length) return
     missing.forEach((id) => requested.current.add(id))
+    // set-state-in-effect: fetch on key change, memoized per id; the data comes from the
+    // network, so nothing here is derivable at render time.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     getProviderSummaries(missing, force ? { force: true } : {})
       .then((data) => {
