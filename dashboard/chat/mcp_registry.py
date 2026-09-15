@@ -23,7 +23,7 @@ MCP_SERVERS = {
         "description": "Draw electronic circuit diagrams — resistors, capacitors, op-amps, transistors, etc.",
         "command": [sys.executable, os.path.join(_SERVERS_DIR, "schemdraw_server.py")],
         "icon": "fa-microchip",
-        "tool_hint": """You have access to Schemdraw for drawing electronic circuit diagrams. When asked to draw or design a circuit, use the draw_circuit tool with valid Schemdraw Python code. The drawing variable must be named 'd'.
+        "tool_hint": """You have access to Schemdraw for drawing electronic circuit diagrams. When asked to draw or design a circuit, use the schemdraw-circuits__draw_circuit tool with valid Schemdraw Python code. The drawing variable must be named 'd'.
 
 Schemdraw examples:
 
@@ -117,8 +117,8 @@ d += elm.Capacitor().down().label('$C_E$', loc='right')
 d += elm.Ground()
 
 Important rules:
-- If draw_circuit returns an error, read the error message, fix your code, and try again. Do not give up.
-- If unsure what elements are available, call list_schemdraw_elements first to discover them.
+- If schemdraw-circuits__draw_circuit returns an error, read the error message, fix your code, and try again. Do not give up.
+- If unsure what elements are available, call schemdraw-circuits__list_schemdraw_elements first to discover them.
 - For math in labels, use LaTeX: elm.Resistor().label('$R_1$') or elm.Capacitor().label('$C_1 = 100\\,\\mathrm{nF}$')
 - Do NOT use \\n in labels inside the code string — it causes syntax errors. Use separate .label() calls or keep labels on one line.
 - Always test that your code creates a variable named 'd' (the drawing).
@@ -131,14 +131,14 @@ The diagram will be rendered automatically as an artifact.""",
         "description": "Read and edit this conversation's project files — list, read, search, create, write. Auto-enabled for conversations inside a project; does nothing outside one.",
         "command": [sys.executable, os.path.join(_SERVERS_DIR, "project_files_server.py")],
         "icon": "fa-folder-tree",
-        "tool_hint": "This conversation belongs to a project with a file area (documents, notes, data the user keeps alongside the project's conversations). Reading: list_files shows the file tree, read_file returns a text file's content, search_files finds a substring across file names and contents. Writing: create_file makes a new text file (parent folders are created automatically; it refuses to overwrite), write_file replaces an existing file's entire content, edit_file swaps one exact snippet for another (copy the snippet verbatim from read_file — for small changes prefer this over write_file), insert_text adds lines after a given line number. All files are UTF-8 text up to 2 MB; paths are relative to the project root, e.g. 'docs/plan.md' — use them exactly as list_files prints them. When the user refers to project files or material \"in the project\", consult these tools instead of guessing, and when they ask you to save or update something in the project, actually write the file rather than only replying in chat.",
+        "tool_hint": "This conversation belongs to a project with a file area (documents, notes, data the user keeps alongside the project's conversations). Reading: project-files__list_files shows the file tree, project-files__read_file returns a text file's content, project-files__search_files finds a substring across file names and contents. Writing: project-files__create_file makes a new text file (parent folders are created automatically; it refuses to overwrite), project-files__write_file replaces an existing file's entire content, project-files__edit_file swaps one exact snippet for another (copy the snippet verbatim from project-files__read_file — for small changes prefer this over project-files__write_file), project-files__insert_text adds lines after a given line number. All files are UTF-8 text up to 2 MB; paths are relative to the project root, e.g. 'docs/plan.md' — use them exactly as project-files__list_files prints them. When the user refers to project files or material \"in the project\", consult these tools instead of guessing, and when they ask you to save or update something in the project, actually write the file rather than only replying in chat.",
     },
     "render-html": {
         "name": "Render HTML",
         "description": "Render HTML or Markdown as an artifact in the chat",
         "command": [sys.executable, os.path.join(_SERVERS_DIR, "render_html_server.py")],
         "icon": "fa-window-restore",
-        "tool_hint": "You can render HTML or Markdown directly in this chat window. Use render_html when you've produced an HTML document or fragment the user should see formatted (reports, tables, dashboards, mock UI, charts, etc.) — pass a complete <!doctype html> document if you want full control over styling, or just a fragment if you don't care. Use render_html_from_markdown when the content is markdown and you want it styled nicely without writing HTML yourself. The output appears as an artifact panel attached to your message, inside a sandboxed iframe — the user can also pop it out to a full-window tab. There is NO file-system access: you cannot pass paths, only literal content.",
+        "tool_hint": "You can render HTML or Markdown directly in this chat window. Use render-html__render_html when you've produced an HTML document or fragment the user should see formatted (reports, tables, dashboards, mock UI, charts, etc.) — pass a complete <!doctype html> document if you want full control over styling, or just a fragment if you don't care. Use render-html__render_html_from_markdown when the content is markdown and you want it styled nicely without writing HTML yourself. The output appears as an artifact panel attached to your message, inside a sandboxed iframe — the user can also pop it out to a full-window tab. There is NO file-system access: you cannot pass paths, only literal content.",
     },
 }
 
@@ -152,7 +152,14 @@ def get_tool_hints(server_ids: list) -> str:
         cfg = mcp_config.get_config(sid)
         if cfg and cfg.get("tool_hint"):
             hints.append(cfg["tool_hint"])
-    return "\n\n".join(hints)
+    if not hints:
+        return ""
+    preamble = (
+        "Tools are named `<server_id>__<tool_name>`. Always use the full name "
+        "when calling — the bare server id or the bare tool name is not a "
+        "callable tool."
+    )
+    return preamble + "\n\n" + "\n\n".join(hints)
 
 
 def list_available_servers() -> list:
