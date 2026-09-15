@@ -4,7 +4,7 @@ import { getToken, handleAuthFailure, API_BASE } from '../api'
  * Stream a chat completion via SSE.
  * Uses fetch + ReadableStream because EventSource doesn't support auth headers.
  */
-export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolCallPending, onToolResult, onToolProgress, onArtifact, onConversationUpdated, onHeartbeat, onParseWarning, onRunStarted, onRunStatus, signal, method = 'POST' }) {
+export async function streamChat(url, body, { onDelta, onDone, onError, onMessageSaved, onToolCall, onToolCallPending, onToolResult, onToolProgress, onArtifact, onConversationUpdated, onHeartbeat, onParseWarning, onRunStarted, onRunStatus, signal, method = 'POST', cache } = {}) {
   const token = getToken()
   if (!token) throw new Error('Not authenticated')
 
@@ -17,6 +17,8 @@ export async function streamChat(url, body, { onDelta, onDone, onError, onMessag
     // GET reattach (the run-stream endpoint) carries no body.
     body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(body),
     signal,
+    // Ghost chat passes 'no-store' so the reply can never enter the HTTP cache.
+    ...cache ? { cache } : {},
   })
 
   if (!response.ok) {

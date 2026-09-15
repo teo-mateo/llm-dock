@@ -6,6 +6,7 @@ import GpuMonitor from './components/GpuMonitor'
 import ServicesTable from './components/ServicesTable'
 import ServiceDetailsPage from './components/ServiceDetailsPage'
 import ChatPage from './components/chat/ChatPage'
+import GhostChatPage from './components/chat/GhostChatPage'
 import ToolsPage from './components/tools/ToolsPage'
 import SettingsPage from './components/SettingsPage'
 
@@ -27,6 +28,9 @@ function App() {
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         <MobileNav />
         <Routes>
+          {/* Static segment, listed before the parameterised /chat routes: a
+              ghost chat is a mode, not a conversation id. */}
+          <Route path="/chat/ghost" element={<GhostChatPage />} />
           <Route path="/chat/:conversationId?" element={<ChatPage />} />
           <Route path="/chat/project/:projectId" element={<ChatPage />} />
           <Route path="/tools" element={<DefaultLayout><ToolsPage /></DefaultLayout>} />

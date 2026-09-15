@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggleSelect, confirmDelete, setConfirmDelete, onSelect, onDelete, renaming, onRenameStart, onRenameConfirm }) {
   const isSpinoff = !!conv.parent_conversation_id
@@ -303,6 +304,7 @@ function ProjectHeader({ project, collapsed, active, onToggleCollapse, onOpenPro
 }
 
 export default function ChatSidebar({ onCollapse, conversations, activeId, onSelect, onCreate, onDelete, onDeleteMany, onRename, projects = [], activeProjectId = null, onOpenProject, onCreateProject, onRenameProject, onDeleteProject, onCreateInProject, onMoveMany }) {
+  const navigate = useNavigate()
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null)
@@ -507,9 +509,20 @@ export default function ChatSidebar({ onCollapse, conversations, activeId, onSel
 
       {/* Actions */}
       <div className="p-3 border-b border-border">
+        {/* replace: true — a ghost chat must not become a "go back"
+            destination in the browser history (it holds no persisted
+            state to return to). */}
+        <button
+          onClick={() => navigate('/chat/ghost', { replace: true })}
+          className="w-full px-3 py-1.5 bg-surface hover:bg-surface-muted border border-warning rounded-lg text-xs text-warning-fg transition-colors flex items-center justify-center gap-2"
+          title="Ephemeral chat — nothing is saved anywhere"
+        >
+          <i className="fa-solid fa-ghost"></i>
+          Ghost Chat
+        </button>
         <button
           onClick={onCreate}
-          className="w-full px-3 py-2 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          className="w-full mt-2 px-3 py-2 bg-accent-strong hover:bg-accent-hover text-fg-inverse rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-plus"></i>
           New Conversation
