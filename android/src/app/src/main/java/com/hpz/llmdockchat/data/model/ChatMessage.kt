@@ -86,11 +86,12 @@ data class ConversationDetail(
      */
     val mcpServers: List<String> = emptyList(),
     /**
-     * The thread's resolved system prompt text. The server stores the content,
-     * not which managed prompt it came from, so identifying the current prompt
-     * means matching this against the registry — see
-     * [com.hpz.llmdockchat.data.dto.PromptDto].
+     * The managed prompt this conversation references (F03 follow-up), or
+     * null for none. This is the selection's identity — [mainSystemPrompt]
+     * is the resolved copy, which a legacy conversation carries with no
+     * reference at all.
      */
+    val promptId: String? = null,
     val mainSystemPrompt: String = "",
     /**
      * The reasoning level declared for this thread (F15), or null for "model

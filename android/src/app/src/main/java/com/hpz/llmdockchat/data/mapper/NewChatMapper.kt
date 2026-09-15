@@ -23,7 +23,7 @@ fun ServiceDto.toDomain(): ServiceSummary =
         reasoningLevels = parseReasoningLevels(reasoningLevels),
     )
 
-fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder, content = content)
+fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder)
 
 fun McpServerDto.toDomain(): McpServerInfo =
     McpServerInfo(id = id, name = name, description = description, icon = icon)

@@ -73,8 +73,8 @@ fun ChatSettingsSheet(
     canToggleTools: Boolean,
     onToggleTool: (String) -> Unit,
     prompts: List<ManagedPrompt>,
-    activePromptContent: String,
-    onSelectPrompt: (ManagedPrompt) -> Unit,
+    activePromptId: String?,
+    onSelectPrompt: (String?) -> Unit,
     textScale: Float,
     onTextScaleChange: (Float) -> Unit,
     baseDensity: Density,
@@ -134,26 +134,26 @@ fun ChatSettingsSheet(
 
             if (prompts.isNotEmpty()) {
                 item { SectionLabel("System prompt") }
-                items(prompts, key = { "prompt_${it.id}" }) { prompt ->
-                    // Matched on content, not id: the conversation stores the
-                    // resolved text, so a thread created before a prompt was
-                    // edited legitimately matches nothing and shows as custom.
+                item {
                     PromptRow(
-                        prompt = prompt,
-                        selected = prompt.content == activePromptContent,
+                        id = null,
+                        name = "None",
+                        selected = activePromptId == null,
                         enabled = canToggleTools,
-                        onClick = { onSelectPrompt(prompt) },
+                        onClick = { onSelectPrompt(null) },
                     )
                 }
-                if (prompts.none { it.content == activePromptContent }) {
-                    item {
-                        Text(
-                            "This chat is using a prompt that isn't in the list — picking one replaces it.",
-                            color = colors.subtle,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        )
-                    }
+                items(prompts, key = { "prompt_${it.id}" }) { prompt ->
+                    // The selection is the stored reference, not a content
+                    // match: a legacy conversation whose text happens to equal
+                    // a prompt's content selects nothing until one is picked.
+                    PromptRow(
+                        id = prompt.id,
+                        name = prompt.name,
+                        selected = activePromptId == prompt.id,
+                        enabled = canToggleTools,
+                        onClick = { onSelectPrompt(prompt.id) },
+                    )
                 }
             }
 
@@ -308,7 +308,8 @@ private fun SettingRow(
  */
 @Composable
 private fun PromptRow(
-    prompt: ManagedPrompt,
+    id: String?,
+    name: String,
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -319,7 +320,7 @@ private fun PromptRow(
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp)
-            .testTag("prompt_option_${prompt.id}"),
+            .testTag("prompt_option_${id ?: "none"}"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -334,7 +335,7 @@ private fun PromptRow(
             if (selected) Box(Modifier.size(6.dp).clip(CircleShape).background(colors.onAccent))
         }
         Text(
-            prompt.name,
+            name,
             color = if (enabled) colors.fg else colors.subtle,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,

@@ -30,6 +30,7 @@ fun ConversationDetailDto.toDomain(): ConversationDetail = ConversationDetail(
     lastRun = lastRun?.toLastRun(),
     updatedAt = updatedAt,
     mcpServers = mcpServers,
+    promptId = promptId,
     mainSystemPrompt = mainSystemPrompt,
     reasoningLevel = reasoningLevel,
 )
