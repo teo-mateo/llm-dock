@@ -436,4 +436,116 @@ describe('useServiceMetrics llama.cpp slots', () => {
     expect(result.current.history[0].waiting).toBe(1)
   })
 })
+
+const ninferMetricsBase = {
+  metrics: {
+    'ninfer:prompt_tokens_total': { '{}': 1000 },
+    'ninfer:generation_tokens_total': { '{}': 2000 },
+    'ninfer:decode_rounds_total': { '{}': 50 },
+    'ninfer:num_requests_running': { '{}': 2 },
+    'ninfer:num_requests_waiting': { '{}': 1 },
+    'ninfer:num_requests_prefilling': { '{}': 0 },
+    'ninfer:kv_cache_usage_perc': { '{}': 0.42 },
+    'ninfer:kv_occupied_pages': { '{}': 1200 },
+    'ninfer:kv_capacity_page_groups': { '{}': 2857 },
+    'ninfer:prefix_cache_queries_total': { '{}': 1200 },
+    'ninfer:prefix_cache_hits_total': { '{}': 100 },
+    'ninfer:host_kv_occupied_bytes': { '{}': 1048576 },
+  },
+  engine: 'ninfer',
+  scraped_at: '2026-01-01T00:00:00Z'
+}
+
+describe('useServiceMetrics ninfer', () => {
+  it('renames ninfer metric names to vLLM equivalents, leaving raw extras intact', async () => {
+    mockFetchAPI.mockResolvedValue(ninferMetricsBase)
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.engine).toBe('ninfer')
+    const m = result.current.metrics
+    for (const v of [
+      'vllm:prompt_tokens_total',
+      'vllm:generation_tokens_total',
+      'vllm:num_requests_running',
+      'vllm:num_requests_waiting',
+      'vllm:kv_cache_usage_perc',
+      'vllm:prefix_cache_queries_total',
+      'vllm:prefix_cache_hits_total',
+    ]) {
+      expect(m).toHaveProperty(v)
+    }
+    // Mapped names do not survive, raw extras do.
+    expect(m).not.toHaveProperty('ninfer:prompt_tokens_total')
+    expect(m).not.toHaveProperty('ninfer:num_requests_running')
+    expect(m).toHaveProperty('ninfer:decode_rounds_total')
+    expect(m).toHaveProperty('ninfer:kv_occupied_pages')
+    expect(m).toHaveProperty('ninfer:host_kv_occupied_bytes')
+  })
+
+  it('derives the panel datapoint: rates from counter deltas, kvCache, prefixHitRatio, running/waiting', async () => {
+    mockFetchAPI.mockResolvedValueOnce(ninferMetricsBase)
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    mockFetchAPI.mockResolvedValueOnce({
+      metrics: {
+        ...ninferMetricsBase.metrics,
+        'ninfer:prompt_tokens_total': { '{}': 2000 },
+        'ninfer:generation_tokens_total': { '{}': 4000 },
+        'ninfer:prefix_cache_queries_total': { '{}': 2200 },
+        'ninfer:prefix_cache_hits_total': { '{}': 400 },
+      },
+      engine: 'ninfer',
+      scraped_at: '2026-01-01T00:00:03Z'
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.history.length).toBe(2)
+    const second = result.current.history[1]
+    expect(second.promptTokensRate).toBeGreaterThan(0)
+    expect(second.generationTokensRate).toBeGreaterThan(0)
+    expect(second.kvCache).toBe(0.42)
+    expect(second.prefixHitRatio).toBeCloseTo(400 / 2200)
+    expect(second.running).toBe(2)
+    expect(second.waiting).toBe(1)
+    // No service-level spec aggregate exists, so the ratio stays undefined
+    // and the Spec Accept donut renders "—" (R3).
+    expect(second.specAcceptRatio).toBeUndefined()
+  })
+
+  it('issues no /slots fetch for a ninfer engine', async () => {
+    mockFetchAPI.mockResolvedValue(ninferMetricsBase)
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ninfer-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(400)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.engine).toBe('ninfer')
+    const slotsCalls = mockFetchAPI.mock.calls.filter(([path]) => path.includes('/slots'))
+    expect(slotsCalls).toEqual([])
+  })
+
+  it('leaves a legacy engine payload untouched (no unknown-engine rename table)', async () => {
+    mockFetchAPI.mockResolvedValue({
+      metrics: { 'ninfer:prompt_tokens_total': { '{}': 1 } },
+      engine: 'ds4',
+      scraped_at: '2026-01-01T00:00:00Z'
+    })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'ds4-test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.metrics).toEqual({ 'ninfer:prompt_tokens_total': { '{}': 1 } })
+  })
+})
 })

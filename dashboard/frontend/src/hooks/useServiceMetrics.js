@@ -16,11 +16,29 @@ const LLAMACPP_TO_VLLM = {
   'llamacpp:requests_deferred': 'vllm:num_requests_waiting',
 }
 
+// Map NInfer metric names to vLLM-equivalent names. Only the panel-facing
+// families are mapped; the engine's extra raw/debug families (decode rounds,
+// prefilling count, raw KV pair, host KV bytes) pass through untouched. No
+// spec-acceptance or preemption rows: NInfer has no service-level aggregate
+// for either, so the panel renders those as "—".
+const NINFER_TO_VLLM = {
+  'ninfer:prompt_tokens_total': 'vllm:prompt_tokens_total',
+  'ninfer:generation_tokens_total': 'vllm:generation_tokens_total',
+  'ninfer:num_requests_running': 'vllm:num_requests_running',
+  'ninfer:num_requests_waiting': 'vllm:num_requests_waiting',
+  'ninfer:kv_cache_usage_perc': 'vllm:kv_cache_usage_perc',
+  'ninfer:prefix_cache_queries_total': 'vllm:prefix_cache_queries_total',
+  'ninfer:prefix_cache_hits_total': 'vllm:prefix_cache_hits_total',
+}
+
+const RENAMES = { llamacpp: LLAMACPP_TO_VLLM, ninfer: NINFER_TO_VLLM }
+
 function normalizeMetrics(raw, engine) {
-  if (engine !== 'llamacpp') return raw
+  const rename = RENAMES[engine]
+  if (!rename) return raw
   const normalized = {}
   for (const [key, value] of Object.entries(raw)) {
-    const mapped = LLAMACPP_TO_VLLM[key] || key
+    const mapped = rename[key] || key
     normalized[mapped] = value
   }
   return normalized

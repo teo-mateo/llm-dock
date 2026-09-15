@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-09-15
+- **NInfer metrics** - Live Metrics panel enabled for `template_type: "ninfer"` services: the image now ships an authed `GET /metrics` route (second build-time patch, `ninfer/ninfer-metrics.patch`, 12 Prometheus families from the engine's runtime stats), the dashboard whitelists them via `NINFER_CURATED_METRICS`, and the v2 panel renders running/waiting requests, token rates, the Active KV and prefix-hit gauges. Spec-acceptance and preemption cells stay "—" (the engine keeps no service-level aggregate for either); `/slots` stays llama.cpp-only
+
 ## 2026-09-13
 - **NInfer engine** - New sixth inference engine for `.ninfer` Qwen artifacts (`llm-dock-ninfer` image, `ninfer.j2` template, `NINFER_FLAGS` metadata), built from source by `build-ninfer.sh` with the CUDA 12.9 port patch
 - **NInfer services** - `template_type: "ninfer"` services on port 8080 with `--api-key` auth, artifact as a positional argument, and the HF cache mounted read-only at `/hf-cache`

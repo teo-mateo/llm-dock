@@ -81,6 +81,14 @@ networks:
             "api_key": "test-key",
             "params": {},
         },
+        "ninfer-test": {
+            "template_type": "ninfer",
+            "alias": "ninfer-test",
+            "port": 3303,
+            "model_path": "/ninfer/models/test.ninfer",
+            "api_key": "test-key",
+            "params": {},
+        },
     }
     services_path = tmp_path / "services.json"
     services_path.write_text(json.dumps(services_json))
@@ -314,6 +322,169 @@ llamacpp:tokens_predicted_seconds_total 25.0
 # TYPE llamacpp:uninteresting gauge
 llamacpp:uninteresting 999.0
 """
+
+
+# The 12 families the engine patch emits (unlabeled), plus one off-whitelist
+# family to pin the filter.
+SAMPLE_PROMETHEUS_TEXT_NINFER = """# HELP ninfer:prompt_tokens_total Prompt tokens evaluated by prefill; reused checkpoint-prefix tokens excluded.
+# TYPE ninfer:prompt_tokens_total counter
+ninfer:prompt_tokens_total 50000
+# HELP ninfer:generation_tokens_total Tokens committed by decode rounds.
+# TYPE ninfer:generation_tokens_total counter
+ninfer:generation_tokens_total 120000
+# HELP ninfer:decode_rounds_total Decode batch executions.
+# TYPE ninfer:decode_rounds_total counter
+ninfer:decode_rounds_total 3000
+# HELP ninfer:num_requests_running Requests actively decoding.
+# TYPE ninfer:num_requests_running gauge
+ninfer:num_requests_running 2
+# HELP ninfer:num_requests_waiting Requests waiting for capacity.
+# TYPE ninfer:num_requests_waiting gauge
+ninfer:num_requests_waiting 1
+# HELP ninfer:num_requests_prefilling Requests in prefill.
+# TYPE ninfer:num_requests_prefilling gauge
+ninfer:num_requests_prefilling 0
+# HELP ninfer:kv_cache_usage_perc Device main KV occupancy over capacity, clamped to [0, 1].
+# TYPE ninfer:kv_cache_usage_perc gauge
+ninfer:kv_cache_usage_perc 0.42
+# HELP ninfer:kv_occupied_pages Device main KV occupied pages (raw).
+# TYPE ninfer:kv_occupied_pages gauge
+ninfer:kv_occupied_pages 1200
+# HELP ninfer:kv_capacity_page_groups Device main KV capacity in page groups (raw).
+# TYPE ninfer:kv_capacity_page_groups gauge
+ninfer:kv_capacity_page_groups 2857
+# HELP ninfer:prefix_cache_queries_total Prompt tokens presented, computed plus reused (monotonic by construction).
+# TYPE ninfer:prefix_cache_queries_total counter
+ninfer:prefix_cache_queries_total 60000
+# HELP ninfer:prefix_cache_hits_total Prompt tokens served from reused prefixes.
+# TYPE ninfer:prefix_cache_hits_total counter
+ninfer:prefix_cache_hits_total 10000
+# HELP ninfer:host_kv_occupied_bytes Host KV residency in bytes (raw).
+# TYPE ninfer:host_kv_occupied_bytes gauge
+ninfer:host_kv_occupied_bytes 1048576
+# HELP ninfer:extra A metric not in the whitelist.
+# TYPE ninfer:extra gauge
+ninfer:extra 999
+"""
+
+
+class TestNinferMetrics:
+    @patch("routes.metrics.requests.get")
+    def test_happy_path_returns_curated_ninfer_metrics(self, mock_get, metrics_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_PROMETHEUS_TEXT_NINFER
+        mock_get.return_value = mock_resp
+
+        resp = metrics_client.get(
+            "/api/services/ninfer-test/metrics", headers=_auth_headers()
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["engine"] == "ninfer"
+        assert "scraped_at" in data
+        metrics = data["metrics"]
+        for name in (
+            "ninfer:prompt_tokens_total",
+            "ninfer:generation_tokens_total",
+            "ninfer:decode_rounds_total",
+            "ninfer:num_requests_running",
+            "ninfer:num_requests_waiting",
+            "ninfer:num_requests_prefilling",
+            "ninfer:kv_cache_usage_perc",
+            "ninfer:kv_occupied_pages",
+            "ninfer:kv_capacity_page_groups",
+            "ninfer:prefix_cache_queries_total",
+            "ninfer:prefix_cache_hits_total",
+            "ninfer:host_kv_occupied_bytes",
+        ):
+            assert name in metrics, name
+        # Unlabeled samples collapse to the "{}" key.
+        assert metrics["ninfer:num_requests_running"] == {"{}": 2.0}
+        assert metrics["ninfer:kv_cache_usage_perc"] == {"{}": 0.42}
+
+    @patch("routes.metrics.requests.get")
+    def test_whitelist_filters_extra_ninfer_metrics(self, mock_get, metrics_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_PROMETHEUS_TEXT_NINFER
+        mock_get.return_value = mock_resp
+
+        resp = metrics_client.get(
+            "/api/services/ninfer-test/metrics", headers=_auth_headers()
+        )
+
+        data = resp.get_json()
+        assert "ninfer:extra" not in data["metrics"]
+
+    def test_connection_error_returns_empty(self, metrics_client):
+        import requests as requests_lib
+        with patch("routes.metrics.requests.get", side_effect=requests_lib.ConnectionError):
+            resp = metrics_client.get(
+                "/api/services/ninfer-test/metrics", headers=_auth_headers()
+            )
+
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["metrics"] == {}
+            assert data["engine"] == "ninfer"
+
+    @patch("routes.metrics.requests.get")
+    def test_engine_api_key_header_passed(self, mock_get, metrics_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_PROMETHEUS_TEXT_NINFER
+        mock_get.return_value = mock_resp
+
+        metrics_client.get("/api/services/ninfer-test/metrics", headers=_auth_headers())
+
+        args, kwargs = mock_get.call_args
+        assert args[0] == "http://127.0.0.1:3303/metrics"
+        assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+
+    def test_non_200_upstream_returns_empty(self, metrics_client):
+        # The engine answers 401 without the service key and 503 before the
+        # model is attached; both collapse to an empty metrics map.
+        for status_code in (401, 503):
+            with patch("routes.metrics.requests.get") as mock_get:
+                mock_resp = MagicMock()
+                mock_resp.status_code = status_code
+                mock_get.return_value = mock_resp
+                resp = metrics_client.get(
+                    "/api/services/ninfer-test/metrics", headers=_auth_headers()
+                )
+                assert resp.status_code == 200
+                assert resp.get_json()["metrics"] == {}
+
+    def test_no_auth_returns_401(self, metrics_client):
+        resp = metrics_client.get("/api/services/ninfer-test/metrics")
+        assert resp.status_code == 401
+
+    def test_slots_returns_400_for_ninfer(self, metrics_client):
+        # /slots stays llama.cpp-only; a ninfer service hits the existing 400.
+        resp = metrics_client.get(
+            "/api/services/ninfer-test/slots", headers=_auth_headers()
+        )
+        assert resp.status_code == 400
+
+    def test_unsupported_engine_still_returns_empty(self, metrics_client):
+        # R4: engines without a curated set keep the existing empty response.
+        # The fixture has no such service, so drive the route's gate directly
+        # through a stubbed config.
+        from routes import metrics as metrics_mod
+        orig = metrics_mod._get_service_config
+        try:
+            metrics_mod._get_service_config = lambda _name: {
+                "template_type": "ds4", "port": 3304, "api_key": "test-key"
+            }
+            resp = metrics_client.get("/api/services/ds4-test/metrics", headers=_auth_headers())
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["metrics"] == {}
+            assert data["engine"] == "ds4"
+        finally:
+            metrics_mod._get_service_config = orig
 
 
 class TestLabeledMetrics:
