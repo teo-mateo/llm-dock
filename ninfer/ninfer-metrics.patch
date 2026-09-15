@@ -1,8 +1,8 @@
 diff --git a/src/serve/http_server.cpp b/src/serve/http_server.cpp
-index e1c12dcd..641e323d 100644
+index e1c12dcd..13a9b499 100644
 --- a/src/serve/http_server.cpp
 +++ b/src/serve/http_server.cpp
-@@ -139,6 +139,78 @@ std::string response_request_id(const httplib::Response& response) {
+@@ -139,6 +139,82 @@ std::string response_request_id(const httplib::Response& response) {
      return {};
  }
  
@@ -26,15 +26,19 @@ index e1c12dcd..641e323d 100644
 +// Unlabeled families: the server hosts one model, and the dashboard scrapes one
 +// family set per service. Counters are process-lifetime; a container restart
 +// resets them, which the dashboard's Math.max(0, delta) clamp already handles.
++//
++// `kv_capacity_page_groups` is passed in rather than read from MemorySummary here:
++// MemorySummary takes execution_mutex_, which the worker holds across every execution
++// unit, so reading it at scrape time serializes /metrics behind generation.
 +std::string render_metrics_snapshot(const ninfer::RuntimeStats& stats,
-+                                    const ninfer::MemorySummary& memory) {
++                                    std::uint32_t kv_capacity_page_groups) {
 +    // Occupied pages over the page-group capacity; clamped to [0, 1] and 0 when
 +    // the capacity is unknown. The raw pair is emitted alongside (kv_occupied_pages
 +    // / kv_capacity_page_groups), so a wrong unit ratio is visible and fixable.
 +    double kv_usage = 0.0;
-+    if (memory.kv_capacity_page_groups > 0) {
++    if (kv_capacity_page_groups > 0) {
 +        kv_usage = static_cast<double>(stats.device_main_kv_occupied_pages) /
-+                   static_cast<double>(memory.kv_capacity_page_groups);
++                   static_cast<double>(kv_capacity_page_groups);
 +        if (kv_usage < 0.0) { kv_usage = 0.0; }
 +        if (kv_usage > 1.0) { kv_usage = 1.0; }
 +    }
@@ -64,7 +68,7 @@ index e1c12dcd..641e323d 100644
 +                           std::to_string(stats.device_main_kv_occupied_pages));
 +    emit_prometheus_family(out, "ninfer:kv_capacity_page_groups", "gauge",
 +                           "Device main KV capacity in page groups (raw).",
-+                           std::to_string(memory.kv_capacity_page_groups));
++                           std::to_string(kv_capacity_page_groups));
 +    emit_prometheus_family(
 +        out, "ninfer:prefix_cache_queries_total", "counter",
 +        "Prompt tokens presented, computed plus reused (monotonic by construction).",
@@ -81,7 +85,7 @@ index e1c12dcd..641e323d 100644
  } // namespace
  
  void write_openai_error(httplib::Response& response, const ApiError& error) {
-@@ -431,6 +503,9 @@ void HttpServer::register_routes() {
+@@ -431,6 +507,9 @@ void HttpServer::register_routes() {
          res.set_content(nlohmann::json{{"status", available ? "ok" : "unavailable"}}.dump(),
                          "application/json");
      });
@@ -91,7 +95,7 @@ index e1c12dcd..641e323d 100644
      server_.Get("/v1/models", [this](const httplib::Request& req, httplib::Response& res) {
          handle_models(req, res);
      });
-@@ -497,6 +572,20 @@ void HttpServer::handle_model(const httplib::Request& req, httplib::Response& re
+@@ -497,6 +576,19 @@ void HttpServer::handle_model(const httplib::Request& req, httplib::Response& re
                      "application/json");
  }
  
@@ -104,16 +108,28 @@ index e1c12dcd..641e323d 100644
 +        res.set_content(nlohmann::json{{"status", "unavailable"}}.dump(), "application/json");
 +        return;
 +    }
-+    res.set_content(render_metrics_snapshot(service_->runtime_stats(),
-+                                            service_->memory_summary()),
++    res.set_content(render_metrics_snapshot(service_->runtime_stats(), kv_capacity_page_groups_),
 +                    "text/plain; version=0.0.4; charset=utf-8");
 +}
 +
  bool HttpServer::bind() { return server_.bind_to_port(options_.host, options_.port); }
  
  void HttpServer::attach(GenerationService& service) {
+@@ -506,9 +598,10 @@ void HttpServer::attach(GenerationService& service) {
+     const ninfer::LoadSummary load = service.load_summary();
+     public_model_id_               = resolve_public_model_id(options_, load.model_id);
+     service_                       = &service;
++    const ninfer::MemorySummary memory     = service.memory_summary();
++    kv_capacity_page_groups_               = memory.kv_capacity_page_groups;
+     request_jsonl_.write_server_start(options_, service.engine_options(),
+-                                      service.sampling_defaults(), public_model_id_, load,
+-                                      service.memory_summary());
++                                      service.sampling_defaults(), public_model_id_, load, memory);
+ }
+ 
+ bool HttpServer::listen() {
 diff --git a/src/serve/http_server.h b/src/serve/http_server.h
-index 24314949..80552f55 100644
+index 24314949..ca68d2a5 100644
 --- a/src/serve/http_server.h
 +++ b/src/serve/http_server.h
 @@ -87,6 +87,7 @@ private:
@@ -124,3 +140,15 @@ index 24314949..80552f55 100644
  
      void record_request_start(const RequestLogContext& context);
      void record_request_rejected(const RequestRejectionLogContext& context);
+@@ -98,6 +99,11 @@ private:
+     void stop_stats_reporter();
+ 
+     GenerationService* service_ = nullptr;
++    // KV capacity in page groups, captured from MemorySummary at attach, which precedes the
++    // accept loop; the capacity is fixed once the model is loaded. /metrics renders it from here
++    // instead of calling memory_summary(), whose execution_mutex_ is held across every execution
++    // unit and would serialize scrapes behind generation.
++    std::uint32_t kv_capacity_page_groups_ = 0;
+     ServeOptions options_;
+     std::string public_model_id_;
+     OpenAIResponsesStore openai_responses_store_;
