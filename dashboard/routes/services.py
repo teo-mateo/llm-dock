@@ -23,6 +23,7 @@ from flag_metadata import (
     MANDATORY_FIELDS,
 )
 from reasoning_levels import parse_levels
+import flag_surfaces
 from openwebui_integration import (
     add_service_to_openwebui,
     remove_service_from_openwebui,
@@ -255,6 +256,18 @@ def create_service():
         if not valid:
             return jsonify({"error": "Validation failed", "details": errors}), 400
 
+        # Advisory: flags the engine's recorded surface does not know. The flag
+        # still ships to the container verbatim (render_cli_flag is permissive),
+        # so this warns instead of rejecting — a typo or an upstream-removed flag
+        # otherwise fails at container startup, not at config time.
+        warnings = [
+            f"Unknown {template_type} flag: {flag} (not in the engine's recorded "
+            f"flag surface; it will be passed through and may fail at startup)"
+            for flag in flag_surfaces.unknown_service_params(template_type, data.get("params"))
+        ]
+        if warnings:
+            logger.warning(f"Service create with unknown {template_type} flags: {warnings}")
+
         # Generate service name from alias
         service_name = gen_service_name(template_type, data.get("alias"))
 
@@ -275,15 +288,16 @@ def create_service():
 
         logger.info(f"Service created: {service_name} on port {port}")
 
-        return jsonify(
-            {
-                "success": True,
-                "service_name": service_name,
-                "port": port,
-                "api_key": data["api_key"],
-                "message": f'Service "{service_name}" created successfully',
-            }
-        ), 201
+        response = {
+            "success": True,
+            "service_name": service_name,
+            "port": port,
+            "api_key": data["api_key"],
+            "message": f'Service "{service_name}" created successfully',
+        }
+        if warnings:
+            response["warnings"] = warnings
+        return jsonify(response), 201
 
     except Exception as e:
         logger.error(f"Failed to create service: {e}", exc_info=True)
@@ -347,6 +361,17 @@ def update_service(service_name):
         existing.update(data)
         compose_mgr.update_service_in_db(service_name, existing)
 
+        # Advisory, over the MERGED params: a typo stored before this check
+        # existed must surface when the service is next touched, not only on
+        # the write that created it.
+        warnings = [
+            f"Unknown {template_type} flag: {flag} (not in the engine's recorded "
+            f"flag surface; it will be passed through and may fail at startup)"
+            for flag in flag_surfaces.unknown_service_params(template_type, existing.get("params"))
+        ]
+        if warnings:
+            logger.warning(f"Service {service_name} update with unknown {template_type} flags: {warnings}")
+
         # Rebuild compose file
         compose_mgr.rebuild_compose_file()
 
@@ -367,13 +392,14 @@ def update_service(service_name):
 
         logger.info(f"Service updated: {service_name}")
 
-        return jsonify(
-            {
-                "success": True,
-                "service_name": service_name,
-                "message": f'Service "{service_name}" updated successfully',
-            }
-        ), 200
+        response = {
+            "success": True,
+            "service_name": service_name,
+            "message": f'Service "{service_name}" updated successfully',
+        }
+        if warnings:
+            response["warnings"] = warnings
+        return jsonify(response), 200
 
     except Exception as e:
         logger.error(f"Failed to update service: {e}")

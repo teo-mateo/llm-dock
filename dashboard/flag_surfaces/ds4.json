@@ -1,0 +1,53 @@
+{
+  "engine": "ds4",
+  "template_types": [
+    "ds4"
+  ],
+  "source_command": "docker run --rm --entrypoint /usr/local/bin/ds4-server llm-dock-ds4 --help",
+  "build_identity": {
+    "image": "llm-dock-ds4",
+    "image_id": "38618e22fc0f",
+    "pin": "54b36ed9ba42da31b24f2d1a5feb075c2475dbb1",
+    "pin_note": "ds4/Dockerfile ARG DS4_COMMIT"
+  },
+  "flags": [
+    "--backend",
+    "--batched-session",
+    "--cors",
+    "--cpu",
+    "--ctx",
+    "--cuda",
+    "--cuda-tensor-parallel",
+    "--disable-exact-dsml-tool-replay",
+    "--gpu-devices",
+    "--gpu-vram",
+    "--host",
+    "--kv-cache-boundary-align-tokens",
+    "--kv-cache-boundary-trim-tokens",
+    "--kv-cache-cold-max-tokens",
+    "--kv-cache-continued-interval-tokens",
+    "--kv-cache-min-tokens",
+    "--kv-cache-reject-different-quant",
+    "--kv-disk-dir",
+    "--kv-disk-space-mb",
+    "--metal",
+    "--model",
+    "--port",
+    "--power",
+    "--prefill-chunk",
+    "--simulate-used-memory",
+    "--ssd-streaming",
+    "--ssd-streaming-cache-experts",
+    "--ssd-streaming-cold",
+    "--ssd-streaming-full-layers",
+    "--ssd-streaming-preload-experts",
+    "--threads",
+    "--tokens",
+    "--tool-memory-max-ids",
+    "--trace",
+    "-c",
+    "-m",
+    "-n",
+    "-t"
+  ]
+}

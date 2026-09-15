@@ -737,14 +737,25 @@ Symptom: `failed to fetch oauth token: denied: denied` during `docker build`.
 Workaround for a build: `DOCKER_CONFIG=/path/to/dir-with-empty-config.json
 ./build-tabbyapi.sh`. Real fix is `docker logout ghcr.io`.
 
-### Unknown flag names are silently dropped
+### Unknown flag names still ship to the container — but the write now warns
 
 `render_cli_flag()` in `flag_metadata.py` is permissive: any string
 starting with `-` passes through to the rendered command unchanged.
 That's why arbitrary vLLM flags work in `params` without metadata
-entries — but it also means a **typo** in the flag name (e.g. `--gpu-mem`)
-ships to the container as-is and fails at startup, not at config time.
-Verify with `mgr.preview_service(name)` before bringing the container up.
+entries — and it's still true: a **typo** in the flag name (e.g. `--gpu-mem`)
+or an upstream-removed flag still ships to the container as-is and fails at
+startup, not at config time. What changed (the #198 surface guard) is that
+`POST`/`PUT /api/services` now compare the `params` keys against each engine's
+recorded flag surface and return a non-blocking `warnings` list naming any
+unknown flag (advisory only — the write succeeds and the flag is passed through,
+so a flag the engine accepts but the snapshot hasn't recorded can't be blocked).
+The surfaces live in `dashboard/flag_surfaces/*.json`, recorded from each
+engine's own image by `scripts/record-flag-surfaces.py` (GPU required for
+vllm/llama.cpp/ninfer; not for ds4/tabbyapi). A test pins the curated
+`*_FLAGS` metadata against those surfaces and re-diffs the Dockerfile pins so a
+moved pin fails loudly instead of drifting silently. Ten metadata entries the
+guard caught as stale on first run are tracked in #207. Verify with
+`mgr.preview_service(name)` before bringing the container up.
 
 ### `volumes` is vLLM-only, unvalidated, and survives a dashboard edit
 
