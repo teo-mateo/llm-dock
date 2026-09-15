@@ -498,6 +498,20 @@ export default function useChat({ onConversationUpdated } = {}) {
         },
         onConversationUpdated: handleConversationUpdated,
         onRunStarted: handleRunStarted,
+        onRunStatus: () => {
+          // Terminal frame on a fresh send: the run ended before the stream
+          // could carry its tail (pre-#111 server behaviour closed it at the
+          // 3s idle backstop). The reply, if any, is already persisted — clear
+          // the streaming state and refetch so the composer unblocks either
+          // way instead of the stream ending as a silent no-op.
+          setStreamingContent('')
+          setStreamingReasoning('')
+          setStreaming(false)
+          setPendingToolCalls([])
+          setHeartbeat(null)
+          drainingRef.current = false
+          refetchMessages(conversation.id)
+        },
         onMessageSaved: (data) => {
           const assistantMsg = {
             id: data.message_id,
@@ -653,6 +667,18 @@ export default function useChat({ onConversationUpdated } = {}) {
           onDone: () => {},
           onConversationUpdated: handleConversationUpdated,
           onRunStarted: handleRunStarted,
+          onRunStatus: () => {
+            // See sendMessage: a terminal frame on the edit path means the
+            // optimistic truncation is now stale relative to the DB — reload
+            // the whole conversation, as this path's error case does.
+            setStreamingContent('')
+            setStreamingReasoning('')
+            setStreaming(false)
+            setPendingToolCalls([])
+            setHeartbeat(null)
+            drainingRef.current = false
+            loadConversation(conversation.id)
+          },
           onMessageSaved: () => {
             setStreamingContent('')
             setStreamingReasoning('')
