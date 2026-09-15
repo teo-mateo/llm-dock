@@ -50,8 +50,8 @@ def test_tabbyapi_keeps_its_value_defaults():
 def test_llamacpp_bench_value_defaults_unchanged():
     # The bench parser accepts explicit values for its bools (<0|1> metavars),
     # so these prefills are valid, not landmines. -v is the one bench bool the
-    # parser rejects a value for; it is a separate finding and deliberately
-    # not asserted here.
+    # parser rejects a value for; its absence is asserted in
+    # test_llamacpp_bench_verbose_carries_no_default.
     assert "llamacpp_bench" not in BOOL_FLAG_VALUE_REJECTED
     for key, value in {
         "no_kv_offload": "0",
@@ -62,3 +62,14 @@ def test_llamacpp_bench_value_defaults_unchanged():
         "cpu_strict": "0",
     }.items():
         assert LLAMACPP_LLAMA_BENCH_FLAGS[key]["default"] == value, key
+
+
+def test_llamacpp_bench_verbose_carries_no_default():
+    # llama-bench's -v takes no value (bare flag), unlike the other bench
+    # bools' <0|1> metavars: with a prefill default, click-to-add stored
+    # `"-v": "off"` and the parser rejected the rendered `-v off`. The
+    # engine-level guard cannot express this (the bench dict mixes
+    # value-taking and bare bools), so the per-flag fact lives here.
+    entry = LLAMACPP_LLAMA_BENCH_FLAGS["verbose"]
+    assert entry["type"] == "bool"
+    assert entry.get("default", "") in (None, "")
