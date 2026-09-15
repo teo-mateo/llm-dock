@@ -172,6 +172,11 @@ class Conversation:
     selected_text: Optional[str] = None
     mcp_servers_json: Optional[str] = None
     project_id: Optional[str] = None
+    # Managed prompt this conversation's main_system_prompt was resolved from,
+    # or None for a hand-written/default text. References the prompt whose
+    # content was stored when the id was set; the run path always uses the
+    # stored copy, so editing the prompt does not rewrite conversations.
+    prompt_id: Optional[str] = None
     # Declared reasoning level id chosen for this conversation, or None to send
     # no reasoning field at all. Not "off" — "off" actively disables thinking.
     reasoning_level: Optional[str] = None
@@ -202,6 +207,7 @@ class Conversation:
             "parent_conversation_id": self.parent_conversation_id,
             "selected_text": self.selected_text,
             "project_id": self.project_id,
+            "prompt_id": self.prompt_id,
             "reasoning_level": self.reasoning_level,
             "sampling_params": (json.loads(self.sampling_params_json)
                                 if self.sampling_params_json else None),
