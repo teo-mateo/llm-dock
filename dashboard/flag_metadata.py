@@ -1094,6 +1094,178 @@ VLLM_FLAGS = {
         "options": "recompute, swap",
         "impact": "Medium",
     },
+    # ========== EMBEDDINGS & POOLING ==========
+    "runner": {
+        "cli": "--runner",
+        "type": "string",
+        "category": "Embeddings & Pooling",
+        "description": "Type of model runner. Each instance supports one runner; pooling serves a pooling model, combined with --convert (the --task replacement).",
+        "options": "auto, draft, generate, pooling",
+        "impact": "Critical",
+    },
+    "convert": {
+        "cli": "--convert",
+        "type": "string",
+        "category": "Embeddings & Pooling",
+        "description": "Pooler to use when the model could serve multiple pooling tasks (auto, classify, embed, none). The --convert embed replacement for --task embed.",
+        "options": "auto, classify, embed, none",
+        "impact": "Critical",
+    },
+    # ========== PERFORMANCE & COMPILATION ==========
+    "enforce_eager": {
+        "cli": "--enforce-eager",
+        "type": "bool",
+        "category": "Performance & Compilation",
+        "description": "Always run in eager mode: disables CUDA graph capture. Faster startup for small services on a shared card, slower decode than the hybrid mode.",
+        "impact": "High",
+    },
+    "optimization_level": {
+        "cli": "--optimization-level",
+        "type": "int",
+        "category": "Performance & Compilation",
+        "description": "Startup-time vs inference-speed dial: -O0 fastest startup, -O3 best performance, -O2 the default.",
+        "options": "0, 1, 2, 3",
+        "default": "2",
+        "impact": "High",
+    },
+    "cudagraph_capture_sizes": {
+        "cli": "--cudagraph-capture-sizes",
+        "type": "string",
+        "category": "Performance & Compilation",
+        "description": "Explicit CUDA graph capture sizes (space-separated ints) instead of the inferred set. Trims startup for a service pinned to a small max-num-seqs.",
+        "impact": "Medium",
+    },
+    "performance_mode": {
+        "cli": "--performance-mode",
+        "type": "string",
+        "category": "Performance & Compilation",
+        "description": "High-level performance knob: interactivity favors per-request latency at small batches, throughput favors tokens/sec at concurrency, balanced is the default.",
+        "options": "balanced, interactivity, throughput",
+        "default": "balanced",
+        "impact": "High",
+    },
+    "speculative_config": {
+        "cli": "--speculative-config",
+        "type": "string",
+        "category": "Performance & Compilation",
+        "description": "Speculative decoding configuration as a JSON string (or keys passed individually). The largest single throughput lever.",
+        "tip": "JSON-valued: pre-quote the value, as the qwen3 service does with <code>'{\"method\":\"mtp\",\"num_speculative_tokens\":6}'</code>. Speculative decoding and min_p in a chat request are mutually exclusive — the engine answers 400 to the request, not to this flag.",
+        "impact": "High",
+    },
+    # ========== CHAT & TEMPLATES ==========
+    "chat_template": {
+        "cli": "--chat-template",
+        "type": "path",
+        "category": "Chat & Templates",
+        "description": "Path to a Jinja chat template file, used instead of the one bundled with the model.",
+        "tip": "Every vLLM container gets <code>./chat-templates:/chat-templates:ro</code> mounted, so <code>/chat-templates/&lt;name&gt;.j2</code> points at the repo's chat-templates/ directory.",
+        "impact": "High",
+    },
+    "default_chat_template_kwargs": {
+        "cli": "--default-chat-template-kwargs",
+        "type": "string",
+        "category": "Chat & Templates",
+        "description": "Server-side chat_template_kwargs as JSON; request-level chat_template_kwargs are merged over them. The vLLM analogue of llama.cpp --chat-template-kwargs.",
+        "tip": "JSON-valued: pre-quote, e.g. <code>'{\"enable_thinking\":true}'</code>. A request's own kwargs win over this default.",
+        "impact": "High",
+    },
+    # ========== SERVING & API ==========
+    "stream_interval": {
+        "cli": "--stream-interval",
+        "type": "int",
+        "category": "Serving & API",
+        "description": "SSE token-buffer size: 1 streams every token immediately; larger values batch tokens to cut host overhead.",
+        "default": "1",
+        "impact": "Medium",
+    },
+    "enable_log_requests": {
+        "cli": "--enable-log-requests",
+        "type": "bool",
+        "category": "Serving & API",
+        "description": "Log request id and parameters at INFO and prompt inputs at DEBUG (set the minimum level via VLLM_LOGGING_LEVEL). The request trail in docker logs.",
+        "impact": "Low",
+    },
+    "enable_prompt_tokens_details": {
+        "cli": "--enable-prompt-tokens-details",
+        "type": "bool",
+        "category": "Serving & API",
+        "description": "Adds prompt_tokens_details.cached_tokens to the usage block of the response, the OpenAI-compatible cached-tokens field.",
+        "impact": "Medium",
+    },
+    # ========== DISTRIBUTED & SCALING (extended) ==========
+    "distributed_executor_backend": {
+        "cli": "--distributed-executor-backend",
+        "type": "string",
+        "category": "Distributed & Scaling",
+        "description": "Backend for distributed model workers. mp keeps processing on a single host; ray for multi-node.",
+        "options": "external_launcher, mp, ray, uni",
+        "impact": "Medium",
+    },
+    # ========== CONTEXT & MEMORY (extended) ==========
+    "enable_sleep_mode": {
+        "cli": "--enable-sleep-mode",
+        "type": "bool",
+        "category": "Context & Memory",
+        "description": "Releases GPU memory from an idle engine so other services can use the card (cuda and hip platforms only).",
+        "impact": "High",
+    },
+    "kv_cache_memory_bytes": {
+        "cli": "--kv-cache-memory-bytes",
+        "type": "string",
+        "category": "Context & Memory",
+        "description": "KV cache size per GPU in bytes, sized exactly instead of by fraction. Accepts k/M/G suffixes; when set, --gpu-memory-utilization is ignored.",
+        "impact": "High",
+    },
+    # ========== MODEL FORMAT & LOADING (extended) ==========
+    "max_parallel_loading_workers": {
+        "cli": "--max-parallel-loading-workers",
+        "type": "int",
+        "category": "Model Format & Loading",
+        "description": "Maximum parallel loading workers when the model loads in batches. Avoids host-RAM OOM on large models with tensor parallelism.",
+        "impact": "Medium",
+    },
+    "safetensors_load_strategy": {
+        "cli": "--safetensors-load-strategy",
+        "type": "string",
+        "category": "Model Format & Loading",
+        "description": "Safetensors weight-loading strategy. None (default) memory-maps lazily and auto-prefetches when the checkpoint fits in RAM on NFS.",
+        "options": "eager, lazy, prefetch, torchao, None",
+        "impact": "Medium",
+    },
+    "hf_overrides": {
+        "cli": "--hf-overrides",
+        "type": "string",
+        "category": "Model Format & Loading",
+        "description": "Arguments to override the HuggingFace config, as JSON.",
+        "tip": "JSON-valued: pre-quote, e.g. <code>'{\"max_position_embeddings\":131072}'</code>. Overrides land on the config before the model loads.",
+        "impact": "Medium",
+    },
+    # ========== FEATURES & TOOLS (extended) ==========
+    "reasoning_parser": {
+        "cli": "--reasoning-parser",
+        "type": "string",
+        "category": "Features & Tools",
+        "description": "Selects the parser that splits the model's reasoning output into the reasoning_content field the chat stream renders. The value is model-specific.",
+        "tip": "The qwen3 service on this host uses <code>qwen3</code>. The parser must match the model's reasoning format or no reasoning_content is produced.",
+        "impact": "High",
+    },
+    # ========== GENERATION & SAMPLING (extended) ==========
+    "override_generation_config": {
+        "cli": "--override-generation-config",
+        "type": "string",
+        "category": "Generation & Sampling",
+        "description": "Overrides or sets the model's generation config as JSON, e.g. {\"temperature\": 0.5}. Merged with the default config when --generation-config is auto.",
+        "tip": "JSON-valued: pre-quote, e.g. <code>'{\"temperature\":0.5}'</code>. The server-side half of per-conversation sampling — a conversation's own parameters still apply over this.",
+        "impact": "Medium",
+    },
+    # ========== MULTIMODAL (extended) ==========
+    "language_model_only": {
+        "cli": "--language-model-only",
+        "type": "bool",
+        "category": "Multimodal",
+        "description": "Disables every multimodal input by setting all modality limits to 0, reclaiming multimodal memory on a text-only deployment.",
+        "impact": "Medium",
+    },
 }
 
 # ============================================
