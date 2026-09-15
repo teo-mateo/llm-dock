@@ -68,14 +68,11 @@ def test_new_cli_is_the_dashed_form_of_its_key():
 
 def test_no_bool_entry_carries_a_prefill_default():
     # A bool with a `default` renders as `--flag true` (render_cli_flag renders a
-    # non-empty value as `--flag <value>`), which vLLM's parser rejects — the
-    # --enable-auto-tool-choice breakage, #197. The one pre-existing violator stays
-    # on its own issue; everything else must stay clean.
+    # non-empty value as `--flag <value>`), which vLLM's parser rejects.
     offenders = [
         key
         for key, meta in VLLM_FLAGS.items()
         if meta.get("type") == "bool" and meta.get("default") not in (None, "")
-        and key != "enable_auto_tool_choice"
     ]
     assert offenders == [], f"bool entries with a prefill default: {offenders}"
 
