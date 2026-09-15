@@ -134,3 +134,25 @@ def test_snapshots_are_well_formed():
         assert all(f.startswith("-") for f in snap["flags"]), f"{engine}: non-flag token in surface"
         assert snap["build_identity"]["image_id"], f"{engine}: no image identity"
         assert snap["source_command"].startswith("docker"), f"{engine}: source is not a docker command"
+
+
+def test_bench_only_flags_pinned_to_bench_surface():
+    """The apply skip-list (flag_metadata.LLAMACPP_BENCH_ONLY_FLAGS) is curated,
+    not the full llama-bench surface - but every flag it names must still be a
+    flag llama-bench accepts (a typo or an upstream-removed name lands here) and
+    must have a curated metadata entry, because the UI badges each of them and
+    a badge the panel cannot explain is a lie."""
+    from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
+    surface = set(load_surface("llamacpp_bench")["flags"])
+    missing = sorted(LLAMACPP_BENCH_ONLY_FLAGS - surface)
+    assert missing == [], (
+        f"{missing} not in the recorded llama-bench surface: typo or removed "
+        f"upstream - drop it from LLAMACPP_BENCH_ONLY_FLAGS or regenerate with "
+        f"scripts/record-flag-surfaces.py --engine llamacpp_bench"
+    )
+    documented = {str(meta["cli"]) for meta in get_flag_metadata("llamacpp_bench").values()}
+    undocumented = sorted(LLAMACPP_BENCH_ONLY_FLAGS - documented)
+    assert undocumented == [], (
+        f"{undocumented} have no entry in LLAMACPP_LLAMA_BENCH_FLAGS: the UI "
+        f"badges a flag it cannot explain"
+    )

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import BenchmarkTab from './BenchmarkTab'
 import ServiceDetailsPage from './ServiceDetailsPage'
@@ -17,11 +17,16 @@ vi.mock('../hooks/useServiceDetails', () => ({ default: (...a) => serviceDetails
 
 const SERVICE = 'llamacpp-x'
 
+const BENCH_ONLY = ['-m', '-o', '-p', '-n', '-r', '-pg', '-d', '-oe', '-v', '--delay', '--list-devices']
+
 function routeFetch() {
   fetchAPIMock.mockImplementation((endpoint, options = {}) => {
     const method = options.method || 'GET'
     if (endpoint === `/benchmarks/service-defaults/${SERVICE}`) {
       return Promise.resolve({ params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99' } })
+    }
+    if (endpoint === '/benchmarks/bench-only-flags') {
+      return Promise.resolve({ flags: BENCH_ONLY })
     }
     if (endpoint.startsWith('/benchmarks?')) {
       return Promise.resolve({ runs: [COMPLETED_RUN], total: 1, limit: 50, offset: 0 })
@@ -96,6 +101,8 @@ describe('BenchmarkTab', () => {
     // History row renders
     expect(screen.getByText('410.20 t/s')).toBeInTheDocument()
     expect(screen.getByText('Apply to service')).toBeInTheDocument()
+    // The fetched set badges the bench minimums, not the service's own flag
+    await waitFor(() => expect(screen.getAllByText('bench')).toHaveLength(3))
   })
 
   it('starts a run, shows the live status, and settles on completion', async () => {
@@ -180,6 +187,39 @@ describe('BenchmarkTab', () => {
     await waitFor(() => expect(screen.getByText('Benchmark already running for llamacpp-x')).toBeInTheDocument())
     // The running run is surfaced in the history
     await waitFor(() => expect(screen.getAllByText('running').length).toBeGreaterThan(0))
+  })
+
+  it('drops the live card when the cancel DELETE 404s (the row vanished mid-click)', async () => {
+    fetchAPIMock.mockImplementation((endpoint, options = {}) => {
+      if (endpoint === `/benchmarks/run-active` && options.method === 'DELETE') {
+        return Promise.reject(new Error('Benchmark run not found'))
+      }
+      if (endpoint === `/benchmarks/run-active`) {
+        return Promise.resolve(RUNNING_RUN)
+      }
+      if (endpoint === '/benchmarks' && options.method === 'POST') {
+        return Promise.resolve({ id: 'run-active', service_name: SERVICE, status: 'pending' })
+      }
+      if (endpoint === `/benchmarks/service-defaults/${SERVICE}`) {
+        return Promise.resolve({ params: {} })
+      }
+      if (endpoint.startsWith('/benchmarks?')) {
+        return Promise.resolve({ runs: [] })
+      }
+      return Promise.resolve({})
+    })
+    renderTab()
+    const start = await screen.findByRole('button', { name: /Start benchmark/i })
+    fireEvent.click(start)
+    const cancel = await screen.findByRole('button', { name: /Cancel/i })
+
+    await act(async () => { fireEvent.click(cancel) })
+
+    // The live card is gone (no stale 'running' state) and the history
+    // refreshed - and the rejection did not escape.
+    expect(screen.queryByRole('button', { name: /Cancel/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Start benchmark/i })).toBeEnabled()
+    expect(fetchAPIMock.mock.calls.filter(c => c[0].startsWith('/benchmarks?')).length).toBeGreaterThan(1)
   })
 })
 

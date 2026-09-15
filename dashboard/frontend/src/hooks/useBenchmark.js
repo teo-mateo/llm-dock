@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { fetchAPI } from '../api'
 
-export const BENCHMARK_ONLY_FLAGS = new Set(['-m', '-p', '-n', '-r', '-o', '-pg', '-d', '-oe', '-v', '--delay', '--list-devices'])
 const POLL_INTERVAL_MS = 2000
 const HISTORY_LIMIT = 50
 
 export default function useBenchmark(serviceName, modelPath) {
   const [params, setParams] = useState({})
   const [paramsLoaded, setParamsLoaded] = useState(false)
+  // Fetched from the backend, which owns the set the apply step skips - the
+  // badge and the skip-list cannot drift apart.
+  const [benchOnlyFlags, setBenchOnlyFlags] = useState(() => new Set())
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState(null)
   const [activeRunId, setActiveRunId] = useState(null)
@@ -54,6 +56,14 @@ export default function useBenchmark(serviceName, modelPath) {
           setParams({})
           setParamsLoaded(true)
         }
+      })
+    fetchAPI("/benchmarks/bench-only-flags")
+      .then(data => {
+        if (!cancelled) setBenchOnlyFlags(new Set(data.flags || []))
+      })
+      .catch(() => {
+        // Cosmetic only: without the list the badges simply don't render,
+        // the server's skip-list is what keeps a service safe.
       })
     refreshHistory()
     return () => { cancelled = true }
@@ -152,10 +162,17 @@ export default function useBenchmark(serviceName, modelPath) {
 
   const cancelRun = useCallback(async () => {
     if (!activeRunId) return
-    await fetchAPI(`/benchmarks/${activeRunId}`, { method: 'DELETE' })
-    setCurrentRun(null)
-    setActiveRunId(null)
-    refreshHistory()
+    try {
+      await fetchAPI(`/benchmarks/${activeRunId}`, { method: 'DELETE' })
+    } catch {
+      // A 404 race (the row was deleted between render and click) lands here;
+      // either way the run is no longer live, so the local state drops and
+      // the history refresh reconciles.
+    } finally {
+      setCurrentRun(null)
+      setActiveRunId(null)
+      await refreshHistory()
+    }
   }, [activeRunId, refreshHistory])
 
   const deleteRun = useCallback(async (runId) => {
@@ -192,7 +209,7 @@ export default function useBenchmark(serviceName, modelPath) {
   const isRunActive = activeRunId !== null
 
   return {
-    params, paramsLoaded, setParam, removeParam, commandPreview,
+    params, paramsLoaded, setParam, removeParam, commandPreview, benchOnlyFlags,
     starting, startError, startBenchmark,
     currentRun, isRunActive, cancelRun,
     history, historyError, refreshHistory, refreshRun,

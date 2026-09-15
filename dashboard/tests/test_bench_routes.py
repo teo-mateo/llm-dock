@@ -296,18 +296,40 @@ class TestApplyBenchmark:
         client, db, _ = simple_client
         from benchmarking.models import BenchmarkRun
         run_id = str(uuid.uuid4())
+        from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
+        # Every flag the UI can badge as benchmark-only, plus a service flag
+        # that apply must still write back.
+        params_json = {flag: "1" for flag in sorted(LLAMACPP_BENCH_ONLY_FLAGS)}
+        params_json["-ngl"] = "99"
         db.create_run(BenchmarkRun(
             id=run_id, service_name="llamacpp-test",
             model_path="/m",
-            params_json={"-p": "512", "-n": "128", "-r": "5", "-ngl": "99"},
+            params_json=params_json,
         ))
         db.update_status(run_id, "completed")
 
         resp = client.put(f"/api/benchmarks/{run_id}/apply", headers=_auth_headers())
         data = resp.get_json()
-        for flag in ["-p", "-n", "-r"]:
+        for flag in sorted(LLAMACPP_BENCH_ONLY_FLAGS):
             assert flag in data["skipped_flags"]
             assert flag not in data["applied_params"]
+        assert "-ngl" in data["applied_params"]
+
+
+class TestBenchOnlyFlags:
+    def test_skip_list_is_the_canonical_set(self):
+        # apply's skip-list and the set the badge endpoint serves must be one
+        # canonical object - #218 was exactly this list drifting from the UI's.
+        from benchmarking import validators
+        from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
+        assert validators.BENCHMARK_ONLY_FLAGS is LLAMACPP_BENCH_ONLY_FLAGS
+
+    def test_endpoint_serves_the_set(self, simple_client):
+        client, _, _ = simple_client
+        from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
+        resp = client.get("/api/benchmarks/bench-only-flags", headers=_auth_headers())
+        assert resp.status_code == 200
+        assert resp.get_json()["flags"] == sorted(LLAMACPP_BENCH_ONLY_FLAGS)
 
 
 class TestServiceDefaults:

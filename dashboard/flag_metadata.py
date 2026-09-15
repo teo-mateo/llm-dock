@@ -831,6 +831,17 @@ for _key, _cat in _LLAMACPP_LLAMA_BENCH_CATEGORIES.items():
     if _key in LLAMACPP_LLAMA_BENCH_FLAGS:
         LLAMACPP_LLAMA_BENCH_FLAGS[_key]["category"] = _cat
 
+# Bench flags the UI badges as "benchmark-only" and that apply must never
+# write onto a service. Curated, not the full llama-bench surface: the
+# overlap flags (-ngl, -fa, -t, ...) are valid llama-server flags and writing
+# a swept value of them back is exactly what apply is for, while -m and
+# --list-devices are valid server flags a service never carries as params
+# (--list-devices would make the server print devices and exit).
+LLAMACPP_BENCH_ONLY_FLAGS = frozenset({
+    "-m", "-o", "-p", "-n", "-r", "-pg", "-d", "-oe", "-v",
+    "--delay", "--list-devices",
+})
+
 VLLM_FLAGS = {
     # ========== CONTEXT & MEMORY (Top Priority) ==========
     "max_model_len": {
