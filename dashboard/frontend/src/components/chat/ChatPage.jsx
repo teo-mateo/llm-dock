@@ -93,6 +93,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (!streaming && conversation) {
       refresh()
+      // set-state-in-effect: reacts to the streaming->idle transition; the key bump exists
+      // only to re-read the file tree after the run, which render cannot observe.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFilesRefreshKey(k => k + 1)
     }
   }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -157,6 +160,9 @@ export default function ChatPage() {
   // is never overridden by a later default change.
   const [selectedModel, setSelectedModel] = useState(null)
   useEffect(() => {
+    // set-state-in-effect: one-shot init from the default once it arrives; a render-time
+    // derivation would override a user's explicit choice on every default change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedModel(prev => prev ?? defaultModelName)
   }, [defaultModelName])
 

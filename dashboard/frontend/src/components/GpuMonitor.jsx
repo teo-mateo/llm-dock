@@ -26,6 +26,9 @@ export default function GpuMonitor() {
 
   useEffect(() => {
     if (gpus && gpus.length) {
+      // set-state-in-effect: histories is a bounded fold over the SSE stream — render only
+      // sees the latest frame, so nothing here is derivable at render time.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHistories(prev => updateHistories(prev, gpus))
     }
   }, [gpus])

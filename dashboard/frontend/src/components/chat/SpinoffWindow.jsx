@@ -174,7 +174,7 @@ export default function SpinoffWindow({ id, conversationId: initialConvId, selec
         },
       }
     )
-  }, [convId, streaming, selectedText, serviceName, id, onConversationCreated])
+  }, [convId, streaming, selectedText, serviceName, id, parentConversationId, onConversationCreated])
 
   function handleSubmit(e) {
     e.preventDefault()

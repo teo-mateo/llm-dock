@@ -55,6 +55,8 @@ export default function useSamplingFields(service) {
 
   useEffect(() => {
     mounted.current = true
+    // set-state-in-effect: fetch on mount / service change, cached per service in `cache`.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
     return () => { mounted.current = false }
   }, [load])

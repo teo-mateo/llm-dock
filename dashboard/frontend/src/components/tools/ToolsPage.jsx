@@ -120,7 +120,7 @@ export default function ToolsPage() {
   const { data, json, loading, error, save, reload } = useRegistry()
   const [selectedId, setSelectedId] = useState(null)
 
-  const servers = data?.servers || []
+  const servers = useMemo(() => data?.servers || [], [data])
   const grouped = useMemo(() => {
     const builtin = servers.filter(s => s.source === 'built-in')
     const external = servers.filter(s => s.source === 'external')
