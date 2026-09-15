@@ -165,12 +165,6 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "description": "Strict CPU affinity (0=relaxed, 1=strict)",
         "tip": "Enforces <b>strict CPU affinity</b> when <code>-C</code> is set. With strict mode (<code>1</code>), threads will never migrate to cores outside their assigned mask, even under load. Relaxed mode (<code>0</code>, default) allows some migration for better load balancing. Use strict mode when you need deterministic latency guarantees.",
     },
-    "numa_mode": {
-        "cli": "-d",
-        "type": "string",
-        "description": "NUMA distribute mode: distribute, isolate, interleave",
-        "tip": "Controls how memory is distributed across NUMA nodes. <b>distribute</b> spreads allocations evenly (default); <b>isolate</b> keeps memory on the local node; <b>interleave</b> stripes allocations across nodes for balanced access. Only effective when <code>--numa</code> is enabled.",
-    },
     # KV Cache
     "cache_type_k": {
         "cli": "-ctk",
@@ -193,7 +187,7 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "tip": "When set, disables offloading the KV cache to the GPU; the cache stays in CPU RAM instead. By default KV offloading is <b>enabled</b>, keeping the cache on the GPU for best throughput. Disable this if your VRAM is nearly exhausted and you have ample system RAM \u2014 you will trade some speed for the ability to run larger contexts or more parallel slots without an out-of-memory error.",
     },
     "mmap": {
-        "cli": "-mmp",
+        "cli": "--mmap",
         "type": "bool",
         "description": "Enable memory-mapped model loading (default: on)",
         "tip": "Enables <b>memory-mapped loading</b> for the model file. When enabled (default), the OS pages model weights in on demand, which is fast to start and allows efficient sharing between processes. Disable with <code>--no-mmap</code> if you want the entire model loaded into RAM upfront to avoid page faults during inference.",
@@ -205,7 +199,7 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "tip": "Bypasses OS page cache with <b>direct I/O</b> when loading the model file. Useful for very large models on systems with limited RAM where you want to avoid polluting the page cache. Can improve performance on NVMe storage by reducing cache thrashing.",
     },
     "embeddings": {
-        "cli": "-embd",
+        "cli": "--embeddings",
         "type": "bool",
         "description": "Enable embeddings output mode",
         "tip": "Enables <b>embeddings-only mode</b> where the server returns vector embeddings instead of text generations. Use this when you need the model for semantic search, clustering, or other embedding-based tasks rather than chat/completion. Disables generation-related parameters.",
@@ -217,7 +211,7 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "tip": "For Mixture-of-Experts models (DeepSeek, Qwen-MoE), controls how many <b>expert layers run on CPU</b> when GPU VRAM is insufficient. Experts are sparse-activated, so only 1-2 are typically active per token. Set to <code>auto</code> to let the server determine the split, or an explicit integer to pin specific experts to CPU.",
     },
     "no_op_offload": {
-        "cli": "-nopo",
+        "cli": "--no-op-offload",
         "type": "bool",
         "description": "Disable offloading of no-op operations to GPU",
         "tip": "Prevents <b>no-op (null) operations</b> from being offloaded to GPU. These are tiny operations that perform no actual computation but may have host-device synchronization overhead. Disabling their offload can reduce synchronization calls and improve throughput on high-latency GPU paths.",
@@ -788,13 +782,6 @@ LLAMACPP_LLAMA_BENCH_FLAGS = {
         "default": "0",
         "tip": "CPU scheduling priority: <code>-1</code> (low), <code>0</code> (normal), <code>1</code> (medium), <code>2</code> (high), <code>3</code> (realtime). Higher priorities allocate more CPU time to llama.cpp. Use <b>low for background benchmarking</b>, high for dedicated performance testing.",
     },
-    "rpc": {
-        "cli": "--rpc",
-        "type": "string",
-        "description": "RPC server addresses (comma-separated)",
-        "default": "",
-        "tip": "Enables distributed benchmarking across machines by specifying RPC server addresses (e.g., <code>192.168.1.10:50052,192.168.1.11:50052</code>). Model weights and KV cache are automatically distributed proportional to available memory. <b>Experimental — do not use on open networks.</b>",
-    },
     "override_tensors": {
         "cli": "-ot",
         "type": "string",
@@ -837,7 +824,6 @@ _LLAMACPP_LLAMA_BENCH_CATEGORIES = {
     "numa": "CPU",
     "n_cpu_moe": "CPU",
     "prio": "Other",
-    "rpc": "Other",
     "override_tensors": "Other",
 }
 
@@ -861,14 +847,6 @@ VLLM_FLAGS = {
         "description": "Fraction of GPU memory to use (0.0-1.0). Higher = more concurrent requests but risk of OOM.",
         "default": "0.92",
         "impact": "High",
-    },
-    "swap_space": {
-        "cli": "--swap-space",
-        "type": "float",
-        "category": "Context & Memory",
-        "description": "CPU swap space per GPU in GiB. Spills to CPU when GPU full, reduces OOM but slower.",
-        "default": "4",
-        "impact": "Medium",
     },
     "cpu_offload_gb": {
         "cli": "--cpu-offload-gb",
@@ -1049,21 +1027,6 @@ VLLM_FLAGS = {
         "default": "hermes",
         "impact": "Low",
     },
-    # ========== ROPE SCALING ==========
-    "rope_scaling": {
-        "cli": "--rope-scaling",
-        "type": "string",
-        "category": "RoPE Scaling",
-        "description": 'RoPE scaling config as JSON. Extends context length. Example: {"type":"dynamic","factor":2.0}',
-        "impact": "Medium",
-    },
-    "rope_theta": {
-        "cli": "--rope-theta",
-        "type": "float",
-        "category": "RoPE Scaling",
-        "description": "RoPE theta parameter. Frequency base for positional encoding.",
-        "impact": "Low",
-    },
     # ========== ATTENTION & OPTIMIZATION ==========
     "attention_backend": {
         "cli": "env:VLLM_ATTENTION_BACKEND",
@@ -1083,14 +1046,6 @@ VLLM_FLAGS = {
         "options": "fcfs, priority",
         "default": "fcfs",
         "impact": "Low",
-    },
-    "preemption_mode": {
-        "cli": "--preemption-mode",
-        "type": "string",
-        "category": "Scheduling",
-        "description": "Preemption mode (recompute=recompute from checkpoint, swap=swap to CPU).",
-        "options": "recompute, swap",
-        "impact": "Medium",
     },
     # ========== EMBEDDINGS & POOLING ==========
     "runner": {
@@ -1287,7 +1242,6 @@ _LLAMACPP_LLAMA_SERVER_CATEGORIES = {
     "numa": "CPU",
     "cpu_mask": "CPU",
     "cpu_strict": "CPU",
-    "numa_mode": "CPU",
     "cache_type_k": "KV Cache",
     "cache_type_v": "KV Cache",
     "no_kv_offload": "KV Cache",
@@ -1391,13 +1345,6 @@ DS4_FLAGS = {
         "description": "GPU duty-cycle target, 1..100.",
         "default": "100",
         "impact": "Low",
-    },
-    "warm_weights": {
-        "cli": "--warm-weights",
-        "type": "bool",
-        "category": "Context & Runtime",
-        "description": "Touch all model pages at startup to make weights resident in GPU memory before serving.",
-        "impact": "High",
     },
     # ========== BACKEND ==========
     "cuda": {

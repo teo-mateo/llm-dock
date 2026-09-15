@@ -32,12 +32,7 @@ TEMPLATE_TYPE_TO_ENGINE = {
 # (2026-09-15, measured; full evidence on #207). The test asserts each of them is
 # STILL absent below, so this list can only shrink, and only when the entry is
 # fixed (rename/delete) in flag_metadata.py and dropped here in the same change.
-STALE = {
-    "vllm": {"--preemption-mode", "--rope-scaling", "--rope-theta", "--swap-space"},
-    "llamacpp_server": {"-d", "-embd", "-mmp", "-nopo"},
-    "llamacpp_bench": {"--rpc"},
-    "ds4": {"--warm-weights"},
-}
+STALE = {}
 
 
 def load_surface(engine):

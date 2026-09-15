@@ -44,10 +44,11 @@ JSON_VALUED = {
 REQUIRED_FIELDS = ("cli", "type", "category", "description", "impact")
 
 
-def test_coverage_grew_from_30_to_51():
-    assert len(VLLM_FLAGS) == 51, (
-        f"VLLM_FLAGS holds {len(VLLM_FLAGS)} entries; #196 added the 21 named in "
-        "test_vllm_flag_metadata.py on top of the 30 pre-existing entries"
+def test_entry_count_tracks_additions_and_removals():
+    # 30 pre-existing + the 21 from #196 (named in NEW_KEYS) - the 4 removed in
+    # #207 (upstream-deleted flags the surface guard caught).
+    assert len(VLLM_FLAGS) == 47, (
+        f"VLLM_FLAGS holds {len(VLLM_FLAGS)} entries; expected 30 + 21 - 4"
     )
 
 
