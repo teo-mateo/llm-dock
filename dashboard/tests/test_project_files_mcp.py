@@ -643,7 +643,7 @@ class TestSnapshotThreading:
 
         class CapturingRunner(ChatRunner):
             def _build_stream(self, conv, mcp_manager, effective_project_id=None, run_id=None,
-                              reasoning_level=None):
+                              reasoning_level=None, sampling_params=None):
                 captured["project_id"] = effective_project_id
                 yield ("done", {"content": "ok", "reasoning_content": None})
 

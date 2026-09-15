@@ -175,6 +175,10 @@ class Conversation:
     # Declared reasoning level id chosen for this conversation, or None to send
     # no reasoning field at all. Not "off" — "off" actively disables thinking.
     reasoning_level: Optional[str] = None
+    # Sampling params as stored JSON text ("{\"temperature\": 0.7}"), or None to
+    # send no sampling field at all. One blob rather than a column per knob so a
+    # new knob costs no migration; whole-blob replace, never a merge.
+    sampling_params_json: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     messages: List[Message] = field(default_factory=list)
@@ -199,6 +203,8 @@ class Conversation:
             "selected_text": self.selected_text,
             "project_id": self.project_id,
             "reasoning_level": self.reasoning_level,
+            "sampling_params": (json.loads(self.sampling_params_json)
+                                if self.sampling_params_json else None),
             "mcp_servers": json.loads(self.mcp_servers_json) if self.mcp_servers_json else [],
             "active_run": self.active_run,
             "last_run": self.last_run,

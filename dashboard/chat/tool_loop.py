@@ -12,7 +12,8 @@ MAX_TOOL_ROUNDS = 5
 
 
 def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_manager: MCPClientManager,
-                      progress_callback=None, *, reasoning_level: str = None):
+                      progress_callback=None, *, reasoning_level: str = None,
+                      sampling_params: dict = None):
     """Stream a chat completion with tool-calling support.
 
     Yields (event_type, data) tuples:
@@ -31,12 +32,18 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
     reasoning_level is forwarded to every request this loop makes, including
     the forced final response after MAX_TOOL_ROUNDS — a turn must not answer
     with a different thinking posture than the one it was asked for.
+
+    sampling_params is forwarded the same way, so a turn does not change its
+    sampler mid-flight because the model happened to call a tool. The tool-turn
+    temperature default lives in llm_proxy: it is the default, so an explicit
+    temperature from the conversation still wins here.
     """
     for round_num in range(MAX_TOOL_ROUNDS):
         tool_calls_received = False
 
         for event_type, data in stream_chat_completion(service_name, messages_array, tools,
-                                                        reasoning_level=reasoning_level):
+                                                        reasoning_level=reasoning_level,
+                                                        sampling_params=sampling_params):
             if event_type == "delta":
                 yield ("delta", data)
 
@@ -136,7 +143,8 @@ def stream_with_tools(service_name: str, messages_array: list, tools: list, mcp_
     final_reasoning = []
     for event_type, data in stream_chat_completion(service_name, messages_array, tools=tools,
                                                    tool_choice="none",
-                                                   reasoning_level=reasoning_level):
+                                                   reasoning_level=reasoning_level,
+                                                   sampling_params=sampling_params):
         if event_type == "delta":
             final_content.append(data.get("content") or "")
             final_reasoning.append(data.get("reasoning_content") or "")

@@ -4,6 +4,7 @@ import ChatInput from './ChatInput'
 import DebugOverlay from './DebugOverlay'
 import ModelSelector from './ModelSelector'
 import ReasoningLevelSelect from './ReasoningLevelSelect'
+import SamplingParamsControl from './SamplingParamsControl'
 import PromptSelector from './PromptSelector'
 import CritiquePanel from './CritiquePanel'
 import SpinoffWindow from './SpinoffWindow'
@@ -24,6 +25,8 @@ export default function ChatArea({
   onModelChange,
   selectedReasoningLevel,
   onReasoningLevelChange,
+  selectedSamplingParams,
+  onSamplingParamsChange,
   openRouterModels,
   onCreateAndSend,
   messages,
@@ -157,13 +160,21 @@ export default function ChatArea({
               onSend={(msg, images) => onCreateAndSend?.(msg, images)}
               disabled={!defaultModelName}
               trailing={
-                <ReasoningLevelSelect
-                  mainService={selectedModel}
-                  value={selectedReasoningLevel}
-                  onChange={onReasoningLevelChange}
-                  openRouterModels={openRouterModels}
-                  disabled={!defaultModelName}
-                />
+                <>
+                  <ReasoningLevelSelect
+                    mainService={selectedModel}
+                    value={selectedReasoningLevel}
+                    onChange={onReasoningLevelChange}
+                    openRouterModels={openRouterModels}
+                    disabled={!defaultModelName}
+                  />
+                  <SamplingParamsControl
+                    mainService={selectedModel}
+                    value={selectedSamplingParams}
+                    onChange={onSamplingParamsChange}
+                    disabled={!defaultModelName}
+                  />
+                </>
               }
             />
           </div>
@@ -203,6 +214,13 @@ export default function ChatArea({
   // Clearing sends null explicitly: omitting the key would survive the merge.
   async function handleReasoningLevelChange(level) {
     await updateConversation(conversation.id, { reasoning_level: level })
+    onReloadConversation?.(conversation.id)
+  }
+
+  // Same discipline: null is an explicit clear, and the save carries the whole set
+  // because the server replaces rather than merges.
+  async function handleSamplingParamsChange(params) {
+    await updateConversation(conversation.id, { sampling_params: params })
     onReloadConversation?.(conversation.id)
   }
 
@@ -332,13 +350,21 @@ export default function ChatArea({
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}
           trailing={
-            <ReasoningLevelSelect
-              mainService={conversation.main_service}
-              value={conversation.reasoning_level}
-              onChange={handleReasoningLevelChange}
-              openRouterModels={openRouterModels}
-              disabled={busy}
-            />
+            <>
+              <ReasoningLevelSelect
+                mainService={conversation.main_service}
+                value={conversation.reasoning_level}
+                onChange={handleReasoningLevelChange}
+                openRouterModels={openRouterModels}
+                disabled={busy}
+              />
+              <SamplingParamsControl
+                mainService={conversation.main_service}
+                value={conversation.sampling_params}
+                onChange={handleSamplingParamsChange}
+                disabled={busy}
+              />
+            </>
           }
         />
       </div>

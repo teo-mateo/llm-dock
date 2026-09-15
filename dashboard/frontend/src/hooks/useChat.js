@@ -68,11 +68,16 @@ export default function useChat({ onConversationUpdated } = {}) {
   // start of each send/edit/load so it never carries a stale run's id.
   const runIdRef = useRef(null)
   // One handler for every stream path: records the run notice, and a note-less
-  // frame clears it so a later run can't inherit the previous one's.
+  // frame clears it so a later run can't inherit the previous one's. Both run-time
+  // guards (reasoning level, sampling params) report through the one notice line,
+  // because the user's problem is the same in both cases: something they set was
+  // not applied, and the answer arriving gives no other hint.
   const handleRunStarted = useCallback((evt) => {
     runIdRef.current = evt.run_id
     setRunReady(true)
-    setRunNotice(typeof evt.reasoning_level_note === 'string' ? evt.reasoning_level_note : null)
+    const notes = [evt.reasoning_level_note, evt.sampling_params_note]
+      .filter(n => typeof n === 'string' && n)
+    setRunNotice(notes.length ? notes.join(' · ') : null)
   }, [])
   // Monotonic load generation. Incremented synchronously at the start of every
   // loadConversation; the post-fetch reattach only fires if it is still the

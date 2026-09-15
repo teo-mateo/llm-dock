@@ -12,7 +12,7 @@ import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import { serviceNameForModel } from '../../utils/openrouter'
 import { pendingFlushDecision } from './pendingFlush'
-import { isReasoningLevelRejection } from './levelRejection'
+import { isReasoningLevelRejection, isSamplingParamsRejection } from './levelRejection'
 
 export default function ChatPage() {
   const { conversationId, projectId } = useParams()
@@ -163,6 +163,10 @@ export default function ChatPage() {
   // Pre-selected level for a new conversation. Cleared on model change: a level
   // belongs to one model's template and may not exist on the next.
   const [selectedReasoningLevel, setSelectedReasoningLevel] = useState(null)
+  // Params are kept across a model change, unlike the level: they are not a
+  // property of one model's template. What the new engine cannot take is dropped
+  // server-side and named on run_started, rather than silently lost here.
+  const [selectedSamplingParams, setSelectedSamplingParams] = useState(null)
   const handleComposerModelChange = useCallback((model) => {
     setSelectedModel(model)
     setSelectedReasoningLevel(null)
@@ -248,21 +252,31 @@ export default function ChatPage() {
       return
     }
     let conv
+    const body = {
+      main_service: selectedModel,
+      ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
+      ...(selectedSamplingParams ? { sampling_params: selectedSamplingParams } : {}),
+    }
     try {
-      conv = await create({
-        main_service: selectedModel,
-        ...(selectedReasoningLevel ? { reasoning_level: selectedReasoningLevel } : {}),
-      })
+      conv = await create(body)
     } catch (err) {
-      // Retry on a level rejection only; any other failure may follow a create
-      // that succeeded, and retrying that would duplicate the conversation.
-      if (!isReasoningLevelRejection(err)) throw err
-      console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
-      conv = await create({ main_service: selectedModel })
+      // Retry on a composer-field rejection only; any other failure may follow a
+      // create that succeeded, and retrying that would duplicate the conversation.
+      // The code names which field was refused, so exactly one is dropped.
+      if (isReasoningLevelRejection(err) && selectedReasoningLevel) {
+        console.warn(`reasoning level '${selectedReasoningLevel}' rejected, creating without it`, err)
+        conv = await create({ ...body, reasoning_level: undefined })
+      } else if (isSamplingParamsRejection(err) && selectedSamplingParams) {
+        console.warn('sampling params rejected, creating without them', err)
+        setSelectedSamplingParams(null)
+        conv = await create({ ...body, sampling_params: undefined })
+      } else {
+        throw err
+      }
     }
     pendingMsgRef.current = { convId: conv.id, content, images }
     navigate(`/chat/${conv.id}`)
-  }, [create, navigate, selectedModel, selectedReasoningLevel])
+  }, [create, navigate, selectedModel, selectedReasoningLevel, selectedSamplingParams])
 
   const handleSelect = useCallback((id) => {
     if (!confirmDiscardEdits()) return
@@ -375,6 +389,8 @@ export default function ChatPage() {
         selectedModel={selectedModel}
         onModelChange={handleComposerModelChange}
         selectedReasoningLevel={selectedReasoningLevel}
+        selectedSamplingParams={selectedSamplingParams}
+        onSamplingParamsChange={setSelectedSamplingParams}
         openRouterModels={openRouterModels}
         onReasoningLevelChange={setSelectedReasoningLevel}
         onCreateAndSend={handleCreateAndSend}

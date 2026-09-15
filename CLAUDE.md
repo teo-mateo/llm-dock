@@ -879,6 +879,39 @@ construction all call it, so they cannot disagree.
   outgoing payload keeps the exact key set it had before
   (`tests/test_reasoning_level_payload.py`).
 
+## Per-conversation sampling parameters
+
+A conversation can store `temperature`, `top_p`, `top_k`, `min_p`, `max_tokens`,
+`repetition_penalty`, `presence_penalty`, `frequency_penalty`, `seed` and `stop`. They
+are applied **server-side** when the run builds its request, so every client gets the
+feature for free — same shape as reasoning levels: one pure owner, two enforcement
+points, absence sends nothing.
+
+- **Owner**: `dashboard/sampling_params.py` holds the grammar, the ranges and the
+  per-engine field names. No other module states a range or a wire name.
+- **Storage**: `conversations.sampling_params_json` — one JSON blob (added in
+  `chat/db.py:_migrate`), not a column per knob. `NULL` means send nothing, which is
+  the pre-feature request byte for byte; `null` and `{}` both clear, so NULL is the one
+  empty state. `PUT` **replaces** the blob rather than merging it.
+- **Mapped today: `llamacpp` and `vllm`, nothing else.** Both answer 200 and drop an
+  unknown field name, so the name table is load-bearing — llama.cpp's sampler reads
+  `repeat_penalty`, and `repetition_penalty` on that engine is a silent no-op.
+  `ik_llamacpp`, `tabbyapi`, `ds4`, `ninfer` and `openrouter` get no sampling field:
+  unverified, deliberately.
+- **The picker offers what the engine takes**, read from
+  `GET /api/chat/sampling-fields?service=…`, which reads the same table the request
+  builder does — a knob the runner would drop cannot be offered.
+- **A dropped field is named** on `run_started` as `sampling_params_note`, folded into
+  the composer's one notice line alongside the reasoning note, because a silently
+  dropped temperature is indistinguishable from a model that ignored it.
+- **Bounds are the intersection** of the engines offering a field (vLLM 400s
+  `temperature > 2`, llama.cpp clamps it; vLLM 400s `top_p: 0`), since one stored set is
+  applied to whichever model the conversation is on.
+- `llm_proxy.TOOL_TURN_TEMPERATURE` is a **default**, not a ceiling: a stored
+  `temperature` wins on a tool-bearing turn.
+- Measured matrix, the commands behind every verdict, and what was rejected:
+  `docs/plans/chat-sampling-params.md`.
+
 ## Adding an external MCP server
 
 Built-in MCP tools live in `dashboard/chat/mcp_registry.py` and ship with
