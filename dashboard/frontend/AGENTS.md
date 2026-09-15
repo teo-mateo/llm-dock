@@ -31,7 +31,7 @@ full chat experience. It talks to the Flask dashboard API on port 3399
 | Framework | React 19, React DOM 19 |
 | Build | Vite 7 (`@vitejs/plugin-react`) |
 | Styling | Tailwind CSS 4 (`@tailwindcss/vite`, `@tailwindcss/typography`) |
-| Routing | `react-router-dom` 7 (BrowserRouter, `basename="/v2"`) |
+| Routing | `react-router-dom` 7 (data router: `createBrowserRouter`, `basename="/v2"`) |
 | Markdown | `react-markdown` 10 + `remark-gfm`, `remark-math`, `rehype-katex`, `rehype-raw`, `katex` |
 | Icons | Font Awesome 6 (loaded from CDN in `index.html`) |
 | Fonts | Google Fonts: Archivo (UI), Newsreader (prose), IBM Plex Mono (code) |
@@ -160,18 +160,21 @@ Key mechanics:
 | File | Purpose |
 |------|---------|
 | `index.html` | HTML shell; anti-FOUC theme script; CDN Font Awesome + Google Fonts; mounts `#root` |
-| `src/main.jsx` | Entry: `createRoot`, `StrictMode`, `ThemeProvider`, `BrowserRouter basename="/v2"`, `App` |
-| `src/App.jsx` | Root layout: `Sidebar` + `MobileNav` + `Header` + `<Routes>` |
+| `src/main.jsx` | Entry: `createRoot`, `StrictMode`, `ThemeProvider`, `App` |
+| `src/App.jsx` | Builds the data router (`createBrowserRouter(routes, { basename: "/v2" })`) and renders `RouterProvider` |
+| `src/routes.jsx` | The route table (the single source of truth for paths) — a `'/'` layout route wrapping the app shell, with one child per page |
+| `src/layout.jsx` | `AppShell` (Sidebar + MobileNav + `Outlet` as the layout element) and `DefaultLayout` (Header + page container) |
 | `src/index.css` | Tailwind entry + full semantic theme token system (`@theme static`), dark/light overrides |
 | `vite.config.js` | Vite config: `base: '/v2/'`, sourcemaps, and an `/api` → `:5000` proxy that no request uses (see [Dev mode](#dev-mode)) |
 | `vitest.config.js` | Test config: jsdom, setup file |
 
-### Routes (`App.jsx`)
+### Routes (`routes.jsx`)
 
 | Path | Component | Purpose |
 |------|-----------|---------|
 | `/` | `GpuMonitor` + `ServicesTable` | Dashboard |
 | `/chat/:conversationId?` | `ChatPage` | Chat (with optional conversation) |
+| `/chat/ghost` | `GhostChatPage` | Ephemeral zero-trace chat (issue #57) |
 | `/chat/project/:projectId` | `ChatPage` | Project file explorer |
 | `/tools` | `ToolsPage` | MCP registry, default prompt |
 | `/services/:serviceName/*` | `ServiceDetailsPage` | Config / logs / metrics |
@@ -342,7 +345,7 @@ critique panel and delete handling. It is heavily engineered around races:
 
 | File | Purpose |
 |------|---------|
-| `ChatPage.jsx` | Route owner: resolves the effective project (walks the parent chain for spinoffs), renders `ProjectChatSplit` or `ProjectPage`, guards navigation away from a dirty editor, queues the empty-state first message (`pendingFlush.js`) and retries `create` without a reasoning level on a 400 (`levelRejection.js`) |
+| `ChatPage.jsx` | Route owner: resolves the effective project (walks the parent chain for spinoffs), renders `ProjectChatSplit` or `ProjectPage`, guards navigation away from a dirty editor (explicit exits via `confirmDiscardEdits` before `navigate`; browser Back/Forward via a data-router `useBlocker` armed for `POP` only, feeding the discard modal — both the project-page editor and the chat-split overlay funnel into the same `editorDirtyRef` through `onEditorDirtyChange`), queues the empty-state first message (`pendingFlush.js`) and retries `create` without a reasoning level on a 400 (`levelRejection.js`) |
 | `ProjectChatSplit.jsx` | Resizable file-explorer strip + chat; editor overlay; dirty tracking |
 | `ProjectExplorerPane.jsx` | Read-mostly file tree for the chat split |
 | `ProjectPage.jsx` | Full standalone explorer: DnD, cut/copy/paste, breadcrumbs, context menu |
@@ -430,3 +433,16 @@ critique panel and delete handling. It is heavily engineered around races:
 - **`dist/` is gitignored** — rebuild before deploying.
 - **`useRunningServices` returns only chat-capable services** — embedding-pooling
   services are filtered out of the chat composer's default model.
+- **The app runs a data router** (`createBrowserRouter` in `App.jsx`, the route
+  table in `routes.jsx`), not the legacy `BrowserRouter` + `<Routes>` pair —
+  `useBlocker` only works under the data-router APIs, and the dirty-editor
+  Back/Forward guard (issue #80) depends on it. Two load-bearing consequences:
+  - a parent rerender does **not** propagate into the route tree (the legacy
+    `MemoryRouter` did), so tests that must force a route component to
+    rerender deliver the tick through a context consumed by the route element
+    (see `ChatPage.test.jsx`'s `TickContext`). A same-location
+    `router.navigate()` is a no-op and won't rerender either.
+  - `useBlocker((arg) => …)` receives `{ currentLocation, nextLocation,
+    historyAction }` (`historyAction` is the `'POP'|'PUSH'|'REPLACE'` string),
+    and the hook returns the blocker state object — test
+    `blocker.state === "blocked"`, not `blocker.blocking`.

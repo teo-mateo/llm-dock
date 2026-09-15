@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor, cleanup, act } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { Route, RouterProvider, createMemoryRouter } from 'react-router-dom'
 import ChatPage from './ChatPage'
 
 // Stub the heavy presentational children — this test is about the
@@ -93,11 +93,9 @@ describe('ChatPage URL-load effect', () => {
     // rebuilding the inline onConversationUpdated each time.
     function Harness({ tick }) { // eslint-disable-line no-unused-vars
       return (
-        <MemoryRouter initialEntries={['/chat/abc']}>
-          <Routes>
-            <Route path="/chat/:conversationId" element={<ChatPage />} />
-          </Routes>
-        </MemoryRouter>
+        <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/abc'] })} />
       )
     }
 
@@ -123,12 +121,10 @@ describe('ChatPage dirty-editor navigation guard (regression: PR #79 codex 4.1)'
       projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
     })
     return render(
-      <MemoryRouter initialEntries={['/chat/project/p1']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-          <Route path="/chat/project/:projectId" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId?", element: <ChatPage /> },
+          { path: "/chat/project/:projectId", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/project/p1'] })} />
     )
   }
 
@@ -175,11 +171,9 @@ describe('ChatPage dirty-editor navigation guard (regression: PR #79 codex 4.1)'
 describe('ChatPage delete → project count refresh', () => {
   function renderPage() {
     return render(
-      <MemoryRouter initialEntries={['/chat']}>
-        <Routes>
-          <Route path="/chat" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat", element: <ChatPage /> }
+        ], { initialEntries: ['/chat'] })} />
     )
   }
 
@@ -212,11 +206,9 @@ describe('ChatPage project conversation split view', () => {
 
   function renderConversationRoute() {
     return render(
-      <MemoryRouter initialEntries={['/chat/abc']}>
-        <Routes>
-          <Route path="/chat/:conversationId" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/abc'] })} />
     )
   }
 
@@ -280,11 +272,9 @@ describe('ChatPage spin-off project inheritance (regression: PR #87 codex 1.2)',
       projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
     })
     render(
-      <MemoryRouter initialEntries={['/chat/spin']}>
-        <Routes>
-          <Route path="/chat/:conversationId" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/spin'] })} />
     )
     await waitFor(() => expect(s.getByTestId('project-chat-split')).toBeInTheDocument())
     await waitFor(() => expect(mockFilesTree).toHaveBeenCalledWith('p1'))
@@ -305,11 +295,9 @@ describe('ChatPage dirty-editor delete guard (regression: PR #87 codex 1.3)', ()
       projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
     })
     render(
-      <MemoryRouter initialEntries={['/chat/abc']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId?", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/abc'] })} />
     )
     await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
     fireEvent.click(s.getByTestId('tree-node-a.md'))
@@ -360,11 +348,9 @@ describe('ChatPage dirty-editor guards on project mutations (regression: PR #87 
       projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
     })
     render(
-      <MemoryRouter initialEntries={['/chat/abc']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId?", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/abc'] })} />
     )
     await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
     fireEvent.click(s.getByTestId('tree-node-a.md'))
@@ -421,11 +407,9 @@ describe('ChatPage failed-mutation dirty guard stays armed (regression: PR #87 c
       projects: [{ id: 'p1', name: 'Fancy', conversation_count: 1 }],
     })
     render(
-      <MemoryRouter initialEntries={['/chat/abc']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId?", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/abc'] })} />
     )
     await waitFor(() => expect(s.getByTestId('tree-node-a.md')).toBeInTheDocument())
     fireEvent.click(s.getByTestId('tree-node-a.md'))
@@ -464,12 +448,10 @@ describe('ChatPage project-page delete guard (regression: PR #87 codex 3.1)', ()
       projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
     })
     render(
-      <MemoryRouter initialEntries={['/chat/project/p1']}>
-        <Routes>
-          <Route path="/chat/:conversationId?" element={<ChatPage />} />
-          <Route path="/chat/project/:projectId" element={<ChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={createMemoryRouter([
+          { path: "/chat/:conversationId?", element: <ChatPage /> },
+          { path: "/chat/project/:projectId", element: <ChatPage /> }
+        ], { initialEntries: ['/chat/project/p1'] })} />
     )
     const row = await s.findByTestId('file-row-a.md')
     await act(async () => { row.click() })
@@ -486,6 +468,91 @@ describe('ChatPage project-page delete guard (regression: PR #87 codex 3.1)', ()
     confirmSpy.mockReturnValue(true)
     await act(async () => { await sidebarProps.current.onDeleteProject('p1') })
     expect(mockDeleteProject).toHaveBeenCalledWith('p1')
+    confirmSpy.mockRestore()
+  })
+})
+describe('ChatPage Back/Forward guard (issue #80: useBlocker under the data router)', () => {
+  // The one navigation class the explicit confirmDiscardEdits guards never
+  // see: a history POP (browser Back/Forward) unmounts a dirty editor
+  // without going through any handler, so the useBlocker in ChatPage
+  // intercepts it. Two history entries; the second is the project page.
+  function renderBackForward() {
+    mockListProjects.mockResolvedValue({
+      projects: [{ id: 'p1', name: 'P', conversation_count: 0 }],
+    })
+    const router = createMemoryRouter([
+      { path: "/chat/:conversationId?", element: <ChatPage /> },
+      { path: "/chat/project/:projectId", element: <ChatPage /> },
+    ], { initialEntries: ['/chat', '/chat/project/p1'] })
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  async function openAndDirtyEditor(s) {
+    const { fireEvent } = await import('@testing-library/react')
+    const row = await s.findByTestId('file-row-a.md')
+    await act(async () => { row.click() })
+    const ta = await s.findByTestId('editor-textarea')
+    fireEvent.change(ta, { target: { value: 'unsaved edits' } })
+    return ta
+  }
+
+  it('cancel preserves the route AND the editor text (issue #80 regression test)', async () => {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    const router = renderBackForward()
+    await openAndDirtyEditor(s)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    await act(async () => { router.navigate(-1) })
+
+    // The POP is intercepted: the discard modal is up, the route was not
+    // taken (the project page and its dirty editor are still mounted).
+    expect(s.getByTestId('nav-blocker-modal')).toBeInTheDocument()
+    expect(s.getByTestId('editor-textarea').value).toBe('unsaved edits')
+
+    // Cancel: the pending navigation is dropped, nothing else changes.
+    fireEvent.click(s.getByTestId('nav-blocker-stay'))
+    expect(s.queryByTestId('nav-blocker-modal')).toBeNull()
+    expect(s.getByTestId('editor-textarea').value).toBe('unsaved edits')
+    confirmSpy.mockRestore()
+  })
+
+  it('leaving takes the Back navigation and unmounts the editor', async () => {
+    const { screen: s, fireEvent } = await import('@testing-library/react')
+    const router = renderBackForward()
+    await openAndDirtyEditor(s)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    await act(async () => { router.navigate(-1) })
+    expect(s.getByTestId('nav-blocker-modal')).toBeInTheDocument()
+
+    fireEvent.click(s.getByTestId('nav-blocker-leave'))
+    // proceed() commits the POP through a microtask (the history go fires
+    // behind a promise resolution), so flush async work before asserting.
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+
+    // The POP committed: back on /chat, the editor is gone with its buffer.
+    expect(s.queryByTestId('nav-blocker-modal')).toBeNull()
+    expect(s.queryByTestId('editor-textarea')).toBeNull()
+  })
+
+  it('a clean editor lets Back pass through without a prompt', async () => {
+    const { screen: s } = await import('@testing-library/react')
+    const router = renderBackForward()
+    await s.findByTestId('file-row-a.md')
+    await act(async () => { s.getByTestId('file-row-a.md').click() })
+    await s.findByTestId('editor-textarea')
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    // spyOn returns the accumulated spy from earlier tests in this file
+    // (no restoreAllMocks here) — clear its history first.
+    confirmSpy.mockClear()
+
+    await act(async () => { router.navigate(-1) })
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(s.queryByTestId('nav-blocker-modal')).toBeNull()
+    // The POP committed: the project page (and its editor) is unmounted.
+    expect(s.queryByTestId('editor-textarea')).toBeNull()
     confirmSpy.mockRestore()
   })
 })
