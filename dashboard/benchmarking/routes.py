@@ -204,3 +204,9 @@ def get_service_defaults(service_name):
         "model_path": service_config.get("model_path", ""),
         "params": params,
     }), 200
+
+
+@benchmarks_bp.route("/api/benchmarks/bench-only-flags", methods=["GET"])
+@require_auth
+def get_bench_only_flags():
+    return jsonify({"flags": sorted(BENCHMARK_ONLY_FLAGS)}), 200

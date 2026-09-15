@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import useBenchmark, { BENCHMARK_ONLY_FLAGS } from '../hooks/useBenchmark'
+import useBenchmark from '../hooks/useBenchmark'
 import BenchmarkHistory from './BenchmarkHistory'
 
 function fmtTs(n) {
@@ -14,7 +14,7 @@ function fmtTime(iso) {
 
 export default function BenchmarkTab({ serviceName, modelPath }) {
   const {
-    params, paramsLoaded, setParam, removeParam, commandPreview,
+    params, paramsLoaded, setParam, removeParam, commandPreview, benchOnlyFlags,
     starting, startError, startBenchmark,
     currentRun, isRunActive, cancelRun,
     history, historyError, refreshHistory, refreshRun,
@@ -73,6 +73,7 @@ export default function BenchmarkTab({ serviceName, modelPath }) {
       <NewBenchmarkCard
         paramsLoaded={paramsLoaded}
         paramEntries={paramEntries}
+        benchOnlyFlags={benchOnlyFlags}
         newFlag={newFlag}
         setNewFlag={(v) => { setNewFlag(v); setAddFlagError(null) }}
         addFlagError={addFlagError}
@@ -145,7 +146,7 @@ export default function BenchmarkTab({ serviceName, modelPath }) {
 }
 
 function NewBenchmarkCard({
-  paramsLoaded, paramEntries, newFlag, setNewFlag, onAddFlag, addFlagError,
+  paramsLoaded, paramEntries, benchOnlyFlags, newFlag, setNewFlag, onAddFlag, addFlagError,
   setParam, removeParam, commandPreview,
   starting, startError, isRunActive, onStart,
 }) {
@@ -159,10 +160,10 @@ function NewBenchmarkCard({
         <div className="space-y-2">
           {paramEntries.map(([flag, value]) => (
             <div key={flag} className="flex items-center gap-2">
-              <span className={`w-44 shrink-0 text-xs font-mono truncate ${BENCHMARK_ONLY_FLAGS.has(flag) ? 'text-accent' : 'text-fg'}`} title={flag}>
+              <span className={`w-44 shrink-0 text-xs font-mono truncate ${benchOnlyFlags.has(flag) ? 'text-accent' : 'text-fg'}`} title={flag}>
                 {flag}
               </span>
-              {BENCHMARK_ONLY_FLAGS.has(flag) && (
+              {benchOnlyFlags.has(flag) && (
                 <span className="shrink-0 text-[9px] uppercase tracking-wide font-semibold bg-accent/15 text-accent px-1.5 py-0.5 rounded">bench</span>
               )}
               <input

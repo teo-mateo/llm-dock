@@ -1,10 +1,14 @@
 import re
 from typing import Tuple, Optional, Dict
 
+from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
+
 RESERVED_FLAGS = {"-m", "-o"}
 
-# Flags that are benchmark-only and must not be applied to service config
-BENCHMARK_ONLY_FLAGS = {"-p", "-n", "-r", "-o", "-m"}
+# Flags that are benchmark-only and must not be applied to service config.
+# The frontend reads this same set via GET /api/benchmarks/bench-only-flags,
+# so the badge, the skip-list and the apply banner cannot drift apart.
+BENCHMARK_ONLY_FLAGS = LLAMACPP_BENCH_ONLY_FLAGS
 
 # Valid flag pattern: starts with -, followed by alphanumeric/hyphens
 FLAG_PATTERN = re.compile(r"^--?[a-zA-Z][a-zA-Z0-9\-]*$")
