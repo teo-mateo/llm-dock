@@ -28,28 +28,71 @@ def check_nvidia_smi():
         return False
 
 
-def get_image_build_metadata(image_name: str) -> dict:
-    """Get build metadata labels from a Docker image"""
+def _image_source(image_name: str, labels: dict) -> str:
+    """'built' (this repo's build-*.sh pipeline) or 'pulled' (a registry).
+
+    The build label is the strong signal; the name prefix is the fallback for
+    images built before the labels existed — a locally built image with a
+    registry-shaped name is not produced by this repo's scripts, so the two
+    signals never have to agree.
+    """
+    if labels.get("org.llm-dock.build.date") or image_name.split("/")[0].startswith("llm-dock-"):
+        return "built"
+    return "pulled"
+
+
+def _image_registry(image_name: str):
+    """Registry host for a pulled image: the reference's first component when it
+    names a host, docker.io when it is a bare Docker Hub path, None for local names."""
+    first, sep, _ = image_name.partition("/")
+    if not sep:
+        return None
+    if "." in first or ":" in first or first == "localhost":
+        return first
+    return "docker.io"
+
+
+def get_image_info(image_name: str) -> dict:
+    """Inspect-level info for one image: source, created/size, and the labels
+    that carry build and upstream provenance."""
+    def _info(**extra):
+        base = {
+            "name": image_name,
+            "exists": False,
+            "source": None,
+            "created": None,
+            "size": None,
+            "build_date": None,
+            "build_commit": None,
+            "registry": None,
+            "upstream_url": None,
+            "upstream_version": None,
+        }
+        base.update(extra)
+        return base
+
     try:
         client = docker.from_env()
         image = client.images.get(image_name)
-        labels = image.labels or {}
-
-        return {
-            "build_date": labels.get("org.llm-dock.build.date"),
-            "build_commit": labels.get("org.llm-dock.build.commit"),
-            "exists": True,
-        }
     except docker.errors.ImageNotFound:
-        return {"build_date": None, "build_commit": None, "exists": False}
+        return _info()
     except Exception as e:
-        logger.warning(f"Failed to get metadata for image {image_name}: {e}")
-        return {
-            "build_date": None,
-            "build_commit": None,
-            "exists": False,
-            "error": str(e),
-        }
+        logger.warning(f"Failed to inspect image {image_name}: {e}")
+        return _info(error=str(e))
+
+    labels = image.attrs.get("Config", {}).get("Labels") or {}
+    source = _image_source(image_name, labels)
+    return _info(
+        exists=True,
+        source=source,
+        created=image.attrs.get("Created"),
+        size=image.attrs.get("Size"),
+        build_date=labels.get("org.llm-dock.build.date"),
+        build_commit=labels.get("org.llm-dock.build.commit"),
+        registry=_image_registry(image_name) if source == "pulled" else None,
+        upstream_url=labels.get("org.opencontainers.image.source"),
+        upstream_version=labels.get("org.opencontainers.image.version"),
+    )
 
 
 def _compose_file() -> str:

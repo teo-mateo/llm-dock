@@ -118,6 +118,10 @@ export default function useServiceDetails(serviceName) {
     return data.yaml
   }, [serviceName])
 
+  const fetchImageInfo = useCallback(async () => {
+    return await fetchAPI(`/services/${serviceName}/image`)
+  }, [serviceName])
+
   const registerOpenWebUI = useCallback(async () => {
     const data = await fetchAPI(`/services/${serviceName}/register-openwebui`, { method: 'POST' })
     return data
@@ -131,6 +135,6 @@ export default function useServiceDetails(serviceName) {
   return {
     config, runtime, loading, error, transitioning,
     refetchConfig,
-    actions: { start, stop, restart, rename, deleteService, setPublicPort, fetchYamlPreview, registerOpenWebUI, unregisterOpenWebUI },
+    actions: { start, stop, restart, rename, deleteService, setPublicPort, fetchYamlPreview, fetchImageInfo, registerOpenWebUI, unregisterOpenWebUI },
   }
 }
