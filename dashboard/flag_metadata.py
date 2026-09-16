@@ -45,6 +45,24 @@ def engine_internal_port(template_type: str) -> int:
     return ENGINE_INTERNAL_PORTS.get(template_type, 8000)
 
 
+# Image a service runs on when services.json carries no override. llamacpp,
+# ik_llamacpp and vllm honour config["image"]; the rest hardcode this in their
+# template. A new engine adds a row here.
+ENGINE_IMAGES = {
+    "llamacpp": "llm-dock-llamacpp",
+    "ik_llamacpp": "llm-dock-ik-llamacpp",
+    "vllm": "llm-dock-vllm",
+    "ds4": "llm-dock-ds4",
+    "tabbyapi": "llm-dock-tabbyapi",
+    "ninfer": "llm-dock-ninfer",
+}
+
+
+def default_engine_image(template_type: str) -> str:
+    """Image the engine's template uses by default; empty for an unknown type."""
+    return ENGINE_IMAGES.get(template_type, "")
+
+
 def openwebui_base_url(service_name: str, template_type: str) -> str:
     """The URL Open WebUI dials for a service — one owner for scheme, port and suffix."""
     return f"http://{service_name}:{engine_internal_port(template_type)}/v1"

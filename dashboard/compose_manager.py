@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Set, Optional
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_cli_flag, get_bool_cli_flags
+from flag_metadata import render_cli_flag, get_bool_cli_flags, default_engine_image
 import tabby_keys
 
 logger = logging.getLogger(__name__)
@@ -311,16 +311,12 @@ class ComposeManager:
             # Without this the template's hardcoded image won the rebuild and
             # silently reverted pinned builds (e.g. the glm5next images, which
             # carry architectures upstream llama.cpp does not have yet).
-            default_image = (
-                "llm-dock-ik-llamacpp" if template_type == "ik_llamacpp"
-                else "llm-dock-llamacpp"
-            )
-            context["image"] = config.get("image", default_image)
+            context["image"] = config.get("image", default_engine_image(template_type))
         elif template_type == "vllm":
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            context["image"] = config.get("image", "llm-dock-vllm")
+            context["image"] = config.get("image", default_engine_image(template_type))
         elif template_type == "ds4":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]

@@ -135,7 +135,7 @@ class _FakeContainer:
         self.labels = {"com.docker.compose.service": service_name}
         self.status = "running"
         self.id = "deadbeefcafe"
-        self.attrs = {"Created": "2026-01-01T00:00:00Z", "State": {"ExitCode": 0}}
+        self.attrs = {"Created": "2026-01-01T00:00:00Z", "State": {"ExitCode": 0}, "Config": {"Image": "llm-dock-test"}}
         self.ports = {"8000/tcp": [{"HostPort": "3301"}]}
 
 

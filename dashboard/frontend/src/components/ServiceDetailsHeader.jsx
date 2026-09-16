@@ -164,6 +164,7 @@ function MetadataRow({ config, runtime }) {
   const isPublicPort = port === 3301
   const apiKey = runtime?.api_key || config?.api_key
   const containerId = runtime?.container_id
+  const image = runtime?.image || config?.image
 
   const isRegistered = runtime?.openwebui_registered
 
@@ -217,6 +218,18 @@ function MetadataRow({ config, runtime }) {
             <span className="text-xs text-fg-muted">Container:</span>
             <span className="text-xs font-mono text-fg">{containerId.slice(0, 7)}</span>
             <CopyButton text={containerId} label="Copy container ID" />
+          </div>
+        </>
+      )}
+
+      {/* Image */}
+      {image && (
+        <>
+          <div className="w-px h-4 bg-surface-strong" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-fg-muted">Image:</span>
+            <span className="text-xs font-mono text-fg">{image}</span>
+            <CopyButton text={image} label="Copy image" />
           </div>
         </>
       )}

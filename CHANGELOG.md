@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-09-16
+- **Service image display** - The service details page now shows which Docker image a service runs with (Image cell in the metadata row, with copy button). The image travels in the service payload: the running container's creation-time image, or the resolved default for not-created services (honouring the `services.json` `image` override for llamacpp/ik_llamacpp/vllm). `flag_metadata.ENGINE_IMAGES` is the single owner of per-engine image defaults; `compose_manager._render_service` reads it, and `tests/test_service_image.py` pins the table against `templates/*.j2`
+
 ## 2026-09-15
 - **Ghost chats** - New ephemeral chat mode that leaves no trace: `POST /api/chat/ghost` streams a reply from a stateless request (full history in the body, MCP tools supported) with zero DB writes and `Cache-Control: no-store` on the SSE response; the v2 UI adds a Ghost Chat page (`/chat/ghost`, sidebar button, entered with `replace: true`) whose `useGhostChat` hook keeps every message in React state only — no localStorage, no conversation row, no history entry. A refresh or tab close erases the thread by design
 - **NInfer metrics** - Live Metrics panel enabled for `template_type: "ninfer"` services: the image now ships an authed `GET /metrics` route (second build-time patch, `ninfer/ninfer-metrics.patch`, 12 Prometheus families from the engine's runtime stats), the dashboard whitelists them via `NINFER_CURATED_METRICS`, and the v2 panel renders running/waiting requests, token rates, the Active KV and prefix-hit gauges. Spec-acceptance and preemption cells stay "—" (the engine keeps no service-level aggregate for either); `/slots` stays llama.cpp-only

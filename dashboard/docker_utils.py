@@ -7,7 +7,7 @@ from flask import current_app
 
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
-from flag_metadata import openwebui_base_url
+from flag_metadata import openwebui_base_url, default_engine_image
 from model_discovery import compute_model_size
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
@@ -110,6 +110,12 @@ def check_docker():
         return False
 
 
+def _service_image(template_type, config):
+    if template_type in ("llamacpp", "ik_llamacpp", "vllm"):
+        return config.get("image") or default_engine_image(template_type)
+    return default_engine_image(template_type)
+
+
 def _service_kind(config):
     """Classify a service config as 'chat' or 'embedding' from its params.
 
@@ -169,6 +175,7 @@ def get_docker_services():
     model_name_map = {}
     kind_map = {}
     favorite_map = {}
+    image_map = {}
     reasoning_levels_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
@@ -180,6 +187,9 @@ def get_docker_services():
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
             favorite_map[service_name] = bool(config.get("favorite", False))
+            image_map[service_name] = _service_image(
+                template_type_map[service_name], config
+            )
             reasoning_levels_map[service_name] = _parsed_reasoning_levels(
                 service_name, config.get("reasoning_levels")
             )
@@ -218,6 +228,7 @@ def get_docker_services():
                 "container_id": container.id[:12],
                 "created": container.attrs["Created"],
                 "ports": container.ports,
+                "image": container.attrs["Config"]["Image"],
                 "host_port": port_map.get(service_name, 9999),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
@@ -254,6 +265,7 @@ def get_docker_services():
                     "container_id": None,
                     "created": None,
                     "ports": {},
+                    "image": image_map.get(service_name, ""),
                     "host_port": port_map.get(service_name, 9999),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),
