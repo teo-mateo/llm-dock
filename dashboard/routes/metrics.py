@@ -45,10 +45,11 @@ LLAMACPP_CURATED_METRICS = {
     "llamacpp:n_busy_slots_per_decode",
 }
 
-# Emitted by the ninfer-metrics.patch engine route (12 unlabeled families
-# rendered from RuntimeStats + MemorySummary). Spec-acceptance and preemption
-# families are deliberately absent: NInfer has no service-level aggregate for
-# either, so the panel renders those as "—" (see docs/plans/ninfer-metrics.md).
+# Emitted by the ninfer-metrics.patch engine route (12 unlabeled families rendered
+# from the engine's published RuntimeStats snapshot plus the startup-resolved KV
+# capacity). Spec-acceptance and preemption families are deliberately absent: NInfer
+# has no service-level aggregate for either, so the panel renders those as "—" (see
+# docs/plans/ninfer-metrics.md).
 NINFER_CURATED_METRICS = {
     "ninfer:prompt_tokens_total",
     "ninfer:generation_tokens_total",
@@ -122,21 +123,41 @@ def _parse_metrics(text: str, engine: str) -> dict:
     return result
 
 
-def _fetch_metrics(host_port: int, engine: str, api_key: str = "") -> dict:
+def _fetch_metrics(host_port: int, engine: str, api_key: str = "") -> tuple:
+    """Scrape the engine. Returns (metrics, error); error is None on a usable scrape."""
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
-        headers = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        resp = requests.get(
-            f"http://127.0.0.1:{host_port}/metrics", timeout=2, headers=headers
+        resp = requests.get(f"http://127.0.0.1:{host_port}/metrics", timeout=2, headers=headers)
+    except requests.Timeout:
+        return {}, "engine scrape timed out"
+    except requests.RequestException as e:
+        return {}, f"engine scrape failed: {e}"
+    if resp.status_code != 200:
+        return {}, f"engine returned {resp.status_code}"
+    return _parse_metrics(resp.text, engine), None
+
+
+# Only the first failure in a streak is logged as a warning: the panel polls several times a
+# second, so an engine that is busy or down would otherwise bury the log, while a silent debug
+# line leaves the panel's empty state undiagnosable.
+_scrape_failure_streaks = {}
+
+
+def _log_scrape_failure(service_name: str, reason: str) -> None:
+    streak = _scrape_failure_streaks.get(service_name, 0) + 1
+    _scrape_failure_streaks[service_name] = streak
+    if streak == 1:
+        logger.warning(f"Metrics scrape failed for '{service_name}': {reason}")
+    else:
+        logger.debug(
+            f"Metrics scrape failed for '{service_name}' ({streak} consecutive): {reason}"
         )
-        if resp.status_code != 200:
-            logger.debug(f"Metrics endpoint returned {resp.status_code}")
-            return {}
-        return _parse_metrics(resp.text, engine)
-    except (requests.ConnectionError, requests.Timeout, requests.RequestException) as e:
-        logger.debug(f"Failed to fetch metrics: {e}")
-        return {}
+
+
+def _log_scrape_success(service_name: str) -> None:
+    _scrape_failure_streaks.pop(service_name, None)
 
 
 def _fetch_slots(host_port: int, api_key: str = ""):
@@ -186,6 +207,7 @@ def get_service_metrics(service_name):
             "metrics": {},
             "engine": template_type,
             "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "scrape_error": None,
         })
 
     host_port = config.get("port")
@@ -194,15 +216,21 @@ def get_service_metrics(service_name):
             "metrics": {},
             "engine": engine,
             "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "scrape_error": "service has no host port",
         })
 
     api_key = config.get("api_key", "")
-    metrics = _fetch_metrics(host_port, engine, api_key)
+    metrics, scrape_error = _fetch_metrics(host_port, engine, api_key)
+    if scrape_error:
+        _log_scrape_failure(service_name, scrape_error)
+    else:
+        _log_scrape_success(service_name)
 
     return jsonify({
         "metrics": metrics,
         "engine": engine,
         "scraped_at": datetime.now(timezone.utc).isoformat(),
+        "scrape_error": scrape_error,
     })
 
 

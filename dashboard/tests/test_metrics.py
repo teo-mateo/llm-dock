@@ -277,6 +277,89 @@ class TestErrorStates:
             assert data["metrics"] == {}
 
 
+class TestScrapeErrorSurface:
+    """A failed engine scrape must be distinguishable from an engine that reported nothing."""
+
+    def test_timeout_names_the_reason(self, metrics_client):
+        import requests as requests_lib
+        with patch("routes.metrics.requests.get", side_effect=requests_lib.Timeout):
+            resp = metrics_client.get(
+                "/api/services/ninfer-test/metrics", headers=_auth_headers()
+            )
+            data = resp.get_json()
+            assert data["metrics"] == {}
+            assert data["scrape_error"] == "engine scrape timed out"
+
+    def test_non_200_names_the_status(self, metrics_client):
+        with patch("routes.metrics.requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 401
+            mock_get.return_value = mock_resp
+            resp = metrics_client.get(
+                "/api/services/ninfer-test/metrics", headers=_auth_headers()
+            )
+            assert resp.get_json()["scrape_error"] == "engine returned 401"
+
+    @patch("routes.metrics.requests.get")
+    def test_successful_scrape_reports_no_error(self, mock_get, metrics_client):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = SAMPLE_PROMETHEUS_TEXT_NINFER
+        mock_get.return_value = mock_resp
+        resp = metrics_client.get(
+            "/api/services/ninfer-test/metrics", headers=_auth_headers()
+        )
+        assert resp.get_json()["scrape_error"] is None
+
+    def test_engine_without_a_scrape_target_reports_no_error(self, metrics_client):
+        from routes import metrics as metrics_mod
+        orig = metrics_mod._get_service_config
+        try:
+            metrics_mod._get_service_config = lambda _name: {
+                "template_type": "ds4", "port": 3304, "api_key": "test-key"
+            }
+            resp = metrics_client.get("/api/services/ds4-test/metrics", headers=_auth_headers())
+            assert resp.get_json()["scrape_error"] is None
+        finally:
+            metrics_mod._get_service_config = orig
+            metrics_mod._scrape_failure_streaks.clear()
+
+    def test_only_the_first_failure_in_a_streak_warns(self, metrics_client, caplog):
+        import logging
+        import requests as requests_lib
+        from routes import metrics as metrics_mod
+
+        metrics_mod._scrape_failure_streaks.clear()
+        with caplog.at_level(logging.DEBUG):
+            for _ in range(3):
+                with patch("routes.metrics.requests.get", side_effect=requests_lib.Timeout):
+                    metrics_client.get(
+                        "/api/services/ninfer-test/metrics", headers=_auth_headers()
+                    )
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            assert len(warnings) == 1
+            assert "timed out" in warnings[0].getMessage()
+
+            metrics_mod._scrape_failure_streaks.clear()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.text = SAMPLE_PROMETHEUS_TEXT_NINFER
+            with patch("routes.metrics.requests.get", return_value=mock_resp):
+                metrics_client.get(
+                    "/api/services/ninfer-test/metrics", headers=_auth_headers()
+                )
+            assert "ninfer-test" not in metrics_mod._scrape_failure_streaks
+
+            caplog.clear()
+            with patch("routes.metrics.requests.get", side_effect=requests_lib.Timeout):
+                metrics_client.get(
+                    "/api/services/ninfer-test/metrics", headers=_auth_headers()
+                )
+            assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+        metrics_mod._scrape_failure_streaks.clear()
+
+
 SAMPLE_PROMETHEUS_TEXT_LABELED = """# HELP vllm:num_requests_running Number of requests currently running on the GPU.
 # TYPE vllm:num_requests_running gauge
 vllm:num_requests_running{engine="0",model_name="vllm-test"} 3.0

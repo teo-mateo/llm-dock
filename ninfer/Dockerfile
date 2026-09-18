@@ -10,9 +10,11 @@
 # shared memory exceeds the 48 KiB static cap that CUDA <= 12.9 still enforces
 # onto the dynamic-shared path (CUDA 13 raised that cap). The patch is a plain
 # `git diff` of the pinned tree; bump both together. A second patch,
-# ninfer-metrics.patch, adds the authed GET /metrics route from RuntimeStats
-# and MemorySummary snapshots (R5 of docs/plans/ninfer-metrics.md): it dies
-# when upstream ships a stats endpoint of its own, so its retirement is
+# ninfer-metrics.patch, adds the authed GET /metrics route (R5 of
+# docs/plans/ninfer-metrics.md), which renders the published RuntimeStats snapshot plus
+# the KV capacity that attach() captured — it must not call memory_summary() at scrape
+# time, whose execution_mutex_ serializes the route behind generation (see §8 there).
+# The patch dies when upstream ships a stats endpoint of its own, so its retirement is
 # tracked separately in .pi/skills/check-upstream/SKILL.md.
 #
 # Multi-stage: compile with the full CUDA devel toolkit, ship only the binaries
