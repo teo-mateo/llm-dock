@@ -127,13 +127,12 @@ def get_compose_service_ports():
             for service_name, service_config in services.items():
                 ports = service_config.get("ports", [])
                 if ports:
-                    # Parse "3300:8080" format to get host port
+                    # "3300:8080" and the inspected mapping "127.0.0.1:34001:8080"
+                    # both occur; the host port is the second-to-last component,
+                    # and int("127.0.0.1") would take out the whole port map.
                     first_port = str(ports[0])
-                    if ":" in first_port:
-                        host_port = int(first_port.split(":")[0])
-                        port_map[service_name] = host_port
-                    else:
-                        port_map[service_name] = int(first_port)
+                    parts = first_port.split(":")
+                    port_map[service_name] = int(parts[-2] if len(parts) >= 2 else parts[0])
                 else:
                     port_map[service_name] = 9999  # No port = sort to end
 
@@ -220,6 +219,9 @@ def get_docker_services():
     favorite_map = {}
     image_map = {}
     reasoning_levels_map = {}
+    inspect_map = {}
+    upstream_port_map = {}
+    host_port_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
@@ -236,6 +238,17 @@ def get_docker_services():
             reasoning_levels_map[service_name] = _parsed_reasoning_levels(
                 service_name, config.get("reasoning_levels")
             )
+            inspect_map[service_name] = bool(config.get("inspect", False))
+            upstream_port_map[service_name] = config.get("inspect_upstream_port")
+            # With inspection on the compose file names the loopback upstream
+            # port, not the public one clients dial; services.json is the
+            # authority for the public port.
+            if inspect_map[service_name] and config.get("port") is not None:
+                host_port_map[service_name] = int(config["port"])
+
+    def host_port_for(service_name: str) -> int:
+        override = host_port_map.get(service_name)
+        return override if override is not None else port_map.get(service_name, 9999)
 
     # Get Open WebUI registered URLs (one query for all services)
     openwebui_urls = get_openwebui_registered_urls()
@@ -272,7 +285,7 @@ def get_docker_services():
                 "created": container.attrs["Created"],
                 "ports": container.ports,
                 "image": container.attrs["Config"]["Image"],
-                "host_port": port_map.get(service_name, 9999),
+                "host_port": host_port_for(service_name),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
                 "model_size": model_size,
@@ -287,6 +300,8 @@ def get_docker_services():
                 # anything else.
                 "alias": alias_map.get(service_name, ""),
                 "reasoning_levels": reasoning_levels_map.get(service_name, []),
+                "inspect": inspect_map.get(service_name, False),
+                "upstream_port": upstream_port_map.get(service_name),
             }
 
     # Build complete services list from compose file
@@ -309,7 +324,7 @@ def get_docker_services():
                     "created": None,
                     "ports": {},
                     "image": image_map.get(service_name, ""),
-                    "host_port": port_map.get(service_name, 9999),
+                    "host_port": host_port_for(service_name),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),
                     "model_size": model_size,
@@ -318,6 +333,8 @@ def get_docker_services():
                     "favorite": favorite_map.get(service_name, False),
                     "template_type": template_type_map.get(service_name, ""),
                     "reasoning_levels": reasoning_levels_map.get(service_name, []),
+                    "inspect": inspect_map.get(service_name, False),
+                    "upstream_port": upstream_port_map.get(service_name),
                 }
             )
 

@@ -9,6 +9,7 @@ from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
 from routes import gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp
 from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
+from inspector.supervisor import proxy_supervisor
 from services import event_manager
 
 _SPA_ASSET_SUFFIXES = (
@@ -59,6 +60,14 @@ def create_app(config=None):
     # Initialize chat subsystem
     chat_db_path = app.config.get("CHAT_DB_PATH")
     init_chat(app, db_path=chat_db_path)
+
+    # Initialize the inspector proxies: reconcile the running ServiceProxies
+    # with services.json (only services with inspect: true bind anything).
+    proxy_supervisor.configure(
+        compose_path=app.config.get("COMPOSE_FILE"),
+        db_path=app.config.get("INSPECTOR_DB_PATH"),
+    )
+    proxy_supervisor.sync()
 
     @app.route("/")
     def index():
@@ -114,6 +123,7 @@ logger = logging.getLogger(__name__)
 
 # Register cleanup on process exit
 atexit.register(event_manager.stop)
+atexit.register(proxy_supervisor.stop_all)
 
 if __name__ == "__main__":
     app = create_app()

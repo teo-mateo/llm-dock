@@ -558,6 +558,8 @@ Each top-level key is a service name (matches `container_name`). Fields:
 | `params` | object | CLI flag → value. Empty string `""` means flag is passed with no value (e.g. `"--enable-prefix-caching": ""`). Values with spaces/JSON should be pre-quoted with single quotes. A key starting `env:` is not a flag — it becomes a container environment variable |
 | `model_size`, `model_size_str` | int, string | Written at creation; every read recomputes them via `compute_model_size`, so the stored pair is informational only |
 | `favorite` | bool | Optional, UI-only pin. Never a container flag |
+| `inspect` | bool | Optional, default false. Enables the request-inspector proxy on the service's public port (chat/UI-facing like `favorite`; never a container flag). The compose port mapping relocates to the loopback upstream port while enabled |
+| `inspect_upstream_port` | int | Optional, server-owned. Allocated from the 34000–34999 band at first enable and kept after disable; a `POST`/`PUT /api/services` body cannot set it (the write routes strip it) |
 | `reasoning_levels` | string | Optional, chat-only. Comma-separated level names the model accepts (`"off,low,medium,xhigh"`). Never a container flag — inert in compose rendering, like `favorite` |
 | `volumes` | list | Optional, **vLLM only** — extra bind mounts as `"src:dst[:mode]"` strings, appended to the container's own mounts. Operator-authored and unvalidated, like `params` |
 

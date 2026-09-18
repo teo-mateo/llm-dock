@@ -2174,6 +2174,12 @@ def validate_service_config(
         if not levels_ok:
             errors.extend(level_errors)
 
+    # Optional inspector toggle. UI-facing like favorite; the upstream port
+    # that pairs with it is server-owned and stripped from client input by the
+    # write routes.
+    if "inspect" in config and not isinstance(config["inspect"], bool):
+        errors.append(f"inspect must be a boolean, got {type(config['inspect']).__name__}")
+
     # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
     # so an empty-valued bool param would render `--flag` and crash at startup.
     if template_type == "tabbyapi":
