@@ -4,6 +4,7 @@ import useServiceDetails from '../hooks/useServiceDetails'
 import { fetchAPI } from '../api'
 import ServiceDetailsHeader from './ServiceDetailsHeader'
 import ServiceConfigPanel from './ServiceConfigPanel'
+import InspectToggleCard from './InspectToggleCard'
 import ServiceLogsPanel from './ServiceLogsPanel'
 import ParameterReference from './ParameterReference'
 import MetricsPanel from './MetricsPanel'
@@ -214,6 +215,15 @@ export default function ServiceDetailsPage() {
               onParamsChange={handleParamsChange}
               addFlagRef={addFlagRef}
             />
+            <div className="mt-6">
+              <InspectToggleCard
+                config={config}
+                runtime={runtime}
+                serviceName={serviceName}
+                onSaved={handleSaved}
+                onError={handleError}
+              />
+            </div>
           </div>
           <div className="relative min-h-0 overflow-hidden">
             <div className="absolute inset-0 overflow-hidden">
