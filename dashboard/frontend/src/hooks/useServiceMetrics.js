@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
-import { getValue } from '../utils'
+import { getValue, POLL_INTERVAL } from '../utils'
 
-const POLL_INTERVAL = 200
 const MAX_HISTORY = 60
 
 // Map llama.cpp metric names to vLLM-equivalent names so the rest of the hook
@@ -57,7 +56,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
 
   useEffect(() => {
     if (!enabled) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setMetrics({})
       setHistory([])
       setLoading(false)
@@ -74,11 +73,14 @@ export default function useServiceMetrics({ serviceName, enabled }) {
 
     if (!enabled) return
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setLoading(true)
     let pollActive = true
+    let inFlight = false
 
     const fetchMetrics = async () => {
+      if (inFlight) return
+      inFlight = true
       try {
         const data = await fetchAPI(`/services/${serviceName}/metrics`)
         if (!pollActive || !mountedRef.current) return
@@ -86,6 +88,14 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         const raw = data.metrics || {}
         const eng = data.engine || 'vllm'
         const normalized = normalizeMetrics(raw, eng)
+
+        if (data.scrape_error || Object.keys(raw).length === 0) {
+          if (mountedRef.current) {
+            setError(data.scrape_error || null)
+            setLoading(false)
+          }
+          return
+        }
 
         let slots = null
         if (eng === 'llamacpp') {
@@ -183,6 +193,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         const dataPoint = {
           promptTokensRate,
           generationTokensRate,
+          dt,
           kvCache,
           prefixHitRatio,
           specAcceptRatio,
@@ -210,6 +221,8 @@ export default function useServiceMetrics({ serviceName, enabled }) {
           setError(err.message)
           setLoading(false)
         }
+      } finally {
+        inFlight = false
       }
     }
 

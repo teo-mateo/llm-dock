@@ -44,6 +44,28 @@ describe('fetchAPI error-code transport', () => {
     expect(err.code).toBeUndefined()
   })
 
+  it('attaches a structured details array from a coded error body', async () => {
+    stubFetch({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: 'Validation failed', details: ['Missing mandatory field: alias', 'Port must be between 1024 and 65535, got 80'] }),
+    })
+    const err = await fetchAPI('/x').catch(e => e)
+    expect(err.message).toBe('Validation failed')
+    expect(err.details).toEqual(['Missing mandatory field: alias', 'Port must be between 1024 and 65535, got 80'])
+  })
+
+  it('leaves details undefined when the error body has none', async () => {
+    stubFetch({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ error: 'file changed on disk since it was loaded', code: 'revision_conflict' }),
+    })
+    const err = await fetchAPI('/x').catch(e => e)
+    expect(err.code).toBe('revision_conflict')
+    expect(err.details).toBeUndefined()
+  })
+
   it('survives a non-JSON error body', async () => {
     stubFetch({ ok: false, status: 502, text: async () => 'gateway exploded' })
     const err = await fetchAPI('/x').catch(e => e)
