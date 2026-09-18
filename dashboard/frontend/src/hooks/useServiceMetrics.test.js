@@ -75,6 +75,25 @@ describe('useServiceMetrics', () => {
     expect(firstPoint.preemptRate).toBe(0)
   })
 
+  it('records the interval each rate covers, so a longer window can weight by it', async () => {
+    mockFetchAPI.mockResolvedValueOnce({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:00Z' })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'test', enabled: true }))
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(result.current.history[0].dt).toBe(0)
+
+    mockFetchAPI.mockResolvedValueOnce({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:03Z' })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const secondPoint = result.current.history[1]
+    expect(secondPoint.dt).toBeGreaterThan(2)
+    expect(secondPoint.dt).toBeLessThan(4)
+  })
+
   it('derives correct token rates from counter deltas', async () => {
     mockFetchAPI.mockResolvedValueOnce({
       metrics: {
