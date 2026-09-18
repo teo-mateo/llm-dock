@@ -819,8 +819,9 @@ def set_inspect(service_name):
             proxy_supervisor.sync()
         elif not enabled and current:
             # Backwards: the proxy releases the port before the container
-            # takes it back. The upstream port is kept so a re-enable does
-            # not churn the container.
+            # takes it back. The upstream port is kept so the allocation does
+            # not drift across toggles — re-enabling a running service
+            # recreates its container either way.
             service_config["inspect"] = False
             compose_mgr.update_service_in_db(service_name, service_config)
             proxy_supervisor.sync()
