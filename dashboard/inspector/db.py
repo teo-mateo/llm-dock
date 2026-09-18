@@ -1,6 +1,7 @@
 import json
 import logging
 import sqlite3
+import threading
 from typing import List, Optional, Tuple
 
 from .models import Capture
@@ -103,9 +104,12 @@ INSERT_COLUMNS = [
 class InspectorDB:
     def __init__(self, db_path: str = "inspector.db") -> None:
         self.db_path = db_path
+        # the proxy serves requests on per-connection threads, so this instance is
+        # shared across threads; the RLock is the serialisation sqlite3 then requires
+        self._lock = threading.RLock()
         self._persistent_conn = None
         if db_path == ":memory:":
-            self._persistent_conn = sqlite3.connect(":memory:")
+            self._persistent_conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._persistent_conn.row_factory = sqlite3.Row
         self._init_db()
 
@@ -122,12 +126,13 @@ class InspectorDB:
             conn.close()
 
     def _init_db(self) -> None:
-        conn = self._get_conn()
-        try:
-            conn.executescript(SCHEMA_SQL)
-            conn.commit()
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                conn.executescript(SCHEMA_SQL)
+                conn.commit()
+            finally:
+                self._close_conn(conn)
 
     def _row_to_capture(self, row: sqlite3.Row) -> Capture:
         fields = {}
@@ -143,59 +148,61 @@ class InspectorDB:
         return Capture(**fields)
 
     def insert_capture(self, capture: Capture) -> Capture:
-        conn = self._get_conn()
-        try:
-            columns = list(INSERT_COLUMNS)
-            values = [
-                capture.id,
-                capture.service_name,
-                capture.model,
-                capture.template_type,
-                capture.method,
-                capture.path,
-                capture.status_code,
-                int(capture.stream),
-                json.dumps(capture.request_headers_json),
-                capture.request_body,
-                capture.response_body,
-                capture.response_text,
-                capture.reasoning_text,
-                capture.tool_calls_json,
-                capture.finish_reason,
-                capture.prompt_tokens,
-                capture.completion_tokens,
-                capture.total_tokens,
-                capture.ttfb_ms,
-                capture.duration_ms,
-                capture.error,
-                int(capture.request_truncated),
-                int(capture.response_truncated),
-            ]
-            if capture.created_at is not None:
-                columns.append("created_at")
-                values.append(capture.created_at)
-            conn.execute(
-                "INSERT INTO captures ({}) VALUES ({})".format(
-                    ", ".join(columns), ", ".join("?" for _ in columns)
-                ),
-                values,
-            )
-            conn.commit()
-            return self.get_capture(capture.id)
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                columns = list(INSERT_COLUMNS)
+                values = [
+                    capture.id,
+                    capture.service_name,
+                    capture.model,
+                    capture.template_type,
+                    capture.method,
+                    capture.path,
+                    capture.status_code,
+                    int(capture.stream),
+                    json.dumps(capture.request_headers_json),
+                    capture.request_body,
+                    capture.response_body,
+                    capture.response_text,
+                    capture.reasoning_text,
+                    capture.tool_calls_json,
+                    capture.finish_reason,
+                    capture.prompt_tokens,
+                    capture.completion_tokens,
+                    capture.total_tokens,
+                    capture.ttfb_ms,
+                    capture.duration_ms,
+                    capture.error,
+                    int(capture.request_truncated),
+                    int(capture.response_truncated),
+                ]
+                if capture.created_at is not None:
+                    columns.append("created_at")
+                    values.append(capture.created_at)
+                conn.execute(
+                    "INSERT INTO captures ({}) VALUES ({})".format(
+                        ", ".join(columns), ", ".join("?" for _ in columns)
+                    ),
+                    values,
+                )
+                conn.commit()
+                return self.get_capture(capture.id)
+            finally:
+                self._close_conn(conn)
 
     def get_capture(self, capture_id: str) -> Optional[Capture]:
-        conn = self._get_conn()
-        try:
-            row = conn.execute(
-                "SELECT * FROM captures WHERE id = ?", (capture_id,)
-            ).fetchone()
-            if row is None:
-                return None
-            return self._row_to_capture(row)
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM captures WHERE id = ?", (capture_id,)
+                ).fetchone()
+                if row is None:
+                    return None
+                return self._row_to_capture(row)
+            finally:
+                self._close_conn(conn)
 
     def list_captures(
         self,
@@ -203,88 +210,94 @@ class InspectorDB:
         limit: int = 50,
         offset: int = 0,
     ) -> Tuple[List[Capture], int]:
-        conn = self._get_conn()
-        try:
-            where = ""
-            params = []
-            if service:
-                where = "WHERE service_name = ?"
-                params.append(service)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                where = ""
+                params = []
+                if service:
+                    where = "WHERE service_name = ?"
+                    params.append(service)
 
-            total = conn.execute(
-                f"SELECT COUNT(*) FROM captures {where}", params
-            ).fetchone()[0]
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM captures {where}", params
+                ).fetchone()[0]
 
-            rows = conn.execute(
-                "SELECT {} FROM captures {} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?".format(
-                    ", ".join(SUMMARY_COLUMNS), where
-                ),
-                params + [limit, offset],
-            ).fetchall()
-            return [self._row_to_capture(row) for row in rows], total
-        finally:
-            self._close_conn(conn)
+                rows = conn.execute(
+                    "SELECT {} FROM captures {} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?".format(
+                        ", ".join(SUMMARY_COLUMNS), where
+                    ),
+                    params + [limit, offset],
+                ).fetchall()
+                return [self._row_to_capture(row) for row in rows], total
+            finally:
+                self._close_conn(conn)
 
     def delete_capture(self, capture_id: str) -> bool:
-        conn = self._get_conn()
-        try:
-            cursor = conn.execute(
-                "DELETE FROM captures WHERE id = ?", (capture_id,)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM captures WHERE id = ?", (capture_id,)
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+            finally:
+                self._close_conn(conn)
 
     def delete_captures(self, service: Optional[str] = None) -> int:
-        conn = self._get_conn()
-        try:
-            if service:
-                cursor = conn.execute(
-                    "DELETE FROM captures WHERE service_name = ?", (service,)
-                )
-            else:
-                cursor = conn.execute("DELETE FROM captures")
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                if service:
+                    cursor = conn.execute(
+                        "DELETE FROM captures WHERE service_name = ?", (service,)
+                    )
+                else:
+                    cursor = conn.execute("DELETE FROM captures")
+                conn.commit()
+                return cursor.rowcount
+            finally:
+                self._close_conn(conn)
 
     def rename_service(self, old_name: str, new_name: str) -> int:
-        conn = self._get_conn()
-        try:
-            cursor = conn.execute(
-                "UPDATE captures SET service_name = ? WHERE service_name = ?",
-                (new_name, old_name),
-            )
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                cursor = conn.execute(
+                    "UPDATE captures SET service_name = ? WHERE service_name = ?",
+                    (new_name, old_name),
+                )
+                conn.commit()
+                return cursor.rowcount
+            finally:
+                self._close_conn(conn)
 
     def trim(self, max_rows: int = MAX_CAPTURES) -> int:
-        conn = self._get_conn()
-        try:
-            cursor = conn.execute(
-                """DELETE FROM captures
-                   WHERE rowid NOT IN (
-                       SELECT rowid FROM captures
-                       ORDER BY created_at DESC, rowid DESC
-                       LIMIT ?
-                   )""",
-                (max_rows,),
-            )
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                cursor = conn.execute(
+                    """DELETE FROM captures
+                       WHERE rowid NOT IN (
+                           SELECT rowid FROM captures
+                           ORDER BY created_at DESC, rowid DESC
+                           LIMIT ?
+                       )""",
+                    (max_rows,),
+                )
+                conn.commit()
+                return cursor.rowcount
+            finally:
+                self._close_conn(conn)
 
     def services_with_captures(self) -> List[str]:
-        conn = self._get_conn()
-        try:
-            rows = conn.execute(
-                "SELECT DISTINCT service_name FROM captures ORDER BY service_name"
-            ).fetchall()
-            return [row["service_name"] for row in rows]
-        finally:
-            self._close_conn(conn)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT service_name FROM captures ORDER BY service_name"
+                ).fetchall()
+                return [row["service_name"] for row in rows]
+            finally:
+                self._close_conn(conn)
