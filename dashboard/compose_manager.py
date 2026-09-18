@@ -293,10 +293,18 @@ class ComposeManager:
         except TemplateNotFound:
             raise ValueError(f"Template not found for type: {template_type}")
 
+        # With inspection on the container gives its public host port to the
+        # dashboard proxy and rebinds loopback-only on the upstream port, so a
+        # LAN client cannot reach it around the proxy. "127.0.0.1:<upstream>"
+        # is the single change point every template's "{{ port }}:<internal>" mapping goes through.
+        port = config["port"]
+        if config.get("inspect") and config.get("inspect_upstream_port"):
+            port = f"127.0.0.1:{config['inspect_upstream_port']}"
+
         # Prepare template context
         context = {
             "service_name": service_name,
-            "port": config["port"],
+            "port": port,
             # Optional per-service bind mounts are needed for narrowly scoped
             # runtime overlays (for example, quantized PLE support in vLLM).
             "extra_volumes": config.get("volumes", []),
