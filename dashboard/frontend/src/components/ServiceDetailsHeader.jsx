@@ -185,11 +185,30 @@ function formatSize(bytes) {
   return `${Math.round(bytes / 1e6)} MB`
 }
 
-function ImagePopover({ serviceImage, onFetch, onError }) {
+function ImagePopover({ serviceImage, onFetch }) {
   const [open, setOpen] = useState(false)
   const [info, setInfo] = useState(null)
+  const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const anchorRef = useRef(null)
+
+  const loadInfo = useCallback(async () => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await onFetch()
+      if (data) {
+        setInfo(data)
+      } else {
+        setError('image details are unavailable')
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [loading, onFetch])
 
   const toggle = useCallback(async () => {
     if (open) {
@@ -198,17 +217,9 @@ function ImagePopover({ serviceImage, onFetch, onError }) {
     }
     setOpen(true)
     if (!info && !loading) {
-      setLoading(true)
-      try {
-        setInfo(await onFetch())
-      } catch (err) {
-        setOpen(false)
-        onError(`Failed to load image details: ${err.message}`)
-      } finally {
-        setLoading(false)
-      }
+      await loadInfo()
     }
-  }, [open, info, loading, onFetch, onError])
+  }, [open, info, loading, loadInfo])
 
   useEffect(() => {
     if (!open) return
@@ -239,9 +250,25 @@ function ImagePopover({ serviceImage, onFetch, onError }) {
       {open && (
         <div className="absolute left-0 top-full mt-2 z-30 w-[360px] bg-surface border border-border-strong rounded-lg shadow-xl p-3.5">
           {loading || !info ? (
-            <div className="text-xs text-fg-muted py-2">
-              <i className="fa-solid fa-spinner fa-spin mr-1.5"></i>Loading image details…
-            </div>
+            error ? (
+              <div className="py-2">
+                <div className="text-xs text-danger-fg mb-2">
+                  <i className="fa-solid fa-circle-exclamation mr-1.5"></i>
+                  Failed to load image details: {error}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadInfo()}
+                  className="text-xs text-accent-fg hover:text-accent-fg-hover cursor-pointer"
+                >
+                  <i className="fa-solid fa-rotate-right mr-1.5"></i>Retry
+                </button>
+              </div>
+            ) : (
+              <div className="text-xs text-fg-muted py-2">
+                <i className="fa-solid fa-spinner fa-spin mr-1.5"></i>Loading image details…
+              </div>
+            )
           ) : (
             <>
               <div className="font-mono text-[13px] font-semibold break-all mb-2">{info.name}</div>
@@ -308,7 +335,7 @@ function ImagePopover({ serviceImage, onFetch, onError }) {
   )
 }
 
-function MetadataRow({ config, runtime, actions, onError }) {
+function MetadataRow({ config, runtime, actions }) {
   const status = runtime?.status || 'not-created'
   const isRunning = status === 'running'
   const port = runtime?.host_port && runtime.host_port !== 9999 ? runtime.host_port : config?.port
@@ -377,7 +404,7 @@ function MetadataRow({ config, runtime, actions, onError }) {
       {image && (
         <>
           <div className="w-px h-4 bg-surface-strong" />
-          <ImagePopover serviceImage={image} onFetch={actions.fetchImageInfo} onError={onError} />
+          <ImagePopover serviceImage={image} onFetch={actions.fetchImageInfo} />
         </>
       )}
 
@@ -643,7 +670,7 @@ export default function ServiceDetailsHeader({ serviceName, config, runtime, tra
       </div>
 
       {/* Row 2: Metadata */}
-      <MetadataRow config={config} runtime={runtime} actions={actions} onError={onError} />
+      <MetadataRow config={config} runtime={runtime} actions={actions} />
 
       {/* Row 3: Toolbar */}
       <ToolbarRow
