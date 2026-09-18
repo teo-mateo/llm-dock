@@ -4,6 +4,7 @@ import { fetchAPI } from '../api'
 import { startService, stopService, restartService } from '../services/lifecycle'
 import useServicesSSE from '../hooks/useServicesSSE'
 import RotateDefaultKeyModal from './RotateDefaultKeyModal'
+import CreateServiceModal from './CreateServiceModal'
 
 function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
@@ -191,6 +192,7 @@ export default function ServicesTable() {
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
   const [showRotateKey, setShowRotateKey] = useState(false)
+  const [showCreateService, setShowCreateService] = useState(false)
 
   const withTransition = useCallback(async (name, action, apiCall) => {
     setTransitioning(prev => ({ ...prev, [name]: action }))
@@ -328,7 +330,7 @@ export default function ServicesTable() {
             Rotate default key
           </button>
           <button
-            onClick={() => navigate('/services/new')}
+            onClick={() => setShowCreateService(true)}
             className="px-3 py-1.5 bg-accent-strong hover:bg-accent text-white text-sm rounded transition-colors"
           >
             + New Service
@@ -453,6 +455,13 @@ export default function ServicesTable() {
         <RotateDefaultKeyModal
           onClose={() => setShowRotateKey(false)}
           onDone={refresh}
+        />
+      )}
+      {showCreateService && (
+        <CreateServiceModal
+          services={services}
+          onClose={() => setShowCreateService(false)}
+          onCreated={refresh}
         />
       )}
     </div>
