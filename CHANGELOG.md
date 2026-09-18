@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-09-18
+- **Request inspector** - Per-service request capture, end to end. Toggling *Request inspection* on a service relocates its container to loopback and puts a capturing proxy on the service's public port — clients keep the same URL — recording every inference request with assembled streaming output, redacting credentials in storage only (the container still authenticates), on an allowlist of inference paths so metrics/health polling never crowds the store. Captures live in `dashboard/inspector.db` (2000 rows, 1 MB bodies, both flagged), are browsable on the new `/inspector` page (conversation as sent, tool definitions, raw request, response, metadata) with per-capture and bulk delete, and the service detail page gained the toggle card with its recreate confirmation
+
 ## 2026-09-16
 - **Service image display** - The service-details page shows which Docker image a service runs with; clicking the image cell opens a popover with its provenance (built locally vs pulled, created date, build date/commit, registry, upstream source and size)
 

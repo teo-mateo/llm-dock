@@ -66,12 +66,13 @@ llm-dock/
 │   ├── docker_utils.py          # Docker API utilities
 │   │
 │   ├── routes/                  # Flask blueprints
-│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp
+│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp, inspector_bp
 │   │   ├── gpu.py               # GPU stats (nvidia-smi), device detection
 │   │   ├── services.py          # CRUD for model services
 │   │   ├── system.py            # System info endpoints
 │   │   ├── openwebui.py         # Open WebUI management
 │   │   ├── metrics.py           # Service metrics endpoints
+│   │   ├── inspector.py         # Request-inspector capture list/detail/delete API
 │   │   └── totp.py              # TOTP enrollment endpoints
 │   │
 │   ├── benchmarking/            # Benchmark subsystem
@@ -81,6 +82,15 @@ llm-dock/
 │   │   ├── db.py                # SQLite storage for results
 │   │   ├── models.py            # BenchmarkRun dataclass
 │   │   └── validators.py        # Input validation
+│   │
+│   ├── inspector/               # Request-inspector subsystem
+│   │   ├── models.py            # Capture dataclass
+│   │   ├── db.py                # SQLite capture store (2000-row trim)
+│   │   ├── redact.py            # Header redaction + 1 MB body truncation
+│   │   ├── sse_assembly.py      # Pure SSE/JSON response assembly
+│   │   ├── proxy.py             # ServiceProxy — capturing reverse proxy
+│   │   ├── ports.py             # 34000–34999 upstream-port allocator
+│   │   └── supervisor.py        # ProxySupervisor singleton reconciling proxies with services.json
 │   │
 │   ├── services/                # Docker event subsystem
 │   │   ├── __init__.py          # `event_manager` singleton, started by app.py
@@ -237,7 +247,9 @@ Quick-Start URL only holds after `setup.sh` has written the file.
 
 Machine-local storage paths, none of them in `.env.example`, each defaulting
 under `dashboard/`: `LLM_DOCK_CHAT_SETTINGS_FILE`, `LLM_DOCK_MCP_SERVERS_FILE`,
-`LLM_DOCK_PROMPTS_DIR`, `LLM_DOCK_PROJECT_FILES_DIR`, `LLM_DOCK_TABBY_KEYS_DIR`.
+`LLM_DOCK_PROMPTS_DIR`, `LLM_DOCK_PROJECT_FILES_DIR`, `LLM_DOCK_TABBY_KEYS_DIR`,
+and `LLM_DOCK_INSPECTOR_DB` (default `dashboard/inspector.db`, the capture
+store; the app config key `INSPECTOR_DB_PATH` overrides it at boot).
 
 ### Model Discovery Paths
 - `~/.cache/huggingface/hub/` - HuggingFace cache
@@ -260,7 +272,8 @@ there or its size and existence stop resolving.
 5. `benchmarks_bp` - Benchmarking
 6. `chat_bp` - Chat functionality
 7. `metrics_bp` - Service metrics
-8. `totp_bp` - TOTP enrollment
+8. `inspector_bp` - Request inspector captures
+9. `totp_bp` - TOTP enrollment
 
 ### Authentication
 All API routes use the `@require_auth` decorator from `auth.py` except
@@ -380,11 +393,12 @@ All routes are under the Flask app and require Bearer token auth (except static 
 |-----------|--------------|---------|
 | `system_bp` | `/api/system/info`, `/api/health`, `/api/images/metadata`, `/api/auth/session`, `/api/auth/login`, `/api/auth/verify` | System hardware info, image build metadata, token issuance |
 | `gpu_bp` | `/api/gpu`, `/api/gpu/stream` | Real-time GPU stats via nvidia-smi |
-| `services_bp` | `/api/services`, `/api/services/<name>`, `/api/services/stream`, `/api/services/<name>/{start,stop,logs,preview,rename,favorite,set-public-port}`, `/api/services/<name>/logs/stream`, `/api/flag-metadata/<template_type>`, `/api/default-api-key/{rotation-preview,rotate}` | Service CRUD, live SSE state, per-service logs SSE |
+| `services_bp` | `/api/services`, `/api/services/<name>`, `/api/services/stream`, `/api/services/<name>/{start,stop,logs,preview,rename,favorite,set-public-port}`, `/api/services/<name>/logs/stream`, `/api/services/<name>/inspect`, `/api/flag-metadata/<template_type>`, `/api/default-api-key/{rotation-preview,rotate}` | Service CRUD, live SSE state, per-service logs SSE, inspection toggle |
 | `openwebui_bp` | `/api/services/<name>/register-openwebui`, `/api/services/<name>/unregister-openwebui`, `/api/openwebui/restart` | Open WebUI integration |
 | `benchmarks_bp` | `/api/benchmarks`, `/api/benchmarks/<run_id>`, `/api/benchmarks/<run_id>/apply` | Benchmark execution & results (POST starts a run; apply writes the winning flags back to the service) |
 | `chat_bp` | `/api/chat/*` | Chat conversations, messages, runs, projects, project files, prompts, MCP registry, settings |
 | `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer), live slots (llama.cpp only) |
+| `inspector_bp` | `/api/inspector/captures`, `/api/inspector/captures/<id>`, `/api/inspector/services` | Captured-request list/detail/delete, services-with-history ∪ live-proxies |
 | `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/status`, `/api/totp/disable` | TOTP enrollment |
 
 ## Coding Conventions
@@ -559,7 +573,7 @@ Each top-level key is a service name (matches `container_name`). Fields:
 | `model_size`, `model_size_str` | int, string | Written at creation; every read recomputes them via `compute_model_size`, so the stored pair is informational only |
 | `favorite` | bool | Optional, UI-only pin. Never a container flag |
 | `inspect` | bool | Optional, default false. Enables the request-inspector proxy on the service's public port (chat/UI-facing like `favorite`; never a container flag). The compose port mapping relocates to the loopback upstream port while enabled |
-| `inspect_upstream_port` | int | Optional, server-owned. Allocated from the 34000–34999 band at first enable and kept after disable; a `POST`/`PUT /api/services` body cannot set it (the write routes strip it) |
+| `inspect_upstream_port` | int | Optional, server-owned. Allocated from the 34000–34999 band at first enable and kept after disable; a `POST`/`PUT /api/services` body cannot set it (the write routes strip it). Never a container flag |
 | `reasoning_levels` | string | Optional, chat-only. Comma-separated level names the model accepts (`"off,low,medium,xhigh"`). Never a container flag — inert in compose rendering, like `favorite` |
 | `volumes` | list | Optional, **vLLM only** — extra bind mounts as `"src:dst[:mode]"` strings, appended to the container's own mounts. Operator-authored and unvalidated, like `params` |
 
@@ -775,6 +789,28 @@ after first start.
 so a hand-written `volumes` list survives a dashboard edit that never mentions it.
 A client that sends `volumes: []` does clear it.
 
+### Only host-side traffic is captured by the inspector
+
+The proxy listens on the host port, so anything dialling a container directly
+over `llm-network` never reaches a host port and is not recorded. Open WebUI is
+the exception that matters: it dials `http://<service>:<internal>/v1` over the
+shared network (`flag_metadata.openwebui_base_url`), so it keeps working
+through an inspected service and produces **no** captures — the toggle card's
+"every client that reaches this port" is the true framing. The bench scripts
+split: `scripts/bench/vllm/bench.sh` runs `vllm bench serve` inside the
+container against `localhost:8000` and is likewise invisible, while
+`scripts/bench/llamacpp/bench.py` dials the host port and is captured. Host-side
+and captured: llm-dock chat, ghost chat, the Android app, `curl` against the
+published port. Anything container-to-container is uncaptured by construction.
+
+### The inspector proxy lives in the dashboard process
+
+Restarting the dashboard drops every inspected service's listener until
+`create_app()` re-syncs the supervisor, and a request landing in that window
+fails to connect rather than falling through to the container — by then the
+container is published on loopback under a different port
+(`127.0.0.1:<upstream>`), so the public port has nothing behind it.
+
 ## Default API key rotation
 
 All model services share one **default API key**: `LLM_DOCK_API_KEY` in
@@ -925,6 +961,76 @@ points, absence sends nothing.
   `temperature` wins on a tool-bearing turn.
 - Measured matrix, the commands behind every verdict, and what was rejected:
   `docs/plans/chat-sampling-params.md`.
+
+## Request inspector
+
+Any service can opt its public port into request inspection: a
+`ServiceProxy` (`inspector/proxy.py`, a stdlib `ThreadingHTTPServer`)
+binds the service's **public host port** and forwards everything to the
+container, which the compose file has relocated to loopback. Every capture
+stores the request the client actually sent and the response the client
+actually saw, including assembled streaming output. Owner of the whole
+lifecycle is `inspector/supervisor.py`: the `proxy_supervisor` singleton
+reconciles running proxies with `services.json` (`sync()`), and `create_app()`
+calls it once at boot while `atexit` calls `stop_all()`.
+
+- **Port relocation is one change point.** With `inspect` on,
+  `ComposeManager._render_service()` renders `"127.0.0.1:<upstream>:<internal>"`
+  for the service's port mapping (all six templates take it through the same
+  `port` context key; an un-inspected service renders byte-identically). The
+  upstream port comes from `inspector/ports.py` — the lowest free in
+  **34000–34999**, where free counts every service's `port` and
+  `inspect_upstream_port`; a service keeps its allocated port across
+  disable/re-enable — re-enabling a running service recreates its container
+  either way, the retained port is what avoids band drift and leaked
+  allocations.
+- **`services.json` is the host-port authority while inspection is on.** The
+  compose mapping no longer names the port clients dial, so
+  `get_docker_services()` prefers the stored `port` for `host_port` (chat,
+  Open WebUI registration and the UI keep dialling the unchanged public port,
+  now through the proxy), and `get_compose_service_ports()` parses the
+  host port as the **second-to-last** colon component — a three-part mapping
+  like `"127.0.0.1:34001:8080"` has a non-numeric first one, and
+  `int("127.0.0.1")` once took out the whole port map.
+- **Only inference paths are captured:** `CAPTURED_PATHS` =
+  `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`,
+  `/v1/responses`, `/completion`, `/completions`, `/infill`, JSON bodies only.
+  Everything else is relayed uncaptured. `/metrics` and `/slots` are the
+  dashboard's own traffic (scraped through the proxy while a Metrics tab reads
+  them — there is no background poller), and capturing them would crowd real
+  captures out of the 2000-row window; the other ops paths (`/health`,
+  `/props`, `/v1/models`) simply carry no inference payload.
+- **Caps:** request and response bodies are stored to `redact.MAX_BODY_CHARS`
+  (1 MB) with a marker plus a `*_truncated` flag, and the table is trimmed to
+  `db.MAX_CAPTURES` (2000) rows after every insert.
+- **Auth is forwarded verbatim; redaction is storage-only.** The container
+  still sees the service API key (and rejects requests without it); the
+  stored `request_headers` pass through `redact_headers`, so
+  `authorization`/`x-api-key`/`api-key`/`x-totp-code`/`cookie` are stored as
+  `***redacted***`. Raw keys never reach disk.
+- **Toggle:** `POST /api/services/<name>/inspect` `{"enabled": bool}` —
+  enable writes `inspect` + the allocated `inspect_upstream_port`, rebuilds
+  compose, recreates the container **before** the proxy claims the public
+  port, then `sync()`s; disable runs the same in reverse and keeps the
+  upstream port. It emits the `metadata-changed` SSE delta like `favorite`,
+  and rename / set-public-port / delete / `PUT` all re-`sync()` so the
+  proxies never drift from the DB. `inspect_upstream_port` is stripped from
+  client write bodies — only the allocator sets it.
+- **Read/delete API** (`inspector_bp`): `GET /api/inspector/captures`
+  (summary rows only — bodies are absent from list responses by design —
+  newest first, `?service=`, `limit` clamped to 200),
+  `GET /api/inspector/captures/<id>` (full row; `request_body` verbatim as a
+  string so a malformed or truncated body stays fetchable), `DELETE` one or
+  all (optionally `?service=`), `GET /api/inspector/services` (union of
+  services with captures and services with a live proxy — history outlives
+  the toggle). Storage is one `InspectorDB` owned by the supervisor
+  (`dashboard/inspector.db`); deleting a service **keeps** its captures —
+  clearing them is a deliberate Inspector-UI action — while **rename
+  re-points the rows at the new name** so the service filter keeps matching.
+- **UI:** the `/v2` `/inspector` page (filter, live list, conversation/tools/
+  request/response/meta views) and the Request-inspection card on the service
+  detail page (badge in the services table). Toggling a **running** service
+  recreates its container — the card asks first.
 
 ## Adding an external MCP server
 

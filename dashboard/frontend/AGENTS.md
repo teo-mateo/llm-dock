@@ -177,6 +177,7 @@ Key mechanics:
 | `/chat/ghost` | `GhostChatPage` | Ephemeral zero-trace chat (issue #57) |
 | `/chat/project/:projectId` | `ChatPage` | Project file explorer |
 | `/tools` | `ToolsPage` | MCP registry, default prompt |
+| `/inspector` | `InspectorPage` | Request-capture viewer (issue #234) |
 | `/services/:serviceName/*` | `ServiceDetailsPage` | Config / logs / metrics |
 | `/settings` | `SettingsPage` | Theme, prompts, OpenRouter models, TOTP |
 
@@ -186,7 +187,7 @@ Key mechanics:
 |------|---------|
 | `components/Sidebar.jsx` | Desktop collapsible sidebar (nav + logo + user); collapsed state persisted |
 | `components/MobileNav.jsx` | `md:hidden` drawer nav |
-| `components/navItems.js` | Shared nav item list (Services/Chat/Tools/Settings) consumed by both Sidebar and MobileNav so they never drift |
+| `components/navItems.js` | Shared nav item list (Services/Chat/Tools/Inspector/Settings) consumed by both Sidebar and MobileNav so they never drift |
 | `components/Header.jsx` | Top bar shell (`hidden md:flex`); renders nothing today — there is no "Back to v1" link |
 
 ### API client layer
@@ -212,6 +213,7 @@ Key mechanics:
 | `openrouterCatalog.js` | Live OpenRouter catalog get (`/chat/settings/openrouter-catalog`), with `refresh`/`detail` flags |
 | `openrouterProviders.js` | Per-provider detail for a batch of model ids (`…/openrouter-catalog/endpoints`, POST); `MAX_PROVIDER_BATCH` mirrors the server cap |
 | `mcpRegistry.js` | Registry get/json/put/reload/test; surfaces structured `err.body` validation errors |
+| `inspector.js` | Capture list/detail/delete + `inspectorServices()` for the filter (`/inspector/*`) |
 
 ### Hooks (`src/hooks/`)
 
@@ -235,6 +237,7 @@ Key mechanics:
 | `useRegistry.js` | MCP registry load/save/reload |
 | `useResizableWidth.js` | Drag-resize panel width with localStorage persistence + ResizeObserver clamp |
 | `useProseClass.js` | Prose/markdown class helper for message rendering |
+| `useInspectorCaptures.js` | Capture list state: fresh first page per mount/filter change, merge-based `refresh()` so a Load-more'd tail survives, append-only deduping `loadMore()`, replacing `reload()` (Delete-all needs it — merge cannot empty the list), local `removeRow()`, 5 s live refetch with a `paused` flag, `services` for the filter select; exports pure `mergeReload`/`appendPage` |
 
 ### Dashboard components (`src/components/`)
 
@@ -246,6 +249,7 @@ Key mechanics:
 | `RotateDefaultKeyModal.jsx` | Rotate-default-API-key flow |
 | `GaugesRow.jsx` / `MetricsPanel.jsx` / `TokenSparkline.jsx` / `SpecDecodeBar.jsx` / `RequestStrip.jsx` | Metrics visualizations (GPU gauges, token sparklines, speculative-decoding bar) |
 | `ServiceDetailsPage.jsx` | Tabs (config/logs/metrics) + skeleton loading + not-found state |
+| `InspectToggleCard.jsx` | Request-inspection card on the Configuration tab: switch with a running-service recreate confirm, ON port grid, proxy-bind-failure banner with Retry, Captures row linking into `/inspector?service=` (issue #239) |
 | `ServiceDetailsHeader.jsx` | Header with rename + lifecycle actions |
 | `ServiceConfigPanel.jsx` | Service config form (params editor) |
 | `ServiceLogsPanel.jsx` | Live logs viewer |
@@ -352,6 +356,24 @@ critique panel and delete handling. It is heavily engineered around races:
 | `ProjectFileEditor.jsx` | Text editor with dirty tracking, Ctrl+S save, optimistic concurrency (base revision SHA256 prefix; 409 conflict → reload or force-overwrite) |
 | `projectTree.jsx` | Recursive `TreeFile`/`TreeDir` components |
 | `projectTreeUtils.js` | Pure helpers (`findNode`, `listDir`, `parentDir`, `ancestorsOf`) |
+
+## Inspector feature (`src/components/inspector/`)
+
+The capture viewer for #234. Everything reads the capture API through
+`services/inspector.js` and `GET /api/inspector/services`, so the page is
+independent of how captures are stored.
+
+| File | Purpose |
+|------|---------|
+| `InspectorPage.jsx` | Route owner. URL state *is* component state (`?service=`, `?capture=` — linkable and reload-stable); header bar (service-filter select with per-service counts, Live switch default-on, always-enabled Refresh, filter-scoped Delete-all with a count-naming confirm modal); the detail is fetched only while a capture is selected and cached in memory by id (a stored capture never changes), a detail 404 clears the selection and says "This capture no longer exists.", and deleting the selected row moves the selection to the next-newest remaining row. Live refetch pauses while any delete confirm is open |
+| `CaptureList.jsx` | Left pane: two-line rows (status pill, model, relative time / service, stream icon, token pair, duration, truncated chip), per-row inline `Delete?`/`Cancel` (confirm state lives here and reports upward so the page can pause live refetch), ↑/↓ selection, `Showing n of total` + Load more footer, both empty states |
+| `CaptureDetail.jsx` | Right pane: header (model, meta line, inline-confirm Delete, Copy request JSON) + a ServiceDetailsPage-styled sub-tab bar — Conversation / Tools (count badge, expand/collapse all) / Request (every top-level field except `messages`/`tools` + raw body + truncation banner) / Response (Rendered-by-default text, collapsed Thinking, response tool calls, finish chip, raw-SSE disclosure) / Meta (definition list + redacted header table). The page keys it by capture id, which is what resets the sub-tab on a new selection |
+| `ConversationView.jsx` | Message cards with role chips, per-card Raw/Rendered switch defaulting to **Raw** (seeing the literal prompt is the point), >40-line collapse that never collapses the system prompt, multimodal parts (`data:` inline with approximate size, anything else as a link), assistant `tool_calls` blocks flagging non-JSON arguments; a body that doesn't parse as JSON or has no `messages` renders "This request has no message array." + a View-raw-request callback — the pane never blanks |
+| `parse.js` | Pure helpers shared across the inspector components (`relativeTime`, `formatDuration`, `formatAbsolute`, `parseRequestBody`, `prettyArguments`, `messageContentChars`, `approxImageSize`, `copyText`) — outside any component file because `react-refresh/only-export-components` makes **non-component** exports from a component file a lint **error** under `--max-warnings 0`; component exports (`StringContent`, `ToolCallBlock`) stay put, the rule allows them |
+
+The toggle side of the feature (#239) lives outside this directory:
+`InspectToggleCard.jsx` in `components/`, posting `setServiceInspect` from
+`api.js`.
 
 ## Theme System (`index.css`)
 
