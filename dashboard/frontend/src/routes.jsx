@@ -4,6 +4,7 @@ import ServiceDetailsPage from './components/ServiceDetailsPage'
 import ChatPage from './components/chat/ChatPage'
 import GhostChatPage from './components/chat/GhostChatPage'
 import ToolsPage from './components/tools/ToolsPage'
+import InspectorPage from './components/inspector/InspectorPage'
 import SettingsPage from './components/SettingsPage'
 import { DefaultLayout, AppShell } from './layout'
 
@@ -23,6 +24,7 @@ export const routes = [
       { path: 'chat/:conversationId?', element: <ChatPage /> },
       { path: 'chat/project/:projectId', element: <ChatPage /> },
       { path: 'tools', element: <DefaultLayout><ToolsPage /></DefaultLayout> },
+      { path: 'inspector', element: <DefaultLayout><InspectorPage /></DefaultLayout> },
       { path: 'services/:serviceName/*', element: <DefaultLayout><ServiceDetailsPage /></DefaultLayout> },
       { path: 'settings', element: <DefaultLayout><SettingsPage /></DefaultLayout> },
     ],
