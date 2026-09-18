@@ -97,3 +97,13 @@ export async function fetchAPI(endpoint, options = {}) {
 
   return response.json()
 }
+
+// Toggle the per-service request inspector (#234). The response carries the
+// proxy state (proxy_running/error) because the state change committed even
+// when the proxy could not bind the port.
+export function setServiceInspect(serviceName, enabled) {
+  return fetchAPI(`/services/${serviceName}/inspect`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled })
+  })
+}

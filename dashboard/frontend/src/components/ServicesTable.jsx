@@ -6,6 +6,18 @@ import useServicesSSE from '../hooks/useServicesSSE'
 import RotateDefaultKeyModal from './RotateDefaultKeyModal'
 import CreateServiceModal from './CreateServiceModal'
 
+function InspectBadge() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-surface-strong text-fg-muted"
+      title="Request inspection is on"
+    >
+      <i className="fa-solid fa-magnifying-glass"></i>
+      inspect
+    </span>
+  )
+}
+
 function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
   if (name.startsWith('llamacpp-')) return 'llama.cpp'
@@ -540,6 +552,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
           ) : (
             <span className="break-all">{service.name}</span>
           )}
+          {service.inspect && <InspectBadge />}
           <CopyButton text={service.name} />
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -616,6 +629,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
             ) : (
               <span>{service.name}</span>
             )}
+            {service.inspect && <InspectBadge />}
             <CopyButton text={service.name} />
           </div>
           {service.api_key && (
