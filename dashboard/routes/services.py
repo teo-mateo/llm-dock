@@ -12,7 +12,7 @@ from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service
+from docker_utils import get_docker_services, get_service_container, control_service, get_image_info
 from model_discovery import compute_model_size
 from service_templates import generate_api_key
 from key_rotation import rotate_keys_in_db
@@ -160,6 +160,21 @@ def stop_service(service_name):
 # ============================================
 # Service preview & logs
 # ============================================
+
+
+@services_bp.route("/api/services/<service_name>/image", methods=["GET"])
+@require_auth
+def get_service_image(service_name):
+    """Inspect-level details for the image the service runs with."""
+    try:
+        services = get_docker_services()
+    except Exception as e:
+        logger.error(f"Failed to list services: {e}")
+        return jsonify({"error": "Failed to retrieve service information"}), 500
+    service = next((s for s in services if s["name"] == service_name), None)
+    if service is None:
+        return jsonify({"error": f'Service "{service_name}" not found'}), 404
+    return jsonify(get_image_info(service["image"]))
 
 
 @services_bp.route("/api/services/<service_name>/preview", methods=["GET"])

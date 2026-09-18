@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service image info — mockups</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root {
+    --bg: #f1f5f9;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --surface-strong: #e2e8f0;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --fg: #0f172a;
+    --fg-muted: #64748b;
+    --fg-subtle: #94a3b8;
+    --accent: #3b82f6;
+    --accent-fg: #2563eb;
+    --success: #16a34a;
+    --success-subtle: #dcfce7;
+    --success-fg: #15803d;
+    --info-subtle: #dbeafe;
+    --info-fg: #1d4ed8;
+    --warning-subtle: #fef3c7;
+    --warning-fg: #b45309;
+    --radius: 8px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 24px 80px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .page { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lede { color: var(--fg-muted); margin: 0 0 8px; max-width: 780px; }
+  .lede code { font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; }
+
+  .option {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 28px;
+    overflow: visible;
+  }
+  .option-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 10px;
+    background: var(--surface-muted);
+    border-radius: 10px 10px 0 0;
+  }
+  .option-head .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent-fg); background: var(--info-subtle);
+    padding: 2px 8px; border-radius: 99px;
+  }
+  .option-head h2 { font-size: 16px; margin: 0; }
+  .option-head p { margin: 0 0 0 auto; font-size: 12px; color: var(--fg-muted); max-width: 420px; text-align: right; }
+  .option-body { padding: 20px; }
+
+  /* --- the fake service-details chrome, shared by all options --- */
+  .svc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  .svc-row1 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .svc-name { font-size: 20px; font-weight: 700; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 500; border: 1px solid; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 99px; }
+  .pill.running { background: var(--success-subtle); color: var(--success-fg); border-color: #bbf7d0; }
+  .pill.running .dot { background: var(--success); }
+  .pill.engine { background: #f3e8ff; color: #7e22ce; border-color: #e9d5ff; }
+  .svc-meta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--border); font-size: 12px; }
+  .svc-meta .cell { display: flex; align-items: center; gap: 6px; }
+  .svc-meta .lbl { color: var(--fg-muted); }
+  .svc-meta .val { font-family: var(--mono); color: var(--fg); }
+  .svc-meta .sep { width: 1px; height: 14px; background: var(--surface-strong); }
+  .copy { color: var(--fg-subtle); cursor: pointer; font-size: 12px; }
+  .copy:hover { color: var(--fg); }
+
+  .img-cell { cursor: pointer; border-radius: 4px; padding: 2px 4px; margin: -2px -4px; }
+  .img-cell:hover { background: var(--surface-muted); }
+  .img-cell .chev { color: var(--fg-subtle); font-size: 10px; transition: transform 0.15s; }
+  .img-cell.open .chev { transform: rotate(180deg); }
+
+  /* --- option A: popover --- */
+  .pop-anchor { position: relative; display: inline-flex; }
+  .popover {
+    position: absolute; top: calc(100% + 8px); left: -8px; z-index: 30;
+    width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+    padding: 14px 16px;
+    display: none;
+  }
+  .popover.show { display: block; }
+  .popover::before {
+    content: ""; position: absolute; top: -5px; left: 24px;
+    width: 8px; height: 8px; background: var(--surface);
+    border-left: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong);
+    transform: rotate(45deg);
+  }
+  .pop-name { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-bottom: 8px; word-break: break-all; }
+  .pop-rows { display: grid; grid-template-columns: 74px 1fr; gap: 5px 10px; font-size: 12px; }
+  .pop-rows .k { color: var(--fg-muted); }
+  .pop-rows .v { color: var(--fg); font-family: var(--mono); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .badge.built { background: var(--success-subtle); color: var(--success-fg); }
+  .badge.pulled { background: var(--info-subtle); color: var(--info-fg); }
+  .badge .dot { width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+  .pop-src { font-family: inherit; font-size: 11.5px; }
+  a.plain { color: var(--accent-fg); text-decoration: none; }
+  a.plain:hover { text-decoration: underline; }
+
+  /* --- option B: modal --- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-strong);
+    background: var(--surface-muted); color: var(--fg);
+    font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  .btn:hover { background: var(--surface-strong); }
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(15, 23, 42, 0.55);
+    display: none; align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    width: 560px; max-width: 100%;
+    background: var(--surface); border-radius: 10px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+    overflow: hidden;
+  }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h3 { margin: 0; font-size: 15px; }
+  .modal-close { border: 0; background: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; padding: 4px; }
+  .modal-close:hover { color: var(--fg); }
+  .modal-tabs { display: flex; gap: 2px; padding: 12px 20px 0; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+  .modal-tab {
+    border: 0; background: none; cursor: pointer; font-family: var(--mono); font-size: 11.5px;
+    color: var(--fg-muted); padding: 8px 12px 10px;
+    border-bottom: 2px solid transparent;
+  }
+  .modal-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  .modal-body { padding: 18px 20px; }
+  .img-line { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .img-line .name { font-family: var(--mono); font-size: 15px; font-weight: 600; word-break: break-all; }
+  .img-sub { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; font-size: 12.5px; }
+  .kv .k { color: var(--fg-muted); }
+  .kv .v { font-family: var(--mono); }
+  .kv .v.dim { color: var(--fg-subtle); }
+
+  /* --- option C: inline expand --- */
+  .expand-panel {
+    display: none;
+    margin-top: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--success);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .expand-panel.show { display: block; }
+  .expand-panel.pulled-edge { border-left-color: var(--accent); }
+  .expand-panel .e-name { font-family: var(--mono); font-weight: 600; font-size: 12.5px; }
+  .expand-panel .e-rows { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 5px; color: var(--fg-muted); }
+  .expand-panel .e-rows b { color: var(--fg); font-weight: 500; font-family: var(--mono); font-size: 11.5px; }
+
+  /* --- option D: header badge --- */
+  .img-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--surface-muted); border: 1px solid var(--border-strong);
+    padding: 3px 10px; border-radius: 99px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--fg);
+    position: relative; cursor: default;
+  }
+  .img-badge .dot { width: 7px; height: 7px; border-radius: 99px; }
+  .img-badge .dot.built { background: var(--success); }
+  .img-badge .dot.pulled { background: var(--accent); }
+  .img-badge .tip {
+    display: none; position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
+    width: 300px; background: var(--fg); color: #e2e8f0;
+    border-radius: 6px; padding: 10px 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11.5px; line-height: 1.55;
+    box-shadow: 0 10px 24px rgba(15,23,42,0.35);
+  }
+  .img-badge .tip b { color: #fff; }
+  .img-badge:hover .tip { display: block; }
+
+  /* --- data source table --- */
+  table.src { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  table.src th { text-align: left; color: var(--fg-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; border-bottom: 1px solid var(--border-strong); }
+  table.src td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.src td code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-muted); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; }
+  .yes { color: var(--success-fg); font-weight: 600; }
+  .partial { color: var(--warning-fg); font-weight: 600; }
+  .footer-note { color: var(--fg-subtle); font-size: 11.5px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Service image info</h1>
+  <p class="lede">
+    Four options for the <b>Image</b> cell in the service-details metadata row. Sample data is taken from
+    this machine's real images (where an image isn't present, the row is representative). Every field comes
+    from <code>docker image inspect</code> — names, labels and timestamps — so the endpoint is a single read per service.
+  </p>
+
+  <!-- ============ OPTION A ============ -->
+  <div class="option">
+    <div class="option-head">
+      <span class="tag">A</span>
+      <h2>Popover on click</h2>
+      <p>Compact, anchored to the cell. Cheapest attention; details stay one click away, nothing reflows.</p>
+    </div>
+    <div class="option-body">
+      <div class="svc">
+        <div class="svc-row1">
+          <span class="svc-name">vllm-swift-qwen3-8-27b</span>
+          <span class="pill running"><span class="dot"></span>Running</span>
+          <span class="pill engine">vLLM</span>
+          <span style="color:var(--fg-muted);font-size:12px">51.78 GB</span>
+        </div>
+        <div class="svc-meta">
+          <div class="cell"><span class="lbl">Port:</span><span class="val" style="color:var(--accent-fg)">3340</span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">API Key:</span><span class="val">key-d45f8969…</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">Container:</span><span class="val">77cf63c</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="pop-anchor">
+            <div class="cell img-cell" id="popA1" onclick="togglePop('popA', this)">
+              <span class="lbl">Image:</span><span class="val">llm-dock-vllm:cu129-580</span>
+              <span class="copy"><i class="fa-regular fa-copy"></i></span>
+              <span class="chev"><i class="fa-solid fa-chevron-down"></i></span>
+            </div>
+            <div class="popover" id="popA">
+              <div class="pop-name">llm-dock-vllm:cu129-580</div>
+              <div style="margin-bottom:10px">
+                <span class="badge built"><span class="dot"></span>Built locally</span>
+                <span class="pop-src" style="color:var(--fg-muted);font-size:11.5px;margin-left:8px">build-vllm.sh · no build labels on this image</span>
+              </div>
+              <div class="pop-rows">
+                <span class="k">Created</span><span class="v">2026-09-16 16:47 · today</span>
+                <span class="k">Built</span><span class="v" style="color:var(--fg-subtle)">— (no metadata label)</span>
+                <span class="k">Base</span><span class="v">vllm/vllm-openai:v0.29.0-cu129</span>
+                <span class="k">Size</span><span class="v">25.1 GB</span>
+              </div>
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">WebUI:</span><span style="color:var(--fg-subtle)">Not registered</span></div>
+        </div>
+      </div>
+      <p class="footer-note">Second state — a pulled image (<code style="font-family:var(--mono)">ghcr.io/open-webui/open-webui:main</code>) would swap the badge to
+        <span class="badge pulled" style="vertical-align:1px"><span class="dot"></span>Pulled</span> and replace the Built/Base rows with
+        <span style="font-family:var(--mono)">Registry&nbsp; ghcr.io</span> and <span style="font-family:var(--mono)">Source&nbsp; github.com/open-webui/open-webui ↗</span>.</p>
+    </div>
+  </div>
+
+  <!-- ============ OPTION B ============ -->
+  <div class="option">
+    <div class="option-head">
+      <span class="tag">B</span>
+      <h2>Modal (same pattern as View YAML)</h2>
+      <p>Full card, room for every field. Familiar gesture — the page already does this for the compose YAML.</p>
+    </div>
+    <div class="option-body">
+      <div class="svc">
+        <div class="svc-row1">
+          <span class="svc-name">ninfer-qwen38-27b-nvfp4</span>
+          <span class="pill running" style="background:var(--warning-subtle);color:var(--warning-fg);border-color:#fde68a"><span class="dot" style="background:var(--warning-fg)"></span>Stopped</span>
+          <span class="pill engine" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd">NInfer</span>
+        </div>
+        <div class="svc-meta">
+          <div class="cell"><span class="lbl">Port:</span><span class="val">3342</span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">Container:</span><span class="val">91ab2f4</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="cell">
+            <span class="lbl">Image:</span><span class="val">llm-dock-ninfer</span>
+            <span class="copy"><i class="fa-regular fa-copy"></i></span>
+            <button class="btn" style="margin-left:8px" onclick="openModal('ninfer')"><i class="fa-solid fa-circle-info"></i> Info</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION C ============ -->
+  <div class="option">
+    <div class="option-head">
+      <span class="tag">C</span>
+      <h2>Inline expand under the row</h2>
+      <p>Clicking the Image cell reveals a summary strip in-page. No floating element, no modal — good for quick glances.</p>
+    </div>
+    <div class="option-body">
+      <div class="svc">
+        <div class="svc-row1">
+          <span class="svc-name">llamacpp-glm-5.3-flash-iq4xs-lru</span>
+          <span class="pill running" style="background:var(--surface-muted);color:var(--fg-muted);border-color:var(--border-strong)"><span class="dot" style="background:var(--fg-subtle)"></span>Not created</span>
+          <span class="pill engine">llama.cpp</span>
+        </div>
+        <div class="svc-meta">
+          <div class="cell"><span class="lbl">Port:</span><span class="val">3351</span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">API Key:</span><span class="val">key-9c21b7aa…</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="cell img-cell" id="expC" onclick="toggleExpand()">
+            <span class="lbl">Image:</span><span class="val">llm-dock-llamacpp:glm5next-lru</span>
+            <span class="chev"><i class="fa-solid fa-chevron-down"></i></span>
+          </div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">WebUI:</span><span style="color:var(--fg-subtle)">Not registered</span></div>
+        </div>
+        <div class="expand-panel" id="expandC">
+          <span class="badge built" style="margin-right:8px"><span class="dot"></span>Built locally</span>
+          <span class="e-name">llm-dock-llamacpp:glm5next-lru</span>
+          <div class="e-rows">
+            <span>Built <b>2026-09-02 18:12</b></span>
+            <span>Commit <b>4a7c91d0</b></span>
+            <span>Created <b>2026-09-02 18:31</b></span>
+            <span>Size <b>1.9 GB</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION D ============ -->
+  <div class="option">
+    <div class="option-head">
+      <span class="tag">D</span>
+      <h2>Header badge with source dot</h2>
+      <p>Image promoted into the identity row next to the engine badge. Dot colour = built (green) / pulled (blue); hover for details.</p>
+    </div>
+    <div class="option-body">
+      <div class="svc">
+        <div class="svc-row1">
+          <span class="svc-name">vllm-swift-qwen3-8-27b</span>
+          <span class="pill running"><span class="dot"></span>Running</span>
+          <span class="pill engine">vLLM</span>
+          <span class="img-badge">
+            <span class="dot built"></span>
+            <i class="fa-solid fa-cube" style="color:var(--fg-subtle);font-size:10px"></i>
+            llm-dock-vllm:cu129-580
+            <span class="tip">
+              <b>llm-dock-vllm:cu129-580</b><br>
+              Built locally · <b>build-vllm.sh</b><br>
+              Created 2026-09-16 16:47 (today)<br>
+              Base vllm/vllm-openai:v0.29.0-cu129<br>
+              Size 25.1 GB
+            </span>
+          </span>
+          <span style="color:var(--fg-muted);font-size:12px">51.78 GB</span>
+        </div>
+        <div class="svc-meta">
+          <div class="cell"><span class="lbl">Port:</span><span class="val" style="color:var(--accent-fg)">3340</span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">API Key:</span><span class="val">key-d45f8969…</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">Container:</span><span class="val">77cf63c</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+          <div class="sep"></div>
+          <div class="cell"><span class="lbl">WebUI:</span><span style="color:var(--fg-subtle)">Not registered</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DATA SOURCES ============ -->
+  <div class="option">
+    <div class="option-head">
+      <span class="tag">Data</span>
+      <h2>Where each field comes from</h2>
+      <p>One <code style="font-family:var(--mono);font-size:11px">docker image inspect</code> per service. No daemon calls on the SSE hot path — fetched on demand by the details page.</p>
+    </div>
+    <div class="option-body" style="padding:8px 0 0">
+      <table class="src">
+        <tr><th style="width:170px">Field</th><th style="width:330px">Source</th><th>Always available?</th></tr>
+        <tr><td>Created</td><td><code>image.Created</code> (image creation timestamp)</td><td class="yes">Yes</td></tr>
+        <tr><td>Built / pulled</td><td><code>org.llm-dock.build.*</code> labels, else the <code>llm-dock-</code> name convention, else registry reference</td><td class="yes">Yes <span style="color:var(--fg-subtle)">(heuristic for pulled)</span></td></tr>
+        <tr><td>Build date + commit</td><td><code>org.llm-dock.build.date</code> / <code>org.llm-dock.build.commit</code> labels</td><td class="partial">Only newer local builds</td></tr>
+        <tr><td>Engine pin (e.g. NInfer commit)</td><td><code>org.llm-dock.ninfer.commit</code>, <code>org.llm-dock.ds4.commit</code> labels</td><td class="partial">Where the Dockerfile sets one</td></tr>
+        <tr><td>Registry</td><td>parsed from the image reference (<code>ghcr.io/…</code>, <code>Docker Hub</code>)</td><td class="yes">For pulled images</td></tr>
+        <tr><td>Upstream source + version</td><td><code>org.opencontainers.image.*</code> labels</td><td class="partial">Most pulled images</td></tr>
+        <tr><td>Base image (built wrappers)</td><td><code>ai.vllm.image.tag</code>-style inherited labels, or the build script's pin</td><td class="partial">Depends on base labels</td></tr>
+        <tr><td>Size</td><td><code>image.Size</code></td><td class="yes">Yes</td></tr>
+      </table>
+      <p class="footer-note">Known gap: <code>llm-dock-vllm:cu129-580</code> was built without the <code>org.llm-dock.build.*</code> labels, so it shows “built locally, no metadata”. Options: accept the gap, or add the LABEL to <code>build-vllm.sh</code> (two lines) so every future build carries it.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ MODAL (option B) ============ -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h3><i class="fa-solid fa-cube" style="color:var(--fg-subtle);margin-right:8px"></i>Image</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="tab-ninfer" onclick="showTab('ninfer')"><span class="badge built" style="margin-right:6px"><span class="dot"></span>Built</span>llm-dock-ninfer</button>
+      <button class="modal-tab" id="tab-vllm" onclick="showTab('vllm')"><span class="badge built" style="margin-right:6px"><span class="dot"></span>Built</span>llm-dock-vllm:cu129-580</button>
+      <button class="modal-tab" id="tab-openwebui" onclick="showTab('openwebui')"><span class="badge pulled" style="margin-right:6px"><span class="dot"></span>Pulled</span>ghcr.io/open-webui/…</button>
+    </div>
+    <div class="modal-body">
+      <div id="pane-ninfer">
+        <div class="img-line"><span class="name">llm-dock-ninfer</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+        <div class="img-sub">Built locally by <code style="font-family:var(--mono);font-size:11px">build-ninfer.sh</code> — NInfer engine, CUDA 12.9 port patch</div>
+        <div class="kv">
+          <span class="k">Source</span><span class="v" style="font-family:inherit"><span class="badge built"><span class="dot"></span>Built locally</span></span>
+          <span class="k">Built</span><span class="v">2026-09-15 21:39 UTC</span>
+          <span class="k">Build commit</span><span class="v">eddd3197f181</span>
+          <span class="k">Engine pin</span><span class="v">d49296868dcc <span style="color:var(--fg-subtle)">(org.llm-dock.ninfer.commit)</span></span>
+          <span class="k">Created</span><span class="v">2026-09-15 23:44 · 24 h ago</span>
+          <span class="k">Size</span><span class="v">4.8 GB</span>
+        </div>
+      </div>
+      <div id="pane-vllm" style="display:none">
+        <div class="img-line"><span class="name">llm-dock-vllm:cu129-580</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+        <div class="img-sub">Built locally by <code style="font-family:var(--mono);font-size:11px">build-vllm.sh</code> — custom vLLM build on an upstream base</div>
+        <div class="kv">
+          <span class="k">Source</span><span class="v" style="font-family:inherit"><span class="badge built"><span class="dot"></span>Built locally</span></span>
+          <span class="k">Built</span><span class="v dim">— (no build labels on this image)</span>
+          <span class="k">Base image</span><span class="v">vllm/vllm-openai:v0.29.0-cu129</span>
+          <span class="k">Created</span><span class="v">2026-09-16 16:47 · today</span>
+          <span class="k">Size</span><span class="v">25.1 GB</span>
+        </div>
+      </div>
+      <div id="pane-openwebui" style="display:none">
+        <div class="img-line"><span class="name">ghcr.io/open-webui/open-webui:main</span><span class="copy"><i class="fa-regular fa-copy"></i></span></div>
+        <div class="img-sub">Pulled from a public registry — not built by llm-dock</div>
+        <div class="kv">
+          <span class="k">Source</span><span class="v" style="font-family:inherit"><span class="badge pulled"><span class="dot"></span>Pulled</span></span>
+          <span class="k">Registry</span><span class="v">ghcr.io</span>
+          <span class="k">Upstream</span><span class="v" style="font-family:inherit"><a class="plain" href="https://github.com/open-webui/open-webui">github.com/open-webui/open-webui</a> ↗</span>
+          <span class="k">Version</span><span class="v">main</span>
+          <span class="k">Created</span><span class="v">2025-10-20 03:45 · 11 months ago</span>
+          <span class="k">Size</span><span class="v">4.5 GB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePop(id, cell) {
+    const pop = document.getElementById(id);
+    const show = !pop.classList.contains("show");
+    document.querySelectorAll(".popover").forEach(p => p.classList.remove("show"));
+    document.querySelectorAll(".img-cell").forEach(c => c.classList.remove("open"));
+    if (show) { pop.classList.add("show"); cell.classList.add("open"); }
+  }
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".pop-anchor")) {
+      document.querySelectorAll(".popover").forEach(p => p.classList.remove("show"));
+      document.querySelectorAll(".img-cell").forEach(c => c.classList.remove("open"));
+    }
+  });
+  function openModal(tab) { document.getElementById("modalOverlay").classList.add("show"); showTab(tab); }
+  function closeModal() { document.getElementById("modalOverlay").classList.remove("show"); }
+  function showTab(name) {
+    ["ninfer", "vllm", "openwebui"].forEach(t => {
+      document.getElementById("pane-" + t).style.display = t === name ? "" : "none";
+      document.getElementById("tab-" + t).classList.toggle("active", t === name);
+    });
+  }
+  function toggleExpand() {
+    const panel = document.getElementById("expandC");
+    const cell = document.getElementById("expC");
+    panel.classList.toggle("show");
+    cell.classList.toggle("open");
+  }
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+</script>
+</body>
+</html>

@@ -7,7 +7,7 @@ from flask import current_app
 
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
-from flag_metadata import openwebui_base_url
+from flag_metadata import openwebui_base_url, default_engine_image
 from model_discovery import compute_model_size
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
@@ -28,28 +28,71 @@ def check_nvidia_smi():
         return False
 
 
-def get_image_build_metadata(image_name: str) -> dict:
-    """Get build metadata labels from a Docker image"""
+def _image_source(image_name: str, labels: dict) -> str:
+    """'built' (this repo's build-*.sh pipeline) or 'pulled' (a registry).
+
+    The build label is the strong signal; the name prefix is the fallback for
+    images built before the labels existed — a locally built image with a
+    registry-shaped name is not produced by this repo's scripts, so the two
+    signals never have to agree.
+    """
+    if labels.get("org.llm-dock.build.date") or image_name.split("/")[0].startswith("llm-dock-"):
+        return "built"
+    return "pulled"
+
+
+def _image_registry(image_name: str):
+    """Registry host for a pulled image: the reference's first component when it
+    names a host, docker.io when it is a bare Docker Hub path, None for local names."""
+    first, sep, _ = image_name.partition("/")
+    if not sep:
+        return None
+    if "." in first or ":" in first or first == "localhost":
+        return first
+    return "docker.io"
+
+
+def get_image_info(image_name: str) -> dict:
+    """Inspect-level info for one image: source, created/size, and the labels
+    that carry build and upstream provenance."""
+    def _info(**extra):
+        base = {
+            "name": image_name,
+            "exists": False,
+            "source": None,
+            "created": None,
+            "size": None,
+            "build_date": None,
+            "build_commit": None,
+            "registry": None,
+            "upstream_url": None,
+            "upstream_version": None,
+        }
+        base.update(extra)
+        return base
+
     try:
         client = docker.from_env()
         image = client.images.get(image_name)
-        labels = image.labels or {}
-
-        return {
-            "build_date": labels.get("org.llm-dock.build.date"),
-            "build_commit": labels.get("org.llm-dock.build.commit"),
-            "exists": True,
-        }
     except docker.errors.ImageNotFound:
-        return {"build_date": None, "build_commit": None, "exists": False}
+        return _info()
     except Exception as e:
-        logger.warning(f"Failed to get metadata for image {image_name}: {e}")
-        return {
-            "build_date": None,
-            "build_commit": None,
-            "exists": False,
-            "error": str(e),
-        }
+        logger.warning(f"Failed to inspect image {image_name}: {e}")
+        return _info(error=str(e))
+
+    labels = image.attrs.get("Config", {}).get("Labels") or {}
+    source = _image_source(image_name, labels)
+    return _info(
+        exists=True,
+        source=source,
+        created=image.attrs.get("Created"),
+        size=image.attrs.get("Size"),
+        build_date=labels.get("org.llm-dock.build.date"),
+        build_commit=labels.get("org.llm-dock.build.commit"),
+        registry=_image_registry(image_name) if source == "pulled" else None,
+        upstream_url=labels.get("org.opencontainers.image.source"),
+        upstream_version=labels.get("org.opencontainers.image.version"),
+    )
 
 
 def _compose_file() -> str:
@@ -108,6 +151,12 @@ def check_docker():
         return True
     except Exception:
         return False
+
+
+def _service_image(template_type, config):
+    if template_type in ("llamacpp", "ik_llamacpp", "vllm"):
+        return config.get("image") or default_engine_image(template_type)
+    return default_engine_image(template_type)
 
 
 def _service_kind(config):
@@ -169,6 +218,7 @@ def get_docker_services():
     model_name_map = {}
     kind_map = {}
     favorite_map = {}
+    image_map = {}
     reasoning_levels_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
@@ -180,6 +230,9 @@ def get_docker_services():
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
             favorite_map[service_name] = bool(config.get("favorite", False))
+            image_map[service_name] = _service_image(
+                template_type_map[service_name], config
+            )
             reasoning_levels_map[service_name] = _parsed_reasoning_levels(
                 service_name, config.get("reasoning_levels")
             )
@@ -218,6 +271,7 @@ def get_docker_services():
                 "container_id": container.id[:12],
                 "created": container.attrs["Created"],
                 "ports": container.ports,
+                "image": container.attrs["Config"]["Image"],
                 "host_port": port_map.get(service_name, 9999),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
@@ -254,6 +308,7 @@ def get_docker_services():
                     "container_id": None,
                     "created": None,
                     "ports": {},
+                    "image": image_map.get(service_name, ""),
                     "host_port": port_map.get(service_name, 9999),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),

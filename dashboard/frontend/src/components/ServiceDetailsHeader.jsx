@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 function CopyButton({ text, label }) {
@@ -157,13 +157,165 @@ function YamlPreviewModal({ yaml, onClose }) {
   )
 }
 
-function MetadataRow({ config, runtime }) {
+function timeAgo(iso) {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ""
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000))
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days} days ago`
+  const months = Math.round(days / 30)
+  if (months < 12) return `${months} months ago`
+  return `${Math.round(months / 12)} years ago`
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = n => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatSize(bytes) {
+  if (!bytes) return ""
+  const gb = bytes / 1e9
+  if (gb >= 1) return `${gb.toFixed(1)} GB`
+  return `${Math.round(bytes / 1e6)} MB`
+}
+
+function ImagePopover({ serviceImage, onFetch, onError }) {
+  const [open, setOpen] = useState(false)
+  const [info, setInfo] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const anchorRef = useRef(null)
+
+  const toggle = useCallback(async () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    if (!info && !loading) {
+      setLoading(true)
+      try {
+        setInfo(await onFetch())
+      } catch (err) {
+        setOpen(false)
+        onError(`Failed to load image details: ${err.message}`)
+      } finally {
+        setLoading(false)
+      }
+    }
+  }, [open, info, loading, onFetch, onError])
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (!anchorRef.current?.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const built = info?.source === 'built'
+
+  return (
+    <div className="relative" ref={anchorRef}>
+      <div
+        className="flex items-center gap-1.5 cursor-pointer select-none rounded px-1 py-0.5 -mx-1 hover:bg-surface-muted"
+        onClick={toggle}
+        title="Image details"
+      >
+        <span className="text-xs text-fg-muted">Image:</span>
+        <span className="text-xs font-mono text-fg">{serviceImage}</span>
+        <i className={`fa-solid fa-chevron-down text-[10px] text-fg-subtle transition-transform ${open ? 'rotate-180' : ''}`}></i>
+      </div>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-2 z-30 w-[360px] bg-surface border border-border-strong rounded-lg shadow-xl p-3.5">
+          {loading || !info ? (
+            <div className="text-xs text-fg-muted py-2">
+              <i className="fa-solid fa-spinner fa-spin mr-1.5"></i>Loading image details…
+            </div>
+          ) : (
+            <>
+              <div className="font-mono text-[13px] font-semibold break-all mb-2">{info.name}</div>
+              {info.exists ? (
+                <>
+                  <div className="mb-2.5">
+                    {built ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success-subtle text-success-fg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success"></span>Built locally
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-accent-subtle text-accent-fg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>Pulled
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[74px_1fr] gap-y-1 gap-x-2.5 text-xs">
+                    <span className="text-fg-muted">Created</span>
+                    <span className="font-mono">{fmtDate(info.created)}{info.created ? ` · ${timeAgo(info.created)}` : ''}</span>
+                    {built && (
+                      <>
+                        <span className="text-fg-muted">Built</span>
+                        {info.build_date ? (
+                          <span className="font-mono">{fmtDate(info.build_date)}{info.build_commit ? ` · commit ${info.build_commit.slice(0, 8)}` : ""}</span>
+                        ) : (
+                          <span className="text-fg-subtle">-</span>
+                        )}
+                      </>
+                    )}
+                    {!built && info.registry && (
+                      <>
+                        <span className="text-fg-muted">Registry</span>
+                        <span className="font-mono">{info.registry}</span>
+                      </>
+                    )}
+                    {!built && info.upstream_url && (
+                      <>
+                        <span className="text-fg-muted">Upstream</span>
+                        <span className="truncate">
+                          <a
+                            href={info.upstream_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-fg hover:underline"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {info.upstream_url.replace(/^https?:\/\//, '')}
+                          </a>
+                        </span>
+                      </>
+                    )}
+                    <span className="text-fg-muted">Size</span>
+                    <span className="font-mono">{formatSize(info.size)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-fg-subtle">Image not present locally</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MetadataRow({ config, runtime, actions, onError }) {
   const status = runtime?.status || 'not-created'
   const isRunning = status === 'running'
   const port = runtime?.host_port && runtime.host_port !== 9999 ? runtime.host_port : config?.port
   const isPublicPort = port === 3301
   const apiKey = runtime?.api_key || config?.api_key
   const containerId = runtime?.container_id
+  const image = runtime?.image || config?.image
 
   const isRegistered = runtime?.openwebui_registered
 
@@ -218,6 +370,14 @@ function MetadataRow({ config, runtime }) {
             <span className="text-xs font-mono text-fg">{containerId.slice(0, 7)}</span>
             <CopyButton text={containerId} label="Copy container ID" />
           </div>
+        </>
+      )}
+
+      {/* Image */}
+      {image && (
+        <>
+          <div className="w-px h-4 bg-surface-strong" />
+          <ImagePopover serviceImage={image} onFetch={actions.fetchImageInfo} onError={onError} />
         </>
       )}
 
@@ -483,7 +643,7 @@ export default function ServiceDetailsHeader({ serviceName, config, runtime, tra
       </div>
 
       {/* Row 2: Metadata */}
-      <MetadataRow config={config} runtime={runtime} />
+      <MetadataRow config={config} runtime={runtime} actions={actions} onError={onError} />
 
       {/* Row 3: Toolbar */}
       <ToolbarRow

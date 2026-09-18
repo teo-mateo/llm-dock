@@ -7,7 +7,7 @@ import config as config_module
 import pyotp
 
 from auth import require_auth, _totp_sessions, TOTP_TOKEN_EXPIRY_SECONDS, _cleanup_sessions
-from docker_utils import check_docker, check_nvidia_smi, get_image_build_metadata
+from docker_utils import check_docker, check_nvidia_smi, get_image_info
 from model_discovery import discover_all_models, get_disk_usage
 
 logger = logging.getLogger(__name__)
@@ -97,11 +97,11 @@ def get_images_metadata():
     """Return build metadata for llm-dock images"""
     return jsonify(
         {
-            "llamacpp": get_image_build_metadata("llm-dock-llamacpp"),
-            "vllm": get_image_build_metadata("llm-dock-vllm"),
-            "ds4": get_image_build_metadata("llm-dock-ds4"),
-            "tabbyapi": get_image_build_metadata("llm-dock-tabbyapi"),
-            "ninfer": get_image_build_metadata("llm-dock-ninfer"),
+            "llamacpp": get_image_info("llm-dock-llamacpp"),
+            "vllm": get_image_info("llm-dock-vllm"),
+            "ds4": get_image_info("llm-dock-ds4"),
+            "tabbyapi": get_image_info("llm-dock-tabbyapi"),
+            "ninfer": get_image_info("llm-dock-ninfer"),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )
