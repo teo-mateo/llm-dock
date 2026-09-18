@@ -78,16 +78,20 @@ export async function fetchAPI(endpoint, options = {}) {
     const text = await response.text()
     let msg = `HTTP ${response.status}`
     let code = null
+    let details = null
     try {
       const data = JSON.parse(text)
       msg = typeof data.error === 'string' ? data.error : msg
       // Stable machine-readable identifier for errors the UI branches on
       // (e.g. 'revision_conflict', 'already_exists') — match on err.code,
-      // never on the message text.
+      // never on the message text. details carries structured validation
+      // errors (e.g. service create) the same way; err.details, same rule.
       if (typeof data.code === 'string') code = data.code
+      if (Array.isArray(data.details)) details = data.details
     } catch { /* not JSON */ }
     const err = new Error(msg)
     if (code) err.code = code
+    if (details) err.details = details
     throw err
   }
 
