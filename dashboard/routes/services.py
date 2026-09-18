@@ -582,8 +582,8 @@ def rename_service(service_name):
 def get_flags_metadata(template_type):
     """Get flag metadata for a template type"""
     try:
-        if template_type not in ["llamacpp", "llamacpp_bench", "vllm", "ds4", "tabbyapi", "ninfer"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "llamacpp_bench", "vllm", "ds4", "tabbyapi", or "ninfer"'}), 400
+        if template_type not in ["llamacpp", "ik_llamacpp", "llamacpp_bench", "vllm", "ds4", "tabbyapi", "ninfer"]:
+            return jsonify({"error": 'template_type must be "llamacpp", "ik_llamacpp", "llamacpp_bench", "vllm", "ds4", "tabbyapi", or "ninfer"'}), 400
 
         metadata = get_flag_metadata(template_type)
         mandatory = MANDATORY_FIELDS.get(template_type, [])

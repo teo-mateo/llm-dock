@@ -58,6 +58,47 @@ afterEach(() => {
 })
 
 describe('CreateServiceModal', () => {
+  it('closes on Escape', () => {
+    const onClose = vi.fn()
+    setup({ onClose })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers one entry per GGUF model: first shard only, no mmproj', async () => {
+    fetchAPIMock.mockImplementation(async (endpoint) => {
+      if (endpoint === '/system/info') {
+        return {
+          models: [
+            {
+              name: 'org/sharded',
+              full_name: 'org/sharded [Q4_K]',
+              files: [
+                { name: 'Sharded-Q4_K-00001-of-00004.gguf', path: '/home/x/.cache/models/sharded/Sharded-Q4_K-00001-of-00004.gguf', size_str: '9.00 GB' },
+                { name: 'Sharded-Q4_K-00002-of-00004.gguf', path: '/home/x/.cache/models/sharded/Sharded-Q4_K-00002-of-00004.gguf', size_str: '9.00 GB' },
+                { name: 'Sharded-Q4_K-00003-of-00004.gguf', path: '/home/x/.cache/models/sharded/Sharded-Q4_K-00003-of-00004.gguf', size_str: '9.00 GB' },
+                { name: 'Sharded-Q4_K-00004-of-00004.gguf', path: '/home/x/.cache/models/sharded/Sharded-Q4_K-00004-of-00004.gguf', size_str: '9.00 GB' },
+                { name: 'mmproj-BF16.gguf', path: '/home/x/.cache/models/sharded/mmproj-BF16.gguf', size_str: '888 MB' },
+              ],
+            },
+            {
+              name: 'org/plain',
+              files: [{ name: 'plain.gguf', path: '/home/x/.cache/models/plain/plain.gguf', size_str: '5.5 GB' }],
+            },
+          ],
+        }
+      }
+      if (endpoint.startsWith('/flag-metadata/')) return { optional_flags: {} }
+      throw new Error('unexpected fetchAPI call: ' + endpoint)
+    })
+    setup()
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(1))
+    const options = screen.getAllByRole('option').map(o => o.textContent)
+    expect(options).toContain('org/sharded [Q4_K] — Sharded-Q4_K — 4 shards')
+    expect(options).toContain('org/plain — plain.gguf — 5.5 GB')
+    expect(options.some(t => /mmproj/i.test(t))).toBe(false)
+    expect(options.some(t => /0000[2-4]/.test(t))).toBe(false)
+  })
   it('defaults to llama.cpp with the next free port from the service list', () => {
     setup()
     expect(screen.getByRole('radio', { name: /^llama\.cpp/ }).checked).toBe(true)

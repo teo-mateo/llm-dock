@@ -25,6 +25,11 @@ const GGUF_PICKER_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4'])
 const PORT_FIRST = 3301
 const PORT_LAST = 3399
 
+// Sharded GGUFs load from the first shard (the rest must sit beside it), so
+// only shard 1 is ever offered as a model — offering shard 3 of 4 creates a
+// service that can never load. mmproj projectors are not models either.
+const SHARD_RE = /-\d{5}-of-(\d{5})\.gguf$/i
+
 let nextParamId = 0
 
 function paramsToObject(params) {
@@ -57,10 +62,16 @@ function KeyCopy({ value }) {
     <div className="flex items-center gap-2 bg-app border border-border rounded px-3 py-2">
       <code className="text-success-fg text-xs break-all flex-1">{value}</code>
       <button
-        onClick={() => {
-          navigator.clipboard.writeText(value)
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
+        onClick={async () => {
+          // Clipboard APIs are only available on secure origins (localhost
+          // or https); a LAN-IP deployment would otherwise throw here.
+          try {
+            await navigator.clipboard.writeText(value)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          } catch {
+            // The key stays fully visible in the <code> — copy is a convenience.
+          }
         }}
         className="text-fg-muted hover:text-fg text-lg leading-none cursor-pointer shrink-0"
         title="Copy"
@@ -117,14 +128,32 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
   const ggufChoices = useMemo(() => {
     if (!models) return []
     const out = []
+    const seen = new Set()
     for (const m of models) {
       for (const f of m.files || []) {
-        if (!/\.gguf$/i.test(f.name)) continue
+        if (!/\.gguf$/i.test(f.name) || /mmproj/i.test(f.name)) continue
+        const match = f.name.match(SHARD_RE)
+        const modelName = m.full_name || m.name
+        if (match) {
+          const key = `${modelName}|${f.name.replace(SHARD_RE, '')}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            out.push({
+              label: `${modelName} — ${f.name.replace(SHARD_RE, '')}`,
+              modelName,
+              size: '',
+              path: toContainerPath(f.path),
+              shards: Number(match[1]),
+            })
+          }
+          continue
+        }
         out.push({
-          label: `${m.full_name || m.name} — ${f.name}`,
-          modelName: m.full_name || m.name,
+          label: `${modelName} — ${f.name}`,
+          modelName,
           size: f.size_str,
           path: toContainerPath(f.path),
+          shards: 1,
         })
       }
     }
@@ -179,6 +208,16 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
   const modelFilled = isFileEngine ? modelPath.trim() : modelName.trim()
   const canSubmit = !submitting && !!alias.trim() && portValid && !!modelFilled
 
+  // Escape closes the modal on both views; the modal is the only dialog on
+  // the page while mounted, so no open-state guard is needed.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') closeRef.current() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const handleCreate = useCallback(async () => {
     if (!canSubmit) return
     setSubmitting(true)
@@ -224,6 +263,9 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={result ? 'Service created' : 'New service'}
         className="bg-surface rounded-lg border border-border max-w-5xl w-full max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
@@ -297,6 +339,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                     </label>
                     {GGUF_PICKER_ENGINES.has(templateType) && (
                       <select
+                        aria-label="Pick a discovered file"
                         value=""
                         onChange={e => {
                           if (!e.target.value) return
@@ -309,7 +352,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                           {modelsError ? 'Pick a file — discovery unavailable' : models ? 'Pick a discovered file…' : 'Loading discovered files…'}
                         </option>
                         {ggufChoices.map((c, i) => (
-                          <option key={`${c.path}-${i}`} value={i}>{c.label}{c.size ? ` — ${c.size}` : ''}</option>
+                          <option key={`${c.path}-${i}`} value={i}>{c.label}{c.shards > 1 ? ` — ${c.shards} shards` : c.size ? ` — ${c.size}` : ''}</option>
                         ))}
                       </select>
                     )}
@@ -334,6 +377,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                       HuggingFace model (org/name) *
                     </label>
                     <select
+                      aria-label="Pick a cached model"
                       value=""
                       onChange={e => {
                         if (!e.target.value) return
@@ -457,14 +501,16 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                         value={flag}
                         onChange={e => handleParamChange(id, 'flag', e.target.value)}
                         placeholder="-flag"
-                        className="w-44 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent"
+                        aria-label="Parameter flag"
+                        className="w-32 sm:w-44 shrink-0 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent"
                       />
                       <input
                         type="text"
                         value={value}
                         onChange={e => handleParamChange(id, 'value', e.target.value)}
                         placeholder="value (empty = bare flag)"
-                        className="flex-1 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent"
+                        aria-label="Parameter value"
+                        className="flex-1 min-w-0 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent"
                       />
                       <button
                         type="button"
