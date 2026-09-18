@@ -4,5 +4,6 @@ from .system import system_bp
 from .openwebui import openwebui_bp
 from .metrics import metrics_bp
 from .totp import totp_bp
+from .inspector import inspector_bp
 
-__all__ = ["gpu_bp", "services_bp", "system_bp", "openwebui_bp", "metrics_bp", "totp_bp"]
+__all__ = ["gpu_bp", "services_bp", "system_bp", "openwebui_bp", "metrics_bp", "totp_bp", "inspector_bp"]
