@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
-import { getValue } from '../utils'
+import { getValue, POLL_INTERVAL } from '../utils'
 
-const POLL_INTERVAL = 200
 const MAX_HISTORY = 60
 
 // Map llama.cpp metric names to vLLM-equivalent names so the rest of the hook
@@ -183,6 +182,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         const dataPoint = {
           promptTokensRate,
           generationTokensRate,
+          dt,
           kvCache,
           prefixHitRatio,
           specAcceptRatio,

@@ -1,3 +1,9 @@
+// Cadence of the live-metrics poll. The throughput readout labels itself with the
+// window it averages (tokenSeries.SMOOTH_LABEL), derived from this value, so
+// changing the cadence here cannot leave the chart claiming a window it does not
+// average.
+export const POLL_INTERVAL = 200
+
 export function getValue(metrics, metricName) {
   const obj = metrics[metricName]
   if (!obj || typeof obj !== 'object') return undefined
