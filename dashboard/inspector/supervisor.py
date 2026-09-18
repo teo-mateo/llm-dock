@@ -47,6 +47,13 @@ class ProxySupervisor:
             self._db = InspectorDB(self._db_path_resolved())
         return self._db
 
+    @property
+    def db(self) -> InspectorDB:
+        # The read API serves from this same instance the proxies write into,
+        # so a delete on the API removes rows the proxy just captured.
+        with self._lock:
+            return self._ensure_db()
+
     def sync(self) -> None:
         with self._lock:
             try:
