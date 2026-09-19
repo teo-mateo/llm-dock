@@ -106,7 +106,7 @@ class Upstream(BaseHTTPRequestHandler):
             self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
             self.wfile.flush()
             if i < len(chunks) - 1:
-                time.sleep(0.4)
+                time.sleep(0.1)
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
         self.server.state["stream_finished_at"] = time.monotonic()
@@ -116,7 +116,9 @@ class Upstream(BaseHTTPRequestHandler):
 def upstream():
     server = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
     server.state = {"requests": [], "stream_finished_at": None}
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
     thread.start()
     yield server
     server.shutdown()

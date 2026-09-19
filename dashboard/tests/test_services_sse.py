@@ -1,11 +1,10 @@
 import os
 import sys
 import json
+import threading
 import time
-import tempfile
 
 import pytest
-import docker
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -111,82 +110,67 @@ class TestSSEEndpoint:
         assert "stopped" in payload["data"]
         assert "timestamp" in payload
 
-    def test_sse_streams_events_on_container_lifecycle(self, client_and_services_path):
-        """Verify that SSE stream sends delta events when containers start/stop."""
+    def test_sse_streams_events_on_container_lifecycle(self, client_and_services_path, monkeypatch):
+        """Verify that the SSE stream relays deltas emitted through the same
+        production path the routes use for container lifecycle events."""
         client, _ = client_and_services_path
-        docker_client = docker.from_env()
-        # Label with the project name the app's event_manager singleton actually
-        # filters on. It bakes config.COMPOSE_PROJECT at config-import time, which
-        # in a full-suite run predates this fixture's env-var set — the env var
-        # and the baked value only agree if the var was already exported.
-        from config import COMPOSE_PROJECT
-        project_name = COMPOSE_PROJECT
+        from routes import services as services_route
+        from services import event_manager
+
+        monkeypatch.setattr(services_route, "SSE_KEEPALIVE_INTERVAL_S", 0.02)
 
         response = client.get("/api/services/stream", headers=_auth_headers())
         assert response.status_code == 200
 
         events_received = []
-        snapshot_received = False
+        snapshot_received = threading.Event()
+        keepalive_received = threading.Event()
 
         def process_chunks():
-            nonlocal snapshot_received
             for chunk in response.response:
                 decoded = chunk.decode("utf-8")
-                if not decoded.strip():
+                if decoded.startswith(": keepalive"):
+                    keepalive_received.set()
                     continue
+                if "data: " not in decoded:
+                    continue
+                data_start = decoded.find("data: ") + len("data: ")
+                data_end = decoded.find("\n\n")
+                if data_end == -1:
+                    data_end = decoded.find("\n")
+                try:
+                    payload = json.loads(decoded[data_start:data_end].strip())
+                except json.JSONDecodeError:
+                    continue
+                if payload.get("type") == "snapshot":
+                    snapshot_received.set()
+                elif payload.get("type") == "delta":
+                    events_received.append(payload)
 
-                if "data: " in decoded:
-                    data_start = decoded.find("data: ") + len("data: ")
-                    data_end = decoded.find("\n\n")
-                    if data_end == -1:
-                        data_end = decoded.find("\n")
-                    json_str = decoded[data_start:data_end].strip()
-
-                    try:
-                        payload = json.loads(json_str)
-                        if payload.get("type") == "snapshot":
-                            snapshot_received = True
-                        elif payload.get("type") == "delta":
-                            events_received.append(payload)
-                    except json.JSONDecodeError:
-                        pass
-
-        import threading
         thread = threading.Thread(target=process_chunks, daemon=True)
         thread.start()
 
-        # Wait for snapshot
-        time.sleep(1)
+        assert snapshot_received.wait(timeout=5), "No snapshot received"
+        # The keepalive proves the generator has passed the callback
+        # registration, so an emit from here on cannot be dropped.
+        assert keepalive_received.wait(timeout=5), "No keepalive after snapshot"
 
-        # Start a test container
-        container = docker_client.containers.run(
-            "hello-world",
-            name="llm-dock-test-sse-svc",
-            labels={
-                "com.docker.compose.project": project_name,
-                "com.docker.compose.service": "test-sse-svc",
-            },
-            detach=True,
-        )
+        event_manager.emit({
+            "service_name": "test-sse-svc",
+            "status": "running",
+            "action": "start",
+            "container_id": "c" * 12,
+            "timestamp": time.time(),
+        })
 
-        # Wait for events
-        time.sleep(3)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not events_received:
+            time.sleep(0.01)
 
-        # Clean up
-        try:
-            container.remove(force=True)
-        except Exception:
-            pass
-
-        # Give time for cleanup events
-        time.sleep(1)
-
-        # The snapshot should have been received
-        assert snapshot_received, "No snapshot received"
-
-        # We should have received at least some delta events
-        # Note: hello-world exits immediately, so we may get start+die events
-        assert len(events_received) > 0, f"No delta events received: {events_received}"
+        own = [e for e in events_received if e.get("service_name") == "test-sse-svc"]
+        assert len(own) > 0, f"No delta events received: {events_received}"
+        assert own[0]["status"] == "running"
+        assert own[0]["action"] == "start"
 
     def test_sse_headers(self, client_and_services_path):
         """Verify that SSE endpoint sets proper headers."""

@@ -223,8 +223,14 @@ cd dashboard/frontend && npm run build
 # Frontend tests (vitest + @testing-library/react)
 cd dashboard/frontend && npm test
 
-# Tests
-cd dashboard && pytest tests/
+# Tests — ~27s serial, ~7s with -n auto (24 cores); same pass/fail either way.
+# conftest.py hermetizes the run: COMPOSE_FILE, LLM_DOCK_INSPECTOR_DB,
+# LLM_DOCK_CHAT_DB and LLM_DOCK_BENCHMARKS_DB are forced to throwaway paths
+# (tmpfs when /dev/shm exists; LLM_DOCK_TEST_TMPDIR overrides), so a test that
+# forgets an override cannot touch the machine's real services.json / chat.db /
+# inspector.db, and xdist workers cannot collide. The two tests that need the
+# real Docker daemon are marked `docker`; deselect with -m "not docker".
+cd dashboard && pytest tests/ -n auto
 ```
 
 ## Configuration
@@ -248,7 +254,9 @@ Quick-Start URL only holds after `setup.sh` has written the file.
 Machine-local storage paths, none of them in `.env.example`, each defaulting
 under `dashboard/`: `LLM_DOCK_CHAT_SETTINGS_FILE`, `LLM_DOCK_MCP_SERVERS_FILE`,
 `LLM_DOCK_PROMPTS_DIR`, `LLM_DOCK_PROJECT_FILES_DIR`, `LLM_DOCK_TABBY_KEYS_DIR`,
-and `LLM_DOCK_INSPECTOR_DB` (default `dashboard/inspector.db`, the capture
+`LLM_DOCK_CHAT_DB` (the chat SQLite DB, default `dashboard/chat.db`),
+`LLM_DOCK_BENCHMARKS_DB` (default `dashboard/benchmarks.db`), and
+`LLM_DOCK_INSPECTOR_DB` (default `dashboard/inspector.db`, the capture
 store; the app config key `INSPECTOR_DB_PATH` overrides it at boot).
 
 ### Model Discovery Paths

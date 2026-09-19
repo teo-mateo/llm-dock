@@ -1,6 +1,7 @@
 import os
 
 import logging
+import threading
 from typing import Iterator
 
 import docker
@@ -39,6 +40,9 @@ class DockerEventConsumer:
         """
         self._client = docker_client or docker.from_env()
         self._project_name = project_name or os.environ.get("COMPOSE_PROJECT_NAME", "llm-dock")
+        self._stream = None
+        # Set once the engine stream is open; events fired before that are lost.
+        self.stream_ready = threading.Event()
 
     def _map_docker_action_to_status(self, action: str) -> str:
         """Map a Docker event action to our internal status string.
@@ -124,14 +128,29 @@ class DockerEventConsumer:
         }
 
         try:
-            for raw_event in self._client.events(
+            self._stream = self._client.events(
                 since=since,
                 until=until,
                 filters=filters,
                 decode=True,
-            ):
+            )
+            self.stream_ready.set()
+            for raw_event in self._stream:
                 parsed = self._parse_event(raw_event)
                 if parsed is not None:
                     yield parsed
         except GeneratorExit:
             return
+        finally:
+            self._stream = None
+
+    def close(self):
+        """Close the underlying engine stream so a blocked read unblocks.
+
+        CancellableStream.close() shuts the socket down; docker-py turns the
+        next __next__ into a StopIteration, which ends list_events() promptly
+        instead of parking until the next Docker event or a join timeout.
+        """
+        stream = self._stream
+        if stream is not None:
+            stream.close()

@@ -234,13 +234,19 @@ class ChatDB:
             # including the ON DELETE SET NULL a deleted prompt needs.
             ("conversations", "prompt_id", "ALTER TABLE conversations ADD COLUMN prompt_id TEXT"),
         ]
-        for table, column, sql in migrations:
-            try:
+        existing = {
+            table: {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for table in {table for table, _, _ in migrations}
+        }
+        missing = [m for m in migrations if m[1] not in existing[m[0]]]
+        # One transaction for all pending ALTERs: each commit is a full fsync
+        # on a file-backed DB, and every fresh ChatDB() pays the whole list.
+        if missing:
+            for _table, _column, sql in missing:
                 conn.execute(sql)
-                conn.commit()
+            conn.commit()
+            for table, column, _sql in missing:
                 logger.info(f"Migration: added {column} column to {table}")
-            except sqlite3.OperationalError:
-                pass  # column already exists
 
     # -- Projects --
 

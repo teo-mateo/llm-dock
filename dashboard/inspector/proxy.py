@@ -88,6 +88,7 @@ class ServiceProxy:
             return
         self._thread = threading.Thread(
             target=self._server.serve_forever,
+            kwargs={"poll_interval": 0.05},
             name=f"inspector-proxy-{self.service_name}",
             daemon=True,
         )

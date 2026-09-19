@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
 
+# Module constant so tests can pin a free port instead of colliding with the
+# live 3301 slot on the machine the suite runs on.
+PUBLIC_SLOT_PORT = 3301
+
 # Shared across all blueprints — see db_lock.py. Aliased to preserve the
 # existing private-looking names used throughout this module.
 _SERVICES_DB_LOCK = SERVICES_DB_LOCK
@@ -661,24 +665,24 @@ def set_public_port(service_name):
         if not service_config:
             return jsonify({"error": f'Service "{service_name}" not found'}), 404
 
-        # Check if service is already on 3301
+        # Check if service is already on the public slot
         current_port = service_config.get("port")
-        if current_port == 3301:
+        if current_port == PUBLIC_SLOT_PORT:
             return jsonify(
                 {
                     "success": True,
-                    "message": f'Service "{service_name}" is already on port 3301',
+                    "message": f'Service "{service_name}" is already on port {PUBLIC_SLOT_PORT}',
                     "no_change": True,
                 }
             ), 200
 
-        # Find service currently using port 3301
+        # Find service currently using the public slot
         all_services = compose_mgr.list_services_in_db()
         conflicting_service = None
         conflicting_service_name = None
 
         for svc_name, svc_config in all_services.items():
-            if svc_config.get("port") == 3301:
+            if svc_config.get("port") == PUBLIC_SLOT_PORT:
                 conflicting_service = svc_config
                 conflicting_service_name = svc_name
                 break
@@ -699,17 +703,17 @@ def set_public_port(service_name):
             updates_made.append(
                 {
                     "service": conflicting_service_name,
-                    "old_port": 3301,
+                    "old_port": PUBLIC_SLOT_PORT,
                     "new_port": new_port,
                 }
             )
 
-        # Set requested service to 3301
-        service_config["port"] = 3301
+        # Set requested service to the public slot
+        service_config["port"] = PUBLIC_SLOT_PORT
         compose_mgr.update_service_in_db(service_name, service_config)
 
         updates_made.append(
-            {"service": service_name, "old_port": current_port, "new_port": 3301}
+            {"service": service_name, "old_port": current_port, "new_port": PUBLIC_SLOT_PORT}
         )
 
         # Rebuild compose file and restart affected services
@@ -735,7 +739,7 @@ def set_public_port(service_name):
         return jsonify(
             {
                 "success": True,
-                "message": f'Service "{service_name}" now on port 3301',
+                "message": f'Service "{service_name}" now on port {PUBLIC_SLOT_PORT}',
                 "updates": updates_made,
                 "restarts": restart_results,
             }
@@ -877,6 +881,7 @@ def _now() -> str:
 SSE_SNAPSHOT = "snapshot"
 SSE_DELTA = "delta"
 SSE_ERROR = "error"
+SSE_KEEPALIVE_INTERVAL_S = 5.0
 
 
 @services_bp.route("/api/services/stream", methods=["GET"])
@@ -932,7 +937,7 @@ def services_stream():
                     yield "data: " + json.dumps(payload) + "\n\n"
                 else:
                     yield ": keepalive\n\n"
-                    time.sleep(5)
+                    time.sleep(SSE_KEEPALIVE_INTERVAL_S)
 
         except GeneratorExit:
             logger.info("SSE client disconnected")

@@ -23,7 +23,9 @@ def rename_service(old_name: str, new_name: str) -> int:
 
 def init_benchmarking(app, compose_file: str, db_path: str = None):
     if db_path is None:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks.db")
+        db_path = os.environ.get("LLM_DOCK_BENCHMARKS_DB") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks.db"
+        )
     db = BenchmarkDB(db_path)
     executor = BenchmarkExecutor(db, compose_file)
     db.recover_stale_runs()

@@ -380,7 +380,7 @@ def test_title_tail_reaches_observer_past_backstop_window(ctx, monkeypatch):
     run = _run_row(db, conv, ChatRunStatus.RUNNING)
 
     def slow_title(db_arg, conv_id, *a, **k):
-        time.sleep(0.15)
+        time.sleep(0.05)
         db_arg.update_conversation(conv_id, title="My Title")
         return "My Title"
     monkeypatch.setattr(run_manager_module, "auto_generate_title", slow_title)

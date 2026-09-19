@@ -31,6 +31,8 @@ class DockerEventManager:
         self._callbacks: list[Callable[[dict], None]] = []
         self._callbacks_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._consumer_lock = threading.Lock()
+        self._consumer: DockerEventConsumer | None = None
         self._thread: threading.Thread | None = None
 
     def register_callback(self, callback: Callable[[dict], None]):
@@ -79,13 +81,23 @@ class DockerEventManager:
         """Stop the background event thread.
 
         Blocks until the thread exits (up to 5 seconds).
+
+        Closing the consumer's stream is what unblocks the thread: it parks
+        inside the docker long-poll and only notices _stop_event when a new
+        event arrives, so join alone would always burn its full timeout.
         """
         if not self.is_running:
             return
 
         self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=5)
+        thread = self._thread
+        deadline = time.monotonic() + 5
+        while thread.is_alive() and time.monotonic() < deadline:
+            with self._consumer_lock:
+                consumer = self._consumer
+            if consumer is not None:
+                consumer.close()
+            thread.join(timeout=0.2)
         self._thread = None
         logger.info("DockerEventManager stopped")
 
@@ -97,6 +109,8 @@ class DockerEventManager:
         """Main loop: consume events, dispatch to callbacks, reconnect on failure."""
         while not self._stop_event.is_set():
             consumer = self._create_consumer()
+            with self._consumer_lock:
+                self._consumer = consumer
 
             try:
                 for event in consumer.list_events():

@@ -30,7 +30,9 @@ chat_bp = Blueprint("chat", __name__)
 
 def init_chat(app, db_path: str = None):
     if db_path is None:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chat.db")
+        db_path = os.environ.get("LLM_DOCK_CHAT_DB") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "chat.db"
+        )
     db = ChatDB(db_path)
     app.config["CHAT_DB"] = db
     seed_default_prompts(db)

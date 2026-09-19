@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from dotenv import load_dotenv, set_key
 
@@ -68,8 +69,10 @@ def init_config():
     file_handler.setLevel(log_level)
     file_handler.setFormatter(log_format)
 
-    # Console handler
-    console_handler = logging.StreamHandler()
+    # Console handler: sys.__stderr__ survives pytest's capture buffers, which
+    # are closed before atexit handlers run and would make the exit-time stop
+    # logs raise "I/O operation on closed file".
+    console_handler = logging.StreamHandler(sys.__stderr__)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(log_format)
 

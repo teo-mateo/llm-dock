@@ -5,7 +5,6 @@ timestamp semantics (created_at set on create only; updated_at on both).
 """
 import os
 import sys
-import time
 
 import pytest
 
@@ -148,11 +147,17 @@ def test_update_prompt_modifies_name_and_content(db):
 
 
 def test_update_prompt_sets_updated_at(db):
+    # Timestamps are stored at second granularity by SQLite's strftime; backdate
+    # the row so the update's refresh is observable without sleeping a second.
     p = db.create_prompt("P", "content")
-    original_updated = p.updated_at
-    time.sleep(1.1)
+    backdated = "2000-01-01T00:00:00Z"
+    conn = db._get_conn()
+    conn.execute(
+        "UPDATE chat_prompts SET updated_at = ? WHERE id = ?", (backdated, p.id)
+    )
+    conn.commit()
     updated = db.update_prompt(p.id, "New Name", "new content")
-    assert updated.updated_at != original_updated
+    assert updated.updated_at != backdated
 
 
 def test_update_prompt_does_not_change_created_at(db):
