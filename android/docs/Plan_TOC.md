@@ -186,9 +186,10 @@ Mark completed features `[DONE]` in the Status column.
 | F10 | Models tab — list and GPU header | [F10-models-list.md](F10-models-list.md) | 10a | [DONE] — R5 carried forward to F11 |
 | F11 | Model detail, start and stop | [F11-model-detail-and-control.md](F11-model-detail-and-control.md) | 10b | [DONE] — R6 skipped, R7 deferred to F12, R5 dropped |
 | F12 | Container logs | [F12-container-logs.md](F12-container-logs.md) | 10c | [DONE] — F11-R7 stays skipped, see the feature file |
-| F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] |
+| F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] — F16 landed a temporary `settings` route holding only its two rows (F16 §4.5); F13 replaces that screen and absorbs them |
 | F14 | Share into app | [F14-share-into-app.md](F14-share-into-app.md) | — | [DONE] — R6 (Should) verified on device |
 | F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
+| F16 | Share a URL into a one-tap summarize thread | [F16-share-to-summarize.md](F16-share-to-summarize.md) | — | [DONE] — no mockup, and no web sibling to port from (R-B waived); deliberately breaks F14-R3's "nothing sent automatically" for its own row; R5's `PUT`-failure notice is unit-only, see its verification notes |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 
 ---

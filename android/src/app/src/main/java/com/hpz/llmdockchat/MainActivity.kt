@@ -33,6 +33,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.share.SharedInlineFormatter
 import com.hpz.llmdockchat.feature.share.SharedKind
 import com.hpz.llmdockchat.feature.share.SharedKindParser
+import com.hpz.llmdockchat.feature.share.StagedOrigin
 import com.hpz.llmdockchat.feature.share.StagedShare
 import com.hpz.llmdockchat.feature.thread.readImage
 import com.hpz.llmdockchat.feature.thread.toDataUrl
@@ -103,26 +104,29 @@ class MainActivity : ComponentActivity() {
             streamName = stream?.let { displayName(it) },
         )
         val share = when (kind) {
-            is SharedKind.Text -> StagedShare(text = kind.text)
+            is SharedKind.Text -> StagedShare(text = kind.text, origin = StagedOrigin.TEXT)
             is SharedKind.Image -> {
                 val uri = stream ?: return
                 val bitmap = runCatching { readImage(contentResolver, uri) }.getOrNull()
                 if (bitmap == null) {
-                    StagedShare(error = "That image could not be read.")
+                    StagedShare(error = "That image could not be read.", origin = StagedOrigin.UNSUPPORTED)
                 } else {
-                    StagedShare(attachments = listOf(bitmap.toDataUrl()))
+                    StagedShare(attachments = listOf(bitmap.toDataUrl()), origin = StagedOrigin.IMAGE)
                 }
             }
             is SharedKind.TextFile -> {
                 val uri = stream ?: return
                 val content = readSharedTextFile(uri)
                 if (content == null) {
-                    StagedShare(error = "That file could not be read.")
+                    StagedShare(error = "That file could not be read.", origin = StagedOrigin.UNSUPPORTED)
                 } else {
-                    StagedShare(text = SharedInlineFormatter.inlineFile(kind.name, content))
+                    StagedShare(
+                        text = SharedInlineFormatter.inlineFile(kind.name, content),
+                        origin = StagedOrigin.TEXT_FILE,
+                    )
                 }
             }
-            is SharedKind.Unsupported -> StagedShare(error = kind.reason)
+            is SharedKind.Unsupported -> StagedShare(error = kind.reason, origin = StagedOrigin.UNSUPPORTED)
         }
         store.stage(share)
     }

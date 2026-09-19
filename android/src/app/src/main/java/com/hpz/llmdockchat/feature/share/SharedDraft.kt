@@ -3,6 +3,18 @@ package com.hpz.llmdockchat.feature.share
 import kotlinx.serialization.Serializable
 
 /**
+ * Which [SharedKind] a share was classified as, kept on the staged record
+ * because [StagedShare.text] alone cannot tell a shared link from a text file
+ * inlined as a fenced block — both are composer text, and only one of them is
+ * a page F16 can summarize.
+ *
+ * [TEXT] is the default so a record written by an older build still hydrates;
+ * it is wrong for at most the one text-file share staged across the upgrade.
+ */
+@Serializable
+enum class StagedOrigin { TEXT, IMAGE, TEXT_FILE, UNSUPPORTED }
+
+/**
  * What a share intent turned into, staged for the user to adapt before sending
  * (F14-R3). [text] is composer text — the shared text/link itself, or a text
  * file inlined as a fenced code block (web parity, `ChatInput.jsx`).
@@ -15,10 +27,20 @@ data class StagedShare(
     val text: String = "",
     val attachments: List<String> = emptyList(),
     val error: String? = null,
+    val origin: StagedOrigin = StagedOrigin.TEXT,
 ) {
     val hasContent: Boolean get() = text.isNotBlank() || attachments.isNotEmpty()
     val isEmpty: Boolean get() = !hasContent && error == null
 }
+
+/**
+ * What the F16 summarize row armed for the new-chat sheet: the message to send
+ * and the tools to put on the conversation. On disk for the same reason the
+ * pending share is — the user picks the model in the sheet, and the process may
+ * not survive that choice.
+ */
+@Serializable
+data class SummarizeIntent(val message: String, val toolIds: List<String>)
 
 /**
  * What a share intent *is*, classified from its raw extras — pure, so the
@@ -62,6 +84,8 @@ object SharedKindParser {
     )
 
     private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
+
+    private val URL_IN_TEXT = Regex("https?://\\S+")
 
     /** `ChatInput.jsx`'s `ALLOWED_EXT` verbatim. */
     private val TEXT_EXTENSIONS = setOf(
@@ -108,6 +132,13 @@ object SharedKindParser {
     }
 
     private fun isBareLink(text: String): Boolean = text.trim().matches(Regex("https?://\\S+"))
+
+    /**
+     * Deliberately looser than [isBareLink]: a WhatsApp-style share arrives as
+     * title text *plus* a link, and that is the common case, so F16 asks only
+     * that a URL appear somewhere in the shared text.
+     */
+    fun containsUrl(text: String): Boolean = URL_IN_TEXT.containsMatchIn(text)
 
     private fun sniff(name: String?): SharedKind {
         val ext = name?.substringAfterLast('.', "")?.lowercase().orEmpty()

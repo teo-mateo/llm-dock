@@ -85,7 +85,10 @@ class NewChatViewModelTest {
         server.close()
     }
 
-    private fun viewModel(preselectedServiceName: String? = null) = NewChatViewModel(
+    private fun viewModel(
+        preselectedServiceName: String? = null,
+        preselectedMcpServerIds: List<String>? = null,
+    ) = NewChatViewModel(
         servicesRepository = servicesRepository,
         promptsRepository = promptsRepository,
         mcpServersRepository = mcpServersRepository,
@@ -94,6 +97,7 @@ class NewChatViewModelTest {
         preferences = preferences,
         servicesStreamRepository = servicesStreamRepository,
         preselectedServiceName = preselectedServiceName,
+        preselectedMcpServerIds = preselectedMcpServerIds,
     )
 
     /** Load order in [NewChatViewModel.load]: services, openrouter, prompts, mcp-servers. */
@@ -354,7 +358,7 @@ class NewChatViewModelTest {
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-1"}""").build()) // setMcpServers PUT
 
         val created = CompletableDeferred<String>()
-        viewModel.create { created.complete(it) }
+        viewModel.create { id, _ -> created.complete(id) }
 
         // Await the callback, not a state emission. `applyTools` emits its
         // final state *before* invoking onCreated, so a `state.first { … &&
@@ -381,7 +385,7 @@ class NewChatViewModelTest {
         server.enqueue(MockResponse.Builder().code(400).body("""{"error": "main_service is required"}""").build())
 
         var created = false
-        viewModel.create { created = true }
+        viewModel.create { _, _ -> created = true }
 
         val finalState = runBlocking {
             withTimeout(10_000) {
@@ -411,7 +415,7 @@ class NewChatViewModelTest {
         server.enqueue(MockResponse.Builder().code(401).body("""{"error": "Sign in again to continue."}""").build())
 
         var createdId: String? = null
-        viewModel.create { createdId = it }
+        viewModel.create { id, _ -> createdId = id }
 
         val finalState = runBlocking {
             withTimeout(10_000) {
@@ -442,7 +446,7 @@ class NewChatViewModelTest {
 
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-3"}""").build())
         server.enqueue(MockResponse.Builder().code(500).body("""{"error": "temporary failure"}""").build())
-        viewModel.create {}
+        viewModel.create { _, _ -> }
         runBlocking {
             withTimeout(10_000) { viewModel.state.first { (it as? NewChatUiState.Loaded)?.toolsFailure != null } }
         }
@@ -450,7 +454,7 @@ class NewChatViewModelTest {
         // create() was NOT called again — only setMcpServers — so a single response is enough.
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-3"}""").build())
         val retried = CompletableDeferred<String>()
-        viewModel.retryTools { retried.complete(it) }
+        viewModel.retryTools { id, _ -> retried.complete(id) }
 
         // As above: await the callback itself. `state.first { createdId !=
         // null }` is racy here because the callback fires after the last
@@ -476,16 +480,41 @@ class NewChatViewModelTest {
 
         server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-4"}""").build())
         server.enqueue(MockResponse.Builder().code(500).body("""{"error": "temporary failure"}""").build())
-        viewModel.create {}
+        viewModel.create { _, _ -> }
         runBlocking {
             withTimeout(10_000) { viewModel.state.first { (it as? NewChatUiState.Loaded)?.toolsFailure != null } }
         }
 
         var createdId: String? = null
-        viewModel.openAnyway { createdId = it }
+        viewModel.openAnyway { id, _ -> createdId = id }
 
         assertEquals("new-conv-4", createdId)
         // 4 load GETs + POST create + failed PUT — openAnyway itself never touches the network.
         assertEquals(6, server.requestCount)
+    }
+
+    // -- F16 fall-through: the sheet arrives armed ---------------------------
+
+    @Test
+    fun `summarize tools preselect over the remembered selection`() {
+        preferences = FakeNewChatPreferences(initialMcpServerIds = listOf("sympy-math"))
+        enqueueLoadResponses()
+        val viewModel = viewModel(preselectedMcpServerIds = listOf("webfetch", "websearch"))
+
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+
+        assertEquals(setOf("webfetch", "websearch"), loaded.selectedMcpServerIds)
+    }
+
+    @Test
+    fun `a preselected id the registry does not report is dropped, not offered`() {
+        enqueueLoadResponses()
+        val viewModel = viewModel(preselectedMcpServerIds = listOf("webfetch", "renamed-fetch-tool"))
+
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+
+        assertEquals(setOf("webfetch"), loaded.selectedMcpServerIds)
     }
 }

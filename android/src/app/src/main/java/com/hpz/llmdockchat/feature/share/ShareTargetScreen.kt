@@ -56,6 +56,10 @@ import com.hpz.llmdockchat.feature.thread.decodeDataUrl
  * (F14-R3); back dismisses the share entirely. The list is the same data and
  * ordering as the Chats tab — `ConversationsRepository.list()` already asks
  * for `limit=-1&unfiled=true`, so project threads never appear here either.
+ *
+ * F16 adds one row above the list that does decide something for the user:
+ * [SummarizeRow] creates, arms and sends in one tap. Every other path on this
+ * screen still stages and waits.
  */
 @Composable
 fun ShareTargetScreen(
@@ -63,11 +67,26 @@ fun ShareTargetScreen(
     onPickConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
     onDismiss: () -> Unit,
+    onSummarizeThread: (String) -> Unit,
+    onSummarizeNewChat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.refresh() }
+
+    // F16 — the create/PUT/stage sequence already ran inside the ViewModel, so
+    // all that is left is where to go. Cleared first so a recomposition cannot
+    // replay a navigation that already happened.
+    val launch = (state as? ShareTargetUiState.Loaded)?.launch
+    LaunchedEffect(launch) {
+        when (launch) {
+            is SummarizeLaunch.Thread -> onSummarizeThread(launch.conversationId)
+            SummarizeLaunch.NewChat -> onSummarizeNewChat()
+            null -> Unit
+        }
+        if (launch != null) viewModel.consumeLaunch()
+    }
 
     // F14 — the system back must dismiss the share the same way the top-bar
     // close does: without [onDismiss] the pending record survives the pop and
@@ -80,6 +99,7 @@ fun ShareTargetScreen(
         onNewConversation = onNewConversation,
         onDismiss = onDismiss,
         onRetry = viewModel::refresh,
+        onSummarize = viewModel::summarize,
         modifier = modifier,
     )
 }
@@ -92,6 +112,7 @@ private fun ShareTargetContent(
     onNewConversation: () -> Unit,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
+    onSummarize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LlmTheme.colors
@@ -137,6 +158,20 @@ private fun ShareTargetContent(
                 is ShareTargetUiState.Loaded -> {
                     Column(Modifier.fillMaxSize()) {
                         ShareHeader(state.share)
+                        if (state.canSummarize) {
+                            SummarizeRow(onSummarize = onSummarize, busy = state.summarizing)
+                        }
+                        state.summarizeError?.let { message ->
+                            Text(
+                                message,
+                                color = colors.red,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp)
+                                    .testTag("share_summarize_error"),
+                            )
+                        }
                         if (state.refreshing) {
                             LinearProgressIndicator(
                                 modifier = Modifier.fillMaxWidth().testTag("share_target_refreshing"),
@@ -164,6 +199,55 @@ private fun ShareTargetContent(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * F16 — the one opinionated row: tapping it creates the thread, enables the
+ * summarize tools and sends the instruction, so the picker above it is the only
+ * thing between a page and a summary. Rendered only when
+ * [ShareTargetUiState.Loaded.canSummarize] — a URL in the staged text plus at
+ * least one tool the registry actually reports — because a summarize turn
+ * without a fetch tool reads like an answer and is not one. The copy says what
+ * the tap does rather than listing the settings behind it; which tools are on
+ * is the settings row's business, and the row's existence already guarantees one.
+ */
+@Composable
+private fun SummarizeRow(onSummarize: () -> Unit, busy: Boolean) {
+    val colors = LlmTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.accentSoft)
+            .clickable(enabled = !busy, onClick = onSummarize)
+            .padding(16.dp)
+            .testTag("share_summarize_row"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            DesignLabIcons.Sparkle,
+            contentDescription = null,
+            tint = colors.accent,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (busy) "Summarizing\u2026" else "Summarize this page",
+                color = colors.fg,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (!busy) {
+                Text(
+                    "Creates a new thread and asks for a summary",
+                    color = colors.subtle,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }

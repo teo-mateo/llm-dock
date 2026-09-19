@@ -23,6 +23,13 @@ object Destinations {
     /** F14 — the share-target picker, pushed on top of [TABS] without the bottom bar. */
     const val SHARE_PICKER = "share_picker"
 
+    /**
+     * F16 — the two summarize rows. F13 owns the real Settings screen and absorbs
+     * this destination when it is built; until then it is a two-row screen pushed
+     * on top of [TABS] like [SHARE_PICKER].
+     */
+    const val SETTINGS = "settings"
+
     private const val THREAD_ROUTE = "thread"
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"

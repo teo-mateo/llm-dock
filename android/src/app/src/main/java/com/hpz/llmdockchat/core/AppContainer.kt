@@ -29,8 +29,10 @@ import com.hpz.llmdockchat.core.prefs.DataStoreDraftStore
 import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreChatAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
+import com.hpz.llmdockchat.core.prefs.DataStoreSummarizePreferences
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
+import com.hpz.llmdockchat.core.prefs.SummarizePreferences
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.GpuStreamRepository
@@ -124,6 +126,9 @@ class AppContainer(
     val mcpServersRepository = McpServersRepository(apiClient)
     val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)
     val newChatPreferences: NewChatPreferences = DataStoreNewChatPreferences(dataStore, appScope)
+
+    /** F16 — the summarize prompt and tool ids. Local only; no server holds either (R-A). */
+    val summarizePreferences: SummarizePreferences = DataStoreSummarizePreferences(dataStore, appScope)
 
     val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
