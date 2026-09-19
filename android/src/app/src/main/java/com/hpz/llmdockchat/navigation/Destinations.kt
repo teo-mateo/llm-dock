@@ -52,13 +52,20 @@ object Destinations {
      */
     private const val NEW_CHAT_ROUTE = "new_chat"
 
-    /** `summarize` (F14-R7) is optional like `service`, so [newChat] still matches. */
-    const val NEW_CHAT = "$NEW_CHAT_ROUTE?service={service}&summarize={summarize}"
+    const val NEW_CHAT = "$NEW_CHAT_ROUTE?service={service}"
+
+    /**
+     * F14-R7 — the same sheet entered in summarize mode. Its own route rather
+     * than a second optional query arg on [NEW_CHAT]: a pattern of two optional
+     * args does not match a link that supplies only the second one, which left
+     * the sheet opening in ordinary mode with no URL-fetching tool forced on.
+     */
+    const val NEW_CHAT_SUMMARIZE = "$NEW_CHAT_ROUTE/summarize"
     fun newChat() = NEW_CHAT_ROUTE
     fun newChatWithService(serviceName: String) = "$NEW_CHAT_ROUTE?service=$serviceName"
 
     /** F14-R7 — the sheet opened by the share picker's summarize action. */
-    fun newChatSummarize() = "$NEW_CHAT_ROUTE?summarize=1"
+    fun newChatSummarize() = NEW_CHAT_SUMMARIZE
 }
 
 /**
