@@ -200,14 +200,20 @@ def test_update_prompt_persists(client):
 
 
 def test_update_prompt_updates_timestamp(client):
-    import time
     created = _create_prompt(client, name="P", content="c")
-    original_updated = created["updated_at"]
-    time.sleep(1.1)
+    # Timestamps are stored at second granularity by SQLite's strftime; backdate
+    # the row so the update's refresh is observable without sleeping a second.
+    backdated = "2000-01-01T00:00:00Z"
+    db = client.application.config["CHAT_DB"]
+    conn = db._get_conn()
+    conn.execute(
+        "UPDATE chat_prompts SET updated_at = ? WHERE id = ?", (backdated, created["id"])
+    )
+    conn.commit()
     r = client.put(f"{PROMPTS_PATH}/{created['id']}",
                    json={"name": "P2", "content": "c2"}, headers=_auth())
     assert r.status_code == 200
-    assert r.get_json()["updated_at"] != original_updated
+    assert r.get_json()["updated_at"] != backdated
 
 
 def test_update_prompt_not_found_404(client):

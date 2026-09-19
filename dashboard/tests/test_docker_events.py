@@ -24,12 +24,52 @@ def _pre_clean_stopped(client, name_prefix: str):
             pass
 
 
-@pytest.fixture(autouse=True)
-def set_env_vars():
-    os.environ.setdefault("DASHBOARD_TOKEN", "test-token-events")
-    os.environ.setdefault("COMPOSE_PROJECT_NAME", "llm-dock")
+def _wait_for(predicate, timeout: float = 15.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return False
 
 
+class _ParkedStream:
+    """Parks until close() — stands in for the engine long-poll without a daemon."""
+
+    def __init__(self):
+        self._stop = threading.Event()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while not self._stop.wait(timeout=0.05):
+            pass
+        raise StopIteration
+
+    def close(self):
+        self._stop.set()
+
+
+class _FakeDockerClient:
+    def __init__(self):
+        self._stream = _ParkedStream()
+
+    def events(self, **kwargs):
+        return self._stream
+
+
+def _synthetic_event(service_name: str) -> dict:
+    return {
+        "service_name": service_name,
+        "status": "running",
+        "action": "start",
+        "container_id": "c" * 12,
+        "timestamp": time.time(),
+    }
+
+
+@pytest.mark.docker
 def test_list_events_captures_container_lifecycle():
     """
     Integration test: instantiate DockerEventConsumer against real Docker,
@@ -42,23 +82,20 @@ def test_list_events_captures_container_lifecycle():
     consumer = DockerEventConsumer(docker_client=client, project_name=project_name)
 
     events = []
-    stop_event = threading.Event()
 
     def event_collector():
         try:
             for evt in consumer.list_events():
                 events.append(evt)
-                if stop_event.is_set():
-                    time.sleep(0.5)
-                    return
         except Exception:
             pass
-        stop_event.wait(timeout=10)
 
     collector = threading.Thread(target=event_collector, daemon=True)
     collector.start()
 
-    time.sleep(0.5)
+    # The stream must be open before the container starts, or its earliest
+    # lifecycle events are missed.
+    assert consumer.stream_ready.wait(timeout=10), "event stream never opened"
 
     _pre_clean_stopped(client, "llm-dock-test-integration-svc")
     container = client.containers.run(
@@ -72,16 +109,11 @@ def test_list_events_captures_container_lifecycle():
     )
 
     try:
-        time.sleep(2)
-
-        stop_event.set()
-        collector.join(timeout=5)
-
-        assert len(events) > 0, "No events captured from real Docker"
+        assert _wait_for(
+            lambda: any(e.get("service_name") == "test-integration-svc" for e in events)
+        ), "No events captured from real Docker"
 
         test_events = [e for e in events if e.get("service_name") == "test-integration-svc"]
-        assert len(test_events) > 0, f"No events for test-integration-svc. Got events: {events}"
-
         for evt in test_events:
             assert "status" in evt, f"Event missing 'status': {evt}"
             assert "action" in evt, f"Event missing 'action': {evt}"
@@ -92,17 +124,17 @@ def test_list_events_captures_container_lifecycle():
             container.remove(force=True)
         except Exception:
             pass
+        consumer.close()
+        collector.join(timeout=5)
 
 
 def test_event_manager_callbacks_fire_on_container_lifecycle():
     """
-    Integration test: DockerEventManager runs in a background thread,
-    callbacks receive events, and start/stop lifecycle works correctly.
+    DockerEventManager dispatches events to registered callbacks, and the
+    start/stop lifecycle works correctly. Events arrive via emit(), the
+    same public API the routes use for deltas that have no Docker event.
     """
-    client = docker.from_env()
-    project_name = os.environ.get("COMPOSE_PROJECT_NAME", "llm-dock")
-
-    manager = DockerEventManager(docker_client=client, project_name=project_name)
+    manager = DockerEventManager(docker_client=_FakeDockerClient(), project_name="llm-dock")
 
     received_events = []
 
@@ -115,41 +147,22 @@ def test_event_manager_callbacks_fire_on_container_lifecycle():
     manager.start()
     assert manager.is_running is True
 
-    time.sleep(0.5)
+    manager.emit(_synthetic_event("test-mgr-svc"))
 
-    _pre_clean_stopped(client, "llm-dock-test-mgr-svc")
-    container = client.containers.run(
-        "hello-world",
-        name=f"llm-dock-test-mgr-svc-{uuid.uuid4().hex[:8]}",
-        labels={
-            "com.docker.compose.project": project_name,
-            "com.docker.compose.service": "test-mgr-svc",
-        },
-        detach=True,
-    )
+    manager.stop()
 
-    try:
-        time.sleep(2)
+    assert not manager.is_running
+    assert len(received_events) > 0
 
-        manager.stop()
-
-        assert not manager.is_running
-        assert len(received_events) > 0
-
-        mgr_events = [e for e in received_events if e.get("service_name") == "test-mgr-svc"]
-        assert len(mgr_events) > 0, f"No events for test-mgr-svc. Got events: {received_events}"
-    finally:
-        try:
-            container.remove(force=True)
-        except Exception:
-            pass
+    mgr_events = [e for e in received_events if e.get("service_name") == "test-mgr-svc"]
+    assert len(mgr_events) > 0, f"No events for test-mgr-svc. Got events: {received_events}"
 
 
 def test_event_manager_start_stop_idempotent():
     """
     Verify that calling start() twice or stop() twice doesn't raise.
     """
-    manager = DockerEventManager()
+    manager = DockerEventManager(docker_client=_FakeDockerClient())
 
     manager.start()
     manager.start()
@@ -164,10 +177,7 @@ def test_event_manager_unregister_callback():
     """
     Verify that unregistering a callback prevents it from receiving events.
     """
-    client = docker.from_env()
-    project_name = os.environ.get("COMPOSE_PROJECT_NAME", "llm-dock")
-
-    manager = DockerEventManager(docker_client=client, project_name=project_name)
+    manager = DockerEventManager(docker_client=_FakeDockerClient(), project_name="llm-dock")
 
     kept_events = []
     removed_events = []
@@ -183,31 +193,14 @@ def test_event_manager_unregister_callback():
     manager.unregister_callback(removed_callback)
 
     manager.start()
-    time.sleep(0.5)
-
-    container = client.containers.run(
-        "hello-world",
-        name="llm-dock-test-unreg-svc",
-        labels={
-            "com.docker.compose.project": project_name,
-            "com.docker.compose.service": "test-unreg-svc",
-        },
-        detach=True,
-    )
-
-    time.sleep(2)
-
-    try:
-        container.remove(force=True)
-    except Exception:
-        pass
-
+    manager.emit(_synthetic_event("test-unreg-svc"))
     manager.stop()
 
     assert len(kept_events) > 0, "Kept callback should have received events"
     assert len(removed_events) == 0, "Removed callback should not have received events"
 
 
+@pytest.mark.docker
 def test_event_manager_snapshot_returns_real_services():
     """
     Verify get_services_snapshot() returns the current Docker services list.
