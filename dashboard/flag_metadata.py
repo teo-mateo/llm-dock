@@ -204,18 +204,6 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "description": "Disable KV cache GPU offloading (offloading is enabled by default)",
         "tip": "When set, disables offloading the KV cache to the GPU; the cache stays in CPU RAM instead. By default KV offloading is <b>enabled</b>, keeping the cache on the GPU for best throughput. Disable this if your VRAM is nearly exhausted and you have ample system RAM \u2014 you will trade some speed for the ability to run larger contexts or more parallel slots without an out-of-memory error.",
     },
-    "mmap": {
-        "cli": "--mmap",
-        "type": "bool",
-        "description": "Enable memory-mapped model loading (default: on)",
-        "tip": "Enables <b>memory-mapped loading</b> for the model file. When enabled (default), the OS pages model weights in on demand, which is fast to start and allows efficient sharing between processes. Disable with <code>--no-mmap</code> if you want the entire model loaded into RAM upfront to avoid page faults during inference.",
-    },
-    "direct_io": {
-        "cli": "-dio",
-        "type": "bool",
-        "description": "Enable direct I/O for model loading",
-        "tip": "Bypasses OS page cache with <b>direct I/O</b> when loading the model file. Useful for very large models on systems with limited RAM where you want to avoid polluting the page cache. Can improve performance on NVMe storage by reducing cache thrashing.",
-    },
     "embeddings": {
         "cli": "--embeddings",
         "type": "bool",
@@ -543,13 +531,6 @@ LLAMACPP_LLAMA_SERVER_FLAGS = {
         "description": "Enable Prometheus-compatible metrics endpoint at /metrics",
         "tip": "Exposes a <b>Prometheus-compatible metrics endpoint</b> at <code>/metrics</code> with real-time counters for prompt tokens, generation tokens, request queue, and slot utilization. Enabled by default for all services.",
     },
-    # Memory
-    "no_mmap": {
-        "cli": "--no-mmap",
-        "type": "bool",
-        "description": "Disable memory-mapped model loading (loads fully into RAM)",
-        "tip": "Disables memory-mapping the model file from disk. By default, <b>mmap is on</b>: the OS pages model weights in on demand, which is fast to start and allows the kernel to evict pages under memory pressure. Disabling mmap forces the entire model to be <b>read into RAM up front</b>, making startup slower but eliminating page-fault stalls during inference.",
-    },
     # RoPE scaling
     "rope_freq_base": {
         "cli": "--rope-freq-base",
@@ -734,13 +715,6 @@ LLAMACPP_LLAMA_BENCH_FLAGS = {
         "description": "KV cache type for V (f16, q8_0, q4_0, etc.)",
         "default": "f16",
         "tip": "Data type for the <b>value</b> component of the KV cache (default: <code>f16</code>). Options: <code>f16</code>, <code>f32</code>, <code>q8_0</code>, <code>q4_0</code>. <b>Use <code>q8_0</code> to halve KV cache VRAM</b> with minimal quality loss. Should typically match <code>-ctk</code> setting. Requires <code>-fa 1</code>.",
-    },
-    "mmap": {
-        "cli": "--mmap",
-        "type": "bool",
-        "description": "Use memory-mapped model loading (0|1)",
-        "default": "1",
-        "tip": "Controls memory-mapped file loading (default: enabled). When on, the model maps directly from disk via the OS page cache, enabling <b>instant loads on subsequent runs</b>. Disable (set to 0) to force loading the full model into RAM upfront — useful if your model is larger than available RAM or you want consistent performance without page faults.",
     },
     "embeddings": {
         "cli": "--embeddings",
