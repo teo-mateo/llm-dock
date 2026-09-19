@@ -233,18 +233,6 @@ class InspectorDB:
             finally:
                 self._close_conn(conn)
 
-    def delete_capture(self, capture_id: str) -> bool:
-        with self._lock:
-            conn = self._get_conn()
-            try:
-                cursor = conn.execute(
-                    "DELETE FROM captures WHERE id = ?", (capture_id,)
-                )
-                conn.commit()
-                return cursor.rowcount > 0
-            finally:
-                self._close_conn(conn)
-
     def delete_captures(self, service: Optional[str] = None) -> int:
         with self._lock:
             conn = self._get_conn()

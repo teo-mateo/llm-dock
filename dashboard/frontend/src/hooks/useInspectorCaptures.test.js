@@ -96,18 +96,6 @@ describe('useInspectorCaptures', () => {
     expect(listMock.mock.calls.length).toBe(callsBefore)
   })
 
-  it('removeRow drops the row locally and decrements total without refetching', async () => {
-    listMock.mockResolvedValue(page(['a', 'b'], 2))
-    const { result } = renderHook(() => useInspectorCaptures({}))
-    await waitFor(() => expect(result.current.rows.length).toBe(2))
-
-    act(() => { result.current.removeRow('a') })
-
-    expect(result.current.rows.map((r) => r.id)).toEqual(['b'])
-    expect(result.current.total).toBe(1)
-    expect(listMock.mock.calls.length).toBe(1)
-  })
-
   it('refresh merges so a load-more tail survives', async () => {
     listMock.mockResolvedValueOnce(page(['b', 'a'], 5))
     const { result } = renderHook(() => useInspectorCaptures({}))

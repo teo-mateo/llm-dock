@@ -46,17 +46,8 @@ function detail(overrides = {}) {
 }
 
 function setup(capture = detail(), props = {}) {
-  const onDelete = vi.fn()
-  const onConfirmStateChange = vi.fn()
-  const view = render(
-    <CaptureDetail
-      capture={capture}
-      onDelete={onDelete}
-      onConfirmStateChange={onConfirmStateChange}
-      {...props}
-    />
-  )
-  return { view, onDelete, onConfirmStateChange }
+  const view = render(<CaptureDetail capture={capture} {...props} />)
+  return { view }
 }
 
 function openTab(name) {
@@ -69,26 +60,11 @@ afterEach(() => {
 })
 
 describe('CaptureDetail header', () => {
-  it('shows the model, the meta line and both action buttons', () => {
+  it('shows the model, the meta line and the copy button', () => {
     setup()
     expect(screen.getByText('qwen3.8-27b')).toBeInTheDocument()
     expect(screen.getByText(/llamacpp-qwen3 · POST \/v1\/chat\/completions/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Copy request JSON/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Delete$/ })).toBeInTheDocument()
-  })
-
-  it('Delete asks inline and only then calls onDelete', () => {
-    const { onDelete, onConfirmStateChange } = setup()
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
-    expect(onConfirmStateChange).toHaveBeenLastCalledWith(true)
-    expect(onDelete).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(onDelete).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete?' }))
-    expect(onDelete).toHaveBeenCalledWith('c1')
   })
 
   it('Copy request JSON copies the verbatim body', async () => {

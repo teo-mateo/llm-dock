@@ -130,15 +130,6 @@ def get_capture(capture_id):
     return jsonify(_detail_row(capture))
 
 
-@inspector_bp.route("/api/inspector/captures/<capture_id>", methods=["DELETE"])
-@require_auth
-def delete_capture(capture_id):
-    db = _inspector_db()
-    if not db.delete_capture(capture_id):
-        return jsonify({"error": f"Capture '{capture_id}' not found"}), 404
-    return jsonify({"deleted": 1})
-
-
 @inspector_bp.route("/api/inspector/captures", methods=["DELETE"])
 @require_auth
 def delete_captures():

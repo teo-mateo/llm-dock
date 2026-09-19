@@ -87,7 +87,6 @@ def env(tmp_path, monkeypatch):
     [
         ("get", "/api/inspector/captures"),
         ("get", "/api/inspector/captures/some-id"),
-        ("delete", "/api/inspector/captures/some-id"),
         ("delete", "/api/inspector/captures"),
         ("get", "/api/inspector/services"),
     ],
@@ -246,22 +245,6 @@ def test_detail_unknown_id_is_404(env):
 
 
 # -- DELETE -------------------------------------------------------------
-
-
-def test_delete_one_and_second_call_is_404(env):
-    ids = _insert(env["db"], "svc-a", 2)
-
-    resp = env["client"].delete(f"/api/inspector/captures/{ids[0]}", headers=_auth())
-
-    assert resp.status_code == 200
-    assert resp.get_json() == {"deleted": 1}
-    assert env["client"].get(f"/api/inspector/captures/{ids[0]}", headers=_auth()).status_code == 404
-
-    assert (
-        env["client"].delete(f"/api/inspector/captures/{ids[0]}", headers=_auth()).status_code
-        == 404
-    )
-    assert env["client"].get(f"/api/inspector/captures/{ids[1]}", headers=_auth()).status_code == 200
 
 
 def test_delete_all_by_service_leaves_others(env):

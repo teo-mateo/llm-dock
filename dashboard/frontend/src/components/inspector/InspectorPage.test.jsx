@@ -3,11 +3,10 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { MemoryRouter, useSearchParams } from 'react-router-dom'
 import InspectorPage from './InspectorPage'
 
-const { listMock, servicesMock, getMock, deleteMock, deleteAllMock } = vi.hoisted(() => ({
+const { listMock, servicesMock, getMock, deleteAllMock } = vi.hoisted(() => ({
   listMock: vi.fn(),
   servicesMock: vi.fn(),
   getMock: vi.fn(),
-  deleteMock: vi.fn(),
   deleteAllMock: vi.fn(),
 }))
 
@@ -15,7 +14,6 @@ vi.mock('../../services/inspector', () => ({
   listCaptures: (opts) => listMock(opts),
   inspectorServices: () => servicesMock(),
   getCapture: (id) => getMock(id),
-  deleteCapture: (id) => deleteMock(id),
   deleteCaptures: (service) => deleteAllMock(service),
 }))
 
@@ -72,7 +70,6 @@ beforeEach(() => {
   listMock.mockReset()
   servicesMock.mockReset()
   getMock.mockReset()
-  deleteMock.mockReset()
   deleteAllMock.mockReset()
 
   listMock.mockImplementation(({ service }) =>
@@ -93,7 +90,6 @@ beforeEach(() => {
         ? Promise.resolve(captureDetail('c2', 'model-b', 'second message'))
         : Promise.reject(new Error('404'))
   )
-  deleteMock.mockResolvedValue({ deleted: 1 })
   deleteAllMock.mockResolvedValue({ deleted: 137 })
 })
 
@@ -165,19 +161,6 @@ describe('InspectorPage url state', () => {
 })
 
 describe('InspectorPage deletion', () => {
-  it('deletes a row from the list inline, without refetching', async () => {
-    renderPage()
-    await waitFor(() => expect(screen.getByText('model-a')).toBeInTheDocument())
-    const callsBefore = listMock.mock.calls.length
-
-    fireEvent.click(screen.getAllByLabelText('Delete capture')[0])
-    fireEvent.click(screen.getByText('Delete?'))
-
-    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('c1'))
-    expect(screen.queryByText('model-a')).not.toBeInTheDocument()
-    expect(listMock.mock.calls.length).toBe(callsBefore)
-  })
-
   it('Delete all asks with the count, and the confirm empties the list', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('model-a')).toBeInTheDocument())
@@ -195,18 +178,6 @@ describe('InspectorPage deletion', () => {
 
     await waitFor(() => expect(deleteAllMock).toHaveBeenCalledWith(null))
     await waitFor(() => expect(screen.getByText('No captures yet.')).toBeInTheDocument())
-  })
-
-  it('deleting from the detail pane selects the next-newest remaining capture', async () => {
-    renderPage('/inspector?capture=c1')
-    await waitFor(() => expect(screen.getByText('first message')).toBeInTheDocument())
-
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete?' }))
-
-    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('c1'))
-    await waitFor(() => expect(screen.getByTestId('probe').textContent).toContain('capture=c2'))
-    await waitFor(() => expect(screen.getByText('second message')).toBeInTheDocument())
   })
 })
 

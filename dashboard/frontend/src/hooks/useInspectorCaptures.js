@@ -81,11 +81,6 @@ export default function useInspectorCaptures({ service = null, live = false, pau
     setTotal(data.total)
   }, [fetchPage, total])
 
-  const removeRow = useCallback((id) => {
-    setRows((prev) => prev.filter((r) => r.id !== id))
-    setTotal((t) => Math.max(0, t - 1))
-  }, [])
-
   const refreshServices = useCallback(async () => {
     try {
       const data = await inspectorServices()
@@ -116,6 +111,6 @@ export default function useInspectorCaptures({ service = null, live = false, pau
 
   return {
     rows, total, services, loading, refreshing,
-    refresh, reload, loadMore, removeRow, refreshServices,
+    refresh, reload, loadMore, refreshServices,
   }
 }

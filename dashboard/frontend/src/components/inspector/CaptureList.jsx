@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { relativeTime, formatDuration } from './parse'
 
@@ -9,7 +8,7 @@ function statusInfo(capture) {
   return { label: String(code), cls: 'bg-danger-subtle text-danger-fg' }
 }
 
-function CaptureRow({ capture, selected, confirming, onSelect, onAskDelete, onConfirmDelete, onCancelConfirm }) {
+function CaptureRow({ capture, selected, onSelect }) {
   const status = statusInfo(capture)
   const truncated = capture.request_truncated || capture.response_truncated
 
@@ -47,42 +46,12 @@ function CaptureRow({ capture, selected, confirming, onSelect, onAskDelete, onCo
           ></i>
         )}
         <span className="ml-auto flex items-center gap-1 shrink-0">
-          {confirming ? (
-            <>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}
-                className="text-xs px-1.5 py-0.5 rounded bg-danger text-white font-medium cursor-pointer"
-              >
-                Delete?
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onCancelConfirm() }}
-                className="text-xs px-1.5 py-0.5 rounded border border-border text-fg-muted hover:text-fg cursor-pointer"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onAskDelete() }}
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-fg-subtle hover:text-danger-fg cursor-pointer"
-                title="Delete capture"
-                aria-label="Delete capture"
-              >
-                <i className="fa-solid fa-trash-can text-xs"></i>
-              </button>
-              <time
-                className="text-xs text-fg-subtle"
-                title={capture.created_at}
-              >
-                {relativeTime(capture.created_at)}
-              </time>
-            </>
-          )}
+          <time
+            className="text-xs text-fg-subtle"
+            title={capture.created_at}
+          >
+            {relativeTime(capture.created_at)}
+          </time>
         </span>
       </div>
       <div className="mt-1 flex items-center gap-2 text-[11px] text-fg-subtle">
@@ -115,31 +84,11 @@ export default function CaptureList({
   service,
   selectedId,
   onSelect,
-  onRemove,
   onLoadMore,
   loading,
-  onConfirmStateChange,
 }) {
-  const [confirmId, setConfirmId] = useState(null)
-
   const handleSelect = (id) => {
     onSelect(id)
-  }
-
-  const askDelete = (id) => {
-    setConfirmId(id)
-    if (onConfirmStateChange) onConfirmStateChange(true)
-  }
-
-  const cancelConfirm = () => {
-    setConfirmId(null)
-    if (onConfirmStateChange) onConfirmStateChange(false)
-  }
-
-  const handleRemove = (id) => {
-    setConfirmId(null)
-    if (onConfirmStateChange) onConfirmStateChange(false)
-    onRemove(id)
   }
 
   const handleKeyDown = (e) => {
@@ -189,11 +138,7 @@ export default function CaptureList({
             key={row.id}
             capture={row}
             selected={row.id === selectedId}
-            confirming={row.id === confirmId}
             onSelect={handleSelect}
-            onAskDelete={() => askDelete(row.id)}
-            onConfirmDelete={() => handleRemove(row.id)}
-            onCancelConfirm={cancelConfirm}
           />
         ))}
       </div>

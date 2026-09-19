@@ -1020,8 +1020,8 @@ calls it once at boot while `atexit` calls `stop_all()`.
   (summary rows only — bodies are absent from list responses by design —
   newest first, `?service=`, `limit` clamped to 200),
   `GET /api/inspector/captures/<id>` (full row; `request_body` verbatim as a
-  string so a malformed or truncated body stays fetchable), `DELETE` one or
-  all (optionally `?service=`), `GET /api/inspector/services` (union of
+  string so a malformed or truncated body stays fetchable), `DELETE` all
+  (optionally `?service=`), `GET /api/inspector/services` (union of
   services with captures and services with a live proxy — history outlives
   the toggle). Storage is one `InspectorDB` owned by the supervisor
   (`dashboard/inspector.db`); deleting a service **keeps** its captures —

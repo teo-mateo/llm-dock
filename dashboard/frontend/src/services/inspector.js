@@ -12,10 +12,6 @@ export function getCapture(captureId) {
   return fetchAPI(`/inspector/captures/${encodeURIComponent(captureId)}`)
 }
 
-export function deleteCapture(captureId) {
-  return fetchAPI(`/inspector/captures/${encodeURIComponent(captureId)}`, { method: 'DELETE' })
-}
-
 export function deleteCaptures(service = null) {
   const qs = service ? `?service=${encodeURIComponent(service)}` : ''
   return fetchAPI(`/inspector/captures${qs}`, { method: 'DELETE' })

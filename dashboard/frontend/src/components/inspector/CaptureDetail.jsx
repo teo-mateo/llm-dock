@@ -208,9 +208,8 @@ function ToolsTab({ tools }) {
   )
 }
 
-export default function CaptureDetail({ capture, onDelete, onConfirmStateChange }) {
+export default function CaptureDetail({ capture }) {
   const [tab, setTab] = useState('conversation')
-  const [confirming, setConfirming] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const parsed = parseRequestBody(capture.request_body)
@@ -219,16 +218,6 @@ export default function CaptureDetail({ capture, onDelete, onConfirmStateChange 
   const statusLabel = capture.status_code != null
     ? String(capture.status_code)
     : capture.error ? 'error' : '—'
-
-  const setConfirm = (value) => {
-    setConfirming(value)
-    if (onConfirmStateChange) onConfirmStateChange(value)
-  }
-
-  const handleDelete = () => {
-    setConfirm(false)
-    onDelete(capture.id)
-  }
 
   const handleCopyRequest = async () => {
     if (await copyText(capture.request_body ?? '')) {
@@ -255,42 +244,14 @@ export default function CaptureDetail({ capture, onDelete, onConfirmStateChange 
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {confirming ? (
-            <>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="px-2 py-1 rounded bg-danger text-white text-xs font-medium cursor-pointer"
-              >
-                Delete?
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirm(false)}
-                className="px-2 py-1 rounded border border-border text-fg-muted hover:text-fg text-xs cursor-pointer"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setConfirm(true)}
-                className="px-2 py-1 rounded border border-danger text-danger-fg hover:bg-danger-subtle text-xs cursor-pointer"
-              >
-                <i className="fa-solid fa-trash-can mr-1"></i>Delete
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyRequest}
-                className="px-2 py-1 rounded border border-border text-fg-muted hover:text-fg text-xs cursor-pointer"
-              >
-                <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'} mr-1`}></i>
-                {copied ? 'Copied' : 'Copy request JSON'}
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={handleCopyRequest}
+            className="px-2 py-1 rounded border border-border text-fg-muted hover:text-fg text-xs cursor-pointer"
+          >
+            <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'} mr-1`}></i>
+            {copied ? 'Copied' : 'Copy request JSON'}
+          </button>
         </div>
       </div>
 

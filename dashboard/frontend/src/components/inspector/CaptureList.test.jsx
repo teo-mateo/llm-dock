@@ -29,9 +29,7 @@ function row(overrides = {}) {
 
 function setup(props = {}) {
   const onSelect = vi.fn()
-  const onRemove = vi.fn()
   const onLoadMore = vi.fn()
-  const onConfirmStateChange = vi.fn()
   const all = {
     rows: [],
     total: 0,
@@ -39,9 +37,7 @@ function setup(props = {}) {
     selectedId: null,
     loading: false,
     onSelect,
-    onRemove,
     onLoadMore,
-    onConfirmStateChange,
     ...props,
   }
   const view = render(
@@ -49,7 +45,7 @@ function setup(props = {}) {
       <CaptureList {...all} />
     </MemoryRouter>
   )
-  return { view, onSelect, onRemove, onLoadMore, onConfirmStateChange }
+  return { view, onSelect, onLoadMore }
 }
 
 afterEach(cleanup)
@@ -125,21 +121,6 @@ describe('CaptureList interactions', () => {
     const { view } = setup({ rows: [row()], total: 1, selectedId: 'c1' })
     const el = view.container.querySelector('[data-capture-id="c1"]')
     expect(el.className).toContain('border-l-accent')
-  })
-
-  it('trash reveals an inline confirm; confirm calls onRemove, cancel does not', () => {
-    const { onRemove, onConfirmStateChange } = setup({ rows: [row()], total: 1 })
-
-    fireEvent.click(screen.getByLabelText('Delete capture'))
-    expect(screen.getByText('Delete?')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Cancel'))
-    expect(onRemove).not.toHaveBeenCalled()
-    expect(onConfirmStateChange).toHaveBeenLastCalledWith(false)
-
-    fireEvent.click(screen.getByLabelText('Delete capture'))
-    fireEvent.click(screen.getByText('Delete?'))
-    expect(onRemove).toHaveBeenCalledWith('c1')
   })
 
   it('ArrowDown/ArrowUp move the selection', () => {

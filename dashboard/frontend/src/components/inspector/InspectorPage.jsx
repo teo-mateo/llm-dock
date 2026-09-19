@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useInspectorCaptures from '../../hooks/useInspectorCaptures'
-import { deleteCapture, deleteCaptures, getCapture } from '../../services/inspector'
+import { deleteCaptures, getCapture } from '../../services/inspector'
 import CaptureList from './CaptureList'
 import CaptureDetail from './CaptureDetail'
 
@@ -11,7 +11,6 @@ export default function InspectorPage() {
   const selectedId = searchParams.get('capture') || null
 
   const [live, setLive] = useState(true)
-  const [confirming, setConfirming] = useState(false)
   const [deleteAllOpen, setDeleteAllOpen] = useState(false)
   const [deletingAll, setDeletingAll] = useState(false)
   const [detail, setDetail] = useState(null)
@@ -19,12 +18,12 @@ export default function InspectorPage() {
   const [detailMissing, setDetailMissing] = useState(false)
   const cacheRef = useRef(new Map())
 
-  // Live refetch pauses while a delete confirm or the delete-all modal is
-  // open, so the thing the user is about to delete cannot vanish under them.
+  // Live refetch pauses while the delete-all modal is open, so the thing the
+  // user is about to delete cannot vanish under them.
   const {
     rows, total, services, loading, refreshing,
-    refresh, reload, loadMore, removeRow,
-  } = useInspectorCaptures({ service, live, paused: confirming || deleteAllOpen })
+    refresh, reload, loadMore,
+  } = useInspectorCaptures({ service, live, paused: deleteAllOpen })
 
   const totalAll = services.reduce((sum, s) => sum + (s.capture_count || 0), 0)
 
@@ -83,20 +82,6 @@ export default function InspectorPage() {
     })()
     return () => { cancelled = true }
   }, [selectedId, setSearchParams])
-
-  const handleRemove = (id) => {
-    deleteCapture(id)
-      .then(() => {
-        cacheRef.current.delete(id)
-        const index = rows.findIndex((row) => row.id === id)
-        removeRow(id)
-        if (selectedId === id) {
-          const next = rows[index + 1] || rows[index - 1] || null
-          select(next ? next.id : null)
-        }
-      })
-      .catch(() => {})
-  }
 
   const confirmDeleteAll = async () => {
     setDeletingAll(true)
@@ -182,10 +167,8 @@ export default function InspectorPage() {
             service={service}
             selectedId={selectedId}
             onSelect={select}
-            onRemove={handleRemove}
             onLoadMore={() => loadMore()}
             loading={loading}
-            onConfirmStateChange={setConfirming}
           />
         </div>
 
@@ -196,8 +179,6 @@ export default function InspectorPage() {
             <CaptureDetail
               key={detail.id}
               capture={detail}
-              onDelete={handleRemove}
-              onConfirmStateChange={setConfirming}
             />
           ) : detailLoading ? (
             <div className="animate-pulse space-y-3">

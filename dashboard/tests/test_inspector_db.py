@@ -225,13 +225,6 @@ class TestListCaptures:
 
 
 class TestDelete:
-    def test_delete_capture_twice(self, inspector_db):
-        capture = make_capture()
-        inspector_db.insert_capture(capture)
-        assert inspector_db.delete_capture(capture.id) is True
-        assert inspector_db.get_capture(capture.id) is None
-        assert inspector_db.delete_capture(capture.id) is False
-
     def test_delete_captures_all(self, inspector_db):
         for _ in range(3):
             inspector_db.insert_capture(make_capture(service_name="svc-a"))
