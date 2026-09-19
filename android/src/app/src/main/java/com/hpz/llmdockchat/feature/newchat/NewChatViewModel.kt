@@ -16,8 +16,11 @@ import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ServiceSummary
-import com.hpz.llmdockchat.data.model.parseModelRef
 import com.hpz.llmdockchat.data.model.wireValue
+import com.hpz.llmdockchat.feature.modelpicker.RememberedModel
+import com.hpz.llmdockchat.feature.modelpicker.RememberedModelResolver
+import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.SummarizeMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +50,14 @@ sealed interface NewChatUiState {
         val selectedPromptId: String?,
         val mcpServers: List<McpServerInfo>,
         val selectedMcpServerIds: Set<String>,
+        /**
+         * F14-R7 — the servers a summarize turn cannot do without, and the URL
+         * it is about. [requiredMcpServerIds] gates [canStart]: a summarize
+         * whose fetcher got untoggled would answer from the URL alone, so the
+         * sheet refuses rather than starting it.
+         */
+        val requiredMcpServerIds: Set<String> = emptySet(),
+        val summarizeUrl: String? = null,
         val creating: Boolean = false,
         /** A failed create — the server's own words, sheet stays open with selections intact (F03-R1's fifth criterion). */
         val createError: String? = null,
@@ -59,7 +70,12 @@ sealed interface NewChatUiState {
          */
         val toolsFailure: ToolsFailure? = null,
     ) : NewChatUiState {
-        val canStart: Boolean get() = selectedModel != null && !creating && toolsFailure == null
+        val canStart: Boolean
+            get() = selectedModel != null && !creating && toolsFailure == null && !blockedForSummarize
+
+        private val blockedForSummarize: Boolean
+            get() = summarizeUrl != null &&
+                (requiredMcpServerIds.isEmpty() || !selectedMcpServerIds.containsAll(requiredMcpServerIds))
     }
 
     data class Failed(val message: String) : NewChatUiState
@@ -83,6 +99,15 @@ class NewChatViewModel(
      * F07-R4's mid-thread switch does not use this screen at all).
      */
     private val preselectedServiceName: String? = null,
+    /**
+     * F14-R7 — the sheet reached from the share picker's summarize action. It
+     * forces a URL-fetching server on the new thread, files the prepared turn
+     * as a claim instead of a draft, and leaves [preferences] alone: choosing
+     * to summarize a page must not silently change what the next ordinary
+     * chat starts with.
+     */
+    private val summarizeMode: Boolean = false,
+    private val sharedDraftStore: SharedDraftStore? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NewChatUiState>(NewChatUiState.Loading)
@@ -116,49 +141,26 @@ class NewChatViewModel(
             // only the model list (Must, F03-R1) blocks the screen.
             val openRouter = openRouterModelsRepository.list().getOrNull()
             val prompts = promptsRepository.list().getOrNull().orEmpty().sortedBy { it.sortOrder }
-            val mcpServers = mcpServersRepository.list().getOrNull().orEmpty()
+            val catalog = mcpServersRepository.catalog(probe = summarizeMode).getOrNull()
+            val mcpServers = catalog?.servers.orEmpty()
+            val retrieval = catalog?.urlRetrieval
 
             val remoteModels = openRouter?.models.orEmpty()
             val remoteConfigured = openRouter?.configured ?: false
 
             val rememberedRaw = preferences.lastModel()
             val rememberedMcpIds = preferences.lastMcpServerIds().toSet()
+            val summarizeUrl = if (summarizeMode) sharedDraftStore?.pending?.value?.url else null
+            val requiredMcpIds = if (summarizeUrl != null) retrieval?.serverIds?.toSet().orEmpty() else emptySet()
 
-            var selectedModel: ModelOption? = null
-            var unavailable = false
-
-            // F10-R6: a preselected service wins outright over whatever was
-            // remembered — that is the entire point of tapping "New chat"
-            // from a specific row on the Models tab. If it stopped running
-            // between the tap and this load (unlikely, but possible), fall
-            // through to the ordinary remembered-model resolution below
-            // rather than silently landing on a dead service.
-            val preselectedMatch = preselectedServiceName
-                ?.let { name -> localServices.find { it.serviceName == name } }
-                ?.takeIf { it.isRunning }
-
-            if (preselectedMatch != null) {
-                selectedModel = preselectedMatch
-            } else if (rememberedRaw != null) {
-                when (val ref = parseModelRef(rememberedRaw)) {
-                    is ModelRef.Local -> {
-                        val match = localServices.find { it.serviceName == ref.serviceName }
-                        if (match != null && match.isRunning) {
-                            selectedModel = match
-                        } else {
-                            // Deleted, renamed, or just stopped — either way the
-                            // sheet must not silently create a dead thread.
-                            unavailable = true
-                        }
-                    }
-                    is ModelRef.OpenRouter -> {
-                        // Not an allowlist (Architecture / CLAUDE.md): a remote
-                        // model dropped from the curated list is still valid.
-                        selectedModel = remoteModels.find { it.modelId == ref.modelId }
-                            ?: ModelOption.Remote(ref.modelId, ref.modelId)
-                    }
-                }
-            }
+            val remembered = RememberedModelResolver.resolve(
+                rememberedRaw = rememberedRaw,
+                localServices = localServices,
+                remoteModels = remoteModels,
+                preselectedServiceName = preselectedServiceName,
+            )
+            val selectedModel = (remembered as? RememberedModel.Resolved)?.option
+            val unavailable = remembered is RememberedModel.Unavailable
 
             _state.value = NewChatUiState.Loaded(
                 localServices = localServices,
@@ -170,7 +172,10 @@ class NewChatViewModel(
                 prompts = prompts,
                 selectedPromptId = null,
                 mcpServers = mcpServers,
-                selectedMcpServerIds = rememberedMcpIds.intersect(mcpServers.map { it.id }.toSet()),
+                selectedMcpServerIds = requiredMcpIds +
+                    if (summarizeUrl != null) emptySet() else rememberedMcpIds.intersect(mcpServers.map { it.id }.toSet()),
+                requiredMcpServerIds = requiredMcpIds,
+                summarizeUrl = summarizeUrl,
             )
 
             // F07-R1's third criterion: a container started or stopped
@@ -214,8 +219,10 @@ class NewChatViewModel(
                 promptId = current.selectedPromptId,
             ).fold(
                 onSuccess = { id ->
-                    preferences.rememberModel(model.ref.wireValue)
-                    preferences.rememberMcpServerIds(current.selectedMcpServerIds.toList())
+                    if (current.summarizeUrl == null) {
+                        preferences.rememberModel(model.ref.wireValue)
+                        preferences.rememberMcpServerIds(current.selectedMcpServerIds.toList())
+                    }
                     if (current.selectedMcpServerIds.isEmpty()) {
                         updateLoaded { it.copy(creating = false) }
                         onCreated(id)
@@ -253,6 +260,7 @@ class NewChatViewModel(
     private suspend fun applyTools(conversationId: String, serverIds: List<String>, onCreated: (String) -> Unit) {
         conversationsRepository.setMcpServers(conversationId, serverIds).fold(
             onSuccess = {
+                stageSummarizeClaim(conversationId)
                 updateLoaded { it.copy(creating = false, toolsFailure = null) }
                 onCreated(conversationId)
             },
@@ -265,6 +273,12 @@ class NewChatViewModel(
                 }
             },
         )
+    }
+
+    /** F14-R7 — claim instead of draft: the thread sends the turn on opening. */
+    private fun stageSummarizeClaim(conversationId: String) {
+        val url = (state.value as? NewChatUiState.Loaded)?.summarizeUrl ?: return
+        sharedDraftStore?.stageForAutoSend(conversationId, SummarizeMessage.build(url))
     }
 
     private inline fun updateLoaded(transform: (NewChatUiState.Loaded) -> NewChatUiState.Loaded) {

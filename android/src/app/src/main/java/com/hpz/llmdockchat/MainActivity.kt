@@ -33,6 +33,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.share.SharedInlineFormatter
 import com.hpz.llmdockchat.feature.share.SharedKind
 import com.hpz.llmdockchat.feature.share.SharedKindParser
+import com.hpz.llmdockchat.feature.share.SharedUrlExtractor
 import com.hpz.llmdockchat.feature.share.StagedShare
 import com.hpz.llmdockchat.feature.thread.readImage
 import com.hpz.llmdockchat.feature.thread.toDataUrl
@@ -103,7 +104,7 @@ class MainActivity : ComponentActivity() {
             streamName = stream?.let { displayName(it) },
         )
         val share = when (kind) {
-            is SharedKind.Text -> StagedShare(text = kind.text)
+            is SharedKind.Text -> StagedShare(text = kind.text, url = SharedUrlExtractor.firstUrl(kind.text))
             is SharedKind.Image -> {
                 val uri = stream ?: return
                 val bitmap = runCatching { readImage(contentResolver, uri) }.getOrNull()

@@ -128,6 +128,26 @@ class MCPClientManager:
             logger.exception(f"Failed to discover tools from {server_id}")
             return []
 
+    def discover_bounded(self, server_id: str, timeout: float) -> list:
+        """Discover tools under a caller-supplied deadline, reusing a warm cache.
+
+        Unlike `get_tools`, an error propagates instead of degrading to `[]`,
+        and nothing is cached on failure: capability probes must distinguish
+        "this server offers no such tool" from "this server did not answer",
+        and caching the failure would pin a working server as broken.
+        """
+        cached = self._tools_cache.get(server_id)
+        if cached is not None:
+            return cached
+
+        config = get_server_config(server_id)
+        if not config:
+            raise KeyError(f"Unknown or unavailable MCP server: {server_id}")
+
+        tools = self._run_async(self._discover_tools(config, server_id), timeout=timeout)
+        self._tools_cache[server_id] = tools
+        return tools
+
     def call_tool(self, server_id: str, tool_name: str, arguments: dict,
                   extra_env: Optional[dict] = None,
                   progress_callback: Optional[Callable] = None) -> tuple:

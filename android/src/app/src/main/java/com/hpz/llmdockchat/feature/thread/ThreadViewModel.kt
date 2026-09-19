@@ -77,6 +77,8 @@ class ThreadViewModel(
     private var composerBeforeEdit: String = ""
     private var attachmentsBeforeEdit: List<String> = emptyList()
 
+    private var autoSendFired = false
+
     fun load() {
         viewModelScope.launch {
             val draft = drafts.draft(conversationId)
@@ -85,6 +87,7 @@ class ThreadViewModel(
                 onSuccess = { conversation ->
                     _state.value = loadedFrom(conversation, draft, staged)
                     reattachIfRunning(conversation)
+                    fireAutoSend()
                 },
                 onFailure = { failure ->
                     val current = _state.value
@@ -97,6 +100,22 @@ class ThreadViewModel(
             )
             refreshLadders()
         }
+    }
+
+    /**
+     * F14-R7 — the thread a summarize tap opened owes exactly one turn, and
+     * reading the claim is what spends it: whatever becomes of this send, no
+     * later visit fires a second one. A pre-frame failure restores the text to
+     * the composer through the ordinary F04 path, so the retry is the user's
+     * tap rather than a silent resubmission.
+     */
+    private suspend fun fireAutoSend() {
+        if (autoSendFired) return
+        if (loaded()?.runActive == true) return
+        val message = attachmentStore?.takeAutoSend(conversationId) ?: return
+        autoSendFired = true
+        loaded()?.let { _state.value = it.copy(composer = message) }
+        send()
     }
 
     private fun loadedFrom(

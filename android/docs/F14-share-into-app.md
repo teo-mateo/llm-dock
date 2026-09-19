@@ -210,6 +210,43 @@ thread.
 - \[x\] Backing out of the new-chat sheet returns to the picker with the
       content still staged.
 
+### F14-R7 · Summarize a shared page (Must) — issue 255
+
+A `text/plain` share carrying an HTTP(S) link offers one primary action,
+**Summarise**, that creates a thread on the remembered model, enables a
+page-fetching tool on it, and sends one prepared turn that instructs the model
+to read the page before summarising it. Availability is decided by
+`GET /api/chat/mcp-servers?probe=url-fetch`, whose verdict is each tool's
+parameter schema — never an entry name, because a `websearch`-only install
+sounds retrieval-capable and cannot open the shared URL.
+
+**Acceptance criteria**
+
+- \[x\] A share of a bare link, and of a link inside prose, both surface the
+      action (`SharedUrlExtractorTest`).
+- \[x\] An image or text-file share never surfaces it (`SharedKindParserTest`,
+      `ShareTargetViewModelTest`).
+- \[x\] Ordinary sharing is unchanged: picking a row still stages the content
+      unsent (`ThreadShareTest`, `ShareTargetViewModelTest` green untouched).
+- \[x\] No turn is submitted unless the probe found a server that can fetch a
+      URL, and no claim is filed if the tools write fails
+      (`SummarizeCoordinatorTest`).
+- \[x\] Configuration failure, tool-not-answering, and an old dashboard each
+      read differently on the picker, with a next step
+      (`ShareTargetViewModelTest`).
+- \[x\] A remembered model that is missing or stopped opens the model choice
+      with the share still staged (`SummarizeCoordinatorTest`).
+- \[x\] A send that never reached the server restores the prepared turn to the
+      composer (`ThreadAutoSendTest`).
+- \[x\] Force-stop, reopen, and re-visit never submit the turn twice; the claim
+      is owed once (`SharedDraftStoreAutoSendTest`, `ThreadAutoSendTest`).
+- \[ \] Device: share a real article, tap Summarise, watch the fetch tool card
+      appear before the summary — `dev.sh share-text "<url>"`.
+- \[ \] Device: with the fetcher disabled in the dashboard, the action is absent
+      and the reason names what to enable.
+- \[ \] Device: tap, force-stop before the first token, relaunch — exactly one
+      user turn in the thread.
+
 ---
 
 ## 4. Design
@@ -336,6 +373,7 @@ Flow:
 | GET | `/api/chat/conversations?limit=-1&unfiled=true` | Picker list (existing `ConversationsRepository.list()`) |
 | POST | `/api/chat/conversations` | F14-R6 — new conversation (existing F03 path) |
 | POST | `/api/chat/conversations/<id>/messages` | Send — unchanged, only after the user presses Send |
+| GET | `/api/chat/mcp-servers?probe=url-fetch` | F14-R7 — which enabled servers can fetch a URL |
 
 No new endpoints, no new server code (R-A).
 
@@ -358,6 +396,27 @@ No new endpoints, no new server code (R-A).
   reason (no client-side parser); declaring `application/pdf` in the
   intent filter and then failing at parse time would be worse than not
   appearing for them at all.
+- **F14-R7 breaks rule R-A, deliberately.** `?probe=url-fetch` is one
+  additive query parameter on an endpoint the app already calls; without
+  it the phone cannot tell whether a configured server can fetch a URL at
+  all — `GET /api/chat/mcp-servers` carries no tool names, and the route
+  that does is the dashboard-only `mcp-registry/test`. A name heuristic
+  would have kept R-A and lost R3: it selects `websearch`, which answers
+  from prior knowledge while looking like a summary. Issue 255 permits
+  backend changes where they are the cleanest implementation, and F15 set
+  the precedent for a phone feature shipping its own backend (PR #128).
+- **F14-R7's "the conversation must say so" is read as two surfaces.** A
+  turn that was never started has no conversation to say anything in, so
+  a setup failure (no tool, dashboard too old, tool not answering) is a
+  reason on the picker where the action would have been, and only a
+  failure after a legitimate send — the fetch itself failing, or returning
+  nothing useful — is reported inside the thread. Creating a thread to hold
+  an error message would be a worse answer than refusing to create one.
+- **Summarize always creates a new thread.** Enabling a tool means writing
+  `mcp_servers_json` on the conversation, and `send_message` reads the tools
+  from the stored row, so an existing thread would have its model and tool
+  set rewritten by a tap that looked like "summarise this". The ordinary
+  picker rows still stage the share into whatever thread the user picks.
 
 ---
 

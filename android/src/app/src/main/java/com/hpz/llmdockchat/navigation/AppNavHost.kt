@@ -230,6 +230,7 @@ fun AppNavHost(
                         ShareTargetViewModel(
                             repository = container.conversationsRepository,
                             store = container.sharedDraftStore,
+                            summarizeLauncher = container.summarizeLauncher,
                         )
                     }
                 },
@@ -243,6 +244,19 @@ fun AppNavHost(
                     }
                 },
                 onNewConversation = { navController.navigate(Destinations.newChat()) },
+                // F14-R7 — the direct path lands on the thread that now owes one
+                // turn; a remembered model that is gone or stopped falls back to
+                // the sheet, with the share still staged (nothing is lost).
+                onSummarize = {
+                    viewModel.summarize(
+                        onOpened = { conversationId ->
+                            navController.navigate(Destinations.thread(conversationId)) {
+                                popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                            }
+                        },
+                        onChooseModel = { navController.navigate(Destinations.newChatSummarize()) },
+                    )
+                },
                 onDismiss = {
                     container.sharedDraftStore.clearPending()
                     navController.popBackStack()
@@ -279,47 +293,81 @@ fun AppNavHost(
 
         composable(
             Destinations.NEW_CHAT,
-            arguments = listOf(navArgument("service") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            arguments = listOf(
+                navArgument("service") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
         ) { backStackEntry ->
-            val preselectedServiceName = backStackEntry.arguments?.getString("service")
-            val viewModel: NewChatViewModel = viewModel(
-                factory = viewModelFactory {
-                    initializer {
-                        NewChatViewModel(
-                            servicesRepository = container.servicesRepository,
-                            promptsRepository = container.promptsRepository,
-                            mcpServersRepository = container.mcpServersRepository,
-                            openRouterModelsRepository = container.openRouterModelsRepository,
-                            conversationsRepository = container.conversationsRepository,
-                            preferences = container.newChatPreferences,
-                            servicesStreamRepository = container.servicesStreamRepository,
-                            preselectedServiceName = preselectedServiceName,
-                        )
-                    }
-                },
+            NewChatDestination(
+                container = container,
+                navController = navController,
+                preselectedServiceName = backStackEntry.arguments?.getString("service"),
+                summarizeMode = false,
             )
-            NewChatScreen(
-                viewModel = viewModel,
-                onBack = { navController.popBackStack() },
-                onConversationCreated = { id ->
-                    // F14 — a conversation created from the share picker takes
-                    // the staged content with it; the picker below is popped too
-                    // so Back from the new thread lands on Chats, not on an
-                    // empty picker.
-                    val hadPendingShare = container.sharedDraftStore.pending.value != null
-                    container.sharedDraftStore.reassign(id, container.draftStore)
-                    // Replaces the sheet on the back stack — Back from the new
-                    // thread returns to the conversation list, not to a sheet
-                    // for a chat that already exists.
-                    navController.navigate(Destinations.thread(id)) {
-                        popUpTo(
-                            if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
-                        ) { inclusive = true }
-                    }
-                },
+        }
+
+        composable(Destinations.NEW_CHAT_SUMMARIZE) {
+            NewChatDestination(
+                container = container,
+                navController = navController,
+                preselectedServiceName = null,
+                summarizeMode = true,
             )
         }
     }
+}
+
+/**
+ * The new-chat sheet, in its two entries (F03 ordinary, F14-R7 summarize). One
+ * body so the two cannot drift on what creating a conversation does — the
+ * summarize entry differs only in the mode it hands the ViewModel.
+ */
+@Composable
+private fun NewChatDestination(
+    container: AppContainer,
+    navController: NavHostController,
+    preselectedServiceName: String?,
+    summarizeMode: Boolean,
+) {
+    val viewModel: NewChatViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                NewChatViewModel(
+                    servicesRepository = container.servicesRepository,
+                    promptsRepository = container.promptsRepository,
+                    mcpServersRepository = container.mcpServersRepository,
+                    openRouterModelsRepository = container.openRouterModelsRepository,
+                    conversationsRepository = container.conversationsRepository,
+                    preferences = container.newChatPreferences,
+                    servicesStreamRepository = container.servicesStreamRepository,
+                    preselectedServiceName = preselectedServiceName,
+                    summarizeMode = summarizeMode,
+                    sharedDraftStore = container.sharedDraftStore,
+                )
+            }
+        },
+    )
+    NewChatScreen(
+        viewModel = viewModel,
+        onBack = { navController.popBackStack() },
+        onConversationCreated = { id ->
+            // F14 — a conversation created from the share picker takes
+            // the staged content with it; the picker below is popped too
+            // so Back from the new thread lands on Chats, not on an
+            // empty picker. A summarize run counts as share-origin even
+            // though the sheet already spent the pending share filing its
+            // claim — the picker is still what sits under this sheet.
+            val hadPendingShare = summarizeMode || container.sharedDraftStore.pending.value != null
+            container.sharedDraftStore.reassign(id, container.draftStore)
+            // Replaces the sheet on the back stack — Back from the new
+            // thread returns to the conversation list, not to a sheet
+            // for a chat that already exists.
+            navController.navigate(Destinations.thread(id)) {
+                popUpTo(
+                    if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
+                ) { inclusive = true }
+            }
+        },
+    )
 }
 
 /**
