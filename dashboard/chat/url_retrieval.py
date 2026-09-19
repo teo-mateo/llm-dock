@@ -9,7 +9,11 @@ knowledge instead of from the page.
 """
 
 CANDIDATE_TOKENS = ("fetch", "url", "browse", "web", "page", "readable")
-TEXT_RETURNING_TOKENS = ("markdown", "readable", "text", "content", "article")
+# A URL tool that hands back an image cannot ground a summary, so its presence
+# must not outrank a tool that returns prose. Deciding that from the *positive*
+# words fails — the `browser-fetch` screenshot docstring says "dynamic content"
+# and "<title> text" — so the signal is the output format the tool names.
+NON_TEXT_OUTPUT_TOKENS = ("screenshot", "png", "jpeg", "gif", "image", "photo", "base64", "binary")
 
 PROBE_PARAM = "probe"
 URL_FETCH_PROBE = "url-fetch"
@@ -62,7 +66,7 @@ def url_tools(tools: list) -> list:
 def is_text_returning(tool: dict) -> bool:
     """Ranking hint only. A screenshot tool takes a url and returns no prose."""
     hay = _bare_name(tool) + " " + str((tool.get("function") or {}).get("description") or "")
-    return any(token in hay.lower() for token in TEXT_RETURNING_TOKENS)
+    return not any(token in hay.lower() for token in NON_TEXT_OUTPUT_TOKENS)
 
 
 def classify(server: dict, tools: list):

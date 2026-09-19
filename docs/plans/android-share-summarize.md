@@ -390,7 +390,13 @@ or the phone, and none is attached here.
 | P3b | `feature/modelpicker/RememberedModelResolver` extracted from `NewChatViewModel.load()` | `RememberedModel` has three cases (`Resolved`/`Unavailable`/`None`) because "never chose" and "chose, then it died" need different copy. |
 | P4 | `android/docs/F14-share-into-app.md` (F14-R7 + three Deviations), `Plan_TOC.md` §2/§5/§6 | The R-A exception is recorded at the rule itself, not only in the feature file, so the next reader does not "fix" it. |
 
-Backend suite: 1448 passed, 2 skipped. JVM suite: the new classes and every touched class
+Backend suite: 1449 passed, 1 skipped, 6.5s under `-n auto` (after PR #253 landed). The
+probe was also run against this machine's real registry, not fakes: `webfetch` and
+`browser-fetch` qualify, `websearch` does not (its one tool takes `query`), `ragflow`
+surfaced as a discovery failure rather than as unavailable. That run caught one real bug —
+`screenshot_page`'s docstring says "dynamic content" and "<title> text", which satisfied the
+positive text-keyword test and put the screenshotter first — fixed in fa2f93e by ranking on
+the output format a tool names for itself. JVM suite: the new classes and every touched class
 pass (`SharedUrlExtractorTest`, `SummarizeMessageTest`, `SharedDraftStoreAutoSendTest`,
 `RememberedModelResolverTest`, `SummarizeCoordinatorTest`, `ThreadAutoSendTest`,
 `ShareTargetViewModelTest` 15, plus `NewChatViewModelTest`/`SharedDraftStoreTest`/
