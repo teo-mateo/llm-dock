@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import CopyablePre from '../chat/CopyablePre'
 import ConversationView, { StringContent, ToolCallBlock } from './ConversationView'
-import { parseRequestBody, formatDuration, formatAbsolute, copyText } from './parse'
+import { parseRequestBody, prettyJsonBody, formatDuration, formatAbsolute, copyText } from './parse'
 
 const TABS = ['conversation', 'tools', 'request', 'response', 'meta']
 
@@ -46,14 +46,14 @@ function RequestTab({ capture, body }) {
         <p className="text-sm text-fg-muted mb-3">Request body is not JSON. Raw text below.</p>
       )}
       {fields.length > 0 && (
-        <table className="w-full text-xs mb-4">
+        <table className="w-full table-fixed text-xs mb-4">
           <tbody>
             {fields.map(([key, value]) => (
               <tr key={key} className="border-b border-border-subtle">
-                <td className="py-1.5 pr-4 font-mono text-fg-muted align-top whitespace-nowrap">{key}</td>
+                <td className="py-1.5 pr-4 w-32 font-mono text-fg-muted align-top whitespace-nowrap">{key}</td>
                 <td className="py-1.5 text-fg">
                   {typeof value === 'object' && value !== null ? (
-                    <pre className="font-mono whitespace-pre-wrap break-words">{JSON.stringify(value, null, 2)}</pre>
+                    <pre className="font-mono whitespace-pre overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>
                   ) : String(value)}
                 </td>
               </tr>
@@ -62,8 +62,8 @@ function RequestTab({ capture, body }) {
         </table>
       )}
       <h3 className="text-xs font-medium text-fg-muted mb-1">Raw request body</h3>
-      <CopyablePre className="font-mono text-xs whitespace-pre-wrap break-words bg-surface-muted rounded p-3 max-h-[32rem] overflow-auto">
-        {capture.request_body ?? ''}
+      <CopyablePre className="font-mono text-xs whitespace-pre bg-surface-muted rounded p-3 max-h-[32rem] overflow-auto">
+        {prettyJsonBody(capture.request_body ?? '').text}
       </CopyablePre>
     </div>
   )

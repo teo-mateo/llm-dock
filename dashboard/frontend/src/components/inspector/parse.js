@@ -43,6 +43,17 @@ export function parseRequestBody(raw) {
   }
 }
 
+// The body is stored minified as the client sent it, and a 1 MB-truncated
+// body is not valid JSON, so this never throws and falls back to the raw text.
+export function prettyJsonBody(raw) {
+  if (typeof raw !== "string" || !raw) return { text: raw ?? "", pretty: false }
+  try {
+    return { text: JSON.stringify(JSON.parse(raw), null, 2), pretty: true }
+  } catch {
+    return { text: raw, pretty: false }
+  }
+}
+
 export function prettyArguments(rawArgs) {
   if (rawArgs == null) return { text: '', valid: true }
   const text = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs, null, 2)

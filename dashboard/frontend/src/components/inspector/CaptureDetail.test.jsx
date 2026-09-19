@@ -156,6 +156,21 @@ describe('CaptureDetail tabs', () => {
     expect(screen.getByText(/"messages"/)).toBeInTheDocument()
   })
 
+  it('pretty-prints the raw request body without word wrap', () => {
+    setup()
+    openTab(/^Request/)
+    const pre = screen.getByText(/"model": "qwen3.8-27b",/)
+    expect(pre.tagName).toBe('PRE')
+    expect(pre).toHaveClass('whitespace-pre')
+    expect(pre.className).not.toContain('pre-wrap')
+  })
+
+  it('shows a non-JSON request body verbatim', () => {
+    setup(detail({ request_body: '{ not json' }))
+    openTab(/^Request/)
+    expect(screen.getByText('{ not json')).toBeInTheDocument()
+  })
+
   it('Response tab shows Thinking collapsed, rendered text, tool calls and raw SSE', () => {
     setup()
     openTab(/^Response/)
