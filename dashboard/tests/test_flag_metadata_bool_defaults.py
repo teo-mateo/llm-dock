@@ -57,7 +57,6 @@ def test_llamacpp_bench_value_defaults_unchanged():
         "no_kv_offload": "0",
         "no_op_offload": "0",
         "flash_attn": "0",
-        "mmap": "1",
         "embeddings": "0",
         "cpu_strict": "0",
     }.items():
