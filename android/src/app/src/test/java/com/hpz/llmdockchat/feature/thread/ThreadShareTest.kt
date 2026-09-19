@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -253,5 +254,72 @@ class ThreadShareTest {
 
         val state = viewModel.awaitLoaded()
         assertTrue(state.attachments.isEmpty())
+    }
+
+    // -- F16: the first turn sends itself, once ------------------------------
+
+    @Test
+    fun `an armed auto-send sends the staged message on load`() = threadTest {
+        conversation()
+        drafts.save(CONVERSATION_ID, "SUMMARIZE\n\nhttps://example.com/a")
+        attachmentStore.armAutoSend(CONVERSATION_ID)
+        transport.stayOpen = true
+
+        viewModel().load()
+
+        withTimeout(10_000) { transport.parked.await() }
+        assertEquals(1, transport.requests.size)
+        assertTrue(transport.requests[0].body.orEmpty().contains("https://example.com/a"))
+    }
+
+    @Test
+    fun `the auto-send is consumed once - a second visit to the thread does not send again`() = threadTest {
+        conversation()
+        drafts.save(CONVERSATION_ID, "SUMMARIZE\n\nhttps://example.com/a")
+        attachmentStore.armAutoSend(CONVERSATION_ID)
+        transport.stayOpen = true
+        val viewModel = viewModel()
+        viewModel.load()
+        withTimeout(10_000) { transport.parked.await() }
+
+        conversation()
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        assertEquals(1, transport.requests.size)
+    }
+
+    @Test
+    fun `a failed conversation load leaves the auto-send armed for the next visit`() = threadTest {
+        server.enqueue(MockResponse.Builder().code(503).body("""{"error":"offline"}""").build())
+        drafts.save(CONVERSATION_ID, "SUMMARIZE\n\nhttps://example.com/a")
+        attachmentStore.armAutoSend(CONVERSATION_ID)
+        transport.stayOpen = true
+        val viewModel = viewModel()
+        viewModel.load()
+        withTimeout(10_000) { viewModel.state.first { it is ThreadUiState.Failed } }
+
+        conversation()
+        viewModel.load()
+        withTimeout(10_000) { transport.parked.await() }
+
+        assertEquals(1, transport.requests.size)
+    }
+
+    @Test
+    fun `a withheld auto-send opens the thread with the reason on screen and nothing sent`() = threadTest {
+        conversation()
+        drafts.save(CONVERSATION_ID, "SUMMARIZE\n\nhttps://example.com/a")
+        attachmentStore.saveNotice(CONVERSATION_ID, SharedDraftStore.TOOLS_NOT_ENABLED_NOTICE)
+
+        val state = viewModel().let {
+            it.load()
+            it.awaitLoaded()
+        }
+
+        assertEquals(0, transport.requests.size)
+        assertEquals(SharedDraftStore.TOOLS_NOT_ENABLED_NOTICE, state.stagedNotice)
+        // The message is still there to send by hand — that is the retry.
+        assertTrue(state.canSend)
     }
 }

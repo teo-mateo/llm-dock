@@ -81,10 +81,17 @@ class ThreadViewModel(
         viewModelScope.launch {
             val draft = drafts.draft(conversationId)
             val staged = attachmentStore?.attachments(conversationId).orEmpty()
+            val stagedNotice = attachmentStore?.notice(conversationId)
             repository.load(conversationId).fold(
                 onSuccess = { conversation ->
-                    _state.value = loadedFrom(conversation, draft, staged)
+                    _state.value = loadedFrom(conversation, draft, staged, stagedNotice)
                     reattachIfRunning(conversation)
+                    // Consume only after the conversation is loaded: a transient
+                    // load failure must leave the durable handoff for the next visit.
+                    val autoSend = attachmentStore?.takeAutoSend(conversationId) == true
+                    // F16's auto-send is a flag on the ordinary send path, not a
+                    // second send path: same canSend bar, same F04 failure handling.
+                    if (autoSend) send()
                 },
                 onFailure = { failure ->
                     val current = _state.value
@@ -103,6 +110,7 @@ class ThreadViewModel(
         conversation: ConversationDetail,
         draft: String,
         staged: List<String> = emptyList(),
+        stagedNotice: String? = null,
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
         return ThreadUiState.Loaded(
@@ -115,6 +123,7 @@ class ThreadViewModel(
             attachments = (current?.attachments.orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
             actionError = current?.actionError,
+            stagedNotice = stagedNotice ?: current?.stagedNotice,
             laddersByService = mergedLadders,
         )
     }
@@ -223,6 +232,7 @@ class ThreadViewModel(
             attachments = emptyList(),
             sending = true,
             actionError = null,
+            stagedNotice = null,
             reasoningNotice = null,
             thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
         )

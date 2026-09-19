@@ -59,7 +59,8 @@ import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 fun NewChatScreen(
     viewModel: NewChatViewModel,
     onBack: () -> Unit,
-    onConversationCreated: (String) -> Unit,
+    /** [toolsApplied] is the caller's cue for F16's handoff — see [NewChatViewModel.create]. */
+    onConversationCreated: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()

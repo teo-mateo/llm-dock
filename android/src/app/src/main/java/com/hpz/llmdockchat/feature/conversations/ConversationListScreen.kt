@@ -91,6 +91,7 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     onOpenConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onOpenSettings: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
@@ -107,6 +108,7 @@ fun ConversationListScreen(
         listState = listState,
         onOpenConversation = onOpenConversation,
         onNewConversation = onNewConversation,
+        onOpenSettings = onOpenSettings,
         onRetry = viewModel::refresh,
         onDelete = viewModel::delete,
         onSwipeDelete = viewModel::deleteWithUndo,
@@ -126,6 +128,7 @@ private fun ConversationListContent(
     listState: LazyListState,
     onOpenConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     onRetry: () -> Unit,
     onDelete: (String) -> Unit,
     onSwipeDelete: (ConversationSummary) -> Unit = {},
@@ -190,7 +193,7 @@ private fun ConversationListContent(
                     onDelete = { pendingBatchDelete = true },
                 )
             } else {
-                ListHeader(count = loaded?.conversations?.size)
+                ListHeader(count = loaded?.conversations?.size, onOpenSettings = onOpenSettings)
             }
         },
         floatingActionButton = {
@@ -325,28 +328,44 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
  * block (title over a live count) on the page background with no bar of its own.
  */
 @Composable
-private fun ListHeader(count: Int?) {
+private fun ListHeader(count: Int?, onOpenSettings: () -> Unit) {
     val colors = LlmTheme.colors
     HeaderShell {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BrandMark(Modifier.size(44.dp))
-            Column {
-                Text(
-                    "Chats",
-                    color = colors.fg,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (count != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BrandMark(Modifier.size(44.dp))
+                Column {
                     Text(
-                        if (count == 1) "1 conversation" else "$count conversations",
-                        color = colors.subtle,
-                        style = MaterialTheme.typography.bodyMedium,
+                        "Chats",
+                        color = colors.fg,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
                     )
+                    if (count != null) {
+                        Text(
+                            if (count == 1) "1 conversation" else "$count conversations",
+                            color = colors.subtle,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
+            }
+            // The mockup draws search beside it; there is no search endpoint (F00 §7.13),
+            // so the gear is the only action this header carries.
+            IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("chats_settings_button")) {
+                Icon(
+                    DesignLabIcons.Cog,
+                    contentDescription = "Settings",
+                    tint = colors.subtle,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
     }

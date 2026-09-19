@@ -137,4 +137,112 @@ class SharedDraftStoreTest {
         java.io.File(dir, "pending.json").writeText("not json")
         assertNull(SharedDraftStore(dir).pending.value)
     }
+
+    // -- F16 summarize ----------------------------------------------------
+
+    @Test
+    fun `the armed summarize intent survives a store rebuild - the sheet-picking-the-model window`() {
+        store.armSummarize(SummarizeIntent("PROMPT\n\nhttps://example.com", listOf("webfetch")))
+
+        val reborn = SharedDraftStore(dir)
+        assertEquals("PROMPT\n\nhttps://example.com", reborn.peekSummarize()?.message)
+        assertEquals(listOf("webfetch"), reborn.peekSummarize()?.toolIds)
+    }
+
+    @Test
+    fun `dismissing the share clears an armed summarize intent too`() {
+        store.stage(StagedShare(text = "https://example.com"))
+        store.armSummarize(SummarizeIntent("m", listOf("webfetch")))
+
+        store.clearPending()
+
+        assertNull(store.peekSummarize())
+        assertNull(SharedDraftStore(dir).peekSummarize())
+    }
+
+    @Test
+    fun `consumeSummarize stages the composed message and arms one auto-send`() {
+        val drafts = FakeDraftStore()
+        store.stage(StagedShare(text = "look https://example.com", origin = StagedOrigin.TEXT))
+        store.armSummarize(SummarizeIntent("PROMPT\n\nhttps://example.com", listOf("webfetch", "websearch")))
+
+        store.consumeSummarize("conv-1", drafts, toolsApplied = true)
+
+        // The composed message, not the raw shared text, is what waits in the composer.
+        assertEquals("PROMPT\n\nhttps://example.com", drafts.saved["conv-1"])
+        assertTrue(runBlocking { store.takeAutoSend("conv-1") })
+        assertNull(store.peekSummarize())
+        assertNull(store.pending.value)
+    }
+
+    @Test
+    fun `auto-send is consumed once`() {
+        store.armAutoSend("conv-1")
+
+        assertTrue(runBlocking { store.takeAutoSend("conv-1") })
+        assertFalse(runBlocking { store.takeAutoSend("conv-1") })
+    }
+
+    @Test
+    fun `the auto-send marker survives a rebuild but not a send or a leave`() {
+        store.armAutoSend("conv-1")
+        assertTrue(runBlocking { SharedDraftStore(dir).takeAutoSend("conv-1") })
+
+        store.armAutoSend("conv-2")
+        store.clear("conv-2")
+        assertFalse(runBlocking { SharedDraftStore(dir).takeAutoSend("conv-2") })
+    }
+
+    @Test
+    fun `a withheld auto-send is staged with the reason instead`() {
+        val drafts = FakeDraftStore()
+        store.armSummarize(SummarizeIntent("PROMPT\n\nhttps://example.com", listOf("webfetch")))
+
+        store.consumeSummarize("conv-1", drafts, toolsApplied = false)
+
+        assertEquals("PROMPT\n\nhttps://example.com", drafts.saved["conv-1"])
+        assertFalse(runBlocking { store.takeAutoSend("conv-1") })
+        assertEquals(SharedDraftStore.TOOLS_NOT_ENABLED_NOTICE, runBlocking { store.notice("conv-1") })
+    }
+
+    @Test
+    fun `consumeSummarize without an armed intent stages nothing`() {
+        val drafts = FakeDraftStore()
+        store.consumeSummarize("conv-1", drafts, toolsApplied = true)
+        assertFalse(drafts.saved.containsKey("conv-1"))
+    }
+
+    @Test
+    fun `stageForConversation replaces the draft with a composed message`() {
+        val drafts = FakeDraftStore(mapOf("conv-1" to "stale"))
+        store.stage(StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")))
+
+        store.stageForConversation("conv-1", drafts, "COMPOSED\n\nhttps://example.com")
+
+        assertEquals("COMPOSED\n\nhttps://example.com", drafts.saved["conv-1"])
+        // The attachment half of the share still moves with it (F14-R5).
+        assertEquals(listOf("data:image/jpeg;base64,AAA"), attachments("conv-1"))
+        assertNull(store.pending.value)
+    }
+
+    @Test
+    fun `a notice is gone once the thread record is cleared`() {
+        store.saveNotice("conv-1", "tools not enabled")
+        assertEquals("tools not enabled", runBlocking { store.notice("conv-1") })
+
+        store.clear("conv-1")
+        assertNull(runBlocking { store.notice("conv-1") })
+    }
+
+    @Test
+    fun `the notice and the auto-send marker are never read back as attachments`() {
+        store.saveNotice("conv-1", "tools not enabled")
+        store.armAutoSend("conv-1")
+        store.saveAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
+        store.removeAttachment("conv-1", 0)
+
+        assertEquals(listOf("data:image/jpeg;base64,BBB"), attachments("conv-1"))
+        assertEquals("tools not enabled", runBlocking { store.notice("conv-1") })
+        assertTrue(runBlocking { store.takeAutoSend("conv-1") })
+    }
 }

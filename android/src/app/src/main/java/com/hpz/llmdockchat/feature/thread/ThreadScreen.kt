@@ -911,6 +911,15 @@ private fun ThreadComposer(
         // named the level (F15's Deviations). It outlives the turn and is cleared
         // by the next send. A silently dropped level reads exactly like a model
         // that chose not to think.
+        state.stagedNotice?.let { notice ->
+            Text(
+                notice,
+                color = colors.amber,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().testTag("thread_staged_notice"),
+            )
+        }
+
         state.reasoningNotice?.let { note ->
             Text(
                 note,

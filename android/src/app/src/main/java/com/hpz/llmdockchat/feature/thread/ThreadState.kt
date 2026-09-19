@@ -85,6 +85,12 @@ sealed interface ThreadUiState {
         val settings: ChatSettingsState? = null,
         val reasoningPicker: ReasoningPickerState? = null,
         val reasoningNotice: String? = null,
+        /**
+         * Why a staged F16 summarize message was left unsent — read off disk in
+         * [ThreadViewModel.load], not passed through navigation, so it survives
+         * the process death that the staged message survives too.
+         */
+        val stagedNotice: String? = null,
         val laddersByService: Map<String, List<String>> = emptyMap(),
     ) : ThreadUiState {
 

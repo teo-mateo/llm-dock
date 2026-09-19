@@ -39,6 +39,8 @@ import com.hpz.llmdockchat.feature.models.ModelsScreen
 import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
+import com.hpz.llmdockchat.feature.settings.SettingsScreen
+import com.hpz.llmdockchat.feature.settings.SettingsViewModel
 import com.hpz.llmdockchat.feature.share.ShareTargetScreen
 import com.hpz.llmdockchat.feature.share.ShareTargetViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
@@ -135,6 +137,7 @@ fun AppNavHost(
                             navController.navigate(Destinations.thread(conversation.id))
                         },
                         onNewConversation = { navController.navigate(Destinations.newChat()) },
+                        onOpenSettings = { navController.navigate(Destinations.SETTINGS) },
                     )
                 }
             }
@@ -223,6 +226,20 @@ fun AppNavHost(
             )
         }
 
+        composable(Destinations.SETTINGS) {
+            val viewModel: SettingsViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer {
+                        SettingsViewModel(
+                            summarize = container.summarizePreferences,
+                            mcpServersRepository = container.mcpServersRepository,
+                        )
+                    }
+                },
+            )
+            SettingsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+        }
+
         composable(Destinations.SHARE_PICKER) {
             val viewModel: ShareTargetViewModel = viewModel(
                 factory = viewModelFactory {
@@ -230,6 +247,11 @@ fun AppNavHost(
                         ShareTargetViewModel(
                             repository = container.conversationsRepository,
                             store = container.sharedDraftStore,
+                            drafts = container.draftStore,
+                            servicesRepository = container.servicesRepository,
+                            mcpServersRepository = container.mcpServersRepository,
+                            summarizePreferences = container.summarizePreferences,
+                            newChatPreferences = container.newChatPreferences,
                         )
                     }
                 },
@@ -247,6 +269,16 @@ fun AppNavHost(
                     container.sharedDraftStore.clearPending()
                     navController.popBackStack()
                 },
+                // F16 — the thread is created and armed before the navigation
+                // happens, so this is the only step that must not be skipped:
+                // replacing the picker keeps Back from a summarize thread
+                // landing on Chats rather than on a share already consumed.
+                onSummarizeThread = { id ->
+                    navController.navigate(Destinations.thread(id)) {
+                        popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                    }
+                },
+                onSummarizeNewChat = { navController.navigate(Destinations.newChat()) },
             )
         }
 
@@ -294,19 +326,31 @@ fun AppNavHost(
                             preferences = container.newChatPreferences,
                             servicesStreamRepository = container.servicesStreamRepository,
                             preselectedServiceName = preselectedServiceName,
+                            preselectedMcpServerIds = container.sharedDraftStore.peekSummarize()?.toolIds,
                         )
                     }
                 },
             )
             NewChatScreen(
                 viewModel = viewModel,
-                onBack = { navController.popBackStack() },
-                onConversationCreated = { id ->
+                onBack = {
+                    // Backing out of the sheet abandons the armed summarize flow;
+                    // the share itself stays staged on the picker underneath.
+                    container.sharedDraftStore.clearSummarize()
+                    navController.popBackStack()
+                },
+                onConversationCreated = { id, toolsApplied ->
+                    // Read before the handoff: both consume calls below clear the
+                    // pending record, and the back-stack shape depends on whether
+                    // a share was there at all.
+                    val hadPendingShare = container.sharedDraftStore.pending.value != null
+                    // F16 — a summarize thread created from the sheet takes the composed
+                    // message and arms its first turn when its tools landed.
+                    container.sharedDraftStore.consumeSummarize(id, container.draftStore, toolsApplied)
                     // F14 — a conversation created from the share picker takes
                     // the staged content with it; the picker below is popped too
                     // so Back from the new thread lands on Chats, not on an
-                    // empty picker.
-                    val hadPendingShare = container.sharedDraftStore.pending.value != null
+                    // empty picker. A no-op once consumeSummarize spent the share.
                     container.sharedDraftStore.reassign(id, container.draftStore)
                     // Replaces the sheet on the back stack — Back from the new
                     // thread returns to the conversation list, not to a sheet
