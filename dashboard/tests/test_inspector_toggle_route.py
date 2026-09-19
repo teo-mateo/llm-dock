@@ -101,8 +101,13 @@ def _auth():
 
 
 class TestToggleEndpoint:
-    def test_enable_writes_fields_and_starts_proxy(self, env):
+    def test_enable_writes_fields_and_starts_proxy(self, env, monkeypatch):
         port = _free_port()
+        upstream_port = _free_port()
+        monkeypatch.setattr(
+            services_route, "allocate_upstream_port",
+            lambda services, name: upstream_port,
+        )
         _write_services(env, {"svc-a": _llamacpp_service(port)})
 
         resp = env["client"].post(
@@ -114,14 +119,14 @@ class TestToggleEndpoint:
         assert body["service"] == "svc-a"
         assert body["enabled"] is True
         assert body["port"] == port
-        assert body["upstream_port"] == 34000
+        assert body["upstream_port"] == upstream_port
         assert body["proxy_running"] is True
         assert body["restarted"] is False
         assert body["error"] is None
 
         stored = _services(env)["svc-a"]
         assert stored["inspect"] is True
-        assert stored["inspect_upstream_port"] == 34000
+        assert stored["inspect_upstream_port"] == upstream_port
 
         # The proxy answers on the public port; upstream is down -> 502 JSON.
         import requests
@@ -255,8 +260,8 @@ class TestWritePathSync:
     def test_set_public_port_rebinds_both_proxies(self, env, monkeypatch):
         monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
 
-        if not _port_free(3301):
-            pytest.skip("3301 is in use on this host; the public slot test would collide")
+        public_port = _free_port()
+        monkeypatch.setattr(services_route, "PUBLIC_SLOT_PORT", public_port)
 
         # Pin the displaced service's replacement port: the picker scans
         # 3300-3399 against the compose file only, which knows nothing about
@@ -269,7 +274,7 @@ class TestWritePathSync:
             env,
             {
                 "svc-a": _llamacpp_service(other_port),
-                "svc-b": _llamacpp_service(3301, name="svc-b"),
+                "svc-b": _llamacpp_service(public_port, name="svc-b"),
             },
         )
         env["client"].post("/api/services/svc-a/inspect", json={"enabled": True}, headers=_auth())
@@ -281,11 +286,11 @@ class TestWritePathSync:
 
         assert resp.status_code == 200
         stored = _services(env)
-        assert stored["svc-a"]["port"] == 3301
-        assert stored["svc-b"]["port"] != 3301
+        assert stored["svc-a"]["port"] == public_port
+        assert stored["svc-b"]["port"] != public_port
 
         rows = {row["service"]: row for row in env["supervisor"].status()}
-        assert rows["svc-a"]["listen_port"] == 3301
+        assert rows["svc-a"]["listen_port"] == public_port
         assert rows["svc-a"]["running"] is True
         assert rows["svc-b"]["listen_port"] == stored["svc-b"]["port"]
         assert rows["svc-b"]["running"] is True
