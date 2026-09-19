@@ -83,6 +83,13 @@ class NewChatViewModel(
      * F07-R4's mid-thread switch does not use this screen at all).
      */
     private val preselectedServiceName: String? = null,
+    /**
+     * F16's fall-through: the share picker already decided which tools the first
+     * turn needs, so they arrive already ticked and win over the remembered
+     * selection — the sheet's job here is picking a model, nothing else. Null
+     * for every other entry into this sheet.
+     */
+    private val preselectedMcpServerIds: List<String>? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NewChatUiState>(NewChatUiState.Loading)
@@ -122,7 +129,7 @@ class NewChatViewModel(
             val remoteConfigured = openRouter?.configured ?: false
 
             val rememberedRaw = preferences.lastModel()
-            val rememberedMcpIds = preferences.lastMcpServerIds().toSet()
+            val rememberedMcpIds = (preselectedMcpServerIds ?: preferences.lastMcpServerIds()).toSet()
 
             var selectedModel: ModelOption? = null
             var unavailable = false
@@ -202,7 +209,13 @@ class NewChatViewModel(
         it.copy(selectedMcpServerIds = selection, createError = null)
     }
 
-    fun create(onCreated: (String) -> Unit) {
+    /**
+     * [toolsApplied] says whether the new thread really has the tools that were
+     * selected. F16's handoff branches on it — a summarize message goes unsent
+     * when they did not land — and F03's sheet ignores it, since for that flow a
+     * failed PUT is the on-screen retry prompt instead.
+     */
+    fun create(onCreated: (String, Boolean) -> Unit) {
         val current = _state.value as? NewChatUiState.Loaded ?: return
         val model = current.selectedModel ?: return
         if (current.creating) return
@@ -218,7 +231,7 @@ class NewChatViewModel(
                     preferences.rememberMcpServerIds(current.selectedMcpServerIds.toList())
                     if (current.selectedMcpServerIds.isEmpty()) {
                         updateLoaded { it.copy(creating = false) }
-                        onCreated(id)
+                        onCreated(id, false)
                     } else {
                         // The conversation exists either way from here on —
                         // a failure past this point is never re-thrown or
@@ -234,7 +247,7 @@ class NewChatViewModel(
     }
 
     /** Re-issues the `mcp_servers_json` PUT for a conversation that already exists (S1 fix-up). */
-    fun retryTools(onCreated: (String) -> Unit) {
+    fun retryTools(onCreated: (String, Boolean) -> Unit) {
         val current = _state.value as? NewChatUiState.Loaded ?: return
         val failure = current.toolsFailure ?: return
         if (current.creating) return
@@ -245,16 +258,20 @@ class NewChatViewModel(
     }
 
     /** Opens the thread as-is, with whatever tool state the failed PUT left it in. */
-    fun openAnyway(onCreated: (String) -> Unit) {
+    fun openAnyway(onCreated: (String, Boolean) -> Unit) {
         val failure = (_state.value as? NewChatUiState.Loaded)?.toolsFailure ?: return
-        onCreated(failure.conversationId)
+        onCreated(failure.conversationId, false)
     }
 
-    private suspend fun applyTools(conversationId: String, serverIds: List<String>, onCreated: (String) -> Unit) {
+    private suspend fun applyTools(
+        conversationId: String,
+        serverIds: List<String>,
+        onCreated: (String, Boolean) -> Unit,
+    ) {
         conversationsRepository.setMcpServers(conversationId, serverIds).fold(
             onSuccess = {
                 updateLoaded { it.copy(creating = false, toolsFailure = null) }
-                onCreated(conversationId)
+                onCreated(conversationId, true)
             },
             onFailure = { failure ->
                 updateLoaded {
