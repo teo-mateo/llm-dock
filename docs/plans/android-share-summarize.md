@@ -372,3 +372,28 @@ shape (§3.3), the state machine and its at-most-once argument (§3.4), the sing
 resolver (§3.5), and the phase table (§4). Backend work is one endpoint param plus one pure
 module plus one manager method; the app change reuses F03's create flow, F08's tool write,
 F14's durable staging and F04's send path rather than inventing a parallel one.
+
+---
+
+## 8. Implementation status
+
+Shipped on `feature/issue-255-share-summarize`, P0 → P3 in one branch, three commits.
+Device criteria (three, all in F14-R7's list) are **not** yet run — they need an emulator
+or the phone, and none is attached here.
+
+| Phase | Where it landed | Difference from the plan above |
+|---|---|---|
+| P0 | `dashboard/chat/url_retrieval.py`, `MCPClientManager.discover_bounded`, `?probe=url-fetch` on `get_mcp_servers`; `test_url_retrieval.py`, `test_mcp_probe_endpoint.py`, `test_mcp_client_probe.py` | As designed. `probe()` takes an injected `discover` callable instead of a timeout, so the module stays I/O-free and the deadline lives with the caller. |
+| P1 | `SharedUrlExtractor`, `StagedShare.url`, `UrlRetrieval` + `McpServersRepository.catalog(probe)`, `SummarizeMessage`, `SummarizeOption`, `SummarizeCoordinator`, `ShareTargetViewModel/Screen` | `SummarizeOption` carries the user-facing reasons, so the three failure readings are one owner and JVM-assertable. The picker's Blocked row has its own Retry. |
+| P2 | `SharedDraftStore.stageForAutoSend/takeAutoSend`, `ThreadViewModel.fireAutoSend` | Claim file is `conv_<id>.autosend.txt` (sibling of `pending.json`, as specified); `clear()` also drops it, so a spent thread cannot re-owe a turn. |
+| P3 | `Destinations.newChatSummarize()`, `NewChatViewModel(summarizeMode, sharedDraftStore)`, `StartButton(label)` | The sheet forces the fetched server set and blocks Start without it, rather than adding a new control. `rememberMcpServerIds` is untouched in this mode, as specified. |
+| P3b | `feature/modelpicker/RememberedModelResolver` extracted from `NewChatViewModel.load()` | `RememberedModel` has three cases (`Resolved`/`Unavailable`/`None`) because "never chose" and "chose, then it died" need different copy. |
+| P4 | `android/docs/F14-share-into-app.md` (F14-R7 + three Deviations), `Plan_TOC.md` §2/§5/§6 | The R-A exception is recorded at the rule itself, not only in the feature file, so the next reader does not "fix" it. |
+
+Backend suite: 1448 passed, 2 skipped. JVM suite: the new classes and every touched class
+pass (`SharedUrlExtractorTest`, `SummarizeMessageTest`, `SharedDraftStoreAutoSendTest`,
+`RememberedModelResolverTest`, `SummarizeCoordinatorTest`, `ThreadAutoSendTest`,
+`ShareTargetViewModelTest` 15, plus `NewChatViewModelTest`/`SharedDraftStoreTest`/
+`ThreadShareTest` untouched and green). The full JVM run is still subject to the
+cross-class `Dispatchers.Main` flake `android/CLAUDE.md` already documents — it moved
+between runs and every affected class passes in isolation.

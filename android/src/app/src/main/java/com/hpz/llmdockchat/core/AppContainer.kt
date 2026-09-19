@@ -43,6 +43,8 @@ import com.hpz.llmdockchat.data.ReachabilityRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.SummarizeCoordinator
+import com.hpz.llmdockchat.feature.share.SummarizeLauncher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
@@ -131,6 +133,16 @@ class AppContainer(
     /** F14 — staged share content. Cache-dir files, so it survives process death but never a backup. */
     val sharedDraftStore: SharedDraftStore = SharedDraftStore(
         File(context.applicationContext.cacheDir, "shared-drafts"),
+    )
+
+    /** F14-R7 — the share picker's summarize path: create, tools, claim. */
+    val summarizeLauncher: SummarizeLauncher = SummarizeCoordinator(
+        servicesRepository = servicesRepository,
+        openRouterModelsRepository = openRouterModelsRepository,
+        mcpServersRepository = mcpServersRepository,
+        conversationsRepository = conversationsRepository,
+        preferences = newChatPreferences,
+        store = sharedDraftStore,
     )
 
     private val reauthenticator = CredentialReauthenticator(

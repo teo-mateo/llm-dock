@@ -62,6 +62,7 @@ fun ShareTargetScreen(
     viewModel: ShareTargetViewModel,
     onPickConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onSummarize: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -78,6 +79,7 @@ fun ShareTargetScreen(
         state = state,
         onPickConversation = onPickConversation,
         onNewConversation = onNewConversation,
+        onSummarize = onSummarize,
         onDismiss = onDismiss,
         onRetry = viewModel::refresh,
         modifier = modifier,
@@ -90,6 +92,7 @@ private fun ShareTargetContent(
     state: ShareTargetUiState,
     onPickConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onSummarize: () -> Unit,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -137,6 +140,18 @@ private fun ShareTargetContent(
                 is ShareTargetUiState.Loaded -> {
                     Column(Modifier.fillMaxSize()) {
                         ShareHeader(state.share)
+                        SummarizeAction(state.summarize, onSummarize, onRetry)
+                        state.actionError?.let { message ->
+                            Text(
+                                message,
+                                color = colors.red,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                                    .testTag("share_target_error"),
+                            )
+                        }
                         if (state.refreshing) {
                             LinearProgressIndicator(
                                 modifier = Modifier.fillMaxWidth().testTag("share_target_refreshing"),
@@ -265,6 +280,66 @@ private fun ShareHeader(share: StagedShare) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * F14-R7 — the summarize action, or the reason there isn't one. A link with no
+ * way to read it never becomes a turn: the model would answer from the URL and
+ * the transcript would read like a summary of the page.
+ */
+@Composable
+private fun SummarizeAction(option: SummarizeOption, onSummarize: () -> Unit, onRetry: () -> Unit) {
+    val colors = LlmTheme.colors
+    when (option) {
+        SummarizeOption.NotShared -> Unit
+
+        SummarizeOption.Checking -> Text(
+            "Checking for a page-fetch tool…",
+            color = colors.subtle,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier
+                .padding(horizontal = 20.dp, vertical = 4.dp)
+                .testTag("share_summarize_checking"),
+        )
+
+        is SummarizeOption.Blocked -> Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .testTag("share_summarize_blocked"),
+        ) {
+            Text(option.reason, color = colors.amber, style = MaterialTheme.typography.labelMedium)
+            Box(
+                Modifier
+                    .padding(top = 6.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.surfaceHigh)
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .testTag("share_summarize_retry"),
+            ) {
+                Text("Retry", color = colors.accent, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+
+        is SummarizeOption.Ready -> Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.accentSoft)
+                .clickable(onClick = onSummarize)
+                .padding(vertical = 12.dp)
+                .testTag("share_summarize"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Summarise ${SummarizeMessage.domain(option.url)}",
+                color = colors.accent,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }

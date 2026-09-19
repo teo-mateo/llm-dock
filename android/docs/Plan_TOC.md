@@ -44,7 +44,8 @@ Three rules decided which mockup features survived into these
 requirements. They apply to every change made from here on.
 
 **R-A · Backend parity.** The app uses only endpoints that exist on the
-dashboard today. No feature in this plan requires new server code. Any
+dashboard today. One exception is taken — F14-R7's `?probe=url-fetch`, justified in that
+feature's *Deviations*; everything else holds to the rule. Any
 mockup feature that needed a new endpoint was dropped, not deferred with
 a promise.
 
@@ -145,6 +146,7 @@ require `Authorization: Bearer <token>`.
 | POST | `/api/chat/conversations/<id>/cancel-active-run` | Cancel by conversation (preferred) |
 | GET | `/api/chat/prompts` | Managed system prompts |
 | GET | `/api/chat/mcp-servers` | Available MCP tool servers |
+| GET | `/api/chat/mcp-servers?probe=url-fetch` | Which enabled servers can fetch a URL (F14-R7) |
 | GET | `/api/chat/settings/openrouter-models` | Curated OpenRouter picker list |
 
 Read-only use of `/api/chat/prompts` and the settings endpoints: the app
@@ -187,7 +189,7 @@ Mark completed features `[DONE]` in the Status column.
 | F11 | Model detail, start and stop | [F11-model-detail-and-control.md](F11-model-detail-and-control.md) | 10b | [DONE] — R6 skipped, R7 deferred to F12, R5 dropped |
 | F12 | Container logs | [F12-container-logs.md](F12-container-logs.md) | 10c | [DONE] — F11-R7 stays skipped, see the feature file |
 | F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] |
-| F14 | Share into app | [F14-share-into-app.md](F14-share-into-app.md) | — | [DONE] — R6 (Should) verified on device |
+| F14 | Share into app | [F14-share-into-app.md](F14-share-into-app.md) | — | [DONE] — R6 (Should) verified on device; R7 (issue 255) implemented and JVM-verified, its three device criteria unchecked |
 | F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 

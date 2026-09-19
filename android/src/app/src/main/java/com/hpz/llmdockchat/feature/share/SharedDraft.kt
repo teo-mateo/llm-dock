@@ -8,13 +8,17 @@ import kotlinx.serialization.Serializable
  * file inlined as a fenced code block (web parity, `ChatInput.jsx`).
  * [attachments] are `data:image/jpeg;base64,…` URLs through the same pipeline
  * as F04-R9. [error] is set when the share was unsupported (PDF, binary) —
- * nothing is staged, the picker shows the reason.
+ * nothing is staged, the picker shows the reason. [url] is set only for a
+ * text share that carries an HTTP(S) link (F14-R7) — the page the summarize
+ * action would fetch, captured at intent time so the picker never re-derives
+ * it from edited text.
  */
 @Serializable
 data class StagedShare(
     val text: String = "",
     val attachments: List<String> = emptyList(),
     val error: String? = null,
+    val url: String? = null,
 ) {
     val hasContent: Boolean get() = text.isNotBlank() || attachments.isNotEmpty()
     val isEmpty: Boolean get() = !hasContent && error == null

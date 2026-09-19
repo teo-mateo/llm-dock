@@ -58,6 +58,32 @@ class SharedDraftStore(private val dir: File) {
         clearPending()
     }
 
+    /**
+     * F14-R7 — the summarize claim: one prepared user turn owed to one
+     * conversation, written before the thread opens and consumed by its first
+     * `load()`. A sibling of [PENDING_FILE] rather than a child of the
+     * conversation directory, because [saveAttachments] wipes that directory —
+     * a claim filed there would be erased by the attachment write that
+     * follows it, cancelling the action the user just took.
+     */
+    fun stageForAutoSend(conversationId: String, message: String) {
+        dir.mkdirs()
+        val file = autoSendFile(conversationId)
+        val tmp = File(dir, "${file.name}.tmp")
+        tmp.writeText(message)
+        tmp.renameTo(file)
+        clearPending()
+    }
+
+    /** Reads the claim and spends it, so no second visit can send it again. */
+    suspend fun takeAutoSend(conversationId: String): String? = withContext(Dispatchers.IO) {
+        val file = autoSendFile(conversationId)
+        if (!file.exists()) return@withContext null
+        val message = runCatching { file.readText() }.getOrNull()
+        file.delete()
+        message?.takeIf { it.isNotBlank() }
+    }
+
     fun saveAttachments(conversationId: String, attachments: List<String>) {
         if (attachments.isEmpty()) return
         val convDir = conversationDir(conversationId).apply { mkdirs() }
@@ -96,7 +122,10 @@ class SharedDraftStore(private val dir: File) {
     /** Send, or leaving the thread — the staged record is spent. */
     fun clear(conversationId: String) {
         conversationDir(conversationId).deleteRecursively()
+        autoSendFile(conversationId).delete()
     }
+
+    private fun autoSendFile(conversationId: String): File = File(dir, "conv_$conversationId.autosend.txt")
 
     private fun readPending(): StagedShare? {
         val file = File(dir, PENDING_FILE)

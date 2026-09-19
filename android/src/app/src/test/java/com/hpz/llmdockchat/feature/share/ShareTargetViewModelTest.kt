@@ -7,6 +7,9 @@ import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.BaseUrl
 import com.hpz.llmdockchat.core.net.BaseUrlResult
 import com.hpz.llmdockchat.data.ConversationsRepository
+import com.hpz.llmdockchat.data.model.UrlFetchFailure
+import com.hpz.llmdockchat.data.model.UrlFetchServer
+import com.hpz.llmdockchat.data.model.UrlRetrieval
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.MainDispatcherRule
@@ -35,7 +38,9 @@ class ShareTargetViewModelTest {
 
     private lateinit var server: MockWebServer
     private lateinit var viewModel: ShareTargetViewModel
+    private lateinit var repository: ConversationsRepository
     private lateinit var store: SharedDraftStore
+    private lateinit var launcher: StubLauncher
 
     @Before
     fun setUp() {
@@ -47,9 +52,10 @@ class ShareTargetViewModelTest {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(FakeTokenStore("totp-test"), SessionState()))
             .build()
-        val repository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        repository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         store = SharedDraftStore(Files.createTempDirectory("shared-drafts").toFile())
-        viewModel = ShareTargetViewModel(repository, store)
+        launcher = StubLauncher(UrlRetrieval(true, listOf(UrlFetchServer("webfetch", "WebFetch", listOf("fetch_readable"))), emptyList()))
+        viewModel = ShareTargetViewModel(repository, store, launcher)
     }
 
     @After
@@ -122,6 +128,146 @@ class ShareTargetViewModelTest {
         assertEquals("second", state.share.text)
     }
 
+    private fun stubProbe(retrieval: UrlRetrieval) {
+        launcher = StubLauncher(retrieval)
+        viewModel = ShareTargetViewModel(repository, store, launcher)
+    }
+
+    private fun stubProbeFailure() {
+        launcher = StubLauncher(throwing = true)
+        viewModel = ShareTargetViewModel(repository, store, launcher)
+    }
+
+    private fun stubOutcome(outcome: SummarizeOutcome) {
+        launcher = StubLauncher(UrlRetrieval(true, listOf(UrlFetchServer("webfetch", "WebFetch", emptyList())), emptyList()), outcome)
+        viewModel = ShareTargetViewModel(repository, store, launcher)
+    }
+
+    /** F14-R7 / F14-R1 — a shared link and a server that can fetch it: the action is offered. */
+    @Test
+    fun `a shared link offers summarize when a server can fetch it`() {
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "look: https://example.com/a", url = "https://example.com/a"))
+
+        viewModel.refresh()
+        val state = settled() as ShareTargetUiState.Loaded
+
+        assertEquals(SummarizeOption.Ready("https://example.com/a", listOf("webfetch")), state.summarize)
+    }
+
+    /** F14-R10 — no link in the share, no action at all. */
+    @Test
+    fun `a share without a link offers no summarize action`() {
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "plain prose about something else"))
+
+        viewModel.refresh()
+
+        assertEquals(SummarizeOption.NotShared, (settled() as ShareTargetUiState.Loaded).summarize)
+    }
+
+    /** F14-R3 / F14-R4 — nothing configured blocks the action with what to do about it. */
+    @Test
+    fun `no page-fetch tool blocks the action with what to do about it`() {
+        stubProbe(UrlRetrieval(supported = true, servers = emptyList(), failures = emptyList()))
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+
+        viewModel.refresh()
+        val summarize = (settled() as ShareTargetUiState.Loaded).summarize
+
+        assertTrue(summarize is SummarizeOption.Blocked && summarize.reason.contains("No tool"))
+    }
+
+    /** An old dashboard must not read as "nothing is configured" — different fix. */
+    @Test
+    fun `a dashboard that cannot answer the probe says so differently`() {
+        stubProbe(UrlRetrieval.UNSUPPORTED)
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+
+        viewModel.refresh()
+        val summarize = (settled() as ShareTargetUiState.Loaded).summarize
+
+        assertTrue(summarize is SummarizeOption.Blocked && summarize.reason.contains("can't report"))
+    }
+
+    /** Configured but not answering is a third message, naming the server. */
+    @Test
+    fun `a page tool that did not answer is named`() {
+        stubProbe(UrlRetrieval(true, emptyList(), listOf(UrlFetchFailure("webfetch", "timed out after 5s"))))
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+
+        viewModel.refresh()
+        val summarize = (settled() as ShareTargetUiState.Loaded).summarize
+
+        assertTrue(summarize is SummarizeOption.Blocked && summarize.reason.contains("webfetch"))
+    }
+
+    /** The probe request itself failing is not the same as having no tool. */
+    @Test
+    fun `a probe request that fails blocks with a retry`() {
+        stubProbeFailure()
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+
+        viewModel.refresh()
+        val summarize = (settled() as ShareTargetUiState.Loaded).summarize
+
+        assertEquals(SummarizeOption.UNREACHABLE, summarize)
+    }
+
+    /** F14-R5 — no usable model: the sheet takes over and the share survives. */
+    @Test
+    fun `a missing model choice keeps the share staged`() {
+        stubOutcome(SummarizeOutcome.ChooseModel)
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+        viewModel.refresh()
+        settled()
+
+        var choseModel = false
+        viewModel.summarize(onOpened = { error("must not open a thread") }, onChooseModel = { choseModel = true })
+
+        assertTrue(choseModel)
+        assertEquals("https://example.com/a", store.pending.value?.url)
+        assertEquals("https://example.com/a", launcher.launchedWith?.first)
+    }
+
+    /** F14-R6 — a failed launch leaves the reason on the picker and files nothing. */
+    @Test
+    fun `a failed launch shows the reason and files no claim`() {
+        stubOutcome(SummarizeOutcome.Failed("Nope"))
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+        viewModel.refresh()
+        settled()
+
+        viewModel.summarize(onOpened = { error("must not open a thread") }, onChooseModel = { error("must not switch") })
+        val state = viewModel.state.value as ShareTargetUiState.Loaded
+
+        assertEquals("Nope", state.actionError)
+        assertEquals(SummarizeOption.Ready("https://example.com/a", listOf("webfetch")), state.summarize)
+        assertTrue(store.pending.value != null)
+    }
+
+    /** The tap hands the launcher the url and exactly the servers the probe named. */
+    @Test
+    fun `the tap passes the url and the servers the probe named`() {
+        stubOutcome(SummarizeOutcome.Opened("conv-1"))
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
+        viewModel.refresh()
+        settled()
+
+        var opened: String? = null
+        viewModel.summarize(onOpened = { opened = it }, onChooseModel = { error("must not switch") })
+
+        assertEquals("conv-1", opened)
+        assertEquals(listOf("webfetch"), launcher.launchedWith?.second)
+    }
+
     @Test
     fun `rows are in the server's order - updated_at DESC, most recent first`() {
         server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
@@ -131,5 +277,22 @@ class ShareTargetViewModelTest {
         val first = state.conversations[0]
         val second = state.conversations[1]
         assertTrue(first.updatedAt!! > second.updatedAt!!)
+    }
+}
+
+/** Stands in for [SummarizeCoordinator]; records what the tap asked for. */
+private class StubLauncher(
+    private val retrieval: UrlRetrieval = UrlRetrieval.UNSUPPORTED,
+    private val outcome: SummarizeOutcome = SummarizeOutcome.ChooseModel,
+    private val throwing: Boolean = false,
+) : SummarizeLauncher {
+    var launchedWith: Pair<String, List<String>>? = null
+
+    override suspend fun probe(): Result<UrlRetrieval> =
+        if (throwing) Result.failure(RuntimeException("unreachable")) else Result.success(retrieval)
+
+    override suspend fun launch(url: String, serverIds: List<String>): SummarizeOutcome {
+        launchedWith = url to serverIds
+        return outcome
     }
 }

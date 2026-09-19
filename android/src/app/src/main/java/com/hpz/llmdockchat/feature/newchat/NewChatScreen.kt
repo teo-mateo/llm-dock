@@ -197,7 +197,22 @@ private fun NewChatSheetBody(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("new_chat_error"),
                 )
             }
-            StartButton(enabled = state.canStart, creating = state.creating, onClick = onStart)
+            if (state.summarizeUrl != null && !state.canStart && state.selectedModel != null) {
+                Text(
+                    "Summarising needs the page-fetch tool switched on.",
+                    color = colors.amber,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .testTag("new_chat_summarize_blocked"),
+                )
+            }
+            StartButton(
+                enabled = state.canStart,
+                creating = state.creating,
+                label = if (state.summarizeUrl != null) "Summarise" else "Start",
+                onClick = onStart,
+            )
         }
     }
 
@@ -286,7 +301,7 @@ private fun SheetRow(
 }
 
 @Composable
-private fun StartButton(enabled: Boolean, creating: Boolean, onClick: () -> Unit) {
+private fun StartButton(enabled: Boolean, creating: Boolean, label: String, onClick: () -> Unit) {
     val colors = LlmTheme.colors
     Box(
         modifier = Modifier
@@ -306,7 +321,7 @@ private fun StartButton(enabled: Boolean, creating: Boolean, onClick: () -> Unit
             )
         } else {
             Text(
-                "Start",
+                label,
                 color = if (enabled) colors.onAccent else colors.subtle,
                 style = MaterialTheme.typography.titleMedium,
             )

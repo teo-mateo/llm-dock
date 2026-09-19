@@ -230,6 +230,7 @@ fun AppNavHost(
                         ShareTargetViewModel(
                             repository = container.conversationsRepository,
                             store = container.sharedDraftStore,
+                            summarizeLauncher = container.summarizeLauncher,
                         )
                     }
                 },
@@ -243,6 +244,19 @@ fun AppNavHost(
                     }
                 },
                 onNewConversation = { navController.navigate(Destinations.newChat()) },
+                // F14-R7 — the direct path lands on the thread that now owes one
+                // turn; a remembered model that is gone or stopped falls back to
+                // the sheet, with the share still staged (nothing is lost).
+                onSummarize = {
+                    viewModel.summarize(
+                        onOpened = { conversationId ->
+                            navController.navigate(Destinations.thread(conversationId)) {
+                                popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                            }
+                        },
+                        onChooseModel = { navController.navigate(Destinations.newChatSummarize()) },
+                    )
+                },
                 onDismiss = {
                     container.sharedDraftStore.clearPending()
                     navController.popBackStack()
@@ -279,9 +293,13 @@ fun AppNavHost(
 
         composable(
             Destinations.NEW_CHAT,
-            arguments = listOf(navArgument("service") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            arguments = listOf(
+                navArgument("service") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("summarize") { type = NavType.BoolType; defaultValue = false },
+            ),
         ) { backStackEntry ->
             val preselectedServiceName = backStackEntry.arguments?.getString("service")
+            val summarizeMode = backStackEntry.arguments?.getBoolean("summarize") == true
             val viewModel: NewChatViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -294,6 +312,8 @@ fun AppNavHost(
                             preferences = container.newChatPreferences,
                             servicesStreamRepository = container.servicesStreamRepository,
                             preselectedServiceName = preselectedServiceName,
+                            summarizeMode = summarizeMode,
+                            sharedDraftStore = container.sharedDraftStore,
                         )
                     }
                 },
@@ -305,8 +325,10 @@ fun AppNavHost(
                     // F14 — a conversation created from the share picker takes
                     // the staged content with it; the picker below is popped too
                     // so Back from the new thread lands on Chats, not on an
-                    // empty picker.
-                    val hadPendingShare = container.sharedDraftStore.pending.value != null
+                    // empty picker. A summarize run counts as share-origin even
+                    // though the sheet already spent the pending share filing its
+                    // claim — the picker is still what sits under this sheet.
+                    val hadPendingShare = summarizeMode || container.sharedDraftStore.pending.value != null
                     container.sharedDraftStore.reassign(id, container.draftStore)
                     // Replaces the sheet on the back stack — Back from the new
                     // thread returns to the conversation list, not to a sheet
