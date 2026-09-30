@@ -11,22 +11,31 @@ const initialState = {
   deleted: [],
 }
 
-// The engine reports teardown on its own thread, so a stop/die pair can be
-// dispatched after the route's own service-deleted delta. Applying it would
-// re-create the row as a stub with no port, model or alias — a ghost that only a
-// page reload clears. Only these actions prove a deleted name exists again.
-const TOMBSTONE_LIFTING_ACTIONS = ['create', 'start', 'restart']
+// The engine reports teardown on its own thread, so a stop/die pair can land
+// after the route's own service-deleted delta. Applying one to a name the delete
+// already removed would re-insert the row as a stub with no port, model or alias,
+// and only a page reload would clear it. Only these actions prove it exists again.
+const RECREATE_ACTIONS = ['create', 'start', 'restart']
+
+// A snapshot is authoritative about what exists, not about what a delete already
+// proved gone — the delete re-fetches, so the engine's teardown deltas are
+// routinely still in flight behind the snapshot that answers it. Keeping the
+// names it does not list is what stops those deltas re-inserting the row.
+export function applySnapshotToState(state, payload) {
+  const listed = new Set((payload.services || []).map(s => s.name))
+  return {
+    services: payload.services || [],
+    total: payload.total || 0,
+    running: payload.running || 0,
+    stopped: payload.stopped || 0,
+    deleted: (state.deleted || []).filter(n => !listed.has(n)),
+  }
+}
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SNAPSHOT':
-      return {
-        services: action.payload.services || [],
-        total: action.payload.total || 0,
-        running: action.payload.running || 0,
-        stopped: action.payload.stopped || 0,
-        deleted: [],
-      }
+      return applySnapshotToState(state, action.payload)
     case 'DELTA':
       return applyDeltaToState(state, action.payload)
     default:
@@ -53,7 +62,7 @@ export function applyDeltaToState(state, delta) {
     }
   }
 
-  if (deleted.includes(delta.service_name) && !TOMBSTONE_LIFTING_ACTIONS.includes(delta.action)) {
+  if (deleted.includes(delta.service_name) && !RECREATE_ACTIONS.includes(delta.action)) {
     return state
   }
 

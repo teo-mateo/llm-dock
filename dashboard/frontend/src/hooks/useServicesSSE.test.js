@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { applyDeltaToState } from './useServicesSSE'
+import { applyDeltaToState, applySnapshotToState } from './useServicesSSE'
 
-const state = (...services) => ({
+const snapshot = (...services) => ({
   services,
   total: services.length,
   running: services.filter(s => s.status === 'running').length,
   stopped: services.filter(s => s.status === 'exited' || s.status === 'not-created').length,
-  deleted: [],
 })
+
+const state = (...services) => ({ ...snapshot(...services), deleted: [] })
 
 const delta = (service_name, over = {}) => ({
   service_name,
@@ -41,6 +42,32 @@ describe('useServicesSSE delete delta', () => {
       expect(next.services).toEqual([])
       expect(next.total).toBe(0)
     }
+  })
+
+  it('outlives the reconnect snapshot its own delete triggers', () => {
+    const afterDelete = applyDeltaToState(
+      state({ name: 'vllm-gone', status: 'running' }, { name: 'llamacpp-keep', status: 'running' }),
+      deleted,
+    )
+    const afterSnapshot = applySnapshotToState(afterDelete, snapshot({ name: 'llamacpp-keep', status: 'running' }))
+    const afterLateTeardown = applyDeltaToState(
+      afterSnapshot,
+      delta('vllm-gone', { action: 'die', status: 'exited' }),
+    )
+    expect(afterLateTeardown.services.map(s => s.name)).toEqual(['llamacpp-keep'])
+    expect(afterLateTeardown.total).toBe(1)
+  })
+
+  it('lifts the deletion record when a snapshot lists the name again', () => {
+    const afterDelete = applyDeltaToState(state({ name: 'vllm-gone', status: 'running' }), deleted)
+    const afterSnapshot = applySnapshotToState(afterDelete, snapshot({ name: 'vllm-gone', status: 'running' }))
+    expect(afterSnapshot.deleted).toEqual([])
+    const afterTeardown = applyDeltaToState(
+      afterSnapshot,
+      delta('vllm-gone', { action: 'die', status: 'exited' }),
+    )
+    expect(afterTeardown.services.map(s => ({ name: s.name, status: s.status })))
+      .toEqual([{ name: 'vllm-gone', status: 'exited' }])
   })
 
   it('lets a service re-added under the same name back in', () => {
