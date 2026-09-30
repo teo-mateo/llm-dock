@@ -166,7 +166,9 @@ def _payload_for(monkeypatch, entries, names, running=None):
     monkeypatch.setattr(docker_utils, "get_compose_service_ports",
                         lambda: {n: 3300 + i for i, n in enumerate(names)})
     monkeypatch.setattr(docker_utils, "get_openwebui_registered_urls", lambda: [])
-    monkeypatch.setattr(docker_utils, "compute_model_size", lambda *a, **k: (None, None))
+    _ABSENT_MODEL = {"model_host_path": None, "model_present": True, "model_size": None,
+                       "model_size_str": None}
+    monkeypatch.setattr(docker_utils, "inspect_model", lambda *a, **k: _ABSENT_MODEL)
     monkeypatch.setattr(docker_utils, "ComposeManager", lambda *a, **k: _FakeComposeMgr(entries))
     return {s["name"]: s for s in docker_utils.get_docker_services()}
 

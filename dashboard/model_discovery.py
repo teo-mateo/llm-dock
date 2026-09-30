@@ -27,31 +27,40 @@ def resolve_host_path(container_path: str) -> Optional[str]:
     return None
 
 
-def compute_model_size(
+def inspect_model(
     model_path: Optional[str], model_name: Optional[str]
-) -> Tuple[Optional[int], Optional[str]]:
+) -> Dict[str, Any]:
     """
-    Compute model directory size on-the-fly.
+    Stat a service's model artifacts on the host.
 
-    Returns (size_bytes, size_str) or (None, None) if the path cannot be resolved.
+    Returns {"model_host_path", "model_present", "model_size", "model_size_str"}.
+    `model_present` is False only when the host location is known and holds
+    nothing: a path outside _CONTAINER_PATH_MAP has no host counterpart to stat,
+    so absence is not provable there and such a service reports present.
     """
+    info: Dict[str, Any] = {
+        "model_host_path": None,
+        "model_present": True,
+        "model_size": None,
+        "model_size_str": None,
+    }
+
+    host_path = resolve_host_path(model_path) if model_path else None
+    # vLLM: model_name is an HF identifier like "org/model"
+    if not host_path and model_name and "/" in model_name:
+        cache_dir = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+        host_path = str(cache_dir / ("models--" + model_name.replace("/", "--")))
+    if not host_path:
+        return info
+
+    info["model_host_path"] = host_path
     try:
-        target = None
-        if model_path:
-            host_path = resolve_host_path(model_path)
-            if not host_path:
-                return None, None
-            p = Path(host_path)
-            target = p.parent if p.is_file() or p.is_symlink() else p
+        p = Path(host_path)
+        if not p.exists():
+            info["model_present"] = False
+            return info
 
-        # vLLM: model_name is an HF identifier like "org/model"
-        if not target and model_name and "/" in model_name:
-            cache_dir = Path(os.path.expanduser("~/.cache/huggingface/hub"))
-            target = cache_dir / ("models--" + model_name.replace("/", "--"))
-
-        if not target or not target.exists():
-            return None, None
-
+        target = p.parent if p.is_file() or p.is_symlink() else p
         seen_inodes = set()
         size = 0
         for f in target.rglob("*"):
@@ -63,12 +72,27 @@ def compute_model_size(
                     seen_inodes.add(inode)
                     size += st.st_size
 
-        formatter = ModelDiscovery(Path.home())
-        return size, formatter.format_size(size)
+        info["model_size"] = size
+        info["model_size_str"] = ModelDiscovery(Path.home()).format_size(size)
+        if size == 0:
+            info["model_present"] = False
 
     except Exception as e:
-        logger.debug("Could not compute model size: %s", e)
-        return None, None
+        logger.debug("Could not inspect model at %s: %s", host_path, e)
+
+    return info
+
+
+def compute_model_size(
+    model_path: Optional[str], model_name: Optional[str]
+) -> Tuple[Optional[int], Optional[str]]:
+    """
+    Compute model directory size on-the-fly.
+
+    Returns (size_bytes, size_str) or (None, None) if the path cannot be resolved.
+    """
+    info = inspect_model(model_path, model_name)
+    return info["model_size"], info["model_size_str"]
 
 
 class ModelDiscovery:

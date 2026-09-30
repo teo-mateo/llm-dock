@@ -109,3 +109,54 @@ describe('ServicesTable inspect badge', () => {
     expect(badge.querySelector('i.fa-magnifying-glass')).toBeTruthy()
   })
 })
+
+describe('ServicesTable missing-model warning', () => {
+  it('warns only on a service whose model files are gone', () => {
+    mockServices = [
+      svc('llamacpp-gone', {
+        model_missing: true,
+        model_host_path: '/home/u/.cache/huggingface/hub/models--x/snapshots/a/gone.gguf',
+      }),
+      svc('llamacpp-here', { model_size_str: '18.42 GB' }),
+    ]
+
+    const { table } = renderTable()
+
+    const warning = within(table).getAllByText('model missing')
+    expect(warning).toHaveLength(1)
+    expect(within(table).getByText('llamacpp-gone').closest('td')).toHaveTextContent('model missing')
+    expect(within(table).getByText('llamacpp-here').closest('td')).not.toHaveTextContent('model missing')
+
+    const warningTitle = within(table).getByTitle(
+      /Model files are not on disk, so this service cannot load them/
+    ).title
+    expect(warningTitle).toContain('Expected at /home/u/.cache')
+
+    // The size cell stops pretending there is merely nothing to measure.
+    const goneSize = within(table).getByText('llamacpp-gone').closest('tr').querySelectorAll('td')[4]
+    expect(goneSize.textContent).toBe('Missing')
+    expect(within(table).getByText('llamacpp-here').closest('tr').querySelectorAll('td')[4].textContent).toBe('18.42 GB')
+    expect(within(table).getByText('llamacpp-here').closest('tr').querySelectorAll('td')[4].textContent).not.toBe('Missing')
+  })
+
+  it('carries a warning icon', () => {
+    mockServices = [svc('llamacpp-gone', { model_missing: true })]
+
+    const { table } = renderTable()
+
+    const badge = within(table).getByTitle(/Model files are not on disk/)
+    expect(badge.querySelector('i.fa-triangle-exclamation')).toBeTruthy()
+  })
+
+  it('shows the warning on the mobile card too', () => {
+    mockServices = [svc('llamacpp-gone', { model_missing: true })]
+
+    render(
+      <MemoryRouter>
+        <ServicesTable />
+      </MemoryRouter>
+    )
+
+    expect(screen.getAllByText('model missing').length).toBeGreaterThan(1)
+  })
+})

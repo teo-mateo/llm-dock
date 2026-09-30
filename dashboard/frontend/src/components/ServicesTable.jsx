@@ -18,6 +18,29 @@ function InspectBadge() {
   )
 }
 
+function ModelMissingBadge({ service }) {
+  if (!service.model_missing) return null
+  const where = service.model_host_path ? ` Expected at ${service.model_host_path}.` : ''
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning-subtle text-warning-fg"
+      title={`Model files are not on disk, so this service cannot load them.${where}`}
+    >
+      <i className="fa-solid fa-triangle-exclamation"></i>
+      model missing
+    </span>
+  )
+}
+
+function ModelSizeCell({ service }) {
+  if (service.model_missing) {
+    return (
+      <span className="text-warning-fg text-xs">Missing</span>
+    )
+  }
+  return <span className="text-fg-muted text-xs">{service.model_size_str || '—'}</span>
+}
+
 function getEngine(name) {
   if (name === 'open-webui') return 'WebUI'
   if (name.startsWith('llamacpp-')) return 'llama.cpp'
@@ -553,6 +576,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
             <span className="break-all">{service.name}</span>
           )}
           {service.inspect && <InspectBadge />}
+          <ModelMissingBadge service={service} />
           <CopyButton text={service.name} />
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -579,7 +603,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
         </div>
         <div>
           <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Size</p>
-          <span className="text-fg-muted text-xs">{service.model_size_str || '—'}</span>
+          <ModelSizeCell service={service} />
         </div>
         <div>
           <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Open WebUI</p>
@@ -630,6 +654,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
               <span>{service.name}</span>
             )}
             {service.inspect && <InspectBadge />}
+            <ModelMissingBadge service={service} />
             <CopyButton text={service.name} />
           </div>
           {service.api_key && (
@@ -648,8 +673,8 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
       </td>
       <PortCell service={service} onSetPublicPort={onSetPublicPort} />
       <td className="px-6 py-3"><EngineBadge engine={engine} /></td>
-      <td className="px-6 py-3 text-fg-muted text-xs">
-        {service.model_size_str || '—'}
+      <td className="px-6 py-3">
+        <ModelSizeCell service={service} />
       </td>
       <td className="px-6 py-3">
         {infra ? (

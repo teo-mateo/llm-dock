@@ -62,6 +62,20 @@ function StatusBadge({ status, transitioning }) {
   )
 }
 
+function ModelMissingChip({ config }) {
+  if (!config?.model_missing) return null
+  const where = config.model_host_path ? ` Expected at ${config.model_host_path}.` : ''
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning-subtle text-warning-fg"
+      title={`Model files are not on disk, so this service cannot load them.${where}`}
+    >
+      <i className="fa-solid fa-triangle-exclamation"></i>
+      model missing
+    </span>
+  )
+}
+
 function EngineBadge({ templateType }) {
   const engineMap = {
     llamacpp: { label: 'llama.cpp', classes: 'bg-badge-llamacpp-bg text-badge-llamacpp-fg' },
@@ -657,6 +671,8 @@ export default function ServiceDetailsHeader({ serviceName, config, runtime, tra
         <StatusBadge status={status} transitioning={transitioning} />
 
         {templateType && <EngineBadge templateType={templateType} />}
+
+        <ModelMissingChip config={config} />
 
         {config?.model_size_str && (
           <span className="text-xs text-fg-muted">{config.model_size_str}</span>
