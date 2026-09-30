@@ -123,7 +123,9 @@ def _payload_with_registered_urls(monkeypatch, engine, registered_urls):
     monkeypatch.setattr(
         docker_utils, "get_openwebui_registered_urls", lambda: list(registered_urls)
     )
-    monkeypatch.setattr(docker_utils, "compute_model_size", lambda *a, **k: (None, None))
+    _ABSENT_MODEL = {"model_host_path": None, "model_present": True, "model_size": None,
+                       "model_size_str": None}
+    monkeypatch.setattr(docker_utils, "inspect_model", lambda *a, **k: _ABSENT_MODEL)
     monkeypatch.setattr(
         docker_utils, "ComposeManager",
         lambda *a, **k: _FakeComposeMgr(

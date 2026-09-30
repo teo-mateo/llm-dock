@@ -13,7 +13,7 @@ import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service, get_image_info
-from model_discovery import compute_model_size
+from model_discovery import inspect_model
 from service_templates import generate_api_key
 from key_rotation import rotate_keys_in_db
 from flag_metadata import (
@@ -108,12 +108,13 @@ def get_service(service_name):
         if not config:
             return jsonify({"error": f'Service "{service_name}" not found'}), 404
 
-        # Compute model size on-the-fly
-        size, size_str = compute_model_size(
+        model_info = inspect_model(
             config.get("model_path"), config.get("model_name")
         )
-        config["model_size"] = size
-        config["model_size_str"] = size_str
+        config["model_size"] = model_info["model_size"]
+        config["model_size_str"] = model_info["model_size_str"]
+        config["model_missing"] = not model_info["model_present"]
+        config["model_host_path"] = model_info["model_host_path"]
 
         return jsonify({"service_name": service_name, "config": config}), 200
 

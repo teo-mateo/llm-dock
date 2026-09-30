@@ -8,7 +8,7 @@ from flask import current_app
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
 from flag_metadata import openwebui_base_url, default_engine_image
-from model_discovery import compute_model_size
+from model_discovery import inspect_model
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
 
@@ -261,6 +261,13 @@ def get_docker_services():
         expected_url = openwebui_base_url(svc_name, engine)
         return expected_url in openwebui_urls
 
+    model_info_map = {
+        service_name: inspect_model(
+            model_path_map.get(service_name), model_name_map.get(service_name)
+        )
+        for service_name in allowed_services
+    }
+
     # Get existing containers
     containers = client.containers.list(
         all=True, filters={"label": f"com.docker.compose.project={COMPOSE_PROJECT}"}
@@ -273,10 +280,7 @@ def get_docker_services():
         if service_name in allowed_services:
             # Get exit code for crashed containers
             exit_code = container.attrs.get("State", {}).get("ExitCode", 0)
-            model_size, model_size_str = compute_model_size(
-                model_path_map.get(service_name),
-                model_name_map.get(service_name),
-            )
+            model_info = model_info_map[service_name]
             container_map[service_name] = {
                 "name": service_name,
                 "status": container.status,
@@ -288,8 +292,10 @@ def get_docker_services():
                 "host_port": host_port_for(service_name),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
-                "model_size": model_size,
-                "model_size_str": model_size_str,
+                "model_size": model_info["model_size"],
+                "model_size_str": model_info["model_size_str"],
+                "model_missing": not model_info["model_present"],
+                "model_host_path": model_info["model_host_path"],
                 "kind": kind_map.get(service_name, "chat"),
                 "favorite": favorite_map.get(service_name, False),
                 # Engine key for request mapping. It used to be an internal map
@@ -312,10 +318,7 @@ def get_docker_services():
             services.append(container_map[service_name])
         else:
             # Service defined but no container yet
-            model_size, model_size_str = compute_model_size(
-                model_path_map.get(service_name),
-                model_name_map.get(service_name),
-            )
+            model_info = model_info_map[service_name]
             services.append(
                 {
                     "name": service_name,
@@ -327,8 +330,10 @@ def get_docker_services():
                     "host_port": host_port_for(service_name),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),
-                    "model_size": model_size,
-                    "model_size_str": model_size_str,
+                    "model_size": model_info["model_size"],
+                    "model_size_str": model_info["model_size_str"],
+                    "model_missing": not model_info["model_present"],
+                    "model_host_path": model_info["model_host_path"],
                     "kind": kind_map.get(service_name, "chat"),
                     "favorite": favorite_map.get(service_name, False),
                     "template_type": template_type_map.get(service_name, ""),
