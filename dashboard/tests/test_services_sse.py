@@ -172,6 +172,65 @@ class TestSSEEndpoint:
         assert own[0]["status"] == "running"
         assert own[0]["action"] == "start"
 
+    def test_sse_wakes_for_a_delta_during_the_keepalive_wait(self, client_and_services_path):
+        """A delta is written out when it arrives, not when the keepalive ends.
+
+        The idle branch is a wait, not a sleep: an event landing mid-wait must
+        not be held back a full SSE_KEEPALIVE_INTERVAL_S, or a client keeps
+        rendering a service the dashboard has already deleted.
+        """
+        client, _ = client_and_services_path
+        from routes import services as services_route
+        from services import event_manager
+
+        response = client.get("/api/services/stream", headers=_auth_headers())
+        assert response.status_code == 200
+
+        keepalive = threading.Event()
+        arrived = {}
+
+        def process_chunks():
+            for chunk in response.response:
+                decoded = chunk.decode("utf-8")
+                if decoded.startswith(": keepalive"):
+                    keepalive.set()
+                    continue
+                if "data: " not in decoded:
+                    continue
+                try:
+                    payload = json.loads(decoded[len("data: "):decoded.find("\n\n")].strip())
+                except json.JSONDecodeError:
+                    continue
+                if payload.get("service_name") == "test-sse-wake-svc":
+                    arrived["at"] = time.monotonic()
+                    arrived["payload"] = payload
+                    return
+
+        threading.Thread(target=process_chunks, daemon=True).start()
+
+        assert keepalive.wait(timeout=10), "No keepalive after the snapshot"
+
+        emitted = time.monotonic()
+        event_manager.emit({
+            "service_name": "test-sse-wake-svc",
+            "status": "deleted",
+            "action": "service-deleted",
+            "container_id": "",
+            "timestamp": time.time(),
+        })
+
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and "at" not in arrived:
+            time.sleep(0.005)
+
+        assert "at" in arrived, "No delta reached the client"
+        assert arrived["payload"]["action"] == "service-deleted"
+        latency = arrived["at"] - emitted
+        assert latency < 1.0, (
+            f"delta held {latency:.2f}s by the keepalive wait "
+            f"(interval {services_route.SSE_KEEPALIVE_INTERVAL_S}s)"
+        )
+
     def test_sse_headers(self, client_and_services_path):
         """Verify that SSE endpoint sets proper headers."""
         client, _ = client_and_services_path

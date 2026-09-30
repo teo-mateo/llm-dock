@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import ServicesTable from './ServicesTable'
+import { fetchAPI } from '../api'
+
+const mockRefresh = vi.fn()
 
 // The badge is driven by the service payload: the SSE delta (metadata-changed)
 // rewrites the service object in the hook's state, so re-rendering the table
@@ -21,7 +24,7 @@ vi.mock('../hooks/useServicesSSE', () => ({
     total: mockServices.length,
     running: mockServices.filter(s => s.status === 'running').length,
     stopped: mockServices.length,
-    refresh: vi.fn(),
+    refresh: mockRefresh,
     toggleFavorite: vi.fn(),
   }),
 }))
@@ -158,5 +161,35 @@ describe('ServicesTable missing-model warning', () => {
     )
 
     expect(screen.getAllByText('model missing').length).toBeGreaterThan(1)
+  })
+})
+
+describe('ServicesTable delete', () => {
+  afterEach(() => {
+    mockRefresh.mockClear()
+    vi.unstubAllGlobals()
+  })
+
+  it('re-reads the list after the delete succeeds', async () => {
+    mockServices = [svc('llamacpp-a', { status: 'running' })]
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const { table } = renderTable()
+    fireEvent.click(within(table).getAllByTitle('Delete')[0])
+
+    await waitFor(() => expect(fetchAPI).toHaveBeenCalledWith('/services/llamacpp-a', { method: 'DELETE' }))
+    expect(mockRefresh).toHaveBeenCalled()
+  })
+
+  it('leaves the list alone when the delete fails', async () => {
+    mockServices = [svc('llamacpp-a', { status: 'running' })]
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(fetchAPI).mockRejectedValueOnce(new Error('docker compose is busy'))
+
+    const { table } = renderTable()
+    fireEvent.click(within(table).getAllByTitle('Delete')[0])
+
+    await waitFor(() => expect(screen.getByText(/docker compose is busy/)).toBeTruthy())
+    expect(mockRefresh).not.toHaveBeenCalled()
   })
 })

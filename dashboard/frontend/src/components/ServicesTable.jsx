@@ -282,12 +282,17 @@ export default function ServicesTable() {
     setTransitioning(prev => ({ ...prev, [name]: 'deleting' }))
     try {
       await fetchAPI(`/services/${name}`, { method: 'DELETE' })
+      // The service-deleted delta is only one route's opinion: this tab's
+      // stream can miss it, and the engine keeps reporting teardown for the
+      // container compose just removed. Reconnecting pulls the authoritative
+      // snapshot, so the row is gone when the request is.
+      refresh()
     } catch (err) {
       setToast(`Failed to delete ${name}: ${err.message}`)
     } finally {
       setTransitioning(prev => { const n = { ...prev }; delete n[name]; return n })
     }
-  }, [])
+  }, [refresh])
 
   if (error) {
     return <p className="text-danger-fg mt-6">Services: {error}</p>

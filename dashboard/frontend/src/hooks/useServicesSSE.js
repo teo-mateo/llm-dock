@@ -8,7 +8,14 @@ const initialState = {
   total: 0,
   running: 0,
   stopped: 0,
+  deleted: [],
 }
+
+// The engine reports teardown on its own thread, so a stop/die pair can be
+// dispatched after the route's own service-deleted delta. Applying it would
+// re-create the row as a stub with no port, model or alias — a ghost that only a
+// page reload clears. Only these actions prove a deleted name exists again.
+const TOMBSTONE_LIFTING_ACTIONS = ['create', 'start', 'restart']
 
 function reducer(state, action) {
   switch (action.type) {
@@ -18,6 +25,7 @@ function reducer(state, action) {
         total: action.payload.total || 0,
         running: action.payload.running || 0,
         stopped: action.payload.stopped || 0,
+        deleted: [],
       }
     case 'DELTA':
       return applyDeltaToState(state, action.payload)
@@ -26,9 +34,10 @@ function reducer(state, action) {
   }
 }
 
-function applyDeltaToState(state, delta) {
+export function applyDeltaToState(state, delta) {
   const services = [...state.services]
   const serviceIndex = services.findIndex(s => s.name === delta.service_name)
+  const deleted = state.deleted || []
 
   if (delta.action === 'service-deleted') {
     if (serviceIndex !== -1) {
@@ -40,7 +49,12 @@ function applyDeltaToState(state, delta) {
       total: services.length,
       running: services.filter(s => s.status === 'running').length,
       stopped: services.filter(s => s.status === 'exited' || s.status === 'not-created').length,
+      deleted: deleted.includes(delta.service_name) ? deleted : [...deleted, delta.service_name],
     }
+  }
+
+  if (deleted.includes(delta.service_name) && !TOMBSTONE_LIFTING_ACTIONS.includes(delta.action)) {
+    return state
   }
 
   if (serviceIndex === -1 && (delta.status === 'removed' || delta.status === 'deleted')) {
@@ -75,6 +89,7 @@ function applyDeltaToState(state, delta) {
     total: services.length,
     running: services.filter(s => s.status === 'running').length,
     stopped: services.filter(s => s.status === 'exited' || s.status === 'not-created').length,
+    deleted: deleted.length ? deleted.filter(n => n !== delta.service_name) : deleted,
   }
 }
 

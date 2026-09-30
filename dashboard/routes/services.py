@@ -914,15 +914,21 @@ def services_stream():
             yield "data: " + json.dumps(payload) + "\n\n"
 
             events_queue = []
+            # The idle branch parks in wake.wait(), not sleep(), so a delta that
+            # lands mid-wait is written out at once instead of after a full
+            # keepalive interval — a client would otherwise keep showing a row
+            # the server has already deleted.
+            wake = threading.Event()
 
             def on_event(event):
-                """Callback that queues events for the SSE stream."""
                 events_queue.append(event)
+                wake.set()
 
             callback = on_event
             event_manager.register_callback(callback)
 
             while True:
+                wake.clear()
                 if events_queue:
                     event = events_queue.pop(0)
                     payload = {
@@ -938,7 +944,7 @@ def services_stream():
                     yield "data: " + json.dumps(payload) + "\n\n"
                 else:
                     yield ": keepalive\n\n"
-                    time.sleep(SSE_KEEPALIVE_INTERVAL_S)
+                    wake.wait(SSE_KEEPALIVE_INTERVAL_S)
 
         except GeneratorExit:
             logger.info("SSE client disconnected")
