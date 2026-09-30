@@ -328,9 +328,10 @@ Flow:
   name, or the first line of text) so the user sees the payload before
   choosing.
 - Back clears the pending share (F14-R2).
-- F14-R6's "New conversation" row navigates to the existing `NEW_CHAT`
-  destination; on `onConversationCreated` the staged content is
-  reassigned to the new conversation id.
+- F14-R6's "New conversation" row is the first row of the list, above
+  the conversations; it navigates to the existing `NEW_CHAT` destination,
+  and on `onConversationCreated` the staged content is reassigned to the
+  new conversation id.
 
 ### 4.5 Thread integration
 
@@ -396,6 +397,13 @@ No new endpoints, no new server code (R-A).
   reason (no client-side parser); declaring `application/pdf` in the
   intent filter and then failing at parse time would be worse than not
   appearing for them at all.
+- **F14-R6 shipped in the wrong branch of the picker.** The entry was
+  wired into the empty state only, so a phone with at least one
+  conversation — every real phone — saw no way to start a chat to share
+  into, and the criterion still read as met because the test fixture had
+  no conversations. It is now the first row of the loaded list, which is
+  what "at the top" asked for. The empty-state button stays: it is the
+  same navigation, and that state has no list to put a row in.
 - **F14-R7 breaks rule R-A, deliberately.** `?probe=url-fetch` is one
   additive query parameter on an endpoint the app already calls; without
   it the phone cannot tell whether a configured server can fetch a URL at
