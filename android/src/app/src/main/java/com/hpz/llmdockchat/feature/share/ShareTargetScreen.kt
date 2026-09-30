@@ -166,6 +166,12 @@ private fun ShareTargetContent(
                                 modifier = Modifier.fillMaxSize().testTag("share_target_list"),
                                 contentPadding = PaddingValues(bottom = 24.dp),
                             ) {
+                                // F14-R6 — the entry sits above the list rather than
+                                // only inside its empty state, because the share that
+                                // wants a brand-new chat is ordinary, not a first-run
+                                // case: a phone with one conversation must still be
+                                // able to start one.
+                                item { NewChatEntry(onNewConversation) }
                                 items(state.conversations, key = { it.id }) { item ->
                                     ConversationRowBody(
                                         item = item,
@@ -180,6 +186,57 @@ private fun ShareTargetContent(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * F14-R6 — start a chat to send this to. Opens the existing F03 new-chat sheet
+ * with the share still pending, so the created thread opens with the content
+ * staged and backing out of the sheet lands back here with it intact.
+ */
+@Composable
+private fun NewChatEntry(onNewConversation: () -> Unit) {
+    val colors = LlmTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onNewConversation)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .testTag("share_target_new_chat"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.accentSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                DesignLabIcons.Plus,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                "New chat",
+                color = colors.fg,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "Start a conversation for this",
+                color = colors.subtle,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
