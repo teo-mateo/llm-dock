@@ -510,6 +510,64 @@ class ThreadViewModelTest {
         assertNull(state.actionError)
     }
 
+    @Test
+    fun `a failed stop re-enables Stop and keeps the streamed partial`() = threadTest {
+        conversation()
+        transport.payloads = listOf(RUN_STARTED, delta("Once upon"))
+        transport.stayOpen = true
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        server.takeRequest()
+        viewModel.onComposerChange("write an essay")
+        viewModel.send()
+        viewModel.awaitState { it.thread.streaming?.runId != null }
+
+        server.enqueue(
+            MockResponse.Builder().code(503).body("""{"error": "cancel unavailable"}""").build(),
+        )
+        viewModel.stop()
+
+        val state = viewModel.awaitState { it.thread.streaming?.stopping == false && it.actionError != null }
+        assertEquals("cancel unavailable", state.actionError)
+        assertEquals("Once upon", state.thread.streaming?.content)
+        assertTrue("the failed run is still the active one", state.runActive)
+    }
+
+    @Test
+    fun `a stop retried after a failed stop sends exactly one new cancel`() = threadTest {
+        conversation()
+        transport.payloads = listOf(RUN_STARTED, delta("Once upon"))
+        transport.stayOpen = true
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        server.takeRequest()
+        viewModel.onComposerChange("write an essay")
+        viewModel.send()
+        viewModel.awaitState { it.thread.streaming?.runId != null }
+        server.enqueue(
+            MockResponse.Builder().code(503).body("""{"error": "cancel unavailable"}""").build(),
+        )
+        viewModel.stop()
+        viewModel.awaitState { it.thread.streaming?.stopping == false && it.actionError != null }
+
+        server.takeRequest() // the failed first cancel, recorded; drained so the retry is next
+        val requestsBeforeRetry = server.requestCount
+        server.enqueue(MockResponse.Builder().body("""{"run": {"id": "run-1", "status": "cancelled"}}""").build())
+        viewModel.stop()
+
+        val retry = withTimeout(10_000) { server.takeRequest() }
+        assertEquals("POST", retry.method)
+        assertEquals("/api/chat/conversations/$CONVERSATION_ID/cancel-active-run", retry.url.encodedPath)
+        assertEquals("""{"expected_run_id":"run-1"}""", retry.body?.utf8())
+        viewModel.awaitState { it.thread.streaming?.stopping == true }
+        withTimeout(10_000) {
+            while (server.requestCount < requestsBeforeRetry + 1) Thread.sleep(20)
+        }
+        assertEquals("the retry is one cancel request, not two", requestsBeforeRetry + 1, server.requestCount)
+    }
+
     // -- F04-R10 · leaving is not cancelling ---------------------------------
 
     /**
