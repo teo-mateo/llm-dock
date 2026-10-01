@@ -533,7 +533,9 @@ class ThreadViewModel(
             var runId: String? = initialRunId
             var failureMessage: String? = null
             var sawAnyFrame = false
+            var sawTerminal = false
             var error: Throwable?
+            var refetch: Result<ConversationDetail>? = null
             val backoff = ReconnectBackoff(reconnectInitialMs, reconnectMaxMs)
 
             while (true) {
@@ -541,15 +543,34 @@ class ThreadViewModel(
                 runId = attempt.runId ?: runId
                 failureMessage = attempt.failureMessage ?: failureMessage
                 sawAnyFrame = sawAnyFrame || attempt.sawAnyFrame
+                sawTerminal = sawTerminal || attempt.sawTerminal
                 error = attempt.error
 
-                val id = runId
-                if (error == null || id == null || error.appError !is AppError.Network) break
+                if (sawTerminal) break
 
-                if (attempt.sawAnyFrame) backoff.reset()
-                setReconnecting(true)
-                delay(backoff.next())
-                source = repository.reattach(id)
+                val id = runId
+                val network = error != null && error.appError is AppError.Network
+                if (network && id != null) {
+                    if (attempt.sawAnyFrame) backoff.reset()
+                    setReconnecting(true)
+                    delay(backoff.next())
+                    source = repository.reattach(id)
+                    continue
+                }
+                if (error == null) {
+                    if (attempt.sawAnyFrame) backoff.reset()
+                    setReconnecting(true)
+                    val conversation = reconcileAfterEof(backoff)
+                    val active = conversation.activeRun?.takeIf { conversation.isGenerating }
+                    if (active == null) {
+                        refetch = Result.success(conversation)
+                        break
+                    }
+                    runId = active.id
+                    source = repository.reattach(active.id)
+                    continue
+                }
+                break
             }
 
             finishRun(
@@ -559,7 +580,23 @@ class ThreadViewModel(
                 restoreOnEarlyFailure = restoreOnEarlyFailure,
                 messagesBeforeEdit = messagesBeforeEdit,
                 reattach = reattach,
+                refetch = refetch,
             )
+        }
+    }
+
+    /**
+     * A close without a terminal frame is the transport's verdict, not the run's:
+     * a proxy or a server restart drops a healthy observer, and a cancel closes
+     * the stream with no frame at all. Only the run's own status settles it, so
+     * the conversation is refetched — and a server that cannot answer keeps the
+     * turn *not done* rather than making it done, retrying on the same capped
+     * backoff that governs reattachment.
+     */
+    private suspend fun reconcileAfterEof(backoff: ReconnectBackoff): ConversationDetail {
+        while (true) {
+            repository.load(conversationId).getOrNull()?.let { return it }
+            delay(backoff.next())
         }
     }
 
@@ -569,6 +606,7 @@ class ThreadViewModel(
     ): RunAttempt {
         val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage, knownRunId)
         var failureMessage: String? = null
+        var terminal = false
 
         var pendingFlush: Job? = null
         val scheduleFlush = {
@@ -589,7 +627,10 @@ class ThreadViewModel(
                         accumulator.append(event)
                         scheduleFlush()
                     }
-                    is RunEvent.Failed -> failureMessage = event.message
+                    is RunEvent.Failed -> {
+                        failureMessage = event.message
+                        terminal = true
+                    }
                     is RunEvent.RunStarted -> {
                         event.reasoningLevelNote?.let { note ->
                             loaded()?.let { _state.value = it.copy(reasoningNotice = note) }
@@ -599,9 +640,11 @@ class ThreadViewModel(
                     }
                     is RunEvent.RunStatus -> {
                         if (event.status == "failed") failureMessage = event.error ?: failureMessage
+                        if (event.status !in LIVE_RUN_STATUSES) terminal = true
                     }
                     is RunEvent.ConversationUpdated -> applyTitle(event.title)
-                    RunEvent.Done, is RunEvent.MessageSaved, is RunEvent.Heartbeat -> Unit
+                    is RunEvent.MessageSaved -> terminal = true
+                    RunEvent.Done, is RunEvent.Heartbeat -> Unit
                     is RunEvent.Unknown -> Unit
                     else -> {
                         accumulator.apply(event)
@@ -625,6 +668,7 @@ class ThreadViewModel(
             runId = accumulator.runId,
             failureMessage = failureMessage,
             sawAnyFrame = accumulator.sawAnyFrame,
+            sawTerminal = terminal,
         )
     }
 
@@ -642,6 +686,7 @@ class ThreadViewModel(
         restoreOnEarlyFailure: PendingUserMessage?,
         messagesBeforeEdit: List<ChatMessage>? = null,
         reattach: Boolean = false,
+        refetch: Result<ConversationDetail>? = null,
     ) {
         val current = loaded()
 
@@ -664,8 +709,8 @@ class ThreadViewModel(
             return
         }
 
-        val refetch = repository.load(conversationId)
-        val refetched = refetch.getOrNull()
+        val refetchResult = refetch ?: repository.load(conversationId)
+        val refetched = refetchResult.getOrNull()
         val latest = loaded() ?: return
 
         if (refetched == null) {
@@ -683,7 +728,7 @@ class ThreadViewModel(
                 ),
                 actionError = failureMessage
                     ?: error?.appError?.displayMessage
-                    ?: refetch.exceptionOrNull()?.appError?.displayMessage,
+                    ?: refetchResult.exceptionOrNull()?.appError?.displayMessage,
             )
             return
         }
@@ -721,6 +766,7 @@ class ThreadViewModel(
 
     companion object {
         const val DEFAULT_COALESCE_WINDOW_MS = 24L
+        private val LIVE_RUN_STATUSES = setOf("queued", "running")
     }
 }
 
@@ -729,6 +775,7 @@ private class RunAttempt(
     val runId: String?,
     val failureMessage: String?,
     val sawAnyFrame: Boolean,
+    val sawTerminal: Boolean,
 )
 
 private class TurnAccumulator(
