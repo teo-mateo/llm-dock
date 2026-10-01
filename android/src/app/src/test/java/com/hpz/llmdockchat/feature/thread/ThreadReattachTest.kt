@@ -367,6 +367,68 @@ class ThreadReattachTest {
         assertEquals("""{"expected_run_id":"$STREAM_RUN_ID"}""", cancel.body?.utf8())
     }
 
+    /**
+     * A cancel failure is about the run it was sent for, never the one on
+     * screen when it finally lands: run-1's delayed 503 must not undo the
+     * pending Stop the user applied to run-2.
+     */
+    @Test
+    fun `a late cancel failure for an earlier run leaves the newer run's pending stop alone`() = threadTest {
+        conversation("conversation_completed.json")
+        val runOneEnds = CompletableDeferred<Unit>()
+        transport.script(
+            ScriptedSseTransport.Leg(
+                payloads = listOf(RUN_STARTED, delta("half an answer")),
+                endGate = runOneEnds,
+                tailPayloads = listOf(DONE, MESSAGE_SAVED),
+            ),
+            ScriptedSseTransport.Leg(
+                payloads = listOf("""{"type": "run_started", "run_id": "run-2"}"""),
+                park = true,
+            ),
+        )
+        server.enqueue(
+            MockResponse.Builder()
+                .code(503)
+                .body("""{"error": "cancel unavailable"}""")
+                .bodyDelay(1500, TimeUnit.MILLISECONDS)
+                .build(),
+        )
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("first")
+        viewModel.send()
+        viewModel.awaitState("the first run") { it.thread.streaming?.runId == STREAM_RUN_ID }
+        viewModel.stop()
+        viewModel.awaitState("the pending stop") { it.thread.streaming?.stopping == true }
+
+        server.takeRequest() // load's own GET
+        val cancelOne = withTimeout(TIMEOUT_MS) { server.takeRequest() }
+        assertEquals("""{"expected_run_id":"$STREAM_RUN_ID"}""", cancelOne.body?.utf8())
+
+        conversation("conversation_completed.json") // the terminal's refetch, queued before the gate opens
+        runOneEnds.complete(Unit)
+        viewModel.awaitState("run 1 finished") { it.thread.streaming == null && !it.runActive }
+        viewModel.onComposerChange("second")
+        viewModel.send()
+        viewModel.awaitState("the second run") { it.thread.streaming?.runId == "run-2" }
+        server.enqueue(MockResponse.Builder().body("""{"run": {"id": "run-2", "status": "cancelled"}}""").build())
+        viewModel.stop()
+        viewModel.awaitState("the pending stop on the newer run") { it.thread.streaming?.stopping == true }
+
+        val settled = viewModel.awaitState("the late failure") { it.actionError == "cancel unavailable" }
+        assertEquals("the newer run's pending Stop must survive", true, settled.thread.streaming?.stopping)
+        assertEquals("run-2", settled.thread.streaming?.runId)
+
+        withTimeout(TIMEOUT_MS) { while (server.requestCount < 4) Thread.sleep(20) }
+        assertEquals("two loads, two cancels — nothing else", 4, server.requestCount)
+        server.takeRequest() // the terminal's refetch
+        val cancelTwo = server.takeRequest()
+        assertEquals("""{"expected_run_id":"run-2"}""", cancelTwo.body?.utf8())
+    }
+
     // -- F09-R4 · honest offline behaviour ---------------------------------------
 
     /**

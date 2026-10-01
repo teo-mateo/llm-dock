@@ -265,11 +265,22 @@ class ThreadViewModel(
         viewModelScope.launch {
             repository.cancelActiveRun(conversationId, runId).fold(
                 onSuccess = { if (turn == null) reloadConversation() },
-                onFailure = { failure ->
-                    loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
-                },
+                onFailure = { failure -> restoreStop(runId, failure.appError.displayMessage) },
             )
         }
+    }
+
+    private fun restoreStop(expectedRunId: String?, message: String) {
+        val latest = loaded() ?: return
+        val streaming = latest.thread.streaming
+        val cancelsMarkedRun = streaming?.stopping == true &&
+            (expectedRunId == null || streaming.runId == expectedRunId || streaming.runId == null)
+        _state.value = latest.copy(
+            thread = latest.thread.copy(
+                streaming = if (cancelsMarkedRun) streaming?.copy(stopping = false) else streaming,
+            ),
+            actionError = message,
+        )
     }
 
     private suspend fun reloadConversation() {
