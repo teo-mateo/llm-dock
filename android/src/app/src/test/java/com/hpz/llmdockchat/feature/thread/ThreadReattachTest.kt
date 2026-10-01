@@ -523,6 +523,167 @@ class ThreadReattachTest {
         assertEquals(MessageRole.USER, state.thread.messages.last().role)
     }
 
+    // -- #262 · a silent close is not the end of the run -------------------------
+
+    /**
+     * The reviewed failure. The server ended the connection mid-run without a
+     * terminal frame — a proxy close, a restart, anything that looks identical
+     * from here — and the run lives on. The turn must not be discarded, the
+     * composer must stay locked, and recovery must ride the run's GET stream:
+     * the user's message was posted once and must stay posted once.
+     */
+    @Test
+    fun `a send that closes silently while the run lives on recovers by reattaching`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an answer"), DONE, MESSAGE_SAVED)),
+        )
+        conversation("conversation_active_run.json")
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+        assertNull("a reconciled close is not an error", settled.actionError)
+        assertEquals("the answer arrived exactly once", "hello there", settled.thread.messages.last().content)
+
+        val posts = transport.requests.filter { it.method == "POST" }
+        assertEquals("the turn was submitted once", 1, posts.size)
+        val gets = transport.requests.filter { it.method == "GET" }
+        assertEquals("recovery rode the run's GET stream", 1, gets.size)
+        assertEquals("/api/chat/runs/$ACTIVE_RUN_ID/stream", gets.single().path)
+    }
+
+    /**
+     * Mid-flight, before the recovery connection is allowed to open: the
+     * partial is still on screen, the banner says reconnecting, the composer
+     * is locked, and nothing claims the turn failed.
+     */
+    @Test
+    fun `a silent close reads as reconnecting and keeps the partial on screen`() = threadTest {
+        conversation("conversation_completed.json")
+        val holdReattach = CompletableDeferred<Unit>()
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an answer"))),
+            ScriptedSseTransport.Leg(
+                payloads = listOf(RUN_STARTED, delta("half an answer"), DONE, MESSAGE_SAVED),
+                openGate = holdReattach,
+            ),
+        )
+        conversation("conversation_active_run.json")
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        val mid = viewModel.awaitState("reconnecting after the silent close") {
+            it.thread.streaming?.reconnecting == true
+        }
+        assertEquals("the partial was discarded", "half an answer", mid.thread.streaming?.content)
+        assertTrue("the composer must stay locked while the server run lives", mid.runActive)
+        assertNull(mid.actionError)
+
+        holdReattach.complete(Unit)
+        viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+    }
+
+    /**
+     * Reconciliation itself is what is temporarily unavailable here — a 500 on
+     * the conversation. Not knowing is not knowing-the-run-is-done: the turn
+     * stays reconnecting, and the next attempt that succeeds drives it to the
+     * saved answer.
+     */
+    @Test
+    fun `a close whose reconciliation is refused keeps the turn not-done until the server answers`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an answer"), DONE, MESSAGE_SAVED)),
+        )
+        server.enqueue(
+            MockResponse.Builder().code(500).body("""{"error": "dashboard is restarting"}""").build(),
+        )
+        conversation("conversation_active_run.json")
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        viewModel.awaitState("reconnecting while the server cannot answer") {
+            it.thread.streaming?.reconnecting == true && it.thread.streaming?.content == "half an"
+        }
+        val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+        assertNull("the refused reconciliation must not surface as an error", settled.actionError)
+    }
+
+    /**
+     * The genuinely completed stream — `[DONE]`, `message_saved`, title tail,
+     * then the close — still settles on its own evidence: one connection for
+     * the whole send, no reconcile round trip, no stuck generating state.
+     */
+    @Test
+    fun `a completed stream with its title tail settles without a second subscribe`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(
+                payloads = listOf(
+                    RUN_STARTED,
+                    delta("hello there"),
+                    DONE,
+                    MESSAGE_SAVED,
+                    """{"type": "conversation_updated", "id": "$CONVERSATION_ID", "title": "Rome history"}""",
+                ),
+            ),
+        )
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+        assertNull(settled.actionError)
+        assertEquals("the send opened exactly one stream", 1, transport.requests.size)
+    }
+
+    /**
+     * The probe's own scenario, on the reattach path: a thread opened over a
+     * live run, the stream dies silently, and the same GET discipline recovers
+     * it — replay replaces, terminal lands, no phantom error.
+     */
+    @Test
+    fun `a reattached stream that closes silently reconciles and resubscribes`() = threadTest {
+        conversation("conversation_active_run.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an answer"), DONE, MESSAGE_SAVED)),
+        )
+        conversation("conversation_active_run.json")
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitState("the replay") { it.thread.streaming?.content == "half an" }
+
+        val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+        assertNull(settled.actionError)
+        assertEquals(2, transport.requests.size)
+        assertTrue("recovery used GETs only", transport.requests.all { it.method == "GET" })
+    }
+
     private companion object {
         const val TIMEOUT_MS = 10_000L
         const val REFUSALS = 5
