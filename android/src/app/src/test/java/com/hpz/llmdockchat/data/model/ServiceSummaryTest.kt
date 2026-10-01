@@ -61,6 +61,13 @@ class ServiceSummaryTest {
         assertFalse(service.isRunning)
     }
 
+    @Test
+    fun `a sglang service is chat-capable — the prefix table knows it, unlike an unrecognised name`() {
+        val service = ServiceSummary("sglang-qwen3-8-flash-next-mixed-nvfp4-fp8", "running", "chat")
+        assertEquals(Engine.SGLANG, service.engine)
+        assertTrue(service.isChatCapable)
+    }
+
     /**
      * F15-R8's proof for the 90 % of services that declare no ladder: the new
      * field defaults to empty, so a row that predates F15 is still equal to

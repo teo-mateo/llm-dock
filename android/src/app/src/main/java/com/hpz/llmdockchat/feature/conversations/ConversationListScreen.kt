@@ -603,6 +603,7 @@ private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
     Engine.LLAMA_CPP -> engineLlamaCpp
     Engine.VLLM -> engineVllm
     Engine.DS4 -> engineDs4
+    Engine.SGLANG -> engineSglang
     Engine.OPEN_ROUTER -> engineOpenRouter
     Engine.UNKNOWN -> engineUnknown
 }
