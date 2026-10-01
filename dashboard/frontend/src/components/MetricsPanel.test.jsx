@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
 import MetricsPanel from './MetricsPanel'
 
 vi.mock('../api', () => ({
@@ -13,7 +13,32 @@ vi.mock('../hooks/useServiceMetrics', () => ({
 
 import useServiceMetrics from '../hooks/useServiceMetrics'
 
+afterEach(cleanup)
+
 describe('MetricsPanel', () => {
+  it('reports SGLang pool capacity separately from active and cached slots', () => {
+    useServiceMetrics.mockReturnValue({ engine: 'sglang', metrics: {
+      'sglang:max_total_num_tokens': { '{}': 200000 },
+      'sglang:kv_used_tokens': { '{}': 64 },
+      'sglang:kv_evictable_tokens': { '{}': 1200 },
+      'sglang:kv_available_tokens': { '{}': 198736 },
+      'sglang:mamba_used_tokens': { '{}': 2 },
+      'sglang:mamba_evictable_tokens': { '{}': 8 },
+      'sglang:mamba_available_tokens': { '{}': 20 },
+      'sglang:hicache_host_used_tokens': { '{}': 5000 },
+      'sglang:hicache_host_total_tokens': { '{}': 679296 },
+      'sglang:spec_accept_length': { '{}': 2.825 },
+      'sglang:graph_memory_usage_gb': { 'phase=prefill': 0, 'phase=target_verify': 0.36, 'phase=draft_decode': 0.34 },
+    }, history: [{}], loading: false, error: null })
+    render(<MetricsPanel serviceName="sglang-next" enabled />)
+    expect(screen.getByText('KV tokens')).toBeInTheDocument()
+    expect(screen.getByText('Mamba state slots')).toBeInTheDocument()
+    expect(screen.getByText('200,000')).toBeInTheDocument()
+    expect(screen.getByText('30')).toBeInTheDocument()
+    expect(screen.getByText('679,296')).toBeInTheDocument()
+    expect(screen.getByText('2.83')).toBeInTheDocument()
+    expect(screen.getByText('0.7')).toBeInTheDocument()
+  })
   it('shows no metrics available when metrics empty and no history', () => {
     useServiceMetrics.mockReturnValue({
       metrics: {},

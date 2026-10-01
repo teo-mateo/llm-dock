@@ -104,7 +104,7 @@ def test_unknown_engine_reports_no_image(monkeypatch):
     assert _payload(monkeypatch, "not-an-engine")["image"] == ""
 
 
-@pytest.mark.parametrize("engine", ["llamacpp", "ik_llamacpp", "vllm"])
+@pytest.mark.parametrize("engine", ["llamacpp", "ik_llamacpp", "vllm", "sglang"])
 def test_not_created_payload_honours_the_services_json_override(monkeypatch, engine):
     config = {"api_key": "k", "template_type": engine, "image": "my-pinned:build"}
     assert _payload(monkeypatch, engine, config)["image"] == "my-pinned:build"

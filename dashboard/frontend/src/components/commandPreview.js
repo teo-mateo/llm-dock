@@ -29,6 +29,11 @@ export function renderCommandPreview(config, apiKey, params) {
       parts.push(`--model-dir ${trimmed.slice(0, trimmed.length - name.length - 1)}`)
       parts.push(`--model-name ${name}`)
     }
+  } else if (config.template_type === 'sglang') {
+    parts.push('llm-dock-sglang')
+    if (config.model_path) parts.push(`--model-path ${config.model_path}`)
+    if (config.alias) parts.push(`--served-model-name ${config.alias}`)
+    parts.push(`--api-key ${apiKey || '***'}`)
   } else if (config.template_type === 'ninfer') {
     // NInfer takes the .ninfer artifact positionally; auth is --api-key like llama.cpp.
     parts.push('ninfer-serve')
@@ -45,11 +50,18 @@ export function renderCommandPreview(config, apiKey, params) {
 
   for (const { flag, value } of params) {
     if (!flag) continue
+    if (config.template_type === 'sglang' && flag.startsWith('env:')) continue
     if (value) {
       parts.push(`${flag} ${value}`)
     } else {
       parts.push(flag)
     }
+  }
+
+  if (config.template_type === 'sglang') {
+    const assignments = params.filter(p => p.flag?.startsWith('env:'))
+      .map(p => `${p.flag.slice(4)}=${JSON.stringify(String(p.value || ''))}`)
+    if (assignments.length) parts.unshift(`env ${assignments.join(' ')}`)
   }
 
   return parts.join(' \\\n  ')

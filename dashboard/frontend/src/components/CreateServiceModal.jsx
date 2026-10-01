@@ -12,10 +12,11 @@ const ENGINES = [
   { type: 'ds4', label: 'ds4', hint: 'DeepSeek V4 Flash file' },
   { type: 'tabbyapi', label: 'TabbyAPI', hint: 'EXL3 model directory' },
   { type: 'ninfer', label: 'NInfer', hint: '.ninfer artifact' },
+  { type: 'sglang', label: 'SGLang / Pennyroyal', hint: 'RTX PRO 6000 model directory' },
 ]
 
 // Engines whose model is a file on disk rather than a HuggingFace repo id.
-const FILE_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4', 'tabbyapi', 'ninfer'])
+const FILE_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4', 'tabbyapi', 'ninfer', 'sglang'])
 
 // Engines for which the discovered-file picker is meaningful; TabbyAPI wants a
 // model directory and NInfer wants .ninfer artifacts, neither of which
@@ -255,7 +256,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
   }, [result, onClose, navigate])
 
   const previewConfig = isFileEngine
-    ? { template_type: templateType, model_path: modelPath.trim() }
+    ? { template_type: templateType, model_path: modelPath.trim(), alias: alias.trim() }
     : { template_type: templateType, model_name: modelName.trim() }
 
   const inputClass = 'w-full bg-surface-strong border border-border-strong rounded px-3 py-2 text-fg focus:outline-none focus:border-accent disabled:opacity-50'
@@ -361,7 +362,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                       type="text"
                       value={modelPath}
                       onChange={e => setModelPath(e.target.value)}
-                      placeholder={templateType === 'tabbyapi'
+                      placeholder={(templateType === 'tabbyapi' || templateType === 'sglang')
                         ? '/hf-cache/… or /local-models/… (model directory)'
                         : '/hf-cache/… or /local-models/…'}
                       className={`${inputClass} font-mono text-sm`}

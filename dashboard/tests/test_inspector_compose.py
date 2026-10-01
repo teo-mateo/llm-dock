@@ -12,6 +12,7 @@ INTERNAL_PORTS = {
     "ds4": 8000,
     "tabbyapi": 8000,
     "ninfer": 8080,
+    "sglang": 8001,
 }
 
 TEMPLATE_TYPES = list(INTERNAL_PORTS)
@@ -36,7 +37,7 @@ def _config_for(template_type: str, port: int = 3301) -> dict:
             "api_key": "key-test",
             "params": {},
         }
-    if template_type == "ds4":
+    if template_type in ("ds4", "sglang"):
         return {
             "template_type": template_type,
             "alias": "a",
@@ -71,6 +72,22 @@ def manager(tmp_path, monkeypatch):
     compose.write_text("services:\n")
     services = tmp_path / "services.json"
     return ComposeManager(str(compose), services_db_file=str(services))
+
+
+def test_used_ports_accepts_inspector_bindings_and_long_syntax(manager):
+    manager.compose_path.write_text('''services:
+  plain:
+    ports: ["3301:8000"]
+  inspected:
+    ports: ["127.0.0.1:34001:8080", "[::1]:34002:8001/tcp"]
+  long:
+    ports:
+      - target: 8000
+        published: "3380"
+        host_ip: 127.0.0.1
+''')
+    assert manager.get_used_ports() == {3301, 34001, 34002, 3380}
+    assert manager.get_next_available_port(start_port=3301) == 3302
 
 
 @pytest.mark.parametrize("template_type", TEMPLATE_TYPES)

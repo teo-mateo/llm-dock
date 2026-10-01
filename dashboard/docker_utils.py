@@ -153,7 +153,7 @@ def check_docker():
 
 
 def _service_image(template_type, config):
-    if template_type in ("llamacpp", "ik_llamacpp", "vllm"):
+    if template_type in ("llamacpp", "ik_llamacpp", "vllm", "sglang"):
         return config.get("image") or default_engine_image(template_type)
     return default_engine_image(template_type)
 

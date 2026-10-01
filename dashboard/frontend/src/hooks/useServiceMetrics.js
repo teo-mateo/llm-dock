@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
-import { getValue, POLL_INTERVAL } from '../utils'
+import { getValue, totalValue, POLL_INTERVAL } from '../utils'
 
 const MAX_HISTORY = 60
 
@@ -30,7 +30,23 @@ const NINFER_TO_VLLM = {
   'ninfer:prefix_cache_hits_total': 'vllm:prefix_cache_hits_total',
 }
 
-const RENAMES = { llamacpp: LLAMACPP_TO_VLLM, ninfer: NINFER_TO_VLLM }
+const SGLANG_TO_VLLM = {
+  'sglang:prompt_tokens_total': 'vllm:prompt_tokens_total',
+  'sglang:generation_tokens_total': 'vllm:generation_tokens_total',
+  'sglang:num_running_reqs': 'vllm:num_requests_running',
+  'sglang:num_queue_reqs': 'vllm:num_requests_waiting',
+  'sglang:token_usage': 'vllm:kv_cache_usage_perc',
+  'sglang:num_retracted_requests_total': 'vllm:num_preemptions_total',
+}
+
+const RENAMES = { sglang: SGLANG_TO_VLLM, llamacpp: LLAMACPP_TO_VLLM, ninfer: NINFER_TO_VLLM }
+
+function modeTotal(metrics, mode) {
+  const samples = metrics['sglang:realtime_tokens_total']
+  if (!samples || Object.keys(samples).length === 0) return undefined
+  return Object.entries(samples).reduce((sum, [labels, value]) =>
+    labels.split(';').includes(`mode=${mode}`) ? sum + value : sum, 0)
+}
 
 function normalizeMetrics(raw, engine) {
   const rename = RENAMES[engine]
@@ -115,8 +131,15 @@ export default function useServiceMetrics({ serviceName, enabled }) {
 
         const now = Date.now() / 1000
 
-        const promptTotal = getValue(normalized, 'vllm:prompt_tokens_total')
-        const genTotal = getValue(normalized, 'vllm:generation_tokens_total')
+        // SGLang's request totals tick on completion and split streaming from
+        // non-streaming. Scheduler counters tick during long generation.
+        const realtime = eng === 'sglang' && normalized['sglang:realtime_tokens_total']
+        const promptTotal = eng === 'sglang'
+          ? modeTotal(normalized, 'prefill_compute') ?? totalValue(normalized, 'vllm:prompt_tokens_total')
+          : getValue(normalized, 'vllm:prompt_tokens_total')
+        const genTotal = eng === 'sglang'
+          ? modeTotal(normalized, 'decode') ?? totalValue(normalized, 'vllm:generation_tokens_total')
+          : getValue(normalized, 'vllm:generation_tokens_total')
         const kvCache = getValue(normalized, 'vllm:kv_cache_usage_perc')
         const prefixHits = getValue(normalized, 'vllm:prefix_cache_hits_total')
         const prefixQueries = getValue(normalized, 'vllm:prefix_cache_queries_total')
@@ -138,7 +161,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         const prev = prevRef.current
         let promptTokensRate = 0
         let generationTokensRate = 0
-        let preemptRate = 0
+        let preemptRate = eng === 'sglang' && preemptTotal == null ? undefined : 0
 
         const dt = prev.timestamp != null ? now - prev.timestamp : 0
         if (eng === 'llamacpp') {
@@ -169,12 +192,17 @@ export default function useServiceMetrics({ serviceName, enabled }) {
             generationTokensRate = genTokensSec != null ? Math.max(0, genTokensSec) * busy : 0
           }
         } else if (dt > 0) {
-          if (prev.counterPrompt != null && promptTotal != null) {
+          const sameSource = eng !== 'sglang' || prev.realtime === Boolean(realtime)
+          if (sameSource && prev.counterPrompt != null && promptTotal != null) {
             promptTokensRate = Math.max(0, (promptTotal - prev.counterPrompt) / dt)
           }
-          if (prev.counterGen != null && genTotal != null) {
+          if (sameSource && prev.counterGen != null && genTotal != null) {
             generationTokensRate = Math.max(0, (genTotal - prev.counterGen) / dt)
           }
+        }
+        if (eng === 'sglang' && !realtime) {
+          const throughput = getValue(normalized, 'sglang:gen_throughput')
+          if (throughput != null) generationTokensRate = (running ?? 0) > 0 ? Math.max(0, throughput) : 0
         }
         if (dt > 0 && prev.counterPreempt != null && preemptTotal != null) {
           preemptRate = Math.max(0, (preemptTotal - prev.counterPreempt) / dt)
@@ -188,6 +216,13 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         let specAcceptRatio = undefined
         if (specAccepted != null && specDraftTokens != null && specDraftTokens > 0) {
           specAcceptRatio = specAccepted / specDraftTokens
+        }
+
+        if (eng === 'sglang') {
+          // Pennyroyal publishes these as current gauges. Do not fabricate
+          // counters or mix a rolling acceptance rate with lifetime totals.
+          prefixHitRatio = getValue(normalized, 'sglang:cache_hit_rate')
+          specAcceptRatio = getValue(normalized, 'sglang:spec_accept_rate')
         }
 
         const dataPoint = {
@@ -212,7 +247,8 @@ export default function useServiceMetrics({ serviceName, enabled }) {
           timestamp: now,
           counterPrompt: promptTotal,
           counterGen: genTotal,
-          counterPreempt: preemptTotal
+          counterPreempt: preemptTotal,
+          realtime: Boolean(realtime)
         }
 
         if (mountedRef.current) setLoading(false)

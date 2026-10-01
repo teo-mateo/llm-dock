@@ -256,6 +256,10 @@ function generateCommandPreview() {
                 preview += `${p.flag}\n`;
             }
         });
+    } else if (engine === 'sglang') {
+        preview = `llm-dock-sglang --model-path ${modelPath || '/local-models/checkpoint'}\n`;
+        preview += `--served-model-name ${alias}\n--api-key ${apiKey}\n`;
+        paramsArray.forEach(p => { preview += `${p.flag}${p.value ? ` ${p.value}` : ''}\n`; });
     } else if (engine === 'ds4') {
         // ds4-server has no --api-key flag (auth not enforced by the container).
         preview = 'ds4-server ';
@@ -506,7 +510,7 @@ async function openUpdateServiceModal(serviceName) {
         document.getElementById('api-key').value = config.api_key || '';
 
         // Engine-specific fields
-        if (engine === 'llamacpp' || engine === 'ds4') {
+        if (engine === 'llamacpp' || engine === 'ds4' || engine === 'sglang') {
             document.getElementById('model-path').value = config.model_path || '';
             // Hide file selector in update mode (no model data available)
             document.getElementById('gguf-file-selector').classList.add('hidden');
@@ -567,8 +571,8 @@ function handleEngineChange() {
     const modelPathInput = document.getElementById('model-path');
     const paramsSection = document.getElementById('params-section');
 
-    if (engine === 'llamacpp' || engine === 'ds4') {
-        // Both use a GGUF file path (model_path).
+    if (engine === 'llamacpp' || engine === 'ds4' || engine === 'sglang') {
+        // These engines use a container model path (file or directory).
         modelPathGroup.classList.remove('hidden');
         modelNameGroup.classList.add('hidden');
         modelPathInput.required = true;
@@ -626,7 +630,7 @@ async function handleCreateServiceSubmit(event) {
             if (port) requestBody.port = parseInt(port);
             if (apiKey) requestBody.api_key = apiKey;
 
-            if (engine === 'llamacpp' || engine === 'ds4') {
+            if (engine === 'llamacpp' || engine === 'ds4' || engine === 'sglang') {
                 requestBody.model_path = document.getElementById('model-path').value;
             } else {
                 requestBody.model_name = document.getElementById('model-hf-name').value;
@@ -661,7 +665,7 @@ async function handleCreateServiceSubmit(event) {
                 params: getServiceParams(),
             };
 
-            if (engine === 'llamacpp' || engine === 'ds4') {
+            if (engine === 'llamacpp' || engine === 'ds4' || engine === 'sglang') {
                 requestBody.model_path = document.getElementById('model-path').value || currentServiceConfig.model_path;
             }
             if (engine === 'vllm') {

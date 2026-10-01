@@ -1,0 +1,49 @@
+  {{ service_name }}:
+    image: {{ image }}
+    container_name: {{ service_name }}
+    restart: no
+    init: true
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8001"
+
+    shm_size: 16gb
+    stop_grace_period: 120s
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    # The upstream NIXL POSIX cache uses io_uring.
+    security_opt:
+      - seccomp=unconfined
+
+    environment:
+      - HF_HUB_OFFLINE=1
+      - CACHE_BASE=/cache
+      - NIXL_STORAGE_BASE=/nixl
+{% for k, v in (extra_env or {}).items() %}
+      - {{ (k ~ '=' ~ v) | tojson }}
+{% endfor %}
+
+    volumes:
+      - ${HOME}/.cache/huggingface:/hf-cache:ro
+      - ${HOME}/.cache/models:/local-models:ro
+      - ${HOME}/.cache/llm-dock/sglang/{{ service_name }}/compiler:/cache
+      - ${HOME}/.cache/llm-dock/sglang/{{ service_name }}/nixl:/nixl
+      - ./chat-templates:/chat-templates:ro
+{% for volume in (extra_volumes or []) %}
+      - {{ volume }}
+{% endfor %}
+
+    networks:
+      - llm-network
+
+    command: {{ sglang_args | tojson }}

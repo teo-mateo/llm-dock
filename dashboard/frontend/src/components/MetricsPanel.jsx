@@ -4,6 +4,7 @@ import TokenSparkline from './TokenSparkline'
 import RequestStrip from './RequestStrip'
 import GaugesRow from './GaugesRow'
 import SpecDecodeBar from './SpecDecodeBar'
+import SglangMetricsDetails from './SglangMetricsDetails'
 import { getValue, totalValue } from '../utils'
 
 function fmt(n) {
@@ -12,7 +13,7 @@ function fmt(n) {
 }
 
 export default function MetricsPanel({ serviceName, enabled }) {
-  const { metrics, history, loading, error } = useServiceMetrics({ serviceName, enabled })
+  const { metrics, history, loading, error, engine } = useServiceMetrics({ serviceName, enabled })
 
   const latest = history.length > 0 ? history[history.length - 1] : {}
 
@@ -99,6 +100,7 @@ export default function MetricsPanel({ serviceName, enabled }) {
           </div>
         </div>
       )}
+      {engine === 'sglang' && hasHistory && <SglangMetricsDetails metrics={metrics} />}
       </div>
     </div>
   )

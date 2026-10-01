@@ -18,6 +18,7 @@ MANDATORY_FIELDS = {
     "ds4": ["port", "model_path", "alias", "api_key"],
     "tabbyapi": ["port", "model_path", "alias", "api_key"],
     "ninfer": ["port", "model_path", "alias", "api_key"],
+    "sglang": ["port", "model_path", "alias", "api_key"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
@@ -37,6 +38,7 @@ ENGINE_INTERNAL_PORTS = {
     "ds4": 8000,
     "tabbyapi": 8000,
     "ninfer": 8080,
+    "sglang": 8001,
 }
 
 
@@ -46,7 +48,7 @@ def engine_internal_port(template_type: str) -> int:
 
 
 # Image a service runs on when services.json carries no override. llamacpp,
-# ik_llamacpp and vllm honour config["image"]; the rest hardcode this in their
+# ik_llamacpp, vllm and sglang honour config["image"]; the rest hardcode this in their
 # template. A new engine adds a row here.
 ENGINE_IMAGES = {
     "llamacpp": "llm-dock-llamacpp",
@@ -55,6 +57,7 @@ ENGINE_IMAGES = {
     "ds4": "llm-dock-ds4",
     "tabbyapi": "llm-dock-tabbyapi",
     "ninfer": "llm-dock-ninfer",
+    "sglang": "llm-dock-sglang",
 }
 
 
@@ -1989,6 +1992,80 @@ NINFER_FLAGS = {
 # ============================================
 
 
+# Pennyroyal profiles are configured before the recipe derives its persistent
+# cache namespace. These CLI switches belong to our launcher; env knobs belong
+# to the pinned upstream recipes, not arbitrary sglang serve overrides.
+SGLANG_FLAGS = {
+    "context_length": {
+        "cli": "env:PENNY_CONTEXT_LENGTH", "type": "int", "default": "524288",
+        "description": "Flash-Next maximum context (up to 524288 tokens)",
+    },
+    "memory_fraction": {
+        "cli": "env:PENNY_MEM_FRACTION_STATIC", "type": "float", "default": "0.981",
+        "description": "Flash-Next fraction of GPU memory reserved for static allocations",
+    },
+    "prefill_chunk_size": {
+        "cli": "env:PENNY_PREFILL_CHUNK_SIZE", "type": "int", "default": "4096",
+        "description": "Flash-Next prefill chunk size in tokens",
+    },
+    "profile": {
+        "cli": "--profile", "type": "string", "default": "next",
+        "description": "Pennyroyal profile: next, next-plain, or 27b",
+        "tip": "next uses Flash-Next NVFP4 with FR-Spec; next-plain uses native NEXTN without FR-Spec; 27b uses an FP8 target with a separate DFlash2 draft.",
+    },
+    "draft_model_path": {
+        "cli": "--draft-model-path", "type": "path",
+        "description": "DFlash2 draft checkpoint directory (required for 27b)",
+    },
+    "hicache_size": {
+        "cli": "env:PENNY_HICACHE_SIZE_GB", "type": "int",
+        "description": "Host RAM for HiCache in decimal GB (Next: 32; 27b: 96)",
+        "tip": "A positive integer. Flash-Next also needs about 48 GiB for RAM-backed PLE. Leave room for model loading and the OS.",
+    },
+    "nixl_budget": {
+        "cli": "env:SGLANG_HICACHE_NIXL_MAX_CACHE_GB", "type": "int",
+        "description": "NIXL disk-cache cleanup budget in GiB (0 = unlimited)",
+    },
+    "cuda_visible_devices": {
+        "cli": "env:CUDA_VISIBLE_DEVICES", "type": "string", "default": "0",
+        "description": "GPU indices visible to the runtime (single model GPU by default)",
+    },
+    "cuda_compat": {
+        "cli": "env:SGLANG_USE_CUDA_COMPAT", "type": "string", "default": "auto",
+        "description": "Container CUDA compatibility libraries: auto, 0 (off), or 1 (on)",
+        "tip": "auto selects container CUDA 13.0 user-mode libraries for drivers older than R580. The host toolkit and kernel driver are unchanged. Forward compatibility depends on the GPU and driver.",
+    },
+    "online_fp8": {
+        "cli": "env:SGLANG_SM120_ONLINE_MXFP8", "type": "string", "default": "false",
+        "description": "Opt into Flash-Next online FP8 (true or false)",
+    },
+    "max_running_requests": {
+        "cli": "env:MAX_RUNNING_REQUESTS", "type": "int", "default": "4",
+        "description": "Flash-Next concurrent request capacity",
+    },
+    "max_mamba_cache_size": {
+        "cli": "env:MAX_MAMBA_CACHE_SIZE", "type": "int", "default": "24",
+        "description": "Flash-Next Mamba state slots",
+    },
+    "max_total_tokens": {
+        "cli": "env:MAX_TOTAL_TOKENS", "type": "int",
+        "description": "Flash-Next shared KV token pool (not per-request context)",
+    },
+    "ple_backend": {
+        "cli": "env:PENNY_PLE_BACKEND", "type": "string", "default": "ram",
+        "description": "Flash-Next PLE storage: ram or nvme",
+    },
+    "ple_nvme_model": {
+        "cli": "env:PENNY_PLE_NVME_MODEL", "type": "path",
+        "description": "Prepared NVMe PLE model overlay directory",
+    },
+    "reasoning_effort": {
+        "cli": "env:PENNY_REASONING_EFFORT", "type": "string", "default": "medium",
+        "description": "Default reasoning effort (per-request selection takes precedence)",
+    },
+}
+
+
 def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     """Get flag metadata for template type"""
     if template_type in ("llamacpp", "ik_llamacpp"):
@@ -2003,6 +2080,8 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return TABBYAPI_FLAGS
     elif template_type == "ninfer":
         return NINFER_FLAGS
+    elif template_type == "sglang":
+        return SGLANG_FLAGS
     else:
         return {}
 
@@ -2153,6 +2232,42 @@ def validate_service_config(
     # write routes.
     if "inspect" in config and not isinstance(config["inspect"], bool):
         errors.append(f"inspect must be a boolean, got {type(config['inspect']).__name__}")
+
+    if template_type == "sglang":
+        profile = params.get("--profile", "next")
+        if profile not in ("next", "next-plain", "27b"):
+            errors.append("SGLang --profile must be next, next-plain, or 27b")
+        if profile == "27b" and not (
+            params.get("--draft-model-path") or params.get("env:DRAFT_MODEL")
+        ):
+            errors.append("SGLang 27b requires --draft-model-path (DFlash2 directory)")
+        allowed_cli = {"--profile", "--draft-model-path"}
+        for flag in params:
+            if flag.startswith("-") and flag not in allowed_cli:
+                errors.append(
+                    f"SGLang profile flag '{flag}' is not supported; use the recipe's env: knobs "
+                    "so persistent-cache identity matches the runtime configuration"
+                )
+        hicache = params.get("env:PENNY_HICACHE_SIZE_GB")
+        if hicache is not None and str(hicache).strip():
+            if not str(hicache).isdigit() or int(hicache) < 1:
+                errors.append("PENNY_HICACHE_SIZE_GB must be a positive integer")
+        for name in ("PENNY_CONTEXT_LENGTH", "PENNY_PREFILL_CHUNK_SIZE",
+                     "MAX_RUNNING_REQUESTS", "MAX_MAMBA_CACHE_SIZE"):
+            value = params.get(f"env:{name}")
+            if value is not None:
+                if not str(value).isdigit() or int(value) < 1:
+                    errors.append(f"{name} must be a positive integer")
+                elif name == "PENNY_CONTEXT_LENGTH" and int(value) > 524288:
+                    errors.append("PENNY_CONTEXT_LENGTH cannot exceed 524288")
+        fraction = params.get("env:PENNY_MEM_FRACTION_STATIC")
+        if fraction is not None:
+            try:
+                accepted_fraction = 0 < float(fraction) < 1
+            except (TypeError, ValueError):
+                accepted_fraction = False
+            if not accepted_fraction:
+                errors.append("PENNY_MEM_FRACTION_STATIC must be between 0 and 1")
 
     # TabbyAPI's argparse rejects a bare boolean flag (every flag takes a value),
     # so an empty-valued bool param would render `--flag` and crash at startup.

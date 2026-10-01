@@ -73,12 +73,15 @@ class ComposeManager:
         for service_config in services.values():
             ports = service_config.get("ports", [])
             for port_mapping in ports:
-                # Parse "3301:8080" format
+                # Short syntax may include an inspector's loopback binding:
+                # "127.0.0.1:34001:8080" (or a bracketed IPv6 address).
                 if isinstance(port_mapping, str) and ":" in port_mapping:
-                    host_port = int(port_mapping.split(":")[0])
+                    host_port = int(port_mapping.rsplit(":", 2)[-2])
                     used_ports.add(host_port)
                 elif isinstance(port_mapping, int):
                     used_ports.add(port_mapping)
+                elif isinstance(port_mapping, dict) and port_mapping.get("published") is not None:
+                    used_ports.add(int(port_mapping["published"]))
 
         return used_ports
 
@@ -325,6 +328,18 @@ class ComposeManager:
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
             context["image"] = config.get("image", default_engine_image(template_type))
+        elif template_type == "sglang":
+            context["model_path"] = config["model_path"]
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
+            context["image"] = config.get("image") or default_engine_image(template_type)
+            # Compose accepts argv directly. Preserve paths/keys containing
+            # whitespace rather than parsing them as part of a folded command.
+            context["sglang_args"] = [
+                "--model-path", config["model_path"],
+                "--served-model-name", config["alias"],
+                "--api-key", config["api_key"],
+            ]
         elif template_type == "ds4":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
@@ -372,6 +387,12 @@ class ComposeManager:
                 env_var = flag_name[4:]  # strip "env:" prefix
                 context[env_var.lower()] = flag_value
                 extra_env[env_var] = flag_value
+                continue
+
+            if template_type == "sglang":
+                context["sglang_args"].append(flag_name)
+                if str(flag_value).strip():
+                    context["sglang_args"].append(str(flag_value))
                 continue
 
             rendered = render_cli_flag(flag_name, str(flag_value))

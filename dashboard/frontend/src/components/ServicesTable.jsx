@@ -48,6 +48,7 @@ function getEngine(name) {
   if (name.startsWith('vllm-')) return 'vLLM'
   if (name.startsWith('ds4-')) return 'DS4'
   if (name.startsWith('exl3-')) return 'EXL3'
+  if (name.startsWith('sglang-')) return 'SGLang'
   if (name.startsWith('ninfer-')) return 'NInfer'
   return 'Unknown'
 }
@@ -95,6 +96,7 @@ function EngineBadge({ engine }) {
     'vLLM': 'bg-badge-vllm-bg text-badge-vllm-fg',
     'DS4': 'bg-badge-ds4-bg text-badge-ds4-fg',
     'EXL3': 'bg-badge-exl3-bg text-badge-exl3-fg',
+    'SGLang': 'bg-badge-sglang-bg text-badge-sglang-fg',
     'NInfer': 'bg-badge-ninfer-bg text-badge-ninfer-fg',
     'WebUI': 'bg-badge-webui-bg text-badge-webui-fg',
     'Unknown': 'bg-badge-neutral-bg text-badge-neutral-fg'

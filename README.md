@@ -3,7 +3,7 @@
 A dashboard for running local LLM inference services out of Docker Compose: it discovers
 the models you already have on disk, generates and maintains the compose file for you, and
 gives every service a port, an API key, a live metrics panel and a captured request log.
-Six inference engines are first-class, and a full chat UI (plus an Android client) talks to
+Seven inference engines are first-class, and a full chat UI (plus an Android client) talks to
 them through one OpenAI-compatible surface.
 
 ![LLM-Dock services dashboard](docs/images/dashboard.png)
@@ -12,11 +12,11 @@ them through one OpenAI-compatible surface.
 
 ## Features
 
-- **Six inference engines** - llama.cpp, ik_llama.cpp, vLLM, ds4, TabbyAPI (EXL3) and NInfer, each with its own compose template, flag reference and build script
+- **Seven inference engines** - llama.cpp, ik_llama.cpp, vLLM, ds4, TabbyAPI (EXL3), NInfer and SGLang / Pennyroyal, each with its own compose template, flag reference and build script
 - **Model discovery** - scans the HuggingFace cache and `~/.cache/models`, translates host paths into the paths containers see, and offers each file in the create-service dialog
 - **Service management** - create, rename, start, stop, restart, delete; live status over SSE; per-service container logs with a live tail; compose YAML preview before you commit a change
 - **GPU monitoring** - live memory / utilisation / temperature / power plus a 60-second history chart
-- **Live metrics** - Prometheus scrape per service where the engine exposes one (vLLM, llama.cpp, NInfer): running/waiting requests, token throughput, KV-cache usage, prefix-cache hits, speculative-decode acceptance
+- **Live metrics** - Prometheus scrape per service where the engine exposes one (vLLM, llama.cpp, NInfer, SGLang): running/waiting requests, token throughput, KV-cache usage, prefix-cache hits, speculative-decode acceptance
 - **Benchmarking** - run `llama-bench` from the dashboard against any llama.cpp service, with live output, stored history, and one click to apply the winning flags back to the service
 - **Built-in chat** - streaming conversations with reasoning levels, per-conversation sampling parameters, projects with a shared file workspace, tool calling over MCP, and a zero-trace **ghost chat** mode
 - **Request inspector** - toggle it on a service and a capturing proxy takes over its public port: every inference request and response (stream assembled), credentials redacted in storage only
@@ -144,8 +144,8 @@ curl http://localhost:3301/v1/chat/completions \
   }'
 ```
 
-Local servers take a single model, so `model` is optional for them - with one exception:
-NInfer 400s a request that omits it, so send the service alias there.
+Local servers take a single model. `model` is optional for most engines; NInfer and
+SGLang require it, so send the service alias for those engines.
 
 ### 4. Watch what it does
 
@@ -164,6 +164,7 @@ the llama.cpp family). Logs stream live and can be scrolled while the container 
 | [ds4](#ds4) | model file | 8000 | no | no | no | `./build-ds4.sh` |
 | [TabbyAPI](#tabbyapi) | EXL3 dir | 8000 | no | no | no | `./build-tabbyapi.sh` |
 | [NInfer](#ninfer) | `.ninfer` file | 8080 | yes | no | no | `./build-ninfer.sh` |
+| [SGLang / Pennyroyal](#sglang--pennyroyal) | safetensors dir | 8001 | yes | no | yes | `./build-sglang.sh` |
 
 "Reasoning levels" means the service can declare which thinking levels its model accepts and
 chat will offer exactly those; see [`AGENTS.md`](AGENTS.md).
@@ -201,13 +202,21 @@ this engine, so the Metrics tab renders empty. No request-level reasoning mappin
 - **Format:** safetensors directories, including FP8 checkpoints
 - **Image:** custom build (`llm-dock-vllm`) on top of `vllm/vllm-openai:v0.24.0-cu129`; override with `--build-arg VLLM_BASE=...`
 - **Params:** `--max-model-len`, `--gpu-memory-utilization`, `--max-num-batched-tokens`, `--max-num-seqs`, `--enable-prefix-caching`, `--tensor-parallel-size`, ...
-- **Volumes:** the one engine whose services accept operator-authored extra bind mounts (`volumes` in `services.json`)
+- **Volumes:** services accept operator-authored extra bind mounts, as do SGLang services (`volumes` in `services.json`)
 - **FP8 checkpoints:** use `--dtype auto`; forcing `--dtype bfloat16` on an FP8 model errors
 - **Embedding services:** `--runner pooling` (`--task embed` is gone since vLLM 0.20) plus a low `--gpu-memory-utilization` so it leaves VRAM to the chat models
 - **Online bench:** `scripts/bench/vllm/bench.sh <container>` runs `vllm bench serve` inside the container
 
 Containers run with `HF_HUB_OFFLINE=1`, so everything a model needs must already be
 downloaded - including the second repo behind `auto_map` for custom-arch models.
+
+### SGLang / Pennyroyal
+
+- **Upstream:** [jpezzulli/sglang-rtxpro6000](https://github.com/jpezzulli/sglang-rtxpro6000), Pennyroyal v2.5.3, digest-pinned in `sglang/Dockerfile`.
+- **Profiles:** Flash-Next NVFP4 with FR-Spec (`next`), native NEXTN (`next-plain`), or Qwen3.8-27B FP8 with a DFlash2 draft (`27b`).
+- **Service:** `template_type: "sglang"`, a model directory, `sglang-` name prefix, API-key auth and port 8001. Supports chat, Open WebUI, inspection and metrics.
+- **Build:** `./build-sglang.sh`; CUDA and compatibility libraries stay inside Docker. The host toolkit and driver remain unchanged. GPU compatibility still requires verification on older drivers.
+- **Configuration and validation:** [integration guide](docs/plans/sglang-pennyroyal-integration.md), including cache/RAM requirements and current GPU test results.
 
 ### ds4
 
@@ -230,9 +239,9 @@ flag.
 Neroued's from-scratch C++/CUDA engine for explicitly registered Qwen artifacts. A `.ninfer`
 file carries weights, tokenizer, chat template and media frontend; image and artifact are a
 fixed pair (`qwen3.8-27b/nvfp4`, ...), so there is no runtime model discovery. Built by
-`./build-ninfer.sh` from a pinned commit with a CUDA 12.9 port patch. NInfer is the only
-engine that requires an explicit `model` field in a chat request, and the dashboard pins that
-id to the service alias.
+`./build-ninfer.sh` from a pinned commit with a CUDA 12.9 port patch. NInfer and SGLang
+require an explicit `model` field in a chat request; the dashboard pins that id to
+the service alias.
 
 ## Building llama.cpp
 

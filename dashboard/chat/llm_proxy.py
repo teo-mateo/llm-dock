@@ -92,18 +92,15 @@ def detect_format_drift(content: str, reasoning: str = "", had_tool_calls: bool 
 def request_model(svc: dict) -> str | None:
     """The model id to put on the wire, or None to leave the field out.
 
-    Remote multi-model providers (OpenRouter) need the provider's model id, which
-    ``resolve_service`` already carries. NInfer is the one local engine that both
-    rejects a missing ``model`` (400) and 404s a string it does not serve: its
-    template pins the server's public id to the service alias
-    (``--model-id {{ alias }}``), so the alias is exactly the id to send. Every
-    other local engine ignores the field, and sending one it does not advertise
-    (vLLM validates the string when it is present) would be a regression, so they
-    keep receiving a payload without it.
+    Remote providers use the model id carried by resolve_service. NInfer and
+    SGLang need a model field matching their served id, which their templates
+    pin to the service alias (--model-id and --served-model-name respectively).
+    Other local engines keep receiving no model field; adding a string they
+    do not advertise can regress engines such as vLLM that validate it.
     """
     if svc.get("model"):
         return svc["model"]
-    if svc.get("template_type") == "ninfer":
+    if svc.get("template_type") in ("ninfer", "sglang"):
         return svc.get("alias") or None
     return None
 

@@ -65,11 +65,29 @@ NINFER_CURATED_METRICS = {
     "ninfer:host_kv_occupied_bytes",
 }
 
+# Source: Pennyroyal v2.5.3 observability/metrics_collector.py. The two
+# acceptance/cache-hit values are gauges, not lifetime counter ratios.
+SGLANG_CURATED_METRICS = {
+    "sglang:num_running_reqs", "sglang:num_queue_reqs",
+    "sglang:token_usage", "sglang:cache_hit_rate", "sglang:gen_throughput",
+    "sglang:prompt_tokens_total", "sglang:generation_tokens_total",
+    "sglang:spec_accept_rate", "sglang:spec_accept_length",
+    "sglang:num_retracted_requests_total",
+    "sglang:realtime_tokens_total", "sglang:num_requests_total",
+    "sglang:max_total_num_tokens", "sglang:context_len",
+    "sglang:kv_used_tokens", "sglang:kv_evictable_tokens", "sglang:kv_available_tokens",
+    "sglang:mamba_used_tokens", "sglang:mamba_evictable_tokens", "sglang:mamba_available_tokens",
+    "sglang:hicache_host_used_tokens", "sglang:hicache_host_total_tokens",
+    "sglang:weight_memory_usage_gb", "sglang:kv_cache_memory_usage_gb",
+    "sglang:graph_memory_usage_gb",
+}
+
 # Curated set per engine: the whitelist keeps uninteresting families out.
 CURATED_METRICS = {
     "vllm": VLLM_CURATED_METRICS,
     "llamacpp": LLAMACPP_CURATED_METRICS,
     "ninfer": NINFER_CURATED_METRICS,
+    "sglang": SGLANG_CURATED_METRICS,
 }
 
 
@@ -109,16 +127,20 @@ def _parse_metrics(text: str, engine: str) -> dict:
                 pos = sample.labels.get("position")
                 if pos is not None:
                     metric_data[f"position_{pos}"] = sample.value
-            result[canonical] = metric_data
+            result.setdefault(canonical, {}).update(metric_data)
         else:
             metric_data = {}
             for sample in family.samples:
+                # Python's Counter also emits a *_created timestamp. It is
+                # metadata, not a token count, and shares the same labels.
+                if engine == "sglang" and sample.name != canonical:
+                    continue
                 if sample.labels:
                     key = ";".join(f"{k}={v}" for k, v in sorted(sample.labels.items()))
                 else:
                     key = "{}"
                 metric_data[key] = sample.value
-            result[canonical] = metric_data
+            result.setdefault(canonical, {}).update(metric_data)
 
     return result
 
@@ -201,7 +223,7 @@ def get_service_metrics(service_name):
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     template_type = config.get("template_type")
-    engine = {"vllm": "vllm", "llamacpp": "llamacpp", "ninfer": "ninfer"}.get(template_type)
+    engine = {"vllm": "vllm", "llamacpp": "llamacpp", "ninfer": "ninfer", "sglang": "sglang"}.get(template_type)
     if engine is None:
         return jsonify({
             "metrics": {},

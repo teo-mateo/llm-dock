@@ -113,6 +113,19 @@ describe('CreateServiceModal', () => {
     expect(screen.getByLabelText(/HuggingFace model/)).toBeTruthy()
   })
 
+  it('creates a Pennyroyal service with a directory path and sglang prefix', async () => {
+    mockApi({ service_name: 'sglang-next', port: 3303, api_key: 'key', success: true })
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: /SGLang/ }))
+    expect(screen.queryByRole('combobox', { name: /Pick a discovered file/ })).toBeNull()
+    fireEvent.change(screen.getByLabelText(/Model path \(container\)/), { target: { value: '/local-models/next' } })
+    fireEvent.change(screen.getByLabelText(/Service alias/), { target: { value: 'next' } })
+    fireEvent.click(screen.getByRole('button', { name: /Create service/ }))
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalledWith('/services', expect.objectContaining({ method: 'POST' })))
+    const [, options] = fetchAPIMock.mock.calls.find(([url, opts]) => url === '/services' && opts?.method === 'POST')
+    expect(JSON.parse(options.body)).toMatchObject({ template_type: 'sglang', model_path: '/local-models/next', alias: 'next' })
+  })
+
   it('previews the generated service name from the alias', () => {
     setup()
     fireEvent.change(screen.getByLabelText(/Service alias/), { target: { value: 'Foo Bar' } })

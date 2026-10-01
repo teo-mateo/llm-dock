@@ -122,3 +122,4 @@ dashboard/tabby_keys/
 # Reasoning-level sweep outputs
 scripts/reasoning-sweep/results/
 scripts/bench/ninfer/results/
+scripts/bench/sglang/results/

@@ -659,3 +659,69 @@ describe('useServiceMetrics scrape gaps', () => {
   })
 })
 })
+
+
+describe('SGLang metrics', () => {
+  it('reports live decode progress while completed-request totals stay unchanged', async () => {
+    const sample = decode => ({ engine: 'sglang', metrics: {
+      'sglang:num_running_reqs': { '{}': 1 },
+      'sglang:prompt_tokens_total': { 'is_streaming=false': 10, 'is_streaming=true': 20 },
+      'sglang:generation_tokens_total': { 'is_streaming=false': 100, 'is_streaming=true': 200 },
+      'sglang:realtime_tokens_total': {
+        'mode=decode;tp_rank=0': decode,
+        'mode=prefill_compute;tp_rank=0': 50,
+        'mode=prefill_cache;tp_rank=0': 10000,
+      },
+    } })
+    mockFetchAPI.mockResolvedValueOnce(sample(1000)).mockResolvedValue(sample(1020))
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'sglang-next', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(result.current.history[1].generationTokensRate).toBeCloseTo(100)
+    expect(result.current.history[1].promptTokensRate).toBe(0)
+    expect(result.current.history[1].preemptRate).toBeUndefined()
+  })
+
+  it('sums streaming labels on older engines and gates the throughput gauge while idle', async () => {
+    const sample = (tokens, running) => ({ engine: 'sglang', metrics: {
+      'sglang:prompt_tokens_total': { 'is_streaming=false': 10, 'is_streaming=true': tokens },
+      'sglang:generation_tokens_total': { 'is_streaming=false': 100, 'is_streaming=true': 200 },
+      'sglang:gen_throughput': { '{}': 90 },
+      'sglang:num_running_reqs': { '{}': running },
+    } })
+    mockFetchAPI.mockResolvedValueOnce(sample(20, 1)).mockResolvedValueOnce(sample(40, 1)).mockResolvedValue(sample(40, 0))
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'sglang-next', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(result.current.history[1].promptTokensRate).toBeCloseTo(100)
+    expect(result.current.history[1].generationTokensRate).toBe(90)
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(result.current.history[2].generationTokensRate).toBe(0)
+  })
+
+  it('resets the rate baseline when scheduler counters first appear', async () => {
+    mockFetchAPI.mockResolvedValueOnce({ engine: 'sglang', metrics: { 'sglang:generation_tokens_total': { '{}': 10 } } })
+      .mockResolvedValue({ engine: 'sglang', metrics: { 'sglang:realtime_tokens_total': { 'mode=decode': 10000 } } })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'sglang-next', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(result.current.history[1].generationTokensRate).toBe(0)
+  })
+
+  it('maps counts and KV usage, retains ratio gauges, and never fetches slots', async () => {
+    mockFetchAPI.mockResolvedValue({ engine: 'sglang', scraped_at: 'now', metrics: {
+      'sglang:num_running_reqs': { '{}': 2 },
+      'sglang:num_queue_reqs': { '{}': 1 },
+      'sglang:token_usage': { '{}': 0.5 },
+      'sglang:cache_hit_rate': { '{}': 0.7 },
+      'sglang:spec_accept_rate': { '{}': 0.8 },
+      'sglang:prompt_tokens_total': { '{}': 1000 },
+      'sglang:generation_tokens_total': { '{}': 2000 },
+    } })
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'sglang-next', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(0) })
+    expect(result.current.history[0]).toMatchObject({ running: 2, waiting: 1, kvCache: 0.5, prefixHitRatio: 0.7, specAcceptRatio: 0.8 })
+    expect(result.current.metrics['vllm:prompt_tokens_total']).toEqual({ '{}': 1000 })
+    expect(mockFetchAPI.mock.calls.every(([url]) => !url.endsWith('/slots'))).toBe(true)
+  })
+})

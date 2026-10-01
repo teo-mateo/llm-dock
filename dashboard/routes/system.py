@@ -102,6 +102,7 @@ def get_images_metadata():
             "ds4": get_image_info("llm-dock-ds4"),
             "tabbyapi": get_image_info("llm-dock-tabbyapi"),
             "ninfer": get_image_info("llm-dock-ninfer"),
+            "sglang": get_image_info("llm-dock-sglang"),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )

@@ -192,7 +192,7 @@ export default function ServiceDetailsPage() {
 
       {isMetricsRoute ? (
         <div className="flex-1 overflow-auto">
-          <MetricsPanel serviceName={serviceName} enabled={(templateType === 'vllm' || templateType === 'llamacpp' || templateType === 'ik_llamacpp' || templateType === 'ninfer') && runtime?.status === 'running'} />
+          <MetricsPanel serviceName={serviceName} enabled={(templateType === 'sglang' || templateType === 'vllm' || templateType === 'llamacpp' || templateType === 'ik_llamacpp' || templateType === 'ninfer') && runtime?.status === 'running'} />
         </div>
       ) : isBenchmarkRoute && templateType === 'llamacpp' ? (
         <div className="flex-1 overflow-auto">

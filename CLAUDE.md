@@ -6,7 +6,7 @@ playbook (adding/running models, gotchas, chat subsystem notes).
 
 ## Project Overview
 
-LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference services. It runs six inference engines — llama.cpp, its `ik_llama.cpp` fork, vLLM, ds4, TabbyAPI (EXL3), and NInfer — with automatic GPU detection, model discovery, and Open WebUI integration. See [Supported Engines](#supported-engines).
+LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference services. It runs seven inference engines — llama.cpp, its `ik_llama.cpp` fork, vLLM, ds4, TabbyAPI (EXL3), NInfer, and SGLang / Pennyroyal — with automatic GPU detection, model discovery, and Open WebUI integration. See [Supported Engines](#supported-engines).
 
 **Access points:**
 - Dashboard: `http://localhost:3399`
@@ -328,7 +328,7 @@ Gotchas:
 
 ### Service Templates
 Services are generated from Jinja2 templates in `templates/`, one per engine:
-`llamacpp.j2`, `ik_llamacpp.j2`, `vllm.j2`, `ds4.j2`, `tabbyapi.j2`. The
+`llamacpp.j2`, `ik_llamacpp.j2`, `vllm.j2`, `ds4.j2`, `tabbyapi.j2`, `ninfer.j2`, `sglang.j2`. The
 service's `template_type` selects the template, its file name, and the flag
 metadata used by the config UI. `SERVICE_NAME_PREFIXES` in `flag_metadata.py`
 maps a type to its service-name prefix where they differ (`ik_llamacpp` →
@@ -339,7 +339,7 @@ Registration is explicit, not part of service creation: `POST /api/services/<nam
 
 ## Supported Engines
 
-Six engines are first-class. "First-class" means all four of: a Jinja template
+Seven engines are first-class. "First-class" means all four of: a Jinja template
 in `dashboard/templates/`, a branch in `ComposeManager._render_service()`
 (image default, mandatory fields, template context), a `template_type` entry in
 `flag_metadata.py` (`MANDATORY_FIELDS`, `get_flag_metadata`), and an image
@@ -437,8 +437,15 @@ Gotchas:
 - **Template:** `dashboard/templates/ninfer.j2`, `template_type: "ninfer"`, service-name prefix `ninfer-`, listens on 8080 like the llama.cpp family. `--host 0.0.0.0` is mandatory because the binary defaults to `127.0.0.1`.
 - **Metrics:** `GET /metrics` behind the service API key (the pre-routing auth guard covers it; the dashboard scrape already sends the key), rendered from the published `RuntimeStats` snapshot plus the KV capacity that `attach()` captured from `MemorySummary`. The route must not call `memory_summary()` itself: it takes `execution_mutex_`, which the worker holds across every execution unit, so scraping it serialized `/metrics` behind generation (measured 24 s on a 3000-token request; see `docs/plans/ninfer-metrics.md` §8). Emits 12 unlabeled Prometheus families: `ninfer:prompt_tokens_total` (prefill work done, reused-prefix tokens excluded), `ninfer:generation_tokens_total`, `ninfer:decode_rounds_total`, `ninfer:num_requests_running` / `_waiting` / `_prefilling`, `ninfer:kv_cache_usage_perc` (occupied pages ÷ page-group capacity, clamped 0..1), the raw pair `ninfer:kv_occupied_pages` / `ninfer:kv_capacity_page_groups`, `ninfer:prefix_cache_queries_total` (derived: computed + reused, monotonic by construction) / `ninfer:prefix_cache_hits_total`, and `ninfer:host_kv_occupied_bytes`. The dashboard whitelists them in `NINFER_CURATED_METRICS` and the v2 panel renders running/waiting, token rates, the Active KV and prefix-hit gauges; spec-acceptance and preemption have no service-level aggregate in the engine, so those cells stay "—". The KV ratio's units are the one contract not proven 1:1 from source (`device_main_kv_occupied_pages` is a target-level page count, `kv_capacity_page_groups` the capacity resolver's unit) — the raw pair is curated alongside it, so a wrong scale is a visible fix. `/slots` has no ninfer counterpart and stays llama.cpp-only. Full design and live-gate status: `docs/plans/ninfer-metrics.md`.
 - **Params:** `ninfer-serve` flags — `--max-context`, `--kv-capacity` (`N` or `auto`), `--max-concurrency` (1..8), `--kv-dtype`, `--spec mtp|dflash|dflash2` + `--draft-tokens`, `--vision`, context-cache slots, sampling defaults. Bare booleans (`--vision`, `--greedy`, `--no-cuda-graph`) render like llama.cpp's, not TabbyAPI's value-taking ones.
-- **Served model id:** NInfer 400s a chat request without `model` and 404s one it does not serve, so the template pins its public id to the service alias (`--model-id {{ alias }}`) and chat sends that alias — see `request_model` in `chat/llm_proxy.py`. This is the one engine that cannot be addressed with no `model` field, and the only one the chat path sends one to.
+- **Served model id:** NInfer 400s a chat request without `model` and 404s one it does not serve, so the template pins its public id to the service alias (`--model-id {{ alias }}`) and chat sends that alias — see `request_model` in `chat/llm_proxy.py`. SGLang also requires a model field; chat sends the configured alias for both engines.
 - **Not supported:** benchmarking (`llama-bench` is llama.cpp-only), `/slots` (no per-lane generation state), and reasoning levels.
+
+### SGLang / Pennyroyal
+- **Upstream:** `jpezzulli/sglang-rtxpro6000`, Pennyroyal v2.5.3; digest-pinned image adapter in `sglang/Dockerfile`, built by `./build-sglang.sh`.
+- **Service:** `template_type: "sglang"`, `model_path` is a checkpoint directory, name prefix `sglang-`, container port 8001. Supports chat, Open WebUI, key rotation, inspection and metrics.
+- **Profiles:** `--profile next` (Flash-Next NVFP4 + FR-Spec), `next-plain` (native NEXTN), or `27b` (FP8 target + `--draft-model-path` DFlash2 checkpoint). Tuning uses upstream `env:` knobs so cache namespace derivation stays consistent. Arbitrary server CLI overrides are rejected.
+- **Host unchanged:** CUDA dependencies and compatibility libraries are container-only. Existing driver compatibility requires a GPU smoke test; see [integration guide](docs/plans/sglang-pennyroyal-integration.md) for the local gate and RAM/cache requirements.
+- **Chat:** sends the service alias as `model`; declared reasoning levels map to `reasoning_effort` (`off` → `none`). Per-conversation sampling controls and benchmarking are not enabled.
 
 ## API Routes
 
@@ -452,7 +459,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 | `openwebui_bp` | `/api/services/<name>/register-openwebui`, `/api/services/<name>/unregister-openwebui`, `/api/openwebui/restart` | Open WebUI integration |
 | `benchmarks_bp` | `/api/benchmarks`, `/api/benchmarks/<run_id>`, `/api/benchmarks/<run_id>/apply` | Benchmark execution & results (POST starts a run; apply writes the winning flags back to the service) |
 | `chat_bp` | `/api/chat/*` | Chat conversations, messages, runs, projects, project files, prompts, MCP registry, settings |
-| `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer), live slots (llama.cpp only) |
+| `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer/SGLang), live slots (llama.cpp only) |
 | `inspector_bp` | `/api/inspector/captures`, `/api/inspector/captures/<id>`, `/api/inspector/services` | Captured-request list/detail/delete, services-with-history ∪ live-proxies |
 | `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/status`, `/api/totp/disable` | TOTP enrollment |
 
@@ -1031,7 +1038,7 @@ calls it once at boot while `atexit` calls `stop_all()`.
 
 - **Port relocation is one change point.** With `inspect` on,
   `ComposeManager._render_service()` renders `"127.0.0.1:<upstream>:<internal>"`
-  for the service's port mapping (all six templates take it through the same
+  for the service's port mapping (all seven templates take it through the same
   `port` context key; an un-inspected service renders byte-identically). The
   upstream port comes from `inspector/ports.py` — the lowest free in
   **34000–34999**, where free counts every service's `port` and
