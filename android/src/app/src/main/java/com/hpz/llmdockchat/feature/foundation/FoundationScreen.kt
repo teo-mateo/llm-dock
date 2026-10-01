@@ -72,6 +72,7 @@ fun FoundationScreen(serverUrl: Stored<BaseUrl>, modifier: Modifier = Modifier) 
                 Chip("llama.cpp", colors.engineLlamaCpp)
                 Chip("vLLM", colors.engineVllm)
                 Chip("ds4", colors.engineDs4)
+                Chip("SGLang", colors.engineSglang)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("OpenRouter", colors.engineOpenRouter)

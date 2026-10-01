@@ -207,6 +207,7 @@ private fun Engine.label(): String = when (this) {
     Engine.LLAMA_CPP -> "llama.cpp"
     Engine.VLLM -> "vLLM"
     Engine.DS4 -> "ds4"
+    Engine.SGLANG -> "SGLang"
     Engine.OPEN_ROUTER -> "OpenRouter"
     Engine.UNKNOWN -> "Unknown"
 }

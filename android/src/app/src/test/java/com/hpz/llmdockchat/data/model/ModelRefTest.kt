@@ -22,6 +22,11 @@ class ModelRefTest {
     }
 
     @Test
+    fun `a sglang- prefix is the sglang engine`() {
+        assertEquals(Engine.SGLANG, parseModelRef("sglang-qwen3-8-flash-next-mixed-nvfp4-fp8").engine)
+    }
+
+    @Test
     fun `an openrouter model is the open-router engine regardless of its id`() {
         assertEquals(Engine.OPEN_ROUTER, parseModelRef("openrouter:anthropic/claude-sonnet-5").engine)
     }

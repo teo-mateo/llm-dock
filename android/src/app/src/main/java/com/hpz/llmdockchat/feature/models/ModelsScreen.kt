@@ -666,6 +666,7 @@ private fun EngineChip(engine: Engine, isRunning: Boolean, modifier: Modifier = 
         Engine.LLAMA_CPP -> colors.engineLlamaCpp
         Engine.VLLM -> colors.engineVllm
         Engine.DS4 -> colors.engineDs4
+        Engine.SGLANG -> colors.engineSglang
         Engine.OPEN_ROUTER -> colors.engineOpenRouter
         Engine.UNKNOWN -> colors.engineUnknown
     }
@@ -712,6 +713,7 @@ internal fun engineLabel(engine: Engine): String = when (engine) {
     Engine.LLAMA_CPP -> "llama.cpp"
     Engine.VLLM -> "vLLM"
     Engine.DS4 -> "ds4"
+    Engine.SGLANG -> "SGLang"
     Engine.OPEN_ROUTER -> "open router"
     Engine.UNKNOWN -> "?"
 }
