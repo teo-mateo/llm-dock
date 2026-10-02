@@ -594,6 +594,10 @@ If you believe the codebase genuinely needs a formatter pass, say so and ask bef
 
 Whenever working on a new feature, create a new branch from a fresh `main`. Do not continue work on an existing branch or branch from another feature branch.
 
+## Multi-Agent Issue Pipeline
+
+Android issue work runs through a persistent Implementer ⇄ Reviewer-Tester pair driven by an orchestrator: one issue at a time, implement on a fresh branch → PR → independent review **posted as a comment on the GitHub issue** (MAJOR/MEDIUM findings only) → fix rounds until APPROVE → **orchestrator merges the PR into `main`**. Roles, the loop, the shared-checkout discipline (turn-taking, no worktrees), gate commands, and severity vocabulary are specified in [multi-agent-work-protocol.md](multi-agent-work-protocol.md).
+
 ## Key Files Reference
 
 | File | Purpose |
