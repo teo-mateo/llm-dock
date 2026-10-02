@@ -13,6 +13,8 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ModelOption
+import com.hpz.llmdockchat.data.model.ServiceSummary
+import com.hpz.llmdockchat.feature.modelpicker.runningChatCapable
 import com.hpz.llmdockchat.testing.FakeNewChatPreferences
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -194,7 +196,7 @@ class NewChatViewModelTest {
 
         val selected = state.selectedModel as ModelOption.LocalService
         assertEquals("llamacpp-gemma-4-26b-a4b-it-q8", selected.serviceName)
-        assertFalse(state.rememberedModelUnavailable)
+        assertFalse(state.modelUnavailable)
     }
 
     @Test
@@ -208,7 +210,7 @@ class NewChatViewModelTest {
         val state = settled(viewModel) as NewChatUiState.Loaded
 
         assertNull(state.selectedModel)
-        assertTrue(state.rememberedModelUnavailable)
+        assertTrue(state.modelUnavailable)
         assertFalse(state.canStart)
     }
 
@@ -222,7 +224,7 @@ class NewChatViewModelTest {
         val state = settled(viewModel) as NewChatUiState.Loaded
 
         assertNull(state.selectedModel)
-        assertTrue(state.rememberedModelUnavailable)
+        assertTrue(state.modelUnavailable)
     }
 
     @Test
@@ -236,7 +238,7 @@ class NewChatViewModelTest {
 
         val selected = state.selectedModel as ModelOption.Remote
         assertEquals("someone/retired-model", selected.modelId)
-        assertFalse(state.rememberedModelUnavailable)
+        assertFalse(state.modelUnavailable)
     }
 
     /**
@@ -255,7 +257,7 @@ class NewChatViewModelTest {
 
         val selected = state.selectedModel as ModelOption.LocalService
         assertEquals("llamacpp-gemma-4-26b-a4b-it-q8", selected.serviceName)
-        assertFalse(state.rememberedModelUnavailable) // the preselect resolved cleanly; nothing here was "unavailable"
+        assertFalse(state.modelUnavailable) // the preselect resolved cleanly; nothing here was "unavailable"
     }
 
     /**
@@ -286,7 +288,7 @@ class NewChatViewModelTest {
         val state = settled(viewModel) as NewChatUiState.Loaded
 
         assertNull(state.selectedModel)
-        assertFalse(state.rememberedModelUnavailable) // nothing was remembered — not "unavailable"
+        assertFalse(state.modelUnavailable) // nothing was remembered — not "unavailable"
         assertFalse(state.canStart)
     }
 
@@ -487,5 +489,247 @@ class NewChatViewModelTest {
         assertEquals("new-conv-4", createdId)
         // 4 load GETs + POST create + failed PUT — openAnyway itself never touches the network.
         assertEquals(6, server.requestCount)
+    }
+
+    // ---- Issue 266: the live stream owns what may start a chat ----
+
+    private val selectedRunningGemma = "llamacpp-gemma-4-26b-a4b-it-q8"
+
+    private fun serviceRow(name: String, status: String = "running", kind: String = "chat") =
+        """{"name":"$name","status":"$status","kind":"$kind","host_port":3302,"favorite":false}"""
+
+    private fun snapshotFrame(vararg rows: String) =
+        """{"type":"snapshot","data":{"services":[${rows.joinToString(",")}],"total":${rows.size},"running":0,"stopped":0}}"""
+
+    private fun deltaFrame(name: String, status: String) =
+        """{"type":"delta","service_name":"$name","status":"$status"}"""
+
+    /** Like the delta test above: wait for the exact outcome, never for a first settled value. */
+    private fun awaitLoaded(viewModel: NewChatViewModel, predicate: (NewChatUiState.Loaded) -> Boolean): NewChatUiState.Loaded =
+        runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.let(predicate) == true }
+            }
+        } as NewChatUiState.Loaded
+
+    /**
+     * AC 1. The sheet opens with the remembered running model selected, the
+     * stream's first snapshot confirms it, then a delta stops it — Start goes
+     * off and the sheet asks for a new model (issue 266).
+     */
+    @Test
+    fun `a delta stopping the selected service disables Start and asks for a new model`() {
+        preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            deltaFrame(selectedRunningGemma, "exited"),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) { it.selectedModel == null && it.modelUnavailable }
+
+        assertFalse(state.canStart)
+    }
+
+    /**
+     * AC 1 + AC 5. The invalidation clears the model row only: the tool
+     * selection rides through it untouched, and the prompt and summarize rows
+     * keep their values (the pure [reconcileLiveServices] test pins the full
+     * set, since scripted transport frames all land inside one `load()` here).
+     */
+    @Test
+    fun `a delta stopping the selected service preserves the prompt and tool selections`() {
+        preferences = FakeNewChatPreferences(
+            initialModel = selectedRunningGemma,
+            initialMcpServerIds = listOf("sympy-math"),
+        )
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            deltaFrame(selectedRunningGemma, "exited"),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) { it.selectedModel == null && it.modelUnavailable }
+
+        assertEquals(setOf("sympy-math"), state.selectedMcpServerIds)
+        assertNull(state.selectedPromptId)
+        assertNull(state.summarizeUrl)
+    }
+
+    /** AC 1. Removal arrives as absence from the next snapshot, not a delta. */
+    @Test
+    fun `a service absent from a later snapshot invalidates the selection`() {
+        preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            snapshotFrame(serviceRow("vllm-qwen3-6-27b-fp8")),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) {
+            it.selectedModel == null && it.modelUnavailable && it.services.none { s -> s.name == selectedRunningGemma }
+        }
+
+        assertFalse(state.canStart)
+    }
+
+    /** AC 1. A row that stays running but stops being chat-capable is just as dead for a thread. */
+    @Test
+    fun `a snapshot making the selected service non-chat invalidates the selection`() {
+        preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            snapshotFrame(serviceRow(selectedRunningGemma, kind = "embedding")),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) { it.selectedModel == null && it.modelUnavailable }
+
+        assertTrue(state.services.any { s -> s.name == selectedRunningGemma && s.status == "running" })
+        assertFalse(state.canStart)
+    }
+
+    /** AC 4. A local stop lands; the OpenRouter selection doesn't notice (issue 266). */
+    @Test
+    fun `a remote selection survives local status deltas`() {
+        preferences = FakeNewChatPreferences(initialModel = "openrouter:someone/retired-model")
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            deltaFrame(selectedRunningGemma, "exited"),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) { loaded ->
+            loaded.selectedModel is ModelOption.Remote &&
+                loaded.services.none { s -> s.name == selectedRunningGemma && s.status == "running" }
+        }
+
+        assertEquals("someone/retired-model", (state.selectedModel as ModelOption.Remote).modelId)
+        assertFalse(state.modelUnavailable)
+        assertTrue(state.canStart)
+    }
+
+    /**
+     * AC 2. running → exited → running: the invalidation is sticky (no
+     * auto-reselection), but the row is back in the picker and a fresh
+     * selection re-enables Start.
+     */
+    @Test
+    fun `the same service starting again is selectable and Start re-enables`() {
+        preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
+        enqueueLoadResponses()
+        servicesStreamTransport.payloads = listOf(
+            snapshotFrame(serviceRow(selectedRunningGemma)),
+            deltaFrame(selectedRunningGemma, "exited"),
+            deltaFrame(selectedRunningGemma, "running"),
+        )
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = awaitLoaded(viewModel) { loaded ->
+            loaded.selectedModel == null && loaded.modelUnavailable &&
+                runningChatCapable(loaded.services).any { it.name == selectedRunningGemma }
+        }
+        assertFalse(state.canStart)
+
+        viewModel.selectModel(ModelOption.LocalService(selectedRunningGemma, "running"))
+        val picked = viewModel.state.value as NewChatUiState.Loaded
+        assertFalse(picked.modelUnavailable)
+        assertTrue(picked.canStart)
+    }
+
+    /**
+     * AC 3. The probe's exact shape: `selectedModel` still carries the
+     * `running` status captured at pick time while the live row is `exited` —
+     * `create()` refuses it and invalidates instead of POSTing a dead thread.
+     */
+    @Test
+    fun `create sends nothing when the selection is stale`() {
+        enqueueLoadResponses()
+        val viewModel = viewModel()
+        viewModel.load()
+        settled(viewModel)
+
+        // vllm-qwen3-6-27b-fp8 is "exited" in the services fixture; selectModel
+        // is reachable only with picker rows (running), so a stale capture is
+        // set up directly — the state a stop that landed after the pick leaves.
+        viewModel.selectModel(ModelOption.LocalService("vllm-qwen3-6-27b-fp8", "running"))
+
+        var created = false
+        viewModel.create { created = true }
+
+        val state = viewModel.state.value as NewChatUiState.Loaded
+        assertFalse(created)
+        assertFalse(state.creating)
+        assertNull(state.selectedModel)
+        assertTrue(state.modelUnavailable)
+        assertFalse(state.canStart)
+        // The 4 load GETs only — create() refused before sending anything.
+        assertEquals(4, server.requestCount)
+    }
+
+    /** AC 1 + AC 4, pure: the captured status is never consulted — the live row decides. */
+    @Test
+    fun `isLiveSelectable refuses a captured running status against an exited live row`() {
+        val exited = ServiceSummary(name = "llamacpp-gemma-4-31b-it-q8", status = "exited", kind = "chat")
+        val running = exited.copy(status = "running")
+        val notChat = running.copy(kind = "embedding")
+
+        assertFalse(ModelOption.LocalService(exited.name, "running").isLiveSelectable(listOf(exited)))
+        assertTrue(ModelOption.LocalService(exited.name, "exited").isLiveSelectable(listOf(running)))
+        assertFalse(ModelOption.LocalService(exited.name, "running").isLiveSelectable(listOf(notChat)))
+        assertFalse(ModelOption.LocalService(exited.name, "running").isLiveSelectable(emptyList()))
+        assertTrue(ModelOption.Remote("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash").isLiveSelectable(emptyList()))
+        assertFalse((null as ModelOption?).isLiveSelectable(listOf(running)))
+    }
+
+    /** AC 5, pure: the invalidation clears the model row and nothing else. */
+    @Test
+    fun `reconcileLiveServices refreshes a valid selection and leaves every other row untouched`() {
+        val selection = ModelOption.LocalService(selectedRunningGemma, "exited")
+        val loaded = NewChatUiState.Loaded(
+            localServices = listOf(selection),
+            services = listOf(ServiceSummary(selectedRunningGemma, "exited", "chat")),
+            remoteModels = emptyList(),
+            remoteModelsConfigured = false,
+            selectedModel = selection,
+            modelUnavailable = false,
+            prompts = emptyList(),
+            selectedPromptId = "prompt-7",
+            mcpServers = emptyList(),
+            selectedMcpServerIds = setOf("sympy-math"),
+            requiredMcpServerIds = setOf("render-html"),
+            summarizeUrl = "https://example.com/article",
+            toolsFailure = ToolsFailure("conv-9", "tools PUT failed"),
+        )
+
+        val revived = reconcileLiveServices(loaded, listOf(ServiceSummary(selectedRunningGemma, "running", "chat")))
+        assertEquals(ModelOption.LocalService(selectedRunningGemma, "running"), revived.selectedModel)
+        assertFalse(revived.modelUnavailable)
+        assertEquals("prompt-7", revived.selectedPromptId)
+        assertEquals(setOf("sympy-math"), revived.selectedMcpServerIds)
+        assertEquals(setOf("render-html"), revived.requiredMcpServerIds)
+        assertEquals("https://example.com/article", revived.summarizeUrl)
+        assertEquals(loaded.toolsFailure, revived.toolsFailure)
+
+        val invalidated = reconcileLiveServices(loaded, listOf(ServiceSummary(selectedRunningGemma, "exited", "chat")))
+        assertNull(invalidated.selectedModel)
+        assertTrue(invalidated.modelUnavailable)
+        assertFalse(invalidated.canStart)
+        assertEquals("prompt-7", invalidated.selectedPromptId)
+        assertEquals(setOf("sympy-math"), invalidated.selectedMcpServerIds)
+        assertEquals(setOf("render-html"), invalidated.requiredMcpServerIds)
+        assertEquals("https://example.com/article", invalidated.summarizeUrl)
+        assertEquals(loaded.toolsFailure, invalidated.toolsFailure)
     }
 }
