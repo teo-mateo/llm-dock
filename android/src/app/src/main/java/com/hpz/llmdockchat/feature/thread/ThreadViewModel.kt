@@ -8,6 +8,8 @@ import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.DraftStore
+import com.hpz.llmdockchat.core.prefs.EditSession
+import com.hpz.llmdockchat.core.prefs.EditStateStore
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
@@ -42,6 +44,7 @@ class ThreadViewModel(
     private val repository: ChatRepository,
     private val drafts: DraftStore,
     private val attachmentStore: SharedDraftStore? = null,
+    private val editStates: EditStateStore? = null,
     private val servicesStreamRepository: ServicesStreamRepository,
     private val servicesRepository: ServicesRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
@@ -94,6 +97,7 @@ class ThreadViewModel(
             repository.load(conversationId).fold(
                 onSuccess = { conversation ->
                     _state.value = loadedFrom(conversation, draft, staged)
+                    restoreEdit(conversation)
                     reattachIfRunning(conversation)
                     fireAutoSend()
                 },
@@ -122,6 +126,14 @@ class ThreadViewModel(
         if (loaded()?.runActive == true) return
         val message = attachmentStore?.takeAutoSend(conversationId) ?: return
         autoSendFired = true
+        // F14-R7's exactly-one-turn contract outranks an interrupted edit:
+        // the claim spends the composer, so a restored edit banner over the
+        // text about to be sent would be a new inconsistency.
+        val withEdit = loaded()
+        if (withEdit != null && withEdit.editingMessage != null) {
+            _state.value = withEdit.copy(editingMessage = null, pendingEdit = null)
+        }
+        editStates?.clear(conversationId)
         loaded()?.let { _state.value = it.copy(composer = message) }
         send()
     }
@@ -133,17 +145,96 @@ class ThreadViewModel(
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
         promptConfirmedId = conversation.promptId
+        val edit = reconcileEdit(current, conversation)
         return ThreadUiState.Loaded(
             conversation = conversation,
             thread = ThreadState(
                 messages = conversation.messages,
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
             ),
-            composer = current?.composer ?: draft,
-            attachments = (current?.attachments.orEmpty() + staged).distinct(),
+            composer = edit.composer ?: current?.composer ?: draft,
+            attachments = ((edit.attachments ?: current?.attachments).orEmpty() + staged).distinct(),
             sending = current?.sending ?: false,
-            actionError = current?.actionError,
+            actionError = current?.actionError ?: edit.cancelNotice,
+            pendingDelete = current?.pendingDelete?.takeIf { pending ->
+                conversation.messages.any { it.id == pending.id }
+            },
+            editingMessage = edit.message,
+            pendingEdit = edit.pendingEdit,
             laddersByService = mergedLadders,
+        )
+    }
+
+    /**
+     * One id-reconcile of the open edit against a fresh server list, applied
+     * by every full reload (F06-R3, issue #271). A reload must never strand the
+     * composer with edit text and no edit identity — the silent edit→new-send
+     * conversion this replaces — and must never leave a confirm pointed at a
+     * message the server has since dropped.
+     */
+    private fun reconcileEdit(
+        current: ThreadUiState.Loaded?,
+        conversation: ConversationDetail,
+    ): ReconciledEdit {
+        val editing = current?.editingMessage ?: return ReconciledEdit(null, null, null, null, null)
+        val fresh = conversation.messages.firstOrNull { it.id == editing.id }
+        if (fresh != null && fresh.role == MessageRole.USER) {
+            val pending = current.pendingEdit?.let {
+                it.copy(
+                    message = fresh,
+                    discardCount = conversation.messages.count { m -> m.seq > fresh.seq },
+                )
+            }
+            return ReconciledEdit(fresh, pending, null, null, null)
+        }
+        editStates?.clear(conversationId)
+        val prior = composerBeforeEdit
+        if (prior.isNotBlank()) drafts.save(conversationId, prior)
+        return ReconciledEdit(
+            message = null,
+            pendingEdit = null,
+            composer = if (prior.isNotBlank()) prior else current.composer,
+            attachments = if (prior.isNotBlank()) attachmentsBeforeEdit else current.attachments,
+            cancelNotice = EDIT_TARGET_GONE_NOTICE,
+        )
+    }
+
+    /**
+     * Process-restoration counterpart of [reconcileEdit]: the ViewModel was
+     * destroyed (failed-reauth Connect round trip, force-stop), so in-memory
+     * edit state is gone and the persisted record is the only trace of it.
+     * `loadedFrom` has already applied the in-memory reconcile; this runs only
+     * when nothing survived to be reconciled.
+     */
+    private suspend fun restoreEdit(conversation: ConversationDetail) {
+        val current = loaded() ?: return
+        if (current.editingMessage != null) return
+        val session = editStates?.record(conversationId) ?: return
+        val fresh = conversation.messages.firstOrNull { it.id == session.messageId }
+        if (fresh == null || fresh.role != MessageRole.USER) {
+            editStates?.clear(conversationId)
+            val prior = session.composerBeforeEdit
+            if (prior.isNotBlank()) {
+                drafts.save(conversationId, prior)
+                _state.value = current.copy(
+                    composer = prior,
+                    actionError = current.actionError ?: EDIT_TARGET_GONE_NOTICE,
+                )
+            } else {
+                _state.value = current.copy(
+                    actionError = current.actionError ?: EDIT_TARGET_GONE_NOTICE,
+                )
+            }
+            return
+        }
+        composerBeforeEdit = session.composerBeforeEdit
+        // Pre-edit draft attachments do not survive process death (the record
+        // is text-only), so the Cancel target carries none.
+        attachmentsBeforeEdit = emptyList()
+        _state.value = current.copy(
+            editingMessage = fresh,
+            attachments = fresh.images,
+            pendingEdit = null,
         )
     }
 
@@ -296,12 +387,21 @@ class ThreadViewModel(
         val conversation = repository.load(conversationId).getOrNull() ?: return
         val current = loaded() ?: return
         promptConfirmedId = conversation.promptId
+        val edit = reconcileEdit(current, conversation)
         _state.value = current.copy(
             conversation = conversation,
             thread = current.thread.copy(
                 messages = conversation.messages,
                 streaming = current.thread.streaming?.takeUnless { it.unconfirmed },
             ),
+            composer = edit.composer ?: current.composer,
+            attachments = edit.attachments ?: current.attachments,
+            actionError = current.actionError ?: edit.cancelNotice,
+            pendingDelete = current.pendingDelete?.takeIf { pending ->
+                conversation.messages.any { it.id == pending.id }
+            },
+            editingMessage = edit.message,
+            pendingEdit = edit.pendingEdit,
         )
     }
 
@@ -486,6 +586,13 @@ class ThreadViewModel(
         if (current.runActive) return
         composerBeforeEdit = current.composer
         attachmentsBeforeEdit = current.attachments
+        editStates?.save(
+            conversationId,
+            EditSession(messageId = message.id, composerBeforeEdit = current.composer),
+        )
+        // While an edit is open, DraftStore mirrors the live composer, so every
+        // restoration path reads the text the user was looking at.
+        drafts.save(conversationId, message.content)
         _state.value = current.copy(
             editingMessage = message,
             composer = message.content,
@@ -498,6 +605,7 @@ class ThreadViewModel(
     fun cancelEdit() {
         val current = loaded() ?: return
         if (current.editingMessage == null) return
+        editStates?.clear(conversationId)
         _state.value = current.copy(
             editingMessage = null,
             pendingEdit = null,
@@ -544,6 +652,7 @@ class ThreadViewModel(
             ),
         )
         drafts.clear(conversationId)
+        editStates?.clear(conversationId)
 
         collectRun(
             first = repository.editAndResend(conversationId, edit.message.id, pending.content, pending.images),
@@ -800,9 +909,19 @@ class ThreadViewModel(
 
     companion object {
         const val DEFAULT_COALESCE_WINDOW_MS = 24L
+        internal const val EDIT_TARGET_GONE_NOTICE =
+            "The message you were editing is no longer in this conversation. Edit cancelled — your text is kept."
         private val LIVE_RUN_STATUSES = setOf("queued", "running")
     }
 }
+
+private class ReconciledEdit(
+    val message: ChatMessage?,
+    val pendingEdit: PendingEdit?,
+    val composer: String?,
+    val attachments: List<String>?,
+    val cancelNotice: String?,
+)
 
 private class RunAttempt(
     val error: Throwable?,

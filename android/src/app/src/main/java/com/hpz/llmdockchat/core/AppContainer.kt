@@ -28,8 +28,10 @@ import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.prefs.DataStoreDraftStore
 import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreChatAppearance
+import com.hpz.llmdockchat.core.prefs.DataStoreEditStateStore
 import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
 import com.hpz.llmdockchat.core.prefs.DraftStore
+import com.hpz.llmdockchat.core.prefs.EditStateStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
@@ -129,6 +131,7 @@ class AppContainer(
 
     val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
+    val editStateStore: EditStateStore = DataStoreEditStateStore(dataStore, appScope)
 
     /** F14 — staged share content. Cache-dir files, so it survives process death but never a backup. */
     val sharedDraftStore: SharedDraftStore = SharedDraftStore(

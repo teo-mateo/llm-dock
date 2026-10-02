@@ -649,6 +649,7 @@ class ThreadViewModelTest {
                     repository,
                     drafts,
                     null,
+                    null,
                     servicesStreamRepository,
                     servicesRepository,
                     openRouterModelsRepository,

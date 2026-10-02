@@ -277,6 +277,7 @@ fun AppNavHost(
                             conversationId = conversationId,
                             repository = container.chatRepository,
                             drafts = container.draftStore,
+                            editStates = container.editStateStore,
                             attachmentStore = container.sharedDraftStore,
                             servicesStreamRepository = container.servicesStreamRepository,
                             servicesRepository = container.servicesRepository,
