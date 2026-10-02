@@ -67,6 +67,14 @@ class ThreadViewModel(
     private val levelWriteLock = Mutex()
     private var latestLevelWrite = 0L
 
+    private val promptWriteLock = Mutex()
+    private var latestPromptWrite = 0L
+
+    /** Last value the server confirmed. The rollback target for a failed
+     * latest write; updated on every settled success and on every full
+     * conversation read. */
+    private var promptConfirmedId: String? = null
+
     private var ladders: Map<String, List<String>> = emptyMap()
 
     private var remoteLadders: Map<String, List<String>> = emptyMap()
@@ -378,21 +386,33 @@ class ThreadViewModel(
         val current = loaded() ?: return
         if (!current.canToggleTools) return
         if (current.conversation.promptId == promptId) return
-        val previous = current.conversation.promptId
         _state.value = current.copy(
             conversation = current.conversation.copy(promptId = promptId),
         )
+        val write = ++latestPromptWrite
         viewModelScope.launch {
-            conversationsRepository.setPrompt(conversationId, promptId).fold(
-                onSuccess = {},
-                onFailure = { failure ->
-                    val latest = loaded() ?: return@fold
-                    _state.value = latest.copy(
-                        conversation = latest.conversation.copy(promptId = previous),
-                        actionError = failure.appError.displayMessage,
-                    )
-                },
-            )
+            promptWriteLock.withLock {
+                if (write != latestPromptWrite) return@withLock
+                conversationsRepository.setPrompt(conversationId, promptId).fold(
+                    onSuccess = {
+                        promptConfirmedId = promptId
+                        val latest = loaded() ?: return@fold
+                        if (write == latestPromptWrite && latest.conversation.promptId != promptId) {
+                            _state.value = latest.copy(
+                                conversation = latest.conversation.copy(promptId = promptId),
+                            )
+                        }
+                    },
+                    onFailure = { failure ->
+                        if (write != latestPromptWrite) return@fold
+                        val latest = loaded() ?: return@fold
+                        _state.value = latest.copy(
+                            conversation = latest.conversation.copy(promptId = promptConfirmedId),
+                            actionError = failure.appError.displayMessage,
+                        )
+                    },
+                )
+            }
         }
     }
 
