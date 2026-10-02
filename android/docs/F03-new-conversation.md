@@ -25,6 +25,13 @@ required field. The response is the new conversation; the app opens it.
       requires an explicit choice rather than creating a dead thread.
 - [ ] Creation failure shows the server's message and keeps the sheet
       open with the user's selections intact.
+- [ ] A selected service that stops, is removed or stops being
+      chat-capable while the sheet is open disables Start and offers
+      model reselection, with the prompt, tool, shared-URL and
+      summarize selections intact; the same service running again is
+      selectable and a fresh selection re-enables Start; `create()`
+      refuses an invalid local selection even when invoked directly
+      (issue 266).
 
 ## F03-R2 · System prompt picker (Should)
 
@@ -134,6 +141,16 @@ empty slots.
   composable (search, favorites, richer grouping) without touching
   `ModelOption`, the repositories it reads from, or
   `ConversationsRepository.create`'s signature.
+- **A selection that dies while the sheet is open reuses the fourth
+  criterion's hint (issue 266).** The live service stream invalidates any
+  local selection the same way the load-time check invalidates a dead
+  remembered one, so the flag behind that hint is `modelUnavailable`
+  rather than `rememberedModelUnavailable`, one hint string covers both
+  origins ("That model isn't running any more — pick one to continue."),
+  Start eligibility and `create()`'s direct-call guard read the live
+  service row rather than the status captured at pick time, and no local
+  model is ever auto-selected. JVM-verified through the stream
+  snapshot/delta path; no device pass planned.
 
 ## Out of scope
 

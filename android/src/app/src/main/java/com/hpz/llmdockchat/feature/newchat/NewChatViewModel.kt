@@ -43,8 +43,14 @@ sealed interface NewChatUiState {
         val remoteModels: List<ModelOption.Remote>,
         val remoteModelsConfigured: Boolean,
         val selectedModel: ModelOption?,
-        /** The remembered model from last time exists but isn't running (F03-R1's fourth criterion). */
-        val rememberedModelUnavailable: Boolean,
+        /**
+         * Start is off and the sheet asks for an explicit model choice: set
+         * both when the remembered model wasn't running at load (F03-R1's
+         * fourth criterion) and when the live stream invalidated the current
+         * selection while the sheet was open (issue 266). Cleared only by an
+         * explicit [NewChatViewModel.selectModel].
+         */
+        val modelUnavailable: Boolean,
         val prompts: List<ManagedPrompt>,
         /** null means "Default" — send neither `prompt_id` nor `main_system_prompt` (F03-R2). */
         val selectedPromptId: String?,
@@ -71,7 +77,8 @@ sealed interface NewChatUiState {
         val toolsFailure: ToolsFailure? = null,
     ) : NewChatUiState {
         val canStart: Boolean
-            get() = selectedModel != null && !creating && toolsFailure == null && !blockedForSummarize
+            get() = selectedModel.isLiveSelectable(services) && !creating &&
+                toolsFailure == null && !blockedForSummarize
 
         private val blockedForSummarize: Boolean
             get() = summarizeUrl != null &&
@@ -168,7 +175,7 @@ class NewChatViewModel(
                 remoteModels = remoteModels,
                 remoteModelsConfigured = remoteConfigured,
                 selectedModel = selectedModel,
-                rememberedModelUnavailable = unavailable,
+                modelUnavailable = unavailable,
                 prompts = prompts,
                 selectedPromptId = null,
                 mcpServers = mcpServers,
@@ -185,7 +192,7 @@ class NewChatViewModel(
             // so an always-open connection here is cheap.
             launch {
                 servicesStreamRepository.stream().collect { live ->
-                    updateLoaded { it.copy(services = live) }
+                    updateLoaded { reconcileLiveServices(it, live) }
                 }
             }
         }
@@ -197,7 +204,7 @@ class NewChatViewModel(
     }
 
     fun selectModel(option: ModelOption) = updateLoaded {
-        it.copy(selectedModel = option, rememberedModelUnavailable = false, createError = null)
+        it.copy(selectedModel = option, modelUnavailable = false, createError = null)
     }
 
     fun selectPrompt(promptId: String?) = updateLoaded { it.copy(selectedPromptId = promptId, createError = null) }
@@ -211,6 +218,12 @@ class NewChatViewModel(
         val current = _state.value as? NewChatUiState.Loaded ?: return
         val model = current.selectedModel ?: return
         if (current.creating) return
+        // The same predicate canStart renders, so a direct call cannot start a
+        // thread on a service the live stream has already stopped (issue 266).
+        if (!model.isLiveSelectable(current.services)) {
+            _state.value = current.copy(selectedModel = null, modelUnavailable = true)
+            return
+        }
         _state.value = current.copy(creating = true, createError = null)
 
         viewModelScope.launch {
@@ -284,5 +297,47 @@ class NewChatViewModel(
     private inline fun updateLoaded(transform: (NewChatUiState.Loaded) -> NewChatUiState.Loaded) {
         val current = _state.value
         if (current is NewChatUiState.Loaded) _state.value = transform(current)
+    }
+}
+
+/**
+ * Whether this selection may start a chat *now*, judged against the live row
+ * set rather than the status captured at pick time: a local service only
+ * while the live list carries it as a chat-capable running row — the picker's
+ * own filter ([com.hpz.llmdockchat.feature.modelpicker.runningChatCapable])
+ * and this predicate must stay one rule; a remote model always, since
+ * OpenRouter has no stopped state to lose (F07-R3). `null` is never
+ * selectable.
+ */
+internal fun ModelOption?.isLiveSelectable(services: List<ServiceSummary>): Boolean =
+    when (this) {
+        null -> false
+        is ModelOption.Remote -> true
+        is ModelOption.LocalService ->
+            services.any { it.name == serviceName && it.isChatCapable && it.isRunning }
+    }
+
+/**
+ * One `/api/services/stream` emission applied to [current] (issue 266): the
+ * row set is replaced wholesale; a live-valid local selection keeps its
+ * captured status refreshed from the live row, so `ModelOption.LocalService`
+ * can never carry a stale one; a local selection the stream invalidated —
+ * stopped, `not-created`, reclassified away from chat, or gone — is cleared
+ * into the reselection state ([NewChatUiState.Loaded.modelUnavailable]).
+ * Every other row, and a remote selection, is untouched. Pure, so the
+ * stop-while-open contract is JVM-testable without Compose, same posture as
+ * [com.hpz.llmdockchat.data.mergeServiceEvent].
+ */
+internal fun reconcileLiveServices(
+    current: NewChatUiState.Loaded,
+    live: List<ServiceSummary>,
+): NewChatUiState.Loaded {
+    val selection = current.selectedModel
+    if (selection !is ModelOption.LocalService) return current.copy(services = live)
+    val row = live.find { it.name == selection.serviceName }
+    return if (row != null && row.isChatCapable && row.isRunning) {
+        current.copy(services = live, selectedModel = selection.copy(status = row.status))
+    } else {
+        current.copy(services = live, selectedModel = null, modelUnavailable = true)
     }
 }

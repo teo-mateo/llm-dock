@@ -148,9 +148,9 @@ private fun NewChatSheetBody(
             onClick = { showModelPicker = true },
             testTag = "new_chat_row_model",
         )
-        if (state.rememberedModelUnavailable) {
+        if (state.modelUnavailable) {
             Text(
-                "The model used last time isn't running — pick one to continue.",
+                "That model isn't running any more — pick one to continue.",
                 color = colors.amber,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("new_chat_model_unavailable"),
