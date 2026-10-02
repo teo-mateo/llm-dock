@@ -65,6 +65,9 @@ same reader handles it.
 - [ ] Only user messages can be edited; the option is absent elsewhere.
 - [ ] An edit rejected with 409 (a run became active in between) does not
       truncate anything — verified by refetch.
+- [ ] Edit mode and its text survive rotation, reload and process
+      restoration; a reload that finds the target gone cancels the edit with
+      a visible notice and keeps the user's text (issue #271).
 
 ## F06-R4 · Text selection (Should)
 

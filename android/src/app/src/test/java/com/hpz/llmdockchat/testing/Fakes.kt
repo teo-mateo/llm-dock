@@ -10,6 +10,8 @@ import com.hpz.llmdockchat.core.net.ServerUrlStore
 import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.net.StreamRequest
 import com.hpz.llmdockchat.core.prefs.DraftStore
+import com.hpz.llmdockchat.core.prefs.EditSession
+import com.hpz.llmdockchat.core.prefs.EditStateStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
@@ -118,6 +120,13 @@ class FakeDraftStore(initial: Map<String, String> = emptyMap()) : DraftStore {
         if (text.isBlank()) saved.remove(conversationId) else saved[conversationId] = text
     }
     override fun clear(conversationId: String) { saved.remove(conversationId) }
+}
+
+class FakeEditStateStore(initial: Map<String, EditSession> = emptyMap()) : EditStateStore {
+    val records = initial.toMutableMap()
+    override suspend fun record(conversationId: String): EditSession? = records[conversationId]
+    override fun save(conversationId: String, session: EditSession) { records[conversationId] = session }
+    override fun clear(conversationId: String) { records.remove(conversationId) }
 }
 
 /**
