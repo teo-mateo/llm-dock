@@ -19,6 +19,7 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ChatMessage
+import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeEditStateStore
@@ -172,6 +173,7 @@ class ThreadEditReloadTest {
         awaitDraftMirror(text)
     }
 
+    /** AC1 — reload, the rotation path, keeps the open edit: mode, text, identity. */
     @Test
     fun `1 rotation reload keeps edit mode and the edited text`() = threadTest {
         conversation()
@@ -193,6 +195,9 @@ class ThreadEditReloadTest {
         assertEquals(EDIT_TEXT, drafts.saved[CONVERSATION_ID])
     }
 
+    /** AC2 (+AC4) — after a reload, Send opens the edit/discard confirmation
+     *  on the original message, and confirming updates that message in place:
+     *  one PUT on its id, never an appended user turn. */
     @Test
     fun `2 send after a reload still opens the discard confirmation and updates the original message`() = threadTest {
         conversation()
@@ -207,6 +212,7 @@ class ThreadEditReloadTest {
             it.conversation.title == RELOADED_TITLE && it.editingMessage != null && it.thread.messages.size == 4
         }
         assertEquals("m1", afterReload.editingMessage?.id)
+        assertEquals(EDIT_TEXT, afterReload.composer)
 
         transport.payloads = listOf(
             """{"type": "run_started", "run_id": "run-2"}""",
@@ -220,14 +226,26 @@ class ThreadEditReloadTest {
         val edit = viewModel.awaitState { it.pendingEdit != null }.pendingEdit!!
         assertEquals("m1", edit.message.id)
         assertEquals(3, edit.discardCount)
+        assertEquals(EDIT_TEXT, edit.content)
         viewModel.confirmEdit()
 
         withTimeout(10_000) { while (transport.requests.isEmpty()) delay(10) }
         val putRequest = transport.requests.last()
         assertEquals("PUT", putRequest.method)
         assertEquals("/api/chat/conversations/$CONVERSATION_ID/messages/m1", putRequest.path)
+        assertTrue(transport.requests.none { it.method == "POST" })
+
+        val settled = viewModel.awaitState {
+            it.thread.streaming == null && it.thread.messages.size == 2
+        }
+        assertEquals("m1-edited", settled.thread.messages[0].id)
+        assertEquals(EDIT_TEXT, settled.thread.messages[0].content)
+        assertEquals(MessageRole.ASSISTANT, settled.thread.messages[1].role)
     }
 
+    /** AC3 — Cancel after a reload restores both the pre-edit composer text
+     *  and the pre-edit attachments, without touching the network, and the
+     *  restored draft then survives another reload. */
     @Test
     fun `3 cancel after a reload restores the pre-edit text and attachments`() = threadTest {
         conversation()
@@ -244,14 +262,30 @@ class ThreadEditReloadTest {
 
         conversationReloaded()
         viewModel.load()
-        viewModel.awaitState {
+        val midReload = viewModel.awaitState {
             it.conversation.title == RELOADED_TITLE && it.editingMessage != null && it.thread.messages.size == 4
         }
+        assertEquals("m1", midReload.editingMessage?.id)
+        assertEquals(EDIT_TEXT, midReload.composer)
+        // During an edit the composer carries the edited message's images;
+        // the pre-edit picks are staged for Cancel, asserted below.
+        assertEquals(emptyList<String>(), midReload.attachments)
 
+        val requestsBeforeCancel = server.requestCount
         viewModel.cancelEdit()
         val settled = viewModel.awaitState { it.editingMessage == null }
         assertEquals(PRIOR_DRAFT, settled.composer)
         assertEquals(listOf("data:image/png;base64,AAAA"), settled.attachments)
+        assertEquals(PRIOR_DRAFT, drafts.saved[CONVERSATION_ID])
+        assertEquals(requestsBeforeCancel, server.requestCount)
+
+        conversationReloaded()
+        viewModel.load()
+        val cancelled = viewModel.awaitState {
+            it.conversation.title == RELOADED_TITLE && it.editingMessage == null
+        }
+        assertEquals(PRIOR_DRAFT, cancelled.composer)
+        assertEquals(listOf("data:image/png;base64,AAAA"), cancelled.attachments)
     }
 
     @Test
