@@ -132,6 +132,7 @@ class ThreadViewModel(
         staged: List<String> = emptyList(),
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
+        promptConfirmedId = conversation.promptId
         return ThreadUiState.Loaded(
             conversation = conversation,
             thread = ThreadState(
@@ -283,6 +284,7 @@ class ThreadViewModel(
     private suspend fun reloadConversation() {
         val conversation = repository.load(conversationId).getOrNull() ?: return
         val current = loaded() ?: return
+        promptConfirmedId = conversation.promptId
         _state.value = current.copy(
             conversation = conversation,
             thread = current.thread.copy(
@@ -753,6 +755,7 @@ class ThreadViewModel(
             return
         }
 
+        promptConfirmedId = refetched.promptId
         _state.value = latest.copy(
             sending = false,
             conversation = refetched,
