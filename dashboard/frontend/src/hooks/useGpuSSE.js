@@ -5,7 +5,7 @@ const RECONNECT_DELAY = 3000
 
 /**
  * Hook for subscribing to real-time GPU stats via the /api/gpu/stream SSE
- * endpoint. Replaces the old polling loop. Each frame emitted by the
+ * endpoint. Each frame emitted by the
  * backend becomes a new `gpus` value.
  *
  * @returns {{ gpus: Array<Object> | null, error: string | null, connected: boolean }}

@@ -108,7 +108,7 @@ describe('ChatArea no-conversation states', () => {
   })
 
   it('shows a loading state (no composer) while a URL conversation is fetching', () => {
-    // Regression for codex iteration 1 P1: opening /v2/chat/<id> directly
+    // Opening /v2/chat/<id> directly
     // leaves `conversation` null during loadConversation — the empty-state
     // composer must NOT render, or typing would create a different chat.
     const { container } = render(
@@ -128,7 +128,7 @@ describe('ChatArea no-conversation states', () => {
   })
 
   it('shows loading (not the stale chat) when switching to a different route id', () => {
-    // Regression for codex iteration 2 P1: loadConversation does not clear
+    // loadConversation does not clear
     // the previous conversation before fetching, so when switching from A
     // to B, `conversation` is still A while awaitingConversation is true.
     // awaitingConversation must be authoritative — render loading, not A's
@@ -150,8 +150,8 @@ describe('ChatArea no-conversation states', () => {
 })
 
 describe('ChatArea — prompt selection', () => {
-  // PromptSelector is read-only (no async save), so handleSend no longer
-  // needs to flush a pending edit before sending.
+  // PromptSelector is read-only (no async save), so handleSend does not
+  // need to flush a pending edit before sending.
   beforeEach(() => {
     mockUpdateConversation.mockReset()
   })
@@ -226,7 +226,7 @@ describe('ChatArea — prompt selection', () => {
 })
 
 describe('ChatArea — active background run on return', () => {
-  // Regression for codex iteration 7 P2: returning to a conversation whose run
+  // Returning to a conversation whose run
   // is still going (streaming false, but conversation.active_run set) must keep
   // the composer blocked and offer Stop — otherwise the run is uncontrollable
   // and a send just hits the backend 409 active-run guard.
@@ -280,7 +280,7 @@ describe('ChatArea — active background run on return', () => {
 })
 
 describe('ChatArea — Stop gating on runReady', () => {
-  // Regression for codex iter 9 P2: while streaming but before run_started has
+  // While streaming but before run_started has
   // delivered the run id (runReady false), Stop must be hidden so the UI can't
   // issue an unguarded cancel. Once runReady is true, Stop appears.
   function renderStreaming(runReady) {

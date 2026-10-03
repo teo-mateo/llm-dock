@@ -76,8 +76,8 @@ describe('useChat stop/cancel wiring', () => {
   it('Stop cancels even when no run_started frame has been received yet', async () => {
     // The whole point of cancel-by-conversation: the server creates the run
     // when the turn starts, so Stop works without the client first capturing a
-    // run id. Earlier (run-id-keyed) designs could orphan the run in this
-    // window; this asserts the cancel POST always fires (with no guard, since
+    // run id — a run-id-keyed design would orphan the run in this window.
+    // This asserts the cancel POST always fires (with no guard, since
     // the active run is provably still the one the user meant).
     installInFlightStream(null)
     const { result } = renderHook(() => useChat({}))
@@ -116,7 +116,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('Stop reconciles the optimistic row so a later send keeps the stopped prompt', async () => {
-    // Regression for codex iter 1 P1: the user message is persisted at run
+    // The user message is persisted at run
     // creation, but the optimistic temp-user row would be stripped by the next
     // send's save handler. Stop must refetch so the stopped prompt survives
     // with a real (non-temp) id.
@@ -152,7 +152,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('a late Stop refetch does not clobber a conversation the user navigated to', async () => {
-    // Regression for codex iter 2 P2: stopStreaming refetches after cancel
+    // stopStreaming refetches after cancel
     // settles. If the user navigates A -> B while the cancel POST is in flight,
     // the A refetch must NOT overwrite B (refetchMessages writes conversation
     // /messages directly).
@@ -195,7 +195,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('blocks a new send until the cancel settles, closing the unguarded race', async () => {
-    // Regression for codex iter 5 P2: when Stop is pressed before run_started,
+    // When Stop is pressed before run_started,
     // the cancel is unguarded (no expected_run_id). A new run must not be able
     // to start while that cancel is in flight, or the server could cancel the
     // NEW run instead. The hook blocks send/edit until the cancel settles.
@@ -236,7 +236,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('a Stop reconcile is dropped when its cancel settles during an in-flight navigation', async () => {
-    // Regression for codex iter 6 P2: the reconcile gate must use the INTENDED
+    // The reconcile gate must use the INTENDED
     // conversation (set synchronously at loadConversation), not the committed
     // one. Repro: Stop A, navigate to B while B's fetch is still pending, then
     // A's cancel settles — the reconcile for A must be gated out (we already
@@ -283,7 +283,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('Stop on a returned-to background run uses active_run.id as the cancel guard', async () => {
-    // Regression for codex iter 8 P2: after navigating back there is no local
+    // After navigating back there is no local
     // stream (runIdRef is null), but the loaded conversation carries active_run.
     // Stop must still send an expected-run guard so a late cancel can't kill a
     // newer run.
@@ -299,7 +299,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('editMessage is blocked while the conversation has an active background run', async () => {
-    // Regression for codex iter 8 P3: editing during a reattached active run
+    // Editing during a reattached active run
     // must not optimistically truncate the transcript only to hit the 409.
     mockGetConversation.mockResolvedValue({
       ...CONV,
@@ -321,7 +321,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('runReady stays false until run_started, gating an unguarded Stop', async () => {
-    // Regression for codex iter 9 P2: the Stop control must not be exposed
+    // The Stop control must not be exposed
     // before the run id is known, so the UI can never issue an unguarded
     // cancel. runReady is the gate; it flips true only on run_started.
     let handlers
@@ -385,7 +385,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('surfaces a failed background run error on load via last_run', async () => {
-    // Phase 7: a run that failed while we weren't observing shows up as
+    // A run that failed while we weren't observing shows up as
     // last_run (active_run is only queued/running). loadConversation must
     // surface its error in the chat area.
     mockGetConversation.mockResolvedValue({
@@ -419,7 +419,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('reattaches to the live run stream when loading an in-progress conversation', async () => {
-    // The fix for the "no progress on return" bug: loading a conversation whose
+    // Loading a conversation whose
     // run is still active opens GET /chat/runs/<id>/stream and renders live.
     mockGetConversation.mockResolvedValue({
       ...CONV,
@@ -452,7 +452,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('opens only one run stream when the same conversation is loaded twice concurrently', async () => {
-    // Regression for codex iter 4 P1: React StrictMode runs the URL-load effect
+    // React StrictMode runs the URL-load effect
     // twice on mount, and A→B→A navigation re-loads A while the first A fetch is
     // pending. Both same-id loads pass the conversation-id guard; without a load
     // generation each would open its own GET run stream and replay/live-render
@@ -484,7 +484,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('does not commit a superseded same-id load that resolves out of order', async () => {
-    // Regression for codex iter 5 P1: two concurrent same-id loads can return
+    // Two concurrent same-id loads can return
     // different snapshots and resolve oldest-last. The older snapshot
     // ({active_run: running}) must NOT overwrite the newer ({active_run: null}),
     // or `conversation.active_run` would stay stale — blocking send/edit and
@@ -548,8 +548,8 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('send path clears streaming state on a terminal run_status frame', async () => {
-    // The server used to close the stream at the idle backstop while the title
-    // tail was still running (issue #111): a terminal run_status could arrive
+    // The server can close the stream at the idle backstop while the title
+    // tail is still running: a terminal run_status can arrive
     // instead of the tail. The reply is already persisted, so the composer must
     // unblock and refetch either way instead of the stream ending silently.
     let handlers
@@ -576,7 +576,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('edit path reloads the conversation on a terminal run_status frame', async () => {
-    // Issue #111, edit path: a terminal run_status means the optimistic
+    // Edit path: a terminal run_status means the optimistic
     // truncation is stale relative to the DB — reload the whole conversation,
     // as this path's error case does.
     mockGetConversation.mockResolvedValue({
@@ -612,7 +612,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('reattach reconciles when the run is cancelled elsewhere (silent stream close)', async () => {
-    // Codex iter 1 P1: a cancel from another tab emits no frame, so the reattach
+    // A cancel from another tab emits no frame, so the reattach
     // stream just closes. The hook must still drop streaming + refetch.
     mockGetConversation
       .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
@@ -629,7 +629,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('reattach reconciles on a live failure delivered after attach', async () => {
-    // Codex iter 1 P1: a failure encoded as an error frame must clear the stale
+    // A failure encoded as an error frame must clear the stale
     // active_run (refetch) so it stops blocking the next send.
     mockGetConversation
       .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
@@ -646,7 +646,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('reattach reconciles when the run-stream request fails to open', async () => {
-    // Codex iter 1 P2: a setup/transport failure rejects the streamChat promise
+    // A setup/transport failure rejects the streamChat promise
     // before its reader loop; it must not leave the UI streaming forever.
     mockGetConversation
       .mockResolvedValueOnce({ ...CONV, active_run: { id: 'run-bg', status: 'running' }, messages: [{ id: 'u1', role: 'user', content: 'hi', seq: 1 }], critiques: {}, artifacts: {} })
@@ -665,7 +665,7 @@ describe('useChat stop/cancel wiring', () => {
   })
 
   it('loadConversation stays stable when onConversationUpdated identity changes', () => {
-    // Regression for codex iter 3 P1: ChatPage passes a fresh onConversationUpdated
+    // ChatPage passes a fresh onConversationUpdated
     // every render. If loadConversation changed identity with it, ChatPage's
     // URL-load effect would re-run and reload in a loop. The hook holds the
     // callback behind a ref so loadConversation (and send/edit/reattach) stay

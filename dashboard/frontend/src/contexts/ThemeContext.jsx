@@ -8,7 +8,7 @@ const STORAGE_KEY = 'dashboard_theme'
 export const AVAILABLE_THEMES = ['dark', 'light']
 const DEFAULT_THEME = 'dark'
 
-// OS following is FIRST-LOAD-ONLY (issue #5, owner decision): prefers-color-
+// OS following is FIRST-LOAD-ONLY: prefers-color-
 // scheme picks the initial theme only when the user has no stored override.
 // Once the user picks a theme explicitly it is persisted and the OS is no
 // longer followed. There is intentionally no "system" entry in
@@ -62,7 +62,7 @@ export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(resolveInitial)
 
   // Authoritative on mount: re-assert the resolved theme even if the
-  // inline anti-FOUC script failed or was changed (owner note 4).
+  // inline anti-FOUC script failed or was changed.
   useEffect(() => {
     applyThemeToDom(theme)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,7 +85,7 @@ export function ThemeProvider({ children }) {
     })
   }, [])
 
-  // OS-following is first-load-only (owner decision): prefers-color-scheme
+  // OS-following is first-load-only: prefers-color-scheme
   // is sampled once during initial resolution (resolveInitial + the inline
   // anti-FOUC script), never live. Intentionally no matchMedia change
   // listener — a mid-session OS flip must not silently change the theme

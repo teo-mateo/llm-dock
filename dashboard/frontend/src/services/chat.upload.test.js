@@ -3,7 +3,7 @@ import { uploadProjectFile } from './chat'
 import { TOKEN_KEY } from '../api'
 
 // uploadProjectFile bypasses fetchAPI (multipart), so its error-code
-// transport needs its own adapter test (regression: codex #82 1.3).
+// transport needs its own adapter test.
 
 beforeEach(() => {
   localStorage.setItem(TOKEN_KEY, 'test-token')

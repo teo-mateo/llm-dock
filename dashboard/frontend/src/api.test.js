@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fetchAPI, TOKEN_KEY } from './api'
 
-// Adapter-level transport tests (regression: codex #82 1.3): the component
+// Adapter-level transport tests: the component
 // tests manufacture errors that already carry `code`, so without these the
 // JSON→Error.code plumbing could silently break while everything stays green.
 

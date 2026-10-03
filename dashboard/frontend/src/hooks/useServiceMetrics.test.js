@@ -537,7 +537,7 @@ describe('useServiceMetrics ninfer', () => {
     expect(second.running).toBe(2)
     expect(second.waiting).toBe(1)
     // No service-level spec aggregate exists, so the ratio stays undefined
-    // and the Spec Accept donut renders "—" (R3).
+    // and the Spec Accept donut renders "—".
     expect(second.specAcceptRatio).toBeUndefined()
   })
 

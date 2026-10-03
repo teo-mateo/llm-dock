@@ -117,8 +117,8 @@ export default function ChatArea({
   // (direct load, or switching from another conversation). Authoritative
   // over a possibly-stale `conversation`: render loading, never the active
   // chat or the create composer. Otherwise typing would either spawn a
-  // different new conversation (codex iter 1) or, worse, send into the
-  // previously-loaded chat via its stale sendMessage closure (codex iter 2).
+  // different new conversation or, worse, send into the
+  // previously-loaded chat via its stale sendMessage closure.
   if (awaitingConversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-fg-subtle">
