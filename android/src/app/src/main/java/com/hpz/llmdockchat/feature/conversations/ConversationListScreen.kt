@@ -77,6 +77,7 @@ import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.feature.account.AccountEntry
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import java.time.Instant
 import java.time.ZoneId
@@ -90,6 +91,7 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     onOpenConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onOpenAccount: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
@@ -106,6 +108,7 @@ fun ConversationListScreen(
         listState = listState,
         onOpenConversation = onOpenConversation,
         onNewConversation = onNewConversation,
+        onOpenAccount = onOpenAccount,
         onRetry = viewModel::refresh,
         onDelete = viewModel::delete,
         onSwipeDelete = viewModel::deleteWithUndo,
@@ -125,6 +128,7 @@ private fun ConversationListContent(
     listState: LazyListState,
     onOpenConversation: (ConversationSummary) -> Unit,
     onNewConversation: () -> Unit,
+    onOpenAccount: () -> Unit = {},
     onRetry: () -> Unit,
     onDelete: (String) -> Unit,
     onSwipeDelete: (ConversationSummary) -> Unit = {},
@@ -189,7 +193,7 @@ private fun ConversationListContent(
                     onDelete = { pendingBatchDelete = true },
                 )
             } else {
-                ListHeader(count = loaded?.conversations?.size)
+                ListHeader(count = loaded?.conversations?.size, onOpenAccount = onOpenAccount)
             }
         },
         floatingActionButton = {
@@ -324,7 +328,7 @@ private fun FollowNewConversations(conversations: List<ConversationSummary>?, li
  * block (title over a live count) on the page background with no bar of its own.
  */
 @Composable
-private fun ListHeader(count: Int?) {
+private fun ListHeader(count: Int?, onOpenAccount: () -> Unit) {
     val colors = LlmTheme.colors
     HeaderShell {
         Row(
@@ -347,6 +351,8 @@ private fun ListHeader(count: Int?) {
                     )
                 }
             }
+            Spacer(Modifier.weight(1f))
+            AccountEntry(onClick = onOpenAccount)
         }
     }
 }

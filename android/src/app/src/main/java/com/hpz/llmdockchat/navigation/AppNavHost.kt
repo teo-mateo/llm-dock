@@ -28,6 +28,8 @@ import androidx.navigation.navArgument
 import com.hpz.llmdockchat.core.AppContainer
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.designlab.DesignLabGalleryScreen
+import com.hpz.llmdockchat.feature.account.AccountScreen
+import com.hpz.llmdockchat.feature.account.AccountViewModel
 import com.hpz.llmdockchat.feature.connect.ConnectScreen
 import com.hpz.llmdockchat.feature.connect.ConnectViewModel
 import com.hpz.llmdockchat.feature.conversations.ConversationListScreen
@@ -148,6 +150,7 @@ fun AppNavHost(
                             navController.navigate(Destinations.thread(conversation.id))
                         },
                         onNewConversation = { navController.navigate(Destinations.newChat()) },
+                        onOpenAccount = { navController.navigate(Destinations.ACCOUNT) },
                     )
                 }
             }
@@ -178,6 +181,7 @@ fun AppNavHost(
                                 Destinations.modelDetail(serviceName, Destinations.MODEL_TAB_LOGS),
                             )
                         },
+                        onOpenAccount = { navController.navigate(Destinations.ACCOUNT) },
                     )
                 }
             }
@@ -185,6 +189,23 @@ fun AppNavHost(
             composable(Destinations.DESIGN) {
                 TabScaffold(navController) { DesignLabGalleryScreen() }
             }
+        }
+
+        composable(Destinations.ACCOUNT) {
+            val viewModel: AccountViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer {
+                        AccountViewModel(
+                            sessionManager = container.sessionManager,
+                            serverUrlStore = container.serverUrlStore,
+                        )
+                    }
+                },
+            )
+            AccountScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(

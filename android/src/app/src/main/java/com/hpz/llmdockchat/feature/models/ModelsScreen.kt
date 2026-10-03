@@ -60,6 +60,7 @@ import com.hpz.llmdockchat.core.ui.BrandMark
 import com.hpz.llmdockchat.core.ui.NoticeDialog
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.account.AccountEntry
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.GpuState
@@ -80,6 +81,7 @@ fun ModelsScreen(
     onNewChatFromModel: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
     onOpenLogs: (String) -> Unit,
+    onOpenAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -107,6 +109,7 @@ fun ModelsScreen(
         onNewChatFromModel = onNewChatFromModel,
         onOpenDetail = onOpenDetail,
         onOpenLogs = onOpenLogs,
+        onOpenAccount = onOpenAccount,
         onQueryChange = viewModel::onQueryChange,
         onRequestStart = viewModel::requestStart,
         onRequestStop = viewModel::requestStop,
@@ -127,6 +130,7 @@ private fun ModelsContent(
     onNewChatFromModel: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
     onOpenLogs: (String) -> Unit = {},
+    onOpenAccount: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onRequestStart: (String) -> Unit,
     onRequestStop: (String) -> Unit,
@@ -149,6 +153,7 @@ private fun ModelsContent(
             ListHeader(
                 running = loaded?.running?.size,
                 stopped = loaded?.stopped?.size,
+                onOpenAccount = onOpenAccount,
             )
         },
     ) { padding ->
@@ -198,7 +203,7 @@ private fun ModelsContent(
  * geometry so the two tabs do not jump when you switch between them.
  */
 @Composable
-private fun ListHeader(running: Int?, stopped: Int?) {
+private fun ListHeader(running: Int?, stopped: Int?, onOpenAccount: () -> Unit) {
     val colors = LlmTheme.colors
     Box(
         Modifier
@@ -228,6 +233,8 @@ private fun ListHeader(running: Int?, stopped: Int?) {
                     )
                 }
             }
+            Spacer(Modifier.weight(1f))
+            AccountEntry(onClick = onOpenAccount)
         }
     }
 }
