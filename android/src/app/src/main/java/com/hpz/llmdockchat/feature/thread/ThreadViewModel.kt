@@ -115,6 +115,34 @@ class ThreadViewModel(
         get() = ladders + remoteLadders
 
     private var composerBeforeEdit: String = ""
+
+    /**
+     * What this screen last put into [drafts], so a reload can tell its own
+     * writes from someone else's. The share picker appends to the destination's
+     * draft without coming through this screen, and without this the composer
+     * of an already-open thread keeps showing the pre-share text.
+     */
+    private var lastDraftWritten: String = ""
+
+    private fun storeDraft(text: String) {
+        lastDraftWritten = text
+        drafts.save(conversationId, text)
+    }
+
+    private fun clearDraft() {
+        lastDraftWritten = ""
+        drafts.clear(conversationId)
+    }
+
+    /**
+     * The draft, when it grew by appending to exactly what this screen stored —
+     * the shape of `SharedDraftStore.mergedDraft`. Any other difference is this
+     * reload racing the user's own typing, where the on-screen text is newer
+     * than the one read from disk and must win.
+     */
+    private fun adoptedDraft(draft: String): String? = draft
+        .takeIf { it.length > lastDraftWritten.length && it.startsWith(lastDraftWritten) }
+        ?.also { lastDraftWritten = it }
     private var attachmentsBeforeEdit: List<String> = emptyList()
 
     private var autoSendFired = false
@@ -181,7 +209,7 @@ class ThreadViewModel(
                 messages = conversation.messages,
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
             ),
-            composer = edit.composer ?: current?.composer ?: draft,
+            composer = edit.composer ?: adoptedDraft(draft) ?: current?.composer ?: draft,
             attachments = ((edit.attachments ?: current?.attachments).orEmpty() + staged).distinct(),
             attachmentImporting = current?.attachmentImporting ?: false,
             settingsPending = settingWritesInFlight > 0,
@@ -220,7 +248,7 @@ class ThreadViewModel(
         }
         editStates?.clear(conversationId)
         val prior = composerBeforeEdit
-        if (prior.isNotBlank()) drafts.save(conversationId, prior)
+        if (prior.isNotBlank()) storeDraft(prior)
         return ReconciledEdit(
             message = null,
             pendingEdit = null,
@@ -246,7 +274,7 @@ class ThreadViewModel(
             editStates?.clear(conversationId)
             val prior = session.composerBeforeEdit
             if (prior.isNotBlank()) {
-                drafts.save(conversationId, prior)
+                storeDraft(prior)
                 _state.value = current.copy(
                     composer = prior,
                     actionError = current.actionError ?: EDIT_TARGET_GONE_NOTICE,
@@ -356,7 +384,7 @@ class ThreadViewModel(
     fun onComposerChange(text: String) {
         val current = loaded() ?: return
         _state.value = current.copy(composer = text)
-        drafts.save(conversationId, text)
+        storeDraft(text)
     }
 
     fun dismissActionError() {
@@ -376,7 +404,7 @@ class ThreadViewModel(
             reasoningNotice = null,
             thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
         )
-        drafts.clear(conversationId)
+        clearDraft()
         attachmentStore?.clear(conversationId)
 
         collectRun(
@@ -644,7 +672,7 @@ class ThreadViewModel(
         )
         // While an edit is open, DraftStore mirrors the live composer, so every
         // restoration path reads the text the user was looking at.
-        drafts.save(conversationId, message.content)
+        storeDraft(message.content)
         _state.value = current.copy(
             editingMessage = message,
             composer = message.content,
@@ -664,7 +692,7 @@ class ThreadViewModel(
             composer = composerBeforeEdit,
             attachments = attachmentsBeforeEdit,
         )
-        drafts.save(conversationId, composerBeforeEdit)
+        storeDraft(composerBeforeEdit)
     }
 
     fun requestEditConfirm() {
@@ -704,7 +732,7 @@ class ThreadViewModel(
                 streaming = StreamingTurn(userMessage = pending),
             ),
         )
-        drafts.clear(conversationId)
+        clearDraft()
         editStates?.clear(conversationId)
 
         collectRun(
@@ -893,7 +921,7 @@ class ThreadViewModel(
             } else {
                 loadedCurrent.thread.messages
             }
-            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
+            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) storeDraft(restored)
             _state.value = loadedCurrent.copy(
                 sending = false,
                 thread = loadedCurrent.thread.copy(streaming = null, messages = messages),

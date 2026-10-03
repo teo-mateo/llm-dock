@@ -60,7 +60,7 @@ class SharedDraftStoreAutoSendTest {
     fun `an attachment write after the claim does not erase it`() {
         store.stageForAutoSend(CONV, "summarise it")
 
-        store.saveAttachments(CONV, listOf("data:image/jpeg;base64,AAA"))
+        store.appendAttachments(CONV, listOf("data:image/jpeg;base64,AAA"))
 
         assertEquals("summarise it", take())
     }

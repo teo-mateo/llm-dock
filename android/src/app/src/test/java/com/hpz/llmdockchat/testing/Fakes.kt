@@ -15,6 +15,7 @@ import com.hpz.llmdockchat.core.prefs.EditStateStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
@@ -115,11 +116,16 @@ class FakeNewChatPreferences(
  */
 class FakeDraftStore(initial: Map<String, String> = emptyMap()) : DraftStore {
     val saved = initial.toMutableMap()
+
+    /** Makes [save] throw, to pin what a failed destination write leaves behind. */
+    var failOnSave: Boolean = false
     override suspend fun draft(conversationId: String): String = saved[conversationId].orEmpty()
     override fun save(conversationId: String, text: String) {
+        if (failOnSave) throw IOException("draft write failed")
         if (text.isBlank()) saved.remove(conversationId) else saved[conversationId] = text
     }
     override fun clear(conversationId: String) { saved.remove(conversationId) }
+    override suspend fun awaitWrites() = Unit
 }
 
 class FakeEditStateStore(initial: Map<String, EditSession> = emptyMap()) : EditStateStore {

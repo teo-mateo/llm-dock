@@ -18,6 +18,7 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.mergedDraft
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -72,6 +73,8 @@ class ThreadShareTest {
 
     companion object {
         private const val CONVERSATION_ID = "5ebf5a99-e1d7-421d-86be-c16d1d53d166"
+        private const val TITLE = "Testing Specific Greeting Request"
+        private const val RELOADED_TITLE = "Reloaded Thread Title"
         private val IMAGE = listOf("data:image/jpeg;base64,AAA")
     }
 
@@ -115,6 +118,12 @@ class ThreadShareTest {
         server.enqueue(MockResponse.Builder().body(readFixture("conversation_completed.json")).build())
     }
 
+    /** The same thread under a new title, so a reload is observable in the state. */
+    private fun reloadedConversation() {
+        val body = readFixture("conversation_completed.json").replace(TITLE, RELOADED_TITLE)
+        server.enqueue(MockResponse.Builder().body(body).build())
+    }
+
     private fun viewModel(): ThreadViewModel = ViewModelProvider.create(
         store,
         viewModelFactory {
@@ -141,12 +150,17 @@ class ThreadShareTest {
     private suspend fun ThreadViewModel.awaitLoaded(): ThreadUiState.Loaded =
         withTimeout(10_000) { state.first { it is ThreadUiState.Loaded } as ThreadUiState.Loaded }
 
+    private suspend fun ThreadViewModel.awaitReloaded(): ThreadUiState.Loaded =
+        withTimeout(10_000) {
+            state.first { (it as? ThreadUiState.Loaded)?.conversation?.title == RELOADED_TITLE } as ThreadUiState.Loaded
+        }
+
     // -- staging on load ----------------------------------------------------
 
     @Test
     fun `load applies staged attachments for this conversation`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
 
@@ -157,7 +171,7 @@ class ThreadShareTest {
     @Test
     fun `a re-entry within the same process does not duplicate the attachments`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         val first = viewModel.awaitLoaded()
@@ -174,7 +188,7 @@ class ThreadShareTest {
     @Test
     fun `a force-stop re-stages from disk - a fresh ViewModel applies the record again`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val first = viewModel()
         first.load()
         first.awaitLoaded()
@@ -201,12 +215,48 @@ class ThreadShareTest {
         assertTrue(state.canSend)
     }
 
+    @Test
+    fun `a share merged under the draft reaches the composer of an open thread`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        assertEquals("", viewModel.awaitLoaded().composer)
+
+        // Type, leave for a browser, share a URL back into this thread: the
+        // picker merges on disk and navigates to a thread that never died.
+        viewModel.onComposerChange("TYPED")
+        drafts.save(CONVERSATION_ID, mergedDraft("TYPED", "https://shared.example"))
+        reloadedConversation()
+        viewModel.load()
+
+        val reloaded = viewModel.awaitReloaded()
+        assertEquals("TYPED\n\nhttps://shared.example", reloaded.composer)
+        assertTrue(reloaded.canSend)
+    }
+
+    @Test
+    fun `a reload does not adopt a draft this screen did not append to`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("TYPED")
+
+        // A draft that is not the screen's own text with something appended
+        // under it is not a merge, and the newer on-screen text stands.
+        drafts.save(CONVERSATION_ID, "SOMETHING-ELSE-ENTIRELY")
+        reloadedConversation()
+        viewModel.load()
+
+        assertEquals("TYPED", viewModel.awaitReloaded().composer)
+    }
+
     // -- spending the record -------------------------------------------------
 
     @Test
     fun `send clears the staged record`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
@@ -219,7 +269,7 @@ class ThreadShareTest {
     @Test
     fun `leaving the thread clears the staged record - no ghost on the next visit`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
@@ -232,7 +282,7 @@ class ThreadShareTest {
     @Test
     fun `removing an attachment keeps the record aligned`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
+        attachmentStore.appendAttachments(CONVERSATION_ID, listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
         val viewModel = viewModel()
         viewModel.load()
         val loaded = viewModel.awaitLoaded()
