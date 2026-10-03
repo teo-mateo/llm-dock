@@ -21,6 +21,7 @@ fun ServiceDto.toDomain(): ServiceSummary =
         modelSizeStr = modelSizeStr,
         createdAt = created,
         reasoningLevels = parseReasoningLevels(reasoningLevels),
+        templateType = templateType,
     )
 
 fun PromptDto.toDomain(): ManagedPrompt = ManagedPrompt(id = id, name = name, sortOrder = sortOrder)

@@ -36,6 +36,18 @@ class ModelPickerSheetTest {
     }
 
     @Test
+    fun `running ik, exl3 and ninfer services appear in the running picker`() {
+        val ik = ServiceSummary("ik-a", "running", "chat")
+        val exl3 = ServiceSummary("exl3-a", "running", "chat")
+        val ninfer = ServiceSummary("ninfer-a", "running", "chat")
+        val byTemplate = ServiceSummary("renamed-svc", "running", "chat", templateType = "tabbyapi")
+
+        val result = runningChatCapable(listOf(ik, exl3, ninfer, byTemplate))
+
+        assertEquals(listOf(ik, exl3, ninfer, byTemplate), result)
+    }
+
+    @Test
     fun `running favourites sort first, ties otherwise kept in server order`() {
         val a = ServiceSummary("llamacpp-a", "running", "chat", favorite = false)
         val b = ServiceSummary("llamacpp-b", "running", "chat", favorite = true)

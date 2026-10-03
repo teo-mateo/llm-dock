@@ -205,8 +205,11 @@ private fun ModelPickerSectionHeader(title: String) {
 
 private fun Engine.label(): String = when (this) {
     Engine.LLAMA_CPP -> "llama.cpp"
+    Engine.IK_LLAMA_CPP -> "ik_llama.cpp"
     Engine.VLLM -> "vLLM"
     Engine.DS4 -> "ds4"
+    Engine.TABBYAPI -> "TabbyAPI / EXL3"
+    Engine.NINFER -> "NInfer"
     Engine.SGLANG -> "SGLang"
     Engine.OPEN_ROUTER -> "OpenRouter"
     Engine.UNKNOWN -> "Unknown"

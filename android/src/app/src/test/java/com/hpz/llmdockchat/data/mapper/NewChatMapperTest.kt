@@ -3,9 +3,11 @@ package com.hpz.llmdockchat.data.mapper
 import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.data.dto.OpenRouterModelDto
 import com.hpz.llmdockchat.data.dto.ServiceDto
+import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NewChatMapperTest {
@@ -33,6 +35,15 @@ class NewChatMapperTest {
         assertEquals(false, summary.favorite)
     }
 
+    @Test
+    fun `template_type maps through and drives the engine even when the name has no prefix`() {
+        val summary = decode(
+            """{"name": "legacy-svc", "status": "running", "kind": "chat", "template_type": "tabbyapi"}""",
+        ).toDomain()
+        assertEquals("tabbyapi", summary.templateType)
+        assertEquals(Engine.TABBYAPI, summary.engine)
+        assertTrue(summary.isChatCapable)
+    }
 
     @Test
     fun `a declared ladder maps through in declaration order`() {

@@ -1,7 +1,9 @@
 package com.hpz.llmdockchat.feature.models
 
+import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.ZoneOffset
@@ -67,6 +69,23 @@ class ModelsFormattingTest {
     fun `a not-created service with no known size still renders, just without a needs figure`() {
         val service = ServiceSummary("ds4-a", "not-created", "chat", port = 3315, modelSizeStr = null)
         assertEquals(":3315 · not created", service.subtitle(now, zone))
+    }
+
+    @Test
+    fun `chip labels cover the engines added for the #269 gap`() {
+        assertEquals("ik.cpp", engineLabel(Engine.IK_LLAMA_CPP))
+        assertEquals("exl3", engineLabel(Engine.TABBYAPI))
+        assertEquals("ninfer", engineLabel(Engine.NINFER))
+        assertEquals(listOf("ik", "cpp"), engineLabelLines(Engine.IK_LLAMA_CPP))
+        // The chip renders engineLabelLines (split on '.' and space) at a fixed
+        // width with a bounded font ramp, so every engine's label must yield at
+        // least one line and no line longer than the ramp's floor — otherwise a
+        // future relabel silently overflows the chip instead of failing here.
+        for (engine in Engine.entries) {
+            val lines = engineLabelLines(engine)
+            assertTrue("$engine must render at least one line", lines.isNotEmpty())
+            assertTrue("$engine chip line too long: $lines", lines.maxOf { it.length } <= 6)
+        }
     }
 
     @Test

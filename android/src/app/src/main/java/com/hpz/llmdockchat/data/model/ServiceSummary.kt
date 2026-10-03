@@ -22,15 +22,24 @@ data class ServiceSummary(
      * hides the level control on 90 % of services (F15-R3, F15-R8).
      */
     val reasoningLevels: List<String> = emptyList(),
+    /**
+     * The service's `template_type` verbatim from the payload — the authoritative
+     * engine id ([com.hpz.llmdockchat.data.model.engineFromTemplateType]). Null on
+     * a snapshot from before the field shipped, which falls [engine] back to the
+     * name prefix.
+     */
+    val templateType: String? = null,
 ) {
-    val engine: Engine get() = ModelRef.Local(name).engine
+    val engine: Engine get() = engineFromTemplateType(templateType) ?: ModelRef.Local(name).engine
 
     /**
-     * Chat-capable inference services only — the same filter the dashboard
-     * frontend applies in `useRunningServices.js`: a recognised engine prefix
-     * AND `kind == "chat"`. Both halves matter: `kind` alone would let
+     * Chat-capable inference services only — the dashboard frontend's own
+     * filter (`useRunningServices.js`), modulo its legacy `PAIR_` prefix, which
+     * has no `services.json` entry and so stays UNKNOWN here: a recognised engine
+     * (`template_type`, falling back to the name prefix) AND `kind == "chat"`.
+     * Both halves matter: `kind` alone would let
      * `open-webui` through (it isn't in `services.json`, so its `kind`
-     * defaults to `"chat"`), and the prefix alone would let an embedding
+     * defaults to `"chat"`), and the engine alone would let an embedding
      * service through.
      *
      * A blank `kind` counts as `"chat"` too — `useRunningServices.js` reads

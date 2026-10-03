@@ -30,6 +30,14 @@ data class ServiceDto(
      * the whole snapshot — see [com.hpz.llmdockchat.core.net.parseReasoningLevels].
      */
     @SerialName("reasoning_levels") val reasoningLevels: JsonElement? = null,
+    /**
+     * #269: the service's engine (`"vllm"`, `"ik_llamacpp"`, `"tabbyapi"`, …)
+     * — the field that selected its compose template, and the authoritative
+     * source for [com.hpz.llmdockchat.data.model.ServiceSummary.engine]. Sent on
+     * every row by `get_docker_services`; null on an older snapshot, which falls
+     * engine classification back to the name prefix.
+     */
+    @SerialName("template_type") val templateType: String? = null,
 )
 
 @Serializable
