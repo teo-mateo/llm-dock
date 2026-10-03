@@ -54,7 +54,7 @@ class ConnectViewModelTest {
 
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore, sessionState))
-            .authenticator(SessionAuthenticator(tokenStore, sessionState) { null })
+            .authenticator(SessionAuthenticator(tokenStore, sessionState, com.hpz.llmdockchat.core.auth.Reauthenticator { null }))
             .build()
         val api = ApiClient(client, serverUrlStore, ApiJson, Dispatchers.IO)
         val authService = AuthService(api)
@@ -69,7 +69,7 @@ class ConnectViewModelTest {
                 reauthenticator = CredentialReauthenticator(
                     credentials = credentials,
                     sessionState = sessionState,
-                    exchange = { Result.failure(IllegalStateException("not used")) },
+                    exchange = { _, _ -> Result.failure(IllegalStateException("not used")) },
                 ),
             ),
             reachability = ReachabilityRepository(HealthRepository(api)),
@@ -123,6 +123,60 @@ class ConnectViewModelTest {
         assertEquals(Credential.Password("hunter2"), credentials.current())
         assertEquals("/api/health", server.takeRequest().url.encodedPath)
         assertEquals("/api/auth/session", server.takeRequest().url.encodedPath)
+    }
+
+    @Test
+    fun `a failed candidate login leaves the previous server and secrets active`() {
+        val candidate = MockWebServer()
+        candidate.start()
+        try {
+            val previous = com.hpz.llmdockchat.testing.baseUrl(server.url("/").toString())
+            serverUrlStore.set(previous)
+            tokenStore.update("totp-server-a")
+            credentials.save(Credential.Password("SERVER_A_PASSWORD"))
+            candidate.enqueue(healthy())
+            candidate.enqueue(MockResponse.Builder().code(401).body("""{"error":"bad password"}""").build())
+
+            viewModel.onAddressChange(candidate.url("/").toString())
+            viewModel.onPasswordChange("B_INPUT_PASSWORD")
+            viewModel.submit()
+
+            assertFalse(settled().signedIn)
+            assertEquals(previous, serverUrlStore.current())
+            assertEquals("totp-server-a", tokenStore.current())
+            assertEquals(Credential.Password("SERVER_A_PASSWORD"), credentials.current())
+            assertEquals(2, candidate.requestCount)
+            assertNull(candidate.takeRequest().headers["Authorization"])
+            assertEquals("Bearer B_INPUT_PASSWORD", candidate.takeRequest().headers["Authorization"])
+        } finally {
+            candidate.close()
+        }
+    }
+
+    @Test
+    fun `a failed candidate probe does not commit its address`() {
+        val candidate = MockWebServer()
+        candidate.start()
+        try {
+            val previous = com.hpz.llmdockchat.testing.baseUrl(server.url("/").toString())
+            serverUrlStore.set(previous)
+            tokenStore.update("totp-server-a")
+            credentials.save(Credential.Password("SERVER_A_PASSWORD"))
+            candidate.enqueue(MockResponse.Builder().body("""{"error":"not a dashboard"}""").build())
+
+            viewModel.onAddressChange(candidate.url("/").toString())
+            viewModel.onPasswordChange("B_INPUT_PASSWORD")
+            viewModel.submit()
+
+            assertFalse(settled().signedIn)
+            assertEquals(previous, serverUrlStore.current())
+            assertEquals("totp-server-a", tokenStore.current())
+            assertEquals(Credential.Password("SERVER_A_PASSWORD"), credentials.current())
+            assertEquals(1, candidate.requestCount)
+            assertNull(candidate.takeRequest().headers["Authorization"])
+        } finally {
+            candidate.close()
+        }
     }
 
     /**
@@ -196,7 +250,7 @@ class ConnectViewModelTest {
             sessionManager = SessionManager(
                 serverUrlStore, tokenStore, credentials, sessionState,
                 AuthService(ApiClient(OkHttpClient(), serverUrlStore, ApiJson, Dispatchers.IO)),
-                CredentialReauthenticator(credentials, sessionState) {
+                CredentialReauthenticator(credentials, sessionState) { _, _ ->
                     Result.failure(IllegalStateException("not used"))
                 },
             ),

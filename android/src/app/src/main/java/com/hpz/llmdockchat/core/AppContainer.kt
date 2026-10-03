@@ -78,15 +78,15 @@ class AppContainer(
 
     val sessionState = SessionState()
     val serverUrlStore: ServerUrlStore = DataStoreServerUrlStore(dataStore, appScope)
-    val tokenStore: TokenStore = DataStoreTokenStore(dataStore, appScope, cipher)
-    val credentialStore: CredentialStore = DataStoreCredentialStore(dataStore, appScope, cipher)
+    val tokenStore: TokenStore = DataStoreTokenStore(dataStore, appScope, cipher, serverUrlStore)
+    val credentialStore: CredentialStore = DataStoreCredentialStore(dataStore, appScope, cipher, serverUrlStore)
 
     /** Breaks the cycle: the HTTP stack exists before anything that can log in. */
     private val reauthenticatorHolder = ReauthenticatorHolder()
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor(tokenStore, sessionState, reauthenticatorHolder))
-        .authenticator(SessionAuthenticator(tokenStore, sessionState, reauthenticatorHolder))
+        .addInterceptor(AuthInterceptor(tokenStore, sessionState, reauthenticatorHolder, serverUrlStore))
+        .authenticator(SessionAuthenticator(tokenStore, sessionState, reauthenticatorHolder, serverUrlStore))
         .connectTimeout(Duration.ofSeconds(15))
         .readTimeout(Duration.ofSeconds(30))
         .build()
@@ -151,10 +151,11 @@ class AppContainer(
     private val reauthenticator = CredentialReauthenticator(
         credentials = credentialStore,
         sessionState = sessionState,
+        serverUrlStore = serverUrlStore,
         // OkHttp's `Authenticator` is a blocking callback on a network thread.
         // `/api/auth/session` is exempt from both the interceptor and the
         // authenticator, so this cannot recurse into itself.
-        exchange = { credential -> runBlocking { authService.signIn(credential) } },
+        exchange = { credential, server -> runBlocking { authService.signIn(credential, checkNotNull(server)) } },
     )
 
     val sessionManager = SessionManager(

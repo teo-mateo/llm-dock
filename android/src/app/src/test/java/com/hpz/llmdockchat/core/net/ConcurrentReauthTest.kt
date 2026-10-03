@@ -70,7 +70,7 @@ class ConcurrentReauthTest {
         val reauthenticator = CredentialReauthenticator(
             credentials = credentials,
             sessionState = sessionState,
-        ) {
+        ) { _, _ ->
             exchanges.incrementAndGet()
             inExchange.countDown()
             check(releaseExchange.await(10, TimeUnit.SECONDS)) { "the test never released it" }

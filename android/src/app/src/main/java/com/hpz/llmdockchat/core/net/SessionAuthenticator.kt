@@ -20,6 +20,7 @@ class SessionAuthenticator(
     private val tokenStore: TokenStore,
     private val sessionState: SessionState,
     private val reauthenticator: Reauthenticator,
+    private val serverUrlStore: ServerUrlStore? = null,
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -27,27 +28,33 @@ class SessionAuthenticator(
         // the credential exchange here would loop through it a second time and
         // report the failure from the wrong place.
         if (Endpoints.establishesSession(response.request)) return null
+        val active = serverUrlStore?.current()
+        if (serverUrlStore != null && (active == null || !active.contains(response.request.url))) return null
 
         val attempted = response.request.header(AuthInterceptor.AUTHORIZATION)?.removePrefix("Bearer ")
-        val stored = tokenStore.current()
+        val stored = tokenStore.current(active)
+        if (serverUrlStore != null && serverUrlStore.current() != active) return null
 
         // A concurrent request already re-authenticated and stored a newer
         // token. Retrying with it costs nothing; exchanging the credential
         // again would be the second half of the stampede F01 exists to avoid.
         if (attempted != null && !stored.isNullOrBlank() && attempted != stored) {
-            return if (priorResponses(response) > 1) giveUp() else retryWith(response, stored)
+            return if (priorResponses(response) > 1) giveUp(active) else retryWith(response, stored)
         }
 
         if (attempted != null && attempted == stored) {
-            tokenStore.clear()
+            tokenStore.clear(active)
         }
 
-        if (priorResponses(response) > 1) return giveUp()
+        if (priorResponses(response) > 1) return giveUp(active)
 
-        val fresh = reauthenticator.reauthenticate()?.takeIf { it.isNotBlank() } ?: return giveUp()
+        val fresh = reauthenticator.reauthenticate(active)?.takeIf { it.isNotBlank() }
+            ?: return giveUp(active)
+        if (serverUrlStore != null && serverUrlStore.current() != active) return null
 
-        tokenStore.update(fresh)
-        sessionState.authenticated()
+        tokenStore.update(fresh, active)
+        if (serverUrlStore == null) sessionState.authenticated()
+        else if (active != null) serverUrlStore.ifCurrent(active) { sessionState.authenticated() }
         return retryWith(response, fresh)
     }
 
@@ -56,8 +63,9 @@ class SessionAuthenticator(
             .header(AuthInterceptor.AUTHORIZATION, "Bearer $token")
             .build()
 
-    private fun giveUp(): Request? {
-        sessionState.requireAuthentication()
+    private fun giveUp(server: BaseUrl?): Request? {
+        if (serverUrlStore == null) sessionState.requireAuthentication()
+        else if (server != null) serverUrlStore.ifCurrent(server) { sessionState.requireAuthentication() }
         return null
     }
 

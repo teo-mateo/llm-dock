@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.core.net
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,6 +79,14 @@ class BaseUrlTest {
     fun `resolve keeps a proxy path prefix in front of the endpoint`() {
         val proxied = (BaseUrl.normalize("https://example.com/llmdock") as BaseUrlResult.Valid).baseUrl
         assertEquals("https://example.com/llmdock/api/health", proxied.resolve("/api/health").toString())
+    }
+
+    @Test
+    fun `request matching includes the whole proxy path prefix`() {
+        val base = (BaseUrl.normalize("https://example.com/llmdock") as BaseUrlResult.Valid).baseUrl
+        assertTrue(base.contains(base.resolve("/api/services")))
+        assertFalse(base.contains((BaseUrl.normalize("https://example.com") as BaseUrlResult.Valid).baseUrl.resolve("/api/services")))
+        assertFalse(base.contains((BaseUrl.normalize("https://example.com/llmdock-other") as BaseUrlResult.Valid).baseUrl.resolve("/api/services")))
     }
 
     @Test

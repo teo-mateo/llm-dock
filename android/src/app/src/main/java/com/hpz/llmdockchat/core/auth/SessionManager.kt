@@ -5,7 +5,8 @@ import com.hpz.llmdockchat.core.net.ServerUrlStore
 
 /**
  * Signing in and signing out, in one place. Screens call this; nothing else
- * writes the token or the credential.
+ * writes the token or the credential. Candidate login uses its explicit URL;
+ * the active address and secrets change only after it succeeds.
  */
 class SessionManager(
     private val serverUrlStore: ServerUrlStore,
@@ -22,8 +23,7 @@ class SessionManager(
      */
     suspend fun signInWithPassword(server: BaseUrl, password: String): Result<Unit> {
         val credential = Credential.Password(password)
-        return signIn(server) { authService.signIn(credential) }
-            .onSuccess { credentials.save(credential) }
+        return signIn(server, credential) { authService.signIn(credential, server) }
     }
 
     /**
@@ -32,8 +32,7 @@ class SessionManager(
      * once it dies. The user is told so on the Connect screen.
      */
     suspend fun signInWithTotpCode(server: BaseUrl, code: String): Result<Unit> =
-        signIn(server) { authService.signInWithTotpCode(code) }
-            .onSuccess { credentials.clear() }
+        signIn(server, null) { authService.signInWithTotpCode(code, server) }
 
     /** F01-R7. The address stays; the token and the credential do not. */
     fun signOut() {
@@ -43,12 +42,17 @@ class SessionManager(
         sessionState.signedOut()
     }
 
-    private suspend fun signIn(server: BaseUrl, login: suspend () -> Result<String>): Result<Unit> {
-        // Stored before the call, not after: the request is built from the
-        // configured base URL, so there is nowhere else for it to come from.
-        serverUrlStore.set(server)
+    private suspend fun signIn(
+        server: BaseUrl,
+        credential: Credential?,
+        login: suspend () -> Result<String>,
+    ): Result<Unit> {
         return login().map { token ->
-            tokenStore.update(token)
+            tokenStore.clear()
+            credentials.clear()
+            serverUrlStore.set(server)
+            tokenStore.update(token, server)
+            if (credential != null) credentials.save(credential, server)
             reauthenticator.reset()
             sessionState.authenticated()
         }

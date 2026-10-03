@@ -40,10 +40,10 @@ class AuthServiceTest {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore, sessionState))
             .authenticator(
-                SessionAuthenticator(tokenStore, sessionState) {
+                SessionAuthenticator(tokenStore, sessionState, Reauthenticator {
                     reauthAttempts++
                     "totp-should-never-be-used"
-                },
+                }),
             )
             .build()
         service = AuthService(

@@ -119,7 +119,7 @@ class AuthInterceptorTest {
         tokenStore.clear()
         server.enqueue(MockResponse.Builder().body("{}").build())
         val minted = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(tokenStore, sessionState) { "totp-minted" })
+            .addInterceptor(AuthInterceptor(tokenStore, sessionState, com.hpz.llmdockchat.core.auth.Reauthenticator { "totp-minted" }))
             .build()
 
         val code = minted.newCall(
