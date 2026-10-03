@@ -81,6 +81,7 @@ fun LogsPane(
     var retryToken by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(retryToken) {
+        viewModel.onStreamAttemptStarted()
         try {
             viewModel.observeLogStream().collect { viewModel.onStreamEvent(it) }
             viewModel.onStreamCompleted()

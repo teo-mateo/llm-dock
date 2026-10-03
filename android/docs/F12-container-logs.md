@@ -135,6 +135,16 @@ worse than not. A real network drop instead surfaces as `Failed` with a
 manual Retry, so the user is never stuck — one tap reconnects. Reviewed
 and agreed rather than assumed.
 
+**A retry is classified from scratch.** Navigation Compose keeps the
+ViewModel alive across a tab switch, so a re-subscription inherited the
+previous attempt's state: the historical tail appended to itself, and a
+404 on the retry — the container removed after the drop — was read as a
+second drop and lost both `not-created` and the F12-R3 fallback. Every
+attempt therefore starts by clearing the frame history and showing
+`Loading`, and the buffer itself is reset by that attempt's
+`snapshot_start`, which the dashboard emits first on every subscription
+(#274, #298).
+
 **Follow-tail did not inherit F04's sharp edge.** `ThreadScreen`'s
 pattern misbehaves in a list too short to scroll, where `canScrollForward`
 stays false and following flips back on. Here that is the correct

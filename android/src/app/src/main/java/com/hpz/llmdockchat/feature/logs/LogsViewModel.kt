@@ -92,6 +92,14 @@ class LogsViewModel(
     /** Collected by [LogsScreen] — see the class doc. Never started from here. */
     fun observeLogStream(): Flow<LogStreamEvent> = logsStreamRepository.stream(serviceName)
 
+    // Every re-subscription begins with its own `snapshot_start`, which owns the buffer reset; what
+    // must not survive an attempt is the frame history, or a failure before the first frame of a
+    // retry reads as a drop mid-stream and loses both the 404 and the one-shot fallback path.
+    fun onStreamAttemptStarted() {
+        sawAnyFrame = false
+        _state.value = LogsUiState.Loading
+    }
+
     fun onStreamEvent(event: LogStreamEvent) {
         sawAnyFrame = true
         when (event) {

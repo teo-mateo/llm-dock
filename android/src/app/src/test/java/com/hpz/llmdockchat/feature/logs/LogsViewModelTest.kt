@@ -83,6 +83,48 @@ class LogsViewModelTest {
         assertEquals(LogsConnection.LIVE, state.connection)
     }
 
+    /**
+     * #274: a tab switch re-subscribes against the same ViewModel, so a snapshot must replace the
+     * previous tail rather than extend it — while two identical lines inside one snapshot stay two
+     * rows.
+     */
+    @Test
+    fun `identical text in one snapshot stays separate and a new snapshot does not copy the prior one`() {
+        val vm = viewModel()
+        repeat(2) {
+            vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        }
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("same text", "same text"), state.lines.map { it.text })
+        assertEquals(2, state.boundaryIndex)
+    }
+
+    /**
+     * Guards the per-attempt reset of the frame history: after a mid-stream drop the retry is a new
+     * connection, so a 404 before its first frame means the container is gone — not a second drop.
+     */
+    @Test
+    fun `a 404 before the first frame of a retry is NotCreated, not a repeat of the drop`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("booting"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        vm.onStreamFailed(RuntimeException("connection reset"))
+        assertTrue(vm.state.value is LogsUiState.Failed)
+
+        vm.onStreamAttemptStarted()
+        vm.onStreamFailed(fakeHttp404("Service has not been created yet"))
+
+        val state = vm.state.value
+        assertTrue(state is LogsUiState.NotCreated)
+        assertEquals("Service has not been created yet", (state as LogsUiState.NotCreated).message)
+    }
+
     /** A line with no recognisable level renders plainly, not crashing or vanishing. */
     @Test
     fun `an ERROR line is tagged, a plain line degrades to plain`() {
