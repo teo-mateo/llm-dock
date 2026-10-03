@@ -21,18 +21,17 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * `GET/DELETE /api/chat/conversations*` (F02).
+ * `GET/DELETE /api/chat/conversations*`.
  *
  * [list] always requests `limit=-1` — the whole list as one consistent
  * snapshot. The endpoint also supports offset paging, but paging over a
  * mutable `updated_at DESC` ordering can skip or duplicate rows as threads are
  * touched between page fetches; this is a single-user dashboard with a modest
- * thread count, so the simplicity of one request wins (see F02's
- * *Deviations*).
+ * thread count, so the simplicity of one request wins.
  *
  * It also always passes `unfiled=true`: the phone has no project concept, so
  * desktop-created project threads must not appear in the flat list. The
- * server does the filtering (F02-R6).
+ * server does the filtering.
  */
 open class ConversationsRepository(private val api: ApiClient) {
 
@@ -64,7 +63,7 @@ open class ConversationsRepository(private val api: ApiClient) {
     }
 
     /**
-     * `POST /api/chat/conversations` (F03-R1). [mainService] is the only
+     * `POST /api/chat/conversations`. [mainService] is the only
      * required field. [promptId] left null sends neither `prompt_id` nor
      * `main_system_prompt` — see [CreateConversationRequestDto] for why that
      * distinction is deliberate. Returns the new conversation's id.
@@ -81,7 +80,7 @@ open class ConversationsRepository(private val api: ApiClient) {
     }
 
     /**
-     * `PUT /api/chat/conversations/<id>` with `mcp_servers_json` (F03-R3) —
+     * `PUT /api/chat/conversations/<id>` with `mcp_servers_json` —
      * the only way to set tools on a thread just created via [create], which
      * does not accept the field.
      *
@@ -104,7 +103,7 @@ open class ConversationsRepository(private val api: ApiClient) {
     }
 
     /**
-     * `PUT /api/chat/conversations/<id>` with `prompt_id` (F03 follow-up).
+     * `PUT /api/chat/conversations/<id>` with `prompt_id`.
      * The id alone is the whole selection body — the server resolves the
      * content and stores its copy. Detach (`promptId == null`) adds
      * `main_system_prompt: ""` so the stored text clears to the default,
@@ -130,7 +129,7 @@ open class ConversationsRepository(private val api: ApiClient) {
     }
 
     /**
-     * `PUT /api/chat/conversations/<id>` with `reasoning_level` (F15-R4).
+     * `PUT /api/chat/conversations/<id>` with `reasoning_level`.
      *
      * The body is hand-built as a `JsonObject`, not `ApiJson.encodeToString` of
      * a `@Serializable` DTO, and that is the whole point: this client's encoder
@@ -142,7 +141,7 @@ open class ConversationsRepository(private val api: ApiClient) {
      * reasoning field" (`chat/routes.py:update_conversation`).
      *
      * A level the service stopped offering comes back 400 with
-     * `code: "invalid_reasoning_level"`, which is F15-R7's revert path.
+     * `code: "invalid_reasoning_level"`, which drives the revert path.
      */
     open suspend fun setReasoningLevel(id: String, level: String?): Result<Unit> = apiCall {
         api.request(

@@ -35,7 +35,7 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 
 /**
- * Mockup — model detail: status, resource stats, launch flags, actions.
+ * Design-lab mock of model detail: status, resource stats, launch flags, actions.
  * Compared against `ModelDetailScreen`.
  */
 @Composable

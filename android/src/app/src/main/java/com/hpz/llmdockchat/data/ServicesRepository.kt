@@ -16,10 +16,10 @@ import com.hpz.llmdockchat.data.model.ServiceSummary
 import kotlinx.coroutines.CancellationException
 
 /**
- * `GET /api/services` (F03's model picker, later F10's models list). Returns
+ * `GET /api/services` (the model pickers and the models list). Returns
  * every compose service unfiltered — including non-chat and non-model
  * containers like `open-webui` — so each caller applies its own filter
- * ([ServiceSummary.isChatCapable] for F03) rather than this repository
+ * ([ServiceSummary.isChatCapable]) rather than this repository
  * guessing what a future feature needs.
  */
 class ServicesRepository(private val api: ApiClient) {
@@ -28,9 +28,8 @@ class ServicesRepository(private val api: ApiClient) {
     }
 
     /**
-     * `GET /api/services/<name>` (F11-R2). A 404 is not a failure here — it
-     * means Docker knows the container but `services.json` doesn't, F11-R2's
-     * fourth criterion — so it comes back as `Result.success(null)` rather
+     * `GET /api/services/<name>`. A 404 is not a failure here — it
+     * means Docker knows the container but `services.json` doesn't, so it comes back as `Result.success(null)` rather
      * than an error the detail screen would otherwise have to special-case
      * out of a [Result.failure].
      */
@@ -46,20 +45,20 @@ class ServicesRepository(private val api: ApiClient) {
         Result.failure(ApiException(e.appError))
     }
 
-    /** `POST /api/services/<name>/start` (F11-R4, F10-R5). */
+    /** `POST /api/services/<name>/start`. */
     suspend fun start(name: String): Result<Unit> = apiCall {
         api.request(method = "POST", path = Endpoints.serviceStart(name), deserializer = ServiceActionResponseDto.serializer())
         Unit
     }
 
-    /** `POST /api/services/<name>/stop` (F11-R3, F10-R5). */
+    /** `POST /api/services/<name>/stop`. */
     suspend fun stop(name: String): Result<Unit> = apiCall {
         api.request(method = "POST", path = Endpoints.serviceStop(name), deserializer = ServiceActionResponseDto.serializer())
         Unit
     }
 
     /**
-     * `GET /api/services/<name>/logs` (F12-R3) — the one-shot fallback, used
+     * `GET /api/services/<name>/logs` — the one-shot fallback, used
      * when the stream cannot be established. Lines are split client-side on
      * `\n` rather than trusting the server's own `lines` count.
      */

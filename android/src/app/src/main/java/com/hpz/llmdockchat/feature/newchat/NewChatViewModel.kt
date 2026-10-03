@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** F00-R5's Loading/Loaded/Failed, `Loaded` carrying every row of the sheet (F03-R6). */
+/** Loading/Loaded/Failed, `Loaded` carrying every row of the sheet. */
 sealed interface NewChatUiState {
     data object Loading : NewChatUiState
 
@@ -34,10 +34,10 @@ sealed interface NewChatUiState {
         val localServices: List<ModelOption.LocalService>,
         /**
          * The full, unfiltered `GET /api/services` row set, kept live by
-         * [ServicesStreamRepository] (F07-R1's third criterion) — what
+         * [ServicesStreamRepository] — what
          * [com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet] actually
-         * renders. [localServices] above is untouched by F07: it still drives
-         * the remembered-model resolution below, exactly as F03 built it.
+         * renders. [localServices] above is untouched: it still drives
+          * the remembered-model resolution below, exactly as first built.
          */
         val services: List<ServiceSummary> = emptyList(),
         val remoteModels: List<ModelOption.Remote>,
@@ -45,19 +45,18 @@ sealed interface NewChatUiState {
         val selectedModel: ModelOption?,
         /**
          * Start is off and the sheet asks for an explicit model choice: set
-         * both when the remembered model wasn't running at load (F03-R1's
-         * fourth criterion) and when the live stream invalidated the current
-         * selection while the sheet was open (issue 266). Cleared only by an
+         * both when the remembered model wasn't running at load, and when the live stream invalidated the current
+         * selection while the sheet was open. Cleared only by an
          * explicit [NewChatViewModel.selectModel].
          */
         val modelUnavailable: Boolean,
         val prompts: List<ManagedPrompt>,
-        /** null means "Default" — send neither `prompt_id` nor `main_system_prompt` (F03-R2). */
+        /** null means "Default" — send neither `prompt_id` nor `main_system_prompt`. */
         val selectedPromptId: String?,
         val mcpServers: List<McpServerInfo>,
         val selectedMcpServerIds: Set<String>,
         /**
-         * F14-R7 — the servers a summarize turn cannot do without, and the URL
+         * The servers a summarize turn cannot do without, and the URL
          * it is about. [requiredMcpServerIds] gates [canStart]: a summarize
          * whose fetcher got untoggled would answer from the URL alone, so the
          * sheet refuses rather than starting it.
@@ -65,11 +64,11 @@ sealed interface NewChatUiState {
         val requiredMcpServerIds: Set<String> = emptySet(),
         val summarizeUrl: String? = null,
         val creating: Boolean = false,
-        /** A failed create — the server's own words, sheet stays open with selections intact (F03-R1's fifth criterion). */
+        /** A failed create — the server's own words, sheet stays open with selections intact. */
         val createError: String? = null,
         /**
          * The conversation itself was created, but the follow-up `PUT
-         * .../mcp_servers_json` failed (F00-R4 — never swallow an error).
+         * .../mcp_servers_json` failed — an error is never swallowed.
          * The row selections stay intact; [Retry] re-issues only the PUT,
          * [openAnyway][NewChatViewModel.openAnyway] opens the thread with no
          * tools enabled.
@@ -100,14 +99,14 @@ class NewChatViewModel(
     private val preferences: NewChatPreferences,
     private val servicesStreamRepository: ServicesStreamRepository,
     /**
-     * F10-R6's "New chat from a model": the Models tab preselects a specific
+     * "New chat from a model": the Models tab preselects a specific
      * running service, taking priority over whatever [preferences] last
-     * remembered. Null for every other entry into this sheet (F02's FAB,
-     * F07-R4's mid-thread switch does not use this screen at all).
+     * remembered. Null for every other entry into this sheet — the list's FAB; the
+      * mid-thread switch does not use this screen at all.
      */
     private val preselectedServiceName: String? = null,
     /**
-     * F14-R7 — the sheet reached from the share picker's summarize action. It
+     * The sheet reached from the share picker's summarize action. It
      * forces a URL-fetching server on the new thread, files the prepared turn
      * as a claim instead of a draft, and leaves [preferences] alone: choosing
      * to summarize a page must not silently change what the next ordinary
@@ -143,9 +142,9 @@ class NewChatViewModel(
                 .map { ModelOption.LocalService(it.name, it.status) }
 
             // Prompts, tools and OpenRouter models are all Should-priority
-            // (F03-R2, F03-R3) — a failure on any of them degrades to an
+            // — a failure on any of them degrades to an
             // empty/unconfigured row rather than failing the whole sheet;
-            // only the model list (Must, F03-R1) blocks the screen.
+            // only the model list blocks the screen.
             val openRouter = openRouterModelsRepository.list().getOrNull()
             val prompts = promptsRepository.list().getOrNull().orEmpty().sortedBy { it.sortOrder }
             val catalog = mcpServersRepository.catalog(probe = summarizeMode).getOrNull()
@@ -185,10 +184,10 @@ class NewChatViewModel(
                 summarizeUrl = summarizeUrl,
             )
 
-            // F07-R1's third criterion: a container started or stopped
+            // A container started or stopped
             // elsewhere while this sheet is open shows up with no manual
-            // refresh. Runs for the screen's lifetime (Architecture D5) —
-            // NEW_CHAT is a short pushed screen (F03), not a persistent tab,
+            // refresh. Runs for the screen's lifetime —
+            // NEW_CHAT is a short pushed screen, not a persistent tab,
             // so an always-open connection here is cheap.
             launch {
                 servicesStreamRepository.stream().collect { live ->
@@ -219,7 +218,7 @@ class NewChatViewModel(
         val model = current.selectedModel ?: return
         if (current.creating) return
         // The same predicate canStart renders, so a direct call cannot start a
-        // thread on a service the live stream has already stopped (issue 266).
+        // thread on a service the live stream has already stopped.
         if (!model.isLiveSelectable(current.services)) {
             _state.value = current.copy(selectedModel = null, modelUnavailable = true)
             return
@@ -242,7 +241,7 @@ class NewChatViewModel(
                     } else {
                         // The conversation exists either way from here on —
                         // a failure past this point is never re-thrown or
-                        // rolled back, only surfaced (F00-R4).
+                        // rolled back, only surfaced.
                         applyTools(id, current.selectedMcpServerIds.toList(), onCreated)
                     }
                 },
@@ -288,7 +287,7 @@ class NewChatViewModel(
         )
     }
 
-    /** F14-R7 — claim instead of draft: the thread sends the turn on opening. */
+    /** Claim instead of draft: the thread sends the turn on opening. */
     private fun stageSummarizeClaim(conversationId: String) {
         val url = (state.value as? NewChatUiState.Loaded)?.summarizeUrl ?: return
         sharedDraftStore?.stageForAutoSend(conversationId, SummarizeMessage.build(url))
@@ -306,7 +305,7 @@ class NewChatViewModel(
  * while the live list carries it as a chat-capable running row — the picker's
  * own filter ([com.hpz.llmdockchat.feature.modelpicker.runningChatCapable])
  * and this predicate must stay one rule; a remote model always, since
- * OpenRouter has no stopped state to lose (F07-R3). `null` is never
+ * OpenRouter has no stopped state to lose. `null` is never
  * selectable.
  */
 internal fun ModelOption?.isLiveSelectable(services: List<ServiceSummary>): Boolean =
@@ -318,7 +317,7 @@ internal fun ModelOption?.isLiveSelectable(services: List<ServiceSummary>): Bool
     }
 
 /**
- * One `/api/services/stream` emission applied to [current] (issue 266): the
+ * One `/api/services/stream` emission applied to [current]: the
  * row set is replaced wholesale; a live-valid local selection keeps its
  * captured status refreshed from the live row, so `ModelOption.LocalService`
  * can never carry a stale one; a local selection the stream invalidated —

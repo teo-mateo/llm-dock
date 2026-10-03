@@ -29,7 +29,7 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 
 /**
- * Mockup — models list with a GPU header. Compared against `ModelsScreen`.
+ * Design-lab mock of the models list with a GPU header. Compared against `ModelsScreen`.
  */
 @Composable
 fun MockModelsListScreen() {

@@ -13,7 +13,7 @@ enum class ServiceAction { START, STOP }
 
 /**
  * One confirm-then-act flow, shared by [ModelsViewModel]'s row actions
- * (F10-R5) and the detail screen's (F11-R3/R4) — both must "go through the
+ * and the detail screen's — both must "go through the
  * same confirmation path", which is easiest to guarantee by them sharing the
  * same class rather than two hand-written copies drifting apart.
  */
@@ -22,8 +22,8 @@ sealed interface ServiceActionState {
     data class Confirming(val serviceName: String, val action: ServiceAction) : ServiceActionState
     data class InFlight(val serviceName: String, val action: ServiceAction) : ServiceActionState
 
-    /** A failed start/stop — F11-R3's "leaves the status as it actually is" and
-     * F11-R4's "shows the server's error": neither pretends success. */
+    /** A failed start/stop. The status stays as it actually is and the
+      * server's own error is shown: neither pretends success. */
     data class Failed(val serviceName: String, val action: ServiceAction, val message: String) : ServiceActionState
 }
 
@@ -41,7 +41,7 @@ class ServiceControlController(
     val actionState: StateFlow<ServiceActionState> = _actionState.asStateFlow()
 
     /** Opens the confirm dialog. A no-op while something is already in flight —
-     * F11-R4's third criterion, "cannot be double-fired" — a second tap on a
+      * it cannot be double-fired: a second tap on a
      * different row while one is running is refused the same way. */
     fun requestStart(serviceName: String) = requestConfirm(serviceName, ServiceAction.START)
 
@@ -76,7 +76,7 @@ class ServiceControlController(
     }
 
     /** Whether [serviceName] specifically is mid-request — what a row/button
-     * checks to show its own pending state (F10-R5's third criterion). */
+     * checks to show its own pending state. */
     fun isInFlight(serviceName: String): Boolean =
         (_actionState.value as? ServiceActionState.InFlight)?.serviceName == serviceName
 }

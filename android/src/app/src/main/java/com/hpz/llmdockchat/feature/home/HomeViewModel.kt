@@ -21,13 +21,13 @@ data class HomeUiState(
 )
 
 /**
- * The signed-in destination until F02 replaces it with the conversation list.
+ * Legacy signed-in destination, no longer reachable from navigation.
  *
  * It calls `POST /api/auth/verify` on entry, which is the only authenticated
- * endpoint F01 is allowed to touch. That is not decoration: it is what makes
+ * endpoint sign-in is allowed to touch. That is not decoration: it is what makes
  * silent re-auth observable — with a dead token stored, this request 401s, the
  * transport re-authenticates from the credential, and the screen still lands on
- * "session verified" without Connect appearing (F01-R6).
+ * "session verified" without Connect appearing.
  */
 class HomeViewModel(
     private val authService: AuthService,

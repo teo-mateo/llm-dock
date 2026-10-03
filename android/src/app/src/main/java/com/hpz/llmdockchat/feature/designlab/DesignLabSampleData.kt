@@ -1,6 +1,6 @@
 package com.hpz.llmdockchat.feature.designlab
 
-/** Dummy data for the design-lab mockups. No network, no repositories. */
+/** Dummy data for the design-lab mocks. No network, no repositories. */
 
 data class MockConversation(
     val title: String,

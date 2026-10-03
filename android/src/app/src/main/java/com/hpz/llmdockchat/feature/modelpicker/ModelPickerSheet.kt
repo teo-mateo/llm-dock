@@ -36,25 +36,25 @@ import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.engine
 
 /**
- * The model picker (F07), shared by [com.hpz.llmdockchat.feature.newchat.NewChatScreen]
+ * The model picker, shared by [com.hpz.llmdockchat.feature.newchat.NewChatScreen]
  * (choosing a model for a brand-new thread) and
  * [com.hpz.llmdockchat.feature.thread.ThreadScreen] (switching mid-thread,
- * F07-R4) — screen 07a. Grown out of F03's own flat, minimal build once F07
- * existed to own it (see F03's *Deviations*), without touching
- * [ModelOption], the repositories the two screens read from, or
- * `ConversationsRepository.create`'s signature: this composable only takes
- * richer input than F03's did.
+ * the mid-thread switch. Grown out of the new-chat sheet's own flat,
+  * minimal build once it existed to own the job, without touching
+  * [ModelOption], the repositories the two screens read from, or
+  * `ConversationsRepository.create`'s signature: this composable only takes
+  * richer input than the original did.
  *
  * [services] is unfiltered — every row `GET /api/services` returned, not just
  * chat-capable ones — so an embedding service or `open-webui` never reaches
  * this composable only by the caller doing it right; this filters for itself
  * too, so a picker instantiated against the raw list can never show one
- * (F07-R1's second criterion, belt-and-suspenders with [ServiceSummary.isChatCapable]).
+ * (belt-and-suspenders with [ServiceSummary.isChatCapable]).
  *
- * Local rows are further filtered to running services only (F07-RO, a
- * later owner-requested deviation from F07-R2's original grey-and-disabled
- * "Stopped" section): a service that isn't running is noise here, not a
- * choice — starting one is F11's guarded action, reached from the Models
+ * Local rows are further filtered to running services only — a later
+  * owner-requested deviation from the original grey-and-disabled "Stopped"
+  * section: a service that isn't running is noise here, not a choice —
+  * starting one is the Models tab's guarded action, reached from the Models
  * tab, not this sheet. The OpenRouter group is unaffected — those models
  * are always reachable, so there is no "stopped" state to filter.
  */
@@ -70,7 +70,7 @@ fun ModelPickerSheet(
 ) {
     val colors = LlmTheme.colors
     // Favourites first; sortedByDescending is stable, so the server's own
-    // host-port ordering holds otherwise (F07-R5).
+    // host-port ordering holds otherwise.
     val running = runningChatCapable(services)
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -80,7 +80,7 @@ fun ModelPickerSheet(
         containerColor = colors.surface,
         modifier = Modifier.testTag("model_picker_sheet"),
     ) {
-        // C3 (F03): the sheet draws behind the navigation bar, so without this
+        // C3: the sheet draws behind the navigation bar, so without this
         // its last row is unreachable under the 44 dp button bar.
         LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
             item { ModelPickerSectionHeader("Running") }
@@ -119,7 +119,7 @@ fun ModelPickerSheet(
     }
 }
 
-/** Only ever called with a running service (F07-RO removed the stopped/disabled row state). */
+/** Only ever called with a running service: there is no stopped/disabled row state. */
 @Composable
 private fun LocalServiceRow(service: ServiceSummary, selected: Boolean, onClick: () -> Unit) {
     val colors = LlmTheme.colors
@@ -182,12 +182,12 @@ private fun RemoteModelRow(option: ModelOption.Remote, selected: Boolean, onClic
     }
 }
 
-/** F07-RO: the owner's exact wording for the local-only empty state. */
+/** The owner-approved wording for the local-only empty state. */
 internal const val NOTHING_RUNNING_TEXT = "No LLM-Dock models are running at this time."
 
 /**
  * Chat-capable AND currently running — the only local services the picker
- * ever renders since F07-RO dropped the "Stopped" section. Pulled out of
+ * ever renders; there is no "Stopped" section. Pulled out of
  * the composable so it's testable on the JVM without Compose.
  */
 internal fun runningChatCapable(services: List<ServiceSummary>): List<ServiceSummary> =

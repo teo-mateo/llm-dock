@@ -39,7 +39,7 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 
 /**
- * Mockup — a chat thread: user + assistant turns, a code block, and a
+ * Design-lab mock of a chat thread: user + assistant turns, a code block, and a
  * streaming indicator. Compared against `ThreadScreen`/`ThreadMessages`.
  */
 @Composable

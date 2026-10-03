@@ -24,7 +24,7 @@ interface SecretCipher {
 
 /**
  * AES-256/GCM with the key held in the platform Keystore, so the key material
- * never enters the app's process (Architecture U1 — `androidx.security:
+ * never enters the app's process (`androidx.security:
  * security-crypto` is deprecated in full and must not be used).
  *
  * The output is `base64(iv || ciphertext||tag)`, which is what lands in
@@ -76,7 +76,7 @@ class KeystoreSecretCipher(
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(KEY_BITS)
                 // Deliberately not `setUserAuthenticationRequired`: that is
-                // F01-R8's biometric gate, which is out of scope for v1. Adding
+                // the biometric gate, which is out of scope. Adding
                 // it here would lock the credential behind a prompt the app has
                 // no UI for.
                 .build(),

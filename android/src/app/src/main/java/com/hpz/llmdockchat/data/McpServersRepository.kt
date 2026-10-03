@@ -11,13 +11,13 @@ import com.hpz.llmdockchat.data.model.UrlRetrieval
 /** The enabled servers, plus what the dashboard says about page fetching. */
 data class McpCatalog(val servers: List<McpServerInfo>, val urlRetrieval: UrlRetrieval)
 
-/** `GET /api/chat/mcp-servers` (F03-R3, F08). The registry itself is edited
+/** `GET /api/chat/mcp-servers`. The registry itself is edited
  * from the dashboard's Tools page only — this is a read of what's enabled. */
 class McpServersRepository(private val api: ApiClient) {
     suspend fun list(): Result<List<McpServerInfo>> = catalog(probe = false).map { it.servers }
 
     /**
-     * The same read with `?probe=url-fetch` (F14-R7): which enabled servers
+     * The same read with `?probe=url-fetch`: which enabled servers
      * can actually fetch a URL, decided server-side from each tool's parameter
      * schema. A dashboard too old to answer the probe comes back
      * [UrlRetrieval.UNSUPPORTED] rather than empty, because "no page tool

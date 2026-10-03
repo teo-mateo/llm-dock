@@ -397,7 +397,7 @@ object DesignLabIcons {
         }
     }
     /**
-     * The reasoning-level axis (F15): what the level value in the thread header's
+     * The reasoning-level axis: what the level value in the thread header's
      * action row measures. Drawn here because this app vendors its icon set — there is
      * no material-icons artefact in the build.
      *

@@ -57,8 +57,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * F12: streaming container logs and follow-tail (screens 10c). F12-R5's
- * "share the buffer" was dropped as unwanted — see the feature file.
+ * Streaming container logs and follow-tail. Sharing the whole buffer
+ * was dropped as unwanted.
  *
  * A pane rather than a screen: it is the second tab of the model detail
  * screen, which owns the header and the back affordance.
@@ -121,7 +121,7 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Same "mode, not a measurement" following logic as ThreadScreen's F04-R3
+    // Same "mode, not a measurement" following logic as ThreadScreen's tail-follow
     // (see its class doc) — a short buffer that never overflows the viewport
     // keeps `atBottom` true throughout, which is the correct behaviour here
     // too (nothing to disagree with when everything is already on screen).
@@ -362,4 +362,3 @@ private fun MessageBox(testTag: String, title: String, message: String, onRetry:
     }
 }
 
-/** F12-R5: the whole visible buffer, in order; truncated with an explicit marker rather than failing silently. */

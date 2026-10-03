@@ -45,7 +45,7 @@ private val MOCK_SCREENS = listOf(
 )
 
 /**
- * The Design tab's gallery (owner's brief): cycle through the four mockups,
+ * The Design tab's gallery: cycle through the four mock screens,
  * with the current screen's name visible, and a light/dark toggle so both
  * variants of the proposal are reachable without a system setting change.
  */

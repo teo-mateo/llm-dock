@@ -53,7 +53,7 @@ import com.hpz.llmdockchat.feature.logs.LogsViewModel
 import com.hpz.llmdockchat.data.model.ServiceSummary
 
 /**
- * Screen 10b · Model detail (F11-R1) and F12's logs, as two tabs of one
+ * Model detail and the container's logs, as two tabs of one
  * screen rather than two screens stacked on each other.
  *
  * Logs used to be a route pushed on top of this one, reached through a "Live
@@ -76,8 +76,8 @@ fun ModelDetailScreen(
 
     // Same ownership split as ModelsScreen's two LaunchedEffects: this stream
     // lives only as long as this composable does, so leaving the screen
-    // (back, or navigating past it) tears it down (F11-R7's third criterion
-    // reasoning applies here too, even though R7 itself is not built).
+    // (back, or navigating past it) tears it down — the same reasoning the
+    // list stream's teardown already applies.
     LaunchedEffect(Unit) {
         viewModel.observeServicesStream().collect { viewModel.applyLiveSummary(it) }
     }
@@ -134,7 +134,7 @@ private fun ModelDetailContent(
                     // below, and saying it twice on one screen is noise.
                     subtitle = summary?.let { engineLabel(it.engine) },
                     onBack = onBack,
-                    // No trailing action. Sharing the log buffer (F12-R5) was
+                    // No trailing action. Sharing the log buffer was
                     // dropped as unwanted; the logs tab has its own toolbar for
                     // the controls that earn their place.
                     action = {},
@@ -311,7 +311,7 @@ private fun DetailBody(
             }
         }
 
-        // F11-R2 (Should): the flags rendered as a readable list, strictly
+        // The flags rendered as a readable list, strictly
         // read-only — no field here is ever editable and api_key never
         // appears (ServiceConfig's mapper never reads it off the wire).
         val flags = state.config?.flags.orEmpty()
@@ -326,7 +326,7 @@ private fun DetailBody(
 /**
  * Label fixed and single-line, value takes the rest of the row and wraps —
  * not the other way around. A first cut gave the label the `weight(1f)` and
- * left the value unconstrained; a long `model_path` (F11-R2) then measured at
+ * left the value unconstrained; a long `model_path` then measured at
  * its full intrinsic width, squeezed the label down to nothing, and "Model
  * path" wrapped one character per line — the same failure mode as the GPU
  * card's name column (see [ModelsScreen]'s `GpuCard` doc). Caught on-device
