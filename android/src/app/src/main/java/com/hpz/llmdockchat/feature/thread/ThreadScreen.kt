@@ -931,6 +931,15 @@ private fun ThreadComposer(
             )
         }
 
+        if (state.settingsPending) {
+            Text(
+                "Saving settings…",
+                color = colors.subtle,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().testTag("settings_saving"),
+            )
+        }
+
         // The server ignored this turn's reasoning level. Phrased by the
         // server, shown here rather than in the message list because it is about
         // the request that was made, and it stays put beside the control that
