@@ -231,7 +231,7 @@ def main():
 
     # Warm with a real prefill, not a toy prompt: an idle GPU ramps its clocks
     # during the first sizeable request, which lands on the first measurement
-    # (a 2k prefill read ~4x low on an uncapped card) if the warmup is tiny.
+    # if the warmup is tiny.
     print("warmup ...")
     chat(base, api_key, model,
          sized_prompt(base, api_key, model, corpus, 4096, "\nwarmup ", args.timeout),
