@@ -1,4 +1,4 @@
-"""stream_with_tools forced-final-response contract (issue #70).
+"""stream_with_tools forced-final-response contract.
 
 When a turn exhausts MAX_TOOL_ROUNDS, the loop makes one forced final call.
 That final call must ALWAYS terminate the turn with a `done` event — even if a
@@ -79,7 +79,7 @@ def _bare_name_stream(monkeypatch, bad_name, tools=None):
 
 
 def test_bare_server_id_error_names_its_tools(monkeypatch):
-    """#21: the model called the toggle name instead of a tool. The tool
+    """The model called the toggle name instead of a tool. The tool
     result must classify that and list exactly that server's namespaced
     names — the model treats tool results as ground truth, so the retry
     usually self-corrects in one round."""
@@ -94,7 +94,7 @@ def test_bare_server_id_error_names_its_tools(monkeypatch):
 
 
 def test_unknown_bare_name_error_lists_available_tools(monkeypatch):
-    """#21: a bare tool name (no prefix at all) gets the same treatment,
+    """A bare tool name (no prefix at all) gets the same treatment,
     with the full advertised list so the model can self-correct."""
     results, mcp = _bare_name_stream(monkeypatch, "render_html")
     assert len(results) == 1
@@ -107,7 +107,7 @@ def test_unknown_bare_name_error_lists_available_tools(monkeypatch):
 
 
 def test_namespaced_call_still_executes(monkeypatch):
-    """#21 regression: a correctly namespaced call is unchanged — executed
+    """A correctly namespaced call is unchanged — executed
     and its real result returned."""
     results, mcp = _bare_name_stream(monkeypatch, "render-html__render_html")
     assert len(results) == 1
@@ -117,7 +117,7 @@ def test_namespaced_call_still_executes(monkeypatch):
 
 
 def test_forced_final_tool_call_still_yields_done(monkeypatch):
-    """Regression for #70: 5 rounds of tool calls, then the forced final call
+    """Regression: 5 rounds of tool calls, then the forced final call
     emits ANOTHER tool call (backend ignored tool_choice). The turn must still
     end on a synthesized `done`, never fall through to no terminal event."""
     rounds = [[_tool_calls_event()] for _ in range(tool_loop.MAX_TOOL_ROUNDS)]
@@ -147,7 +147,7 @@ def test_forced_final_silent_exhaustion_with_prose_yields_done(monkeypatch):
 
 
 def test_forced_final_tool_only_no_content_yields_error(monkeypatch):
-    """Codex #71 iter1 P1: the forced final emits ONLY a tool call (no prose).
+    """The forced final emits ONLY a tool call (no prose).
     There is genuinely no answer, so the turn must terminate as an error — not
     an empty `done` that ChatRunner would persist as a silent success."""
     rounds = [[_tool_calls_event()] for _ in range(tool_loop.MAX_TOOL_ROUNDS)]

@@ -1,7 +1,7 @@
-"""SSE frame-contract tests for the send route (Phase 4 of #58).
+"""SSE frame-contract tests for the send route.
 
 Originally these characterized routes._stream_response directly. That function
-was removed in Phase 4 (sends now start a background run observed over the
+was removed (sends now start a background run observed over the
 event bus), so the same wire-format guarantees are re-asserted here through the
 real POST .../messages route and the run_manager observer: the frontend SSE
 parser must see identical frames regardless of the new background-run plumbing.
@@ -137,7 +137,7 @@ def _by_type(payloads, t):
 
 def test_send_emits_run_started_with_run_id_first(ctx, monkeypatch):
     """The stream leads with a run_started frame carrying the run id so the
-    client can POST /runs/<id>/cancel (frontend wiring is Phase 6)."""
+    client can POST /runs/<id>/cancel."""
     app, db = ctx[0], ctx[1]
     conv = _conv(db)
 

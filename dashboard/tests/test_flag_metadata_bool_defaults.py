@@ -25,8 +25,6 @@ def test_enable_auto_tool_choice_prefills_nothing():
 def test_value_rejected_engines_carry_no_bool_prefill_default():
     # The per-engine rule: on a parser that rejects `--flag value` for its
     # boolean flags, no bool metadata entry may carry a prefill default.
-    # This is the guard that failed on the pre-fix metadata (vllm carried
-    # "true" on --enable-auto-tool-choice).
     for template_type in sorted(BOOL_FLAG_VALUE_REJECTED):
         offenders = [
             meta["cli"]

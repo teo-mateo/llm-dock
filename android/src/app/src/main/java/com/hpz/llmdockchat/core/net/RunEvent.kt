@@ -8,7 +8,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
- * One frame of a chat run's SSE stream, as a domain value (Architecture D2).
+ * One frame of a chat run's SSE stream, as a domain value.
  *
  * The same three endpoints produce the same frames — `POST …/messages`,
  * `PUT …/messages/<id>` and `GET /api/chat/runs/<id>/stream` — so one reader
@@ -24,13 +24,13 @@ sealed interface RunEvent {
     /**
      * Always the first frame, synthesized by `observe()` before the worker starts.
      *
-     * F15-R6: on the **send** path the server also reports which reasoning level
+     * On the **send** path the server also reports which reasoning level
      * the run resolved to, and a note when it dropped the one stored on the
      * conversation (`chat/routes.py:_start_run_response` →
      * `observe(run_started_extra=…)`). A **reattaching** client gets a plain
      * frame with both null — `observe` only injects extras on the send path — so
-     * a reconnect legitimately loses the note (F15's stale chip is the durable
-     * half of the same fact).
+     * a reconnect legitimately loses the note; the stale chip is the durable
+      * half of the same fact.
      */
     data class RunStarted(
         val runId: String,
@@ -54,7 +54,7 @@ sealed interface RunEvent {
     /** What the tool returned. [result] is rendered JSON or the bare string. */
     data class ToolResult(val name: String, val result: String, val serverId: String?) : RunEvent
 
-    /** [artifactType] is `svg`, `image`, `html` or `code` (F05 renders these). */
+    /** [artifactType] is `svg`, `image`, `html` or `code` — the rendered artifact kinds. */
     data class Artifact(val artifactType: String, val title: String?, val content: String) : RunEvent
 
     /** The model emitted a malformed tool call — `{kind, snippet, description}`. */
@@ -106,7 +106,7 @@ private val FrameJson = Json {
 }
 
 /**
- * Pure, total, no IO (Architecture D2). Every input produces a [RunEvent];
+ * Pure, total, no IO. Every input produces a [RunEvent];
  * nothing throws.
  */
 fun parseFrame(payload: String): RunEvent {
@@ -152,7 +152,7 @@ private fun JsonObject.typedFrame(type: String): RunEvent? = when (type) {
 
 /**
  * A raw OpenAI-compatible chunk. Reasoning arrives as `reasoning_content` from
- * llama.cpp and as `reasoning` from some other models (Architecture D6), so
+ * llama.cpp and as `reasoning` from some other models, so
  * both are read.
  */
 private fun JsonObject.deltaFrame(): RunEvent {

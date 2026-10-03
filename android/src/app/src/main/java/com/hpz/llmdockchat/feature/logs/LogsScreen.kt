@@ -57,8 +57,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * F12: streaming container logs and follow-tail (screens 10c). F12-R5's
- * "share the buffer" was dropped as unwanted — see the feature file.
+ * Streaming container logs and follow-tail. Sharing the whole buffer
+ * was dropped as unwanted.
  *
  * A pane rather than a screen: it is the second tab of the model detail
  * screen, which owns the header and the back affordance.
@@ -81,6 +81,7 @@ fun LogsPane(
     var retryToken by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(retryToken) {
+        viewModel.onStreamAttemptStarted()
         try {
             viewModel.observeLogStream().collect { viewModel.onStreamEvent(it) }
             viewModel.onStreamCompleted()
@@ -121,7 +122,7 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Same "mode, not a measurement" following logic as ThreadScreen's F04-R3
+    // Same "mode, not a measurement" following logic as ThreadScreen's tail-follow
     // (see its class doc) — a short buffer that never overflows the viewport
     // keeps `atBottom` true throughout, which is the correct behaviour here
     // too (nothing to disagree with when everything is already on screen).
@@ -141,7 +142,7 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
         }
     }
 
-    LaunchedEffect(state.lines.size, following) {
+    LaunchedEffect(state.lines.lastOrNull()?.id, following) {
         if (following && listState.layoutInfo.totalItemsCount > 0) {
             listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
         }
@@ -169,7 +170,18 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
                     .testTag("logs_body"),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                itemsIndexed(state.lines) { index, line ->
+                if (state.evictedCount > 0) {
+                    item(key = "truncated") {
+                        Text(
+                            "Earlier output removed (${state.evictedCount} lines)",
+                            color = colors.subtle,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                .testTag("logs_truncated"),
+                        )
+                    }
+                }
+                itemsIndexed(state.lines, key = { _, line -> line.id }) { index, line ->
                     if (state.boundaryIndex == index && index != 0) {
                         SnapshotBoundary()
                     }
@@ -362,4 +374,3 @@ private fun MessageBox(testTag: String, title: String, message: String, onRetry:
     }
 }
 
-/** F12-R5: the whole visible buffer, in order; truncated with an explicit marker rather than failing silently. */

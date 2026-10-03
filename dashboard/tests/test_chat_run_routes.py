@@ -1,4 +1,4 @@
-"""Run observation + cancellation APIs (Phase 5 of #58).
+"""Run observation + cancellation APIs.
 
 Covers GET /api/chat/runs/<id>, GET /api/chat/runs/<id>/stream, and
 POST /api/chat/runs/<id>/cancel, plus cooperative mid-stream cancellation and
@@ -152,7 +152,7 @@ def test_cancel_not_found(ctx):
     assert r.status_code == 404
 
 
-# -- Cancel active run by conversation (Stop button, Phase 6) ------------
+# -- Cancel active run by conversation (Stop button) --------------------
 
 
 def test_cancel_active_run_by_conversation(ctx):
@@ -209,7 +209,7 @@ def test_cancel_active_run_by_conversation_expected_run_id_matches(ctx):
 
 
 def test_cancel_active_run_by_conversation_stale_expected_run_id_is_noop(ctx):
-    # The iter-4 race: a Stop meant for run A arrives after A finished and a
+    # A Stop meant for run A arrives after A finished and a
     # newer run B is active. With expected_run_id=A, B must NOT be cancelled.
     app, db, _ = ctx
     conv = _conv(db)
@@ -370,7 +370,7 @@ def test_observe_backstop_holds_open_while_worker_in_flight(ctx, monkeypatch):
 
 
 def test_title_tail_reaches_observer_past_backstop_window(ctx, monkeypatch):
-    """Issue #111: the title tail publishes no frames of its own, so a slow
+    """The title tail publishes no frames of its own, so a slow
     auto_generate_title outran the idle backstop and the trailing
     conversation_updated was delivered to no one. The stream must stay open
     for the tail and close on STREAM_END, not the backstop."""

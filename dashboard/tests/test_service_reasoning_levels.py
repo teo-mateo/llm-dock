@@ -1,4 +1,4 @@
-"""Config-write validation and payload exposure for `reasoning_levels` (R1-R3).
+"""Config-write validation and payload exposure for `reasoning_levels`.
 
 Two layers here: validate_service_config owns rejection on every write path,
 and get_docker_services owns exposure (which feeds GET /api/services, the SSE
@@ -221,7 +221,7 @@ def test_resolve_service_exposes_engine_and_levels(monkeypatch):
     assert svc["reasoning_levels"] == [{"id": "low", "effort": "low"}]
 
 
-# -- through the config API (R2) -----------------------------------------
+# -- through the config API ------------------------------------------------
 
 
 COMPOSE_TEMPLATE = """services:

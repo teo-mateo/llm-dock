@@ -17,8 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * F00-R5's Loading/Loaded/Failed. [Loaded] is already split running-above-stopped
- * (F10-R2) — the ordering within each group is whatever [ServiceSummary] arrived
+ * Loading/Loaded/Failed. [Loaded] is already split running-above-stopped
+ * — the ordering within each group is whatever [ServiceSummary] arrived
  * in, which is stable because the server sorts by `host_port` and only a row's
  * `status` field changes underneath it, never its position.
  */
@@ -28,7 +28,7 @@ sealed interface ModelsUiState {
     data class Loaded(
         val running: List<ServiceSummary>,
         val stopped: List<ServiceSummary>,
-        /** True while the services stream is down and being retried (F10-R1's fifth criterion). */
+        /** True while the services stream is down and being retried. */
         val stale: Boolean = false,
         val gpu: GpuState = GpuState.Connecting,
         /** Free-text name filter. Empty means "show everything". */
@@ -50,12 +50,12 @@ sealed interface ModelsUiState {
  *
  * `sortedByDescending` is stable, so the server's own `host_port` order still
  * holds between two rows of the same favourite-ness — the same guarantee
- * F07's picker relies on. Only a row's `status` changes underneath the list,
+ * the model picker relies on. Only a row's `status` changes underneath the list,
  * never its position, so a service that stops moves group without shuffling
- * its neighbours (F10-R2's second criterion).
+ * its neighbours.
  *
  * Favouriting itself stays on the dashboard: this tab never writes
- * (F10-R7), and `POST /api/services/<name>/favorite` is a configuration
+ *, and `POST /api/services/<name>/favorite` is a configuration
  * endpoint no agent or screen here may call.
  */
 fun List<ServiceSummary>.splitByRunning(): Pair<List<ServiceSummary>, List<ServiceSummary>> =
@@ -75,7 +75,7 @@ fun List<ServiceSummary>.matching(query: String): List<ServiceSummary> {
 }
 
 /**
- * F10-R3's third criterion — "closing the tab stops the stream" — turned out
+ * "closing the tab stops the stream" — turned out
  * not to hold for anything launched from `viewModelScope`: Navigation
  * Compose's tab-switch idiom (`popUpTo(...) { saveState = true }` +
  * `restoreState = true`, the same one [com.hpz.llmdockchat.navigation.AppNavHost]
@@ -102,7 +102,7 @@ class ModelsViewModel(
     private val _state = MutableStateFlow<ModelsUiState>(ModelsUiState.Loading)
     val state: StateFlow<ModelsUiState> = _state.asStateFlow()
 
-    /** F10-R5's row start/stop, sharing its confirm path with the detail
+    /** The row start/stop, sharing its confirm path with the detail
      * screen's — see [ServiceControlController]'s class doc. */
     val controller = ServiceControlController(servicesRepository, viewModelScope)
     val actionState: StateFlow<ServiceActionState> = controller.actionState

@@ -790,7 +790,7 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
-    # -- Chat runs (issue #58) --
+    # -- Chat runs --
 
     def _row_to_chat_run(self, row: sqlite3.Row) -> ChatRun:
         return ChatRun(
@@ -1105,7 +1105,7 @@ class ChatDB:
     def cancel_chat_run(self, run_id: str) -> Optional[ChatRun]:
         return self.update_chat_run_status(run_id, ChatRunStatus.CANCELLED)
 
-    # -- Chat Prompts (issue #93) --
+    # -- Chat Prompts --
 
     def _row_to_prompt(self, row: sqlite3.Row) -> Prompt:
         return Prompt(

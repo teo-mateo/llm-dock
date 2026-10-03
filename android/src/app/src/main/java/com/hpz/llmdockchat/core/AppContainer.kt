@@ -65,7 +65,7 @@ private val Context.llmDockDataStore: DataStore<Preferences> by preferencesDataS
 )
 
 /**
- * The whole object graph, built once in `Application` (Architecture D9). Manual
+ * The whole object graph, built once in `Application`. Manual
  * because the graph is this small; Hilt stays available if it stops being.
  */
 class AppContainer(
@@ -78,15 +78,15 @@ class AppContainer(
 
     val sessionState = SessionState()
     val serverUrlStore: ServerUrlStore = DataStoreServerUrlStore(dataStore, appScope)
-    val tokenStore: TokenStore = DataStoreTokenStore(dataStore, appScope, cipher)
-    val credentialStore: CredentialStore = DataStoreCredentialStore(dataStore, appScope, cipher)
+    val tokenStore: TokenStore = DataStoreTokenStore(dataStore, appScope, cipher, serverUrlStore)
+    val credentialStore: CredentialStore = DataStoreCredentialStore(dataStore, appScope, cipher, serverUrlStore)
 
     /** Breaks the cycle: the HTTP stack exists before anything that can log in. */
     private val reauthenticatorHolder = ReauthenticatorHolder()
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor(tokenStore, sessionState, reauthenticatorHolder))
-        .authenticator(SessionAuthenticator(tokenStore, sessionState, reauthenticatorHolder))
+        .addInterceptor(AuthInterceptor(tokenStore, sessionState, reauthenticatorHolder, serverUrlStore))
+        .authenticator(SessionAuthenticator(tokenStore, sessionState, reauthenticatorHolder, serverUrlStore))
         .connectTimeout(Duration.ofSeconds(15))
         .readTimeout(Duration.ofSeconds(30))
         .build()
@@ -101,8 +101,8 @@ class AppContainer(
 
     /**
      * The reachability check must not leave the user watching a spinner while a
-     * wrong address runs out the ordinary 15 s connect timeout — F01-R2 allows
-     * it "a few seconds".
+     * wrong address runs out the ordinary 15 s connect timeout; the check is
+      * allowed a few seconds.
      */
     private val probeClient: OkHttpClient = httpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(3))
@@ -133,12 +133,12 @@ class AppContainer(
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
     val editStateStore: EditStateStore = DataStoreEditStateStore(dataStore, appScope)
 
-    /** F14 — staged share content. Cache-dir files, so it survives process death but never a backup. */
+    /** Staged share content. Cache-dir files, so it survives process death but never a backup. */
     val sharedDraftStore: SharedDraftStore = SharedDraftStore(
         File(context.applicationContext.cacheDir, "shared-drafts"),
     )
 
-    /** F14-R7 — the share picker's summarize path: create, tools, claim. */
+    /** The share picker's summarize path: create, tools, claim. */
     val summarizeLauncher: SummarizeLauncher = SummarizeCoordinator(
         servicesRepository = servicesRepository,
         openRouterModelsRepository = openRouterModelsRepository,
@@ -151,10 +151,11 @@ class AppContainer(
     private val reauthenticator = CredentialReauthenticator(
         credentials = credentialStore,
         sessionState = sessionState,
+        serverUrlStore = serverUrlStore,
         // OkHttp's `Authenticator` is a blocking callback on a network thread.
         // `/api/auth/session` is exempt from both the interceptor and the
         // authenticator, so this cannot recurse into itself.
-        exchange = { credential -> runBlocking { authService.signIn(credential) } },
+        exchange = { credential, server -> runBlocking { authService.signIn(credential, checkNotNull(server)) } },
     )
 
     val sessionManager = SessionManager(

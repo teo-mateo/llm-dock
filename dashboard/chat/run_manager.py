@@ -1,10 +1,10 @@
-"""Background chat-run orchestration (Phase 4 of #58).
+"""Background chat-run orchestration.
 
 Owns the thread pool that executes ChatRunner turns off the request thread, the
 post-completion auto-title step, startup recovery of interrupted runs, and the
 SSE observer that any HTTP response attaches to.
 
-Design rules (#58):
+Design rules:
   - Navigation is not cancellation. The HTTP response is only an observer of
     the event bus; closing it unsubscribes but does not stop the run.
   - The DB is the source of truth. The bus only carries live updates; if the

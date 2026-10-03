@@ -69,16 +69,16 @@ output — it must degrade to plain text, never mangle a line.
 - [ ] A line that matches nothing renders plainly and completely.
 - [ ] Colouring never truncates or reorders output.
 
-## F12-R5 · Share the buffer (Must)
+## F12-R5 · Share the buffer (Dropped)
 
 Hand what is on screen to any other app — the whole point when you want
 to paste a startup failure somewhere.
 
-**Acceptance criteria**
-
-- [ ] Share delivers the visible buffer as text, in order.
-- [ ] A large buffer is truncated with an explicit marker rather than
-      failing silently.
+**Dropped as unwanted (owner ruling, 2026-07-28, recorded in #293).**
+The log pane is for watching a container come up; pasting a startup
+failure is a desktop act, and the dashboard already offers the full log.
+No share affordance ships in the logs tab, and none of the acceptance
+criteria below apply.
 
 ## F12-R6 · Search within the buffer (Later)
 
@@ -95,7 +95,7 @@ Filtering the loaded buffer client-side. Not in v1.
 
 ## Deviations from the mockup
 
-None.
+F12-R5 (share the buffer) was dropped as unwanted; see its section.
 
 ## Out of scope
 
@@ -134,6 +134,16 @@ normal outcome, and auto-reconnecting into a genuinely dead stream is
 worse than not. A real network drop instead surfaces as `Failed` with a
 manual Retry, so the user is never stuck — one tap reconnects. Reviewed
 and agreed rather than assumed.
+
+**A retry is classified from scratch.** Navigation Compose keeps the
+ViewModel alive across a tab switch, so a re-subscription inherited the
+previous attempt's state: the historical tail appended to itself, and a
+404 on the retry — the container removed after the drop — was read as a
+second drop and lost both `not-created` and the F12-R3 fallback. Every
+attempt therefore starts by clearing the frame history and showing
+`Loading`, and the buffer itself is reset by that attempt's
+`snapshot_start`, which the dashboard emits first on every subscription
+(#274, #298).
 
 **Follow-tail did not inherit F04's sharp edge.** `ThreadScreen`'s
 pattern misbehaves in a list too short to scroll, where `canScrollForward`

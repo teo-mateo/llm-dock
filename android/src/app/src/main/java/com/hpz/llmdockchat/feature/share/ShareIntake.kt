@@ -3,7 +3,7 @@ package com.hpz.llmdockchat.feature.share
 import android.content.Intent
 import java.security.MessageDigest
 
-/** What the activity does with a delivered `ACTION_SEND` intent (issue 261). */
+/** What the activity does with a delivered `ACTION_SEND` intent. */
 enum class ShareIntake { Stage, KeepHydrated, IgnoreRedelivery }
 
 /**
@@ -37,7 +37,7 @@ object ShareDeliveryToken {
 }
 
 /**
- * The consume-once gate for share intents (issue 261). Takes primitives, not
+ * The consume-once gate for share intents. Takes primitives, not
  * an `Intent`, so the rules are JVM-testable over the throwing android.jar
  * stubs — the [SharedKindParser] arrangement.
  *
@@ -46,7 +46,7 @@ object ShareDeliveryToken {
  * never a fresh delivery. The handled-token check (arm 4) follows the
  * new-intent arm so identity can only ever refuse a *restore*: a payload
  * shared twice while the app is open is indistinguishable from a replay by
- * content, and F14-R1 says the second one wins.
+ * content, and the second one wins.
  */
 object ShareIntakeGate {
     fun decide(

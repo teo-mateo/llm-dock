@@ -5,12 +5,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * One row of `GET /api/services` (`dashboard/docker_utils.py:get_docker_services`). F03's and
- * F07's model pickers only need the first five fields; F10's models list also
+ * One row of `GET /api/services` (`dashboard/docker_utils.py:get_docker_services`). The model pickers only need the first five
+  * fields; the models list also
  * needs [exitCode], [modelSizeStr] and [created] to show an exited service's
- * code and a size/created-ago label (F10-R1, F10-R4's Deviations). Still no
+ * code and a size/created-ago label. Still no
  * `api_key` field: the server includes one on every row, and the fastest way
- * to guarantee it never reaches a screen or a log line (F07-R6/F10-R7) is to
+ * to guarantee it never reaches a screen or a log line is to
  * never give it a place to land.
  */
 @Serializable
@@ -24,7 +24,7 @@ data class ServiceDto(
     @SerialName("model_size_str") val modelSizeStr: String? = null,
     val created: String? = null,
     /**
-     * F15: the levels this service's model accepts, `[{"id","effort"}, …]` in
+     * The levels this service's model accepts, `[{"id","effort"}, …]` in
      * the operator's declaration order. A [JsonElement] rather than a typed
      * list so one unexpected entry costs this service its ladder instead of
      * the whole snapshot — see [com.hpz.llmdockchat.core.net.parseReasoningLevels].
@@ -44,8 +44,8 @@ data class ServiceDto(
 data class ServiceListResponseDto(val services: List<ServiceDto> = emptyList())
 
 /**
- * `GET /api/services/<name>` (F11-R2) — the stored config, not live status;
- * the detail screen gets status from the same stream as the list (F11-R1).
+ * `GET /api/services/<name>` — the stored config, not live status;
+ * the detail screen gets status from the same stream as the list.
  * `api_key` is on this payload too and is deliberately not modeled here, same
  * reasoning as [ServiceDto].
  */
@@ -66,12 +66,12 @@ data class ServiceDetailResponseDto(
     val config: ServiceConfigDto = ServiceConfigDto(),
 )
 
-/** `{"success": true, ...}` from `control_service` (F11-R3/R4). Only [success]
+/** `{"success": true, ...}` from `control_service`. Only [success]
  * is read — a failure surfaces as a non-2xx, handled by [com.hpz.llmdockchat.core.net.ApiClient] before this ever decodes. */
 @Serializable
 data class ServiceActionResponseDto(val success: Boolean = true)
 
-/** `GET /api/services/<name>/logs` (F12-R3) — the one-shot fallback blob, used
+/** `GET /api/services/<name>/logs` — the one-shot fallback blob, used
  * when the stream cannot be established. [logs] is the raw tail, timestamped,
  * newline-separated; this client splits it client-side rather than trusting
  * [lines], which counts entries the server split on its own newline. */

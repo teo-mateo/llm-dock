@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS } from './navItems'
 
-// md:hidden mobile chrome (issue #39): the desktop Sidebar is `hidden
+// md:hidden mobile chrome: the desktop Sidebar is `hidden
 // md:flex`, so on phones there was no navigation at all. This is a top
 // bar with a hamburger that opens the same NAV_ITEMS as a slide-in
 // drawer. Rendered alongside <Sidebar/> in App so it covers every route.
 export default function MobileNav() {
   const [open, setOpen] = useState(false)
 
-  // Standard keyboard dismissal for the dialog drawer (codex PR #40).
+  // Standard keyboard dismissal for the dialog drawer.
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }

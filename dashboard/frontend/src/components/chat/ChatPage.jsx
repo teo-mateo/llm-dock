@@ -74,8 +74,7 @@ export default function ChatPage() {
   // even after the user has already navigated to a different chat B. Gate
   // the flush on the live route too, and abandon the queued message the
   // moment the route no longer points at it — otherwise a stale fetch
-  // would fire a background send into a non-active conversation (codex
-  // iteration 3, P1).
+  // would fire a background send into a non-active conversation.
   useEffect(() => {
     const pending = pendingMsgRef.current
     const decision = pendingFlushDecision(pending, convId, conversation, streaming)
@@ -186,7 +185,7 @@ export default function ChatPage() {
   // The ref is NOT cleared here: some guarded actions await a mutation
   // that can fail, leaving the editor mounted with its dirty buffer — a
   // pre-cleared ref would let the next navigation discard those edits
-  // without asking (codex iteration 3, P2). The editor resets the flag
+  // without asking. The editor resets the flag
   // itself when it actually unmounts or its dirty state changes.
   const editorDirtyRef = useRef(false)
   const confirmDiscardEdits = useCallback(() => {

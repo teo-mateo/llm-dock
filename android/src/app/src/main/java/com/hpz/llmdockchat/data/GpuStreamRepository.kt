@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * The live `GET /api/gpu/stream` (F10-R3): one frame per tick, no snapshot/delta
+ * The live `GET /api/gpu/stream`: one frame per tick, no snapshot/delta
  * split — every frame is the full, current GPU list, so there is nothing to
  * merge (unlike [ServicesStreamRepository]).
  *
@@ -27,8 +27,7 @@ import kotlinx.coroutines.flow.flow
 class GpuStreamRepository(private val transport: SseTransport) {
 
     /**
-     * Emits [GpuState.Connecting] immediately on connect (F10-R3's fourth
-     * criterion: a header that has not heard from the server yet must not look
+     * Emits [GpuState.Connecting] immediately on connect: a header that has not heard from the server yet must not look
      * "available" with stale zeros — nor claim the GPU is unavailable, which
      * is a different statement), then whatever the stream reports. Never
      * completes on its own — a dropped connection is retried, not surfaced as

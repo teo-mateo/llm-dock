@@ -20,7 +20,7 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Review probe (F01). Left in place per WORK_INSTRUCTIONS.md; asserts only what
+ * Review probe, kept deliberately; asserts only what
  * the implementation actually does today, so it will not flake.
  */
 class TmpF01ReviewProbeTest {
@@ -55,7 +55,7 @@ class TmpF01ReviewProbeTest {
         val reauthenticator = CredentialReauthenticator(
             credentials = FakeCredentialStore(Credential.Password("hunter2")),
             sessionState = sessionState,
-        ) { Result.success("totp-fresh-${exchanges.incrementAndGet()}") }
+        ) { _, _ -> Result.success("totp-fresh-${exchanges.incrementAndGet()}") }
 
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore, sessionState, reauthenticator))
@@ -81,7 +81,7 @@ class TmpF01ReviewProbeTest {
     fun `a second 401 after a rejection replaces the reason with the TOTP wording`() {
         val sessionState = SessionState()
         val credentials = FakeCredentialStore(Credential.Password("hunter2"))
-        val subject = CredentialReauthenticator(credentials, sessionState) {
+        val subject = CredentialReauthenticator(credentials, sessionState) { _, _ ->
             Result.failure(ApiException(AppError.Http(401, "Invalid token", true)))
         }
 

@@ -3,7 +3,7 @@ package com.hpz.llmdockchat.feature.share
 import com.hpz.llmdockchat.data.model.UrlRetrieval
 
 /**
- * What the picker offers for the staged share (F14-R7).
+ * What the picker offers for the staged share.
  *
  * [Blocked] is deliberate: a share of a page with no way to read that page
  * gets a reason and a next step, never a summarize turn. Sending one anyway

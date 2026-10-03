@@ -1,8 +1,8 @@
-"""Persistence policy seam for the chat runtime (Phase 8 of #58).
+"""Persistence policy seam for the chat runtime.
 
 The runtime (ChatRunner) drives the model/tool stream and publishes events; how
 — or whether — a turn is durably stored is delegated to a PersistencePolicy.
-This is the architectural hook Ghost Chat (#57) needs: the same model/tool
+This is the architectural hook Ghost Chat needs: the same model/tool
 stream can run DB-backed or fully ephemeral by swapping the policy, with no
 change to the runtime or the SSE-encoding layer.
 
@@ -88,7 +88,7 @@ class DbPersistencePolicy(PersistencePolicy):
 
 
 class NullPersistencePolicy(PersistencePolicy):
-    """The ephemeral policy: no durable writes (Ghost Chat, #57).
+    """The ephemeral policy: no durable writes (Ghost Chat).
 
     Holds the transcript in memory so prompts build correctly across turns and a
     completed assistant turn is visible to the next one. Lifecycle transitions

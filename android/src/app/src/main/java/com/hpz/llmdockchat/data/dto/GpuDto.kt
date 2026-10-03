@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * One GPU from `GET /api/gpu` / `GET /api/gpu/stream` (`dashboard/docker_utils.py:get_gpu_stats`).
  * The real payload also carries clocks, fan speed and a performance state —
- * F10-R3 only asks for VRAM, utilisation, temperature and power, so those are
+ * The GPU header only asks for VRAM, utilisation, temperature and power, so those are
  * the only fields modelled here; anything else is ignored by
  * `ignoreUnknownKeys` rather than given a place to go unused.
  */

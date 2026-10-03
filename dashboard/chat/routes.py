@@ -44,7 +44,7 @@ def init_chat(app, db_path: str = None):
     mcp_config.bind_manager(mgr)
     mcp_config.reload()
 
-    # Background-run infrastructure (#58): an event bus for live observers and
+    # Background-run infrastructure: an event bus for live observers and
     # a manager owning the worker pool. Runs from a previous process that died
     # mid-flight are marked failed so they don't linger as stuck active runs.
     # Cap request bodies so Werkzeug rejects an oversized upload DURING
@@ -877,7 +877,7 @@ def delete_conversations_batch():
     return jsonify({"ok": True, "deleted": deleted})
 
 
-# -- Chat Prompts (issue #96) --
+# -- Chat Prompts --
 
 
 @chat_bp.route("/api/chat/prompts", methods=["GET"])
@@ -1123,7 +1123,7 @@ def delete_message(conv_id, msg_id):
     return jsonify({"ok": True})
 
 
-# -- Runs (observation + cancellation, issue #58) --
+# -- Runs (observation + cancellation) --
 
 
 @chat_bp.route("/api/chat/runs/<run_id>", methods=["GET"])

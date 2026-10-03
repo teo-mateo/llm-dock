@@ -55,12 +55,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Prompt selection by reference (F03 follow-up): the selection is the
+ * Prompt selection by reference: the selection is the
  * conversation's `prompt_id`, not a content match. Selecting PUTs the id
  * alone (the server resolves the content); detaching PUTs an explicit
  * `prompt_id: null` with `main_system_prompt: ""`.
  *
- * The race half pins #264: writes serialize in selection order, a stale
+ * The race half: writes serialize in selection order, a stale
  * failure is silent, a failed latest write rolls back to the confirmed
  * server value, and superseded unsent selections coalesce to nothing.
  */
@@ -252,7 +252,7 @@ class ThreadPromptSelectionTest {
         assertEquals("Prompt not found", state.actionError)
     }
 
-    // -- race discipline (#264) -------------------------------------------------
+    // -- race discipline -------------------------------------------------
 
     /**
      * The issue's probe: A fails late, after B has already settled successful.

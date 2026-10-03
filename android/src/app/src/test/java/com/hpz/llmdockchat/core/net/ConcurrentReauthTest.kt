@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The whole F01-R6 stack over a real socket: a dead token stored, several
+ * The whole reauth stack over a real socket: a dead token stored, several
  * requests in flight, the dashboard rejecting every one of them.
  *
  * A dashboard restart invalidates all session tokens at once, so this is the
@@ -70,7 +70,7 @@ class ConcurrentReauthTest {
         val reauthenticator = CredentialReauthenticator(
             credentials = credentials,
             sessionState = sessionState,
-        ) {
+        ) { _, _ ->
             exchanges.incrementAndGet()
             inExchange.countDown()
             check(releaseExchange.await(10, TimeUnit.SECONDS)) { "the test never released it" }

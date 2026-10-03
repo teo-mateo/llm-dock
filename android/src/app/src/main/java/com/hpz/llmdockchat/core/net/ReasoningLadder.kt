@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * The one tolerant reader for a service's declared reasoning levels (F15).
+ * The one tolerant reader for a service's declared reasoning levels.
  *
  * `reasoning_levels` arrives as `[{"id": "low", "effort": "low"}, …]` on both
  * `GET /api/services` and its SSE snapshot, and inside a `metadata-changed`

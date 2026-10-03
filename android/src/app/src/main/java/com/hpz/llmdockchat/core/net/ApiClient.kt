@@ -12,9 +12,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
 /**
- * One-shot JSON calls. Resolves the base URL per request, so changing the
- * server address takes effect without restarting the app or rebuilding the
- * HTTP stack (F00-R1).
+ * One-shot JSON calls. Ordinary calls use the active server; reachability and
+ * sign-in can target a candidate explicitly without changing the active session.
  *
  * Throws [ApiException]; callers that want a value-typed failure use
  * [apiCall].
@@ -30,7 +29,8 @@ class ApiClient(
         path: String,
         deserializer: DeserializationStrategy<T>,
         query: Map<String, String> = emptyMap(),
-    ): T = request("GET", path, deserializer, query)
+        server: BaseUrl? = null,
+    ): T = request("GET", path, deserializer, query, server = server)
 
     /**
      * [headers] is how the login routes carry their own credential —
@@ -45,8 +45,9 @@ class ApiClient(
         query: Map<String, String> = emptyMap(),
         body: String? = null,
         headers: Map<String, String> = emptyMap(),
+        server: BaseUrl? = null,
     ): T = withContext(ioDispatcher) {
-        val base = serverUrlStore.current()
+        val base = server ?: serverUrlStore.current()
             ?: throw ApiException(AppError.Unexpected(IllegalStateException("No server configured.")))
 
         // OkHttp rejects a POST/PUT/PATCH with no body, and both login routes

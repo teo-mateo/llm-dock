@@ -69,11 +69,10 @@ import java.time.Instant
 import java.time.ZoneId
 
 /**
- * Screen 10a · Models (F10). Read-and-observe only: F10-R5 (start/stop from a
- * row, tap-to-detail) is deferred to F11 — a row here does nothing when
- * tapped, and carries no power/play icon, unlike the mockup. The one action a
- * row *does* carry is F10-R6's "New chat from this model", which is in scope
- * and is not a control over the container.
+ * The Models tab. A row's body opens the detail screen; its trailing control
+  * starts or stops the container behind a confirm. The extra action a row
+  * carries is "New chat from this model", offered only for a running,
+  * chat-capable service — it is not a control over the container.
  */
 @Composable
 fun ModelsScreen(
@@ -88,7 +87,7 @@ fun ModelsScreen(
     val refreshing by viewModel.refreshing.collectAsState()
     LaunchedEffect(Unit) { viewModel.start() }
 
-    // F10-R3's third criterion: these two run only while this composable is
+    // These two run only while this composable is
     // part of the composition. Navigation Compose disposes it — cancelling
     // both `LaunchedEffect`s and, with them, the underlying SSE connections —
     // the moment this destination stops being current, even though the
@@ -314,15 +313,14 @@ private fun FavouriteGap(services: List<ServiceSummary>, index: Int) {
 }
 
 /** Whether an action on [name] is mid-flight — the row's pending state
- * (F10-R5's third criterion). */
+ *. */
 private fun ServiceActionState.pendingFor(name: String): Boolean =
     this is ServiceActionState.InFlight && serviceName == name
 
 /**
- * The one confirm surface for both F11-R3 (stop) and F11-R4 (start), reused
- * verbatim from the row and from the detail screen (F10-R5's second
- * criterion). Naming the service and, for a stop, warning about in-flight
- * chats is the entire point of the dialog (F11-R3) — it never blocks the
+ * The one confirm surface for both stop and start, reused verbatim from the
+  * row and from the detail screen. Naming the service and, for a stop, warning about in-flight
+ * chats is the entire point of the dialog — it never blocks the
  * action, only makes sure the person tapping it knows what it does.
  */
 @Composable
@@ -343,7 +341,7 @@ fun ServiceActionDialog(
                     "Any chat streaming on ${actionState.serviceName} right now will fail."
                 } else {
                     // Deliberately does not promise the reason. There is no
-                    // VRAM guard (F11-R5 was dropped), so an oversubscribed
+                    // VRAM guard — it was dropped — so an oversubscribed
                     // start really does fail — but all this screen learns is
                     // the exit code. The actual "cudaMalloc failed: out of
                     // memory" only exists in the container's log, so saying
@@ -411,7 +409,7 @@ private fun GpuHeaderCard(gpu: GpuState) {
 }
 
 /**
- * F10-R4: one total VRAM bar, not per-container segments. The API has no
+ * One total VRAM bar, not per-container segments. The API has no
  * per-process breakdown, and the only per-service number is weights-on-disk
  * size — drawing segments from it would present an estimate as a measured
  * figure, which the requirement rules out outright. The used/total number
@@ -529,7 +527,7 @@ private fun ServiceRow(
     onRequestStop: (String) -> Unit,
 ) {
     val colors = LlmTheme.colors
-    // F11: the row body opens detail; the trailing control is F10-R5's row
+    // The row body opens detail; the trailing control is the row's
     // start/stop, sharing the same confirm dialog as the detail screen.
     //
     // Flat rows with a hairline divider rather than the design lab's one card
@@ -575,7 +573,7 @@ private fun ServiceRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // F10-R6: offered only for a running, chat-capable service.
+            // Offered only for a running, chat-capable service.
             if (onNewChatFromModel != null && service.isRunning && service.isChatCapable) {
                 RoundAction(
                     icon = DesignLabIcons.ChatBubble,
@@ -755,7 +753,7 @@ private fun LoadingState() {
 }
 
 /**
- * Not in the design lab's mockup — the filter was asked for afterwards — so it
+ * Not in the design lab's gallery — the filter was asked for afterwards — so it
  * borrows the composer's shape rather than inventing a third input style, and
  * drops the stock `OutlinedTextField`, whose floating label and magnifying-glass
  * emoji were the two loudest things on the screen.

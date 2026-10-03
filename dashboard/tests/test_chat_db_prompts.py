@@ -1,4 +1,4 @@
-"""Tests for chat_prompts table and ChatDB CRUD methods (issue #93).
+"""Tests for chat_prompts table and ChatDB CRUD methods.
 
 Covers table creation, create/get/list/update/delete, reordering, and
 timestamp semantics (created_at set on create only; updated_at on both).

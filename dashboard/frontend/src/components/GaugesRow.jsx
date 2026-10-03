@@ -1,7 +1,7 @@
 const CIRCUMFERENCE = 2 * Math.PI * 18
 
 // Categorical threshold hexes stay JS constants (not theme-driven): they
-// must read identically and are asserted by GaugesRow.test (issue #5 §8).
+// must read identically and are asserted by GaugesRow.test.
 // Only the non-threshold SVG chrome (track, label text) is themed, via
 // CSS-driven stroke-/fill- utilities that re-resolve on a theme swap.
 const kvColor = (pct) => {

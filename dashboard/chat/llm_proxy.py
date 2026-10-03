@@ -29,7 +29,7 @@ MAX_REPLAYED_TOOL_RESULT_CHARS = 4000
 # ghost calls; 0.3 keeps the format on-rails without flattening the prose answer.
 # A default, not a ceiling - conversation sampling params are applied over it, so
 # reversing that order would let the tool loop outvote the operator on every
-# tool-using turn (docs/plans/chat-sampling-params.md, decision 4).
+# tool-using turn.
 TOOL_TURN_TEMPERATURE = 0.3
 
 # Same idea for a replayed call's arguments, per string value. Write tools put

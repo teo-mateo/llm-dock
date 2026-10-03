@@ -29,7 +29,7 @@ def _inspector_db() -> InspectorDB:
 
 def _summary_row(capture) -> dict:
     # The body fields are intentionally absent: the list must not pay for
-    # megabytes it won't render (#235's summary read).
+    # megabytes it won't render.
     return {
         "id": capture.id,
         "service_name": capture.service_name,

@@ -298,8 +298,10 @@ def get_docker_services():
                 "model_host_path": model_info["model_host_path"],
                 "kind": kind_map.get(service_name, "chat"),
                 "favorite": favorite_map.get(service_name, False),
-                # Engine key for request mapping. It used to be an internal map
-                # only, so every declared level was dropped as an unmapped engine.
+                # Engine key for request mapping: every per-engine request
+                # behaviour reads it off this payload, so it must never be an
+                # internal-only field or a declared reasoning level is dropped
+                # as an unmapped engine.
                 "template_type": template_type_map.get(service_name, ""),
                 # Alias travels with the engine: an engine whose server pins its
                 # served model id to the alias (ninfer) cannot be addressed with

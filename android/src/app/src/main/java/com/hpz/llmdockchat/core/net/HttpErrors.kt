@@ -5,15 +5,14 @@ import com.hpz.llmdockchat.core.error.ErrorBody
 
 /**
  * Maps a non-2xx response onto an [AppError], preferring the dashboard's own
- * `{"error": "..."}` text over anything this client could invent (F00-R4).
+ * `{"error": "..."}` text over anything this client could invent.
  */
 /**
  * [credentialRejected] flips the meaning of a 401. On an ordinary route it says
  * the session is gone, which is [AppError.Unauthenticated] and not something a
  * screen should render the server's words for. On a route that *establishes* a
- * session it says the password or code just supplied is wrong — and F01-R3 and
- * F01-R4 both require the dashboard's own message ("Invalid TOTP code") to
- * reach the user.
+ * session it says the password or code just supplied is wrong, and the
+  * dashboard's own message ("Invalid TOTP code") must reach the user.
  */
 fun httpError(status: Int, body: String?, credentialRejected: Boolean = false): AppError {
     if (status == 401 && !credentialRejected) return AppError.Unauthenticated

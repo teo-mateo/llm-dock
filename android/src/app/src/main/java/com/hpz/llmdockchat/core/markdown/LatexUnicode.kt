@@ -4,8 +4,8 @@ package com.hpz.llmdockchat.core.markdown
  * Turns the small, common subset of inline LaTeX that chat models actually emit
  * into plain Unicode.
  *
- * This is not a maths renderer and does not try to be one — F05 dropped LaTeX
- * rendering, and that stands for anything with real structure (fractions,
+ * This is not a maths renderer and does not try to be one — LaTeX rendering
+  * was dropped, and that stands for anything with real structure (fractions,
  * matrices, integrals with limits). But "dropped" was being read as "print the
  * source", so a sentence like
  *

@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Which shared text counts as "a page was shared" (F14-R1, F14-R10). */
+/** Which shared text counts as "a page was shared" . */
 class SharedUrlExtractorTest {
 
     @Test

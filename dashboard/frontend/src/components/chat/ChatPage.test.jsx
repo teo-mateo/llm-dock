@@ -82,7 +82,7 @@ afterEach(() => cleanup())
 
 describe('ChatPage URL-load effect', () => {
   it('loads the route conversation exactly once across parent rerenders', async () => {
-    // Regression for codex iteration 3 P1 on PR #69: ChatPage builds a fresh
+    // ChatPage builds a fresh
     // onConversationUpdated callback every render. The reattach work made
     // loadConversation depend (transitively) on that callback; if it changed
     // identity each render, the URL-load effect ([convId, loadConversation])
@@ -178,7 +178,7 @@ describe('ChatPage delete → project count refresh', () => {
   }
 
   it('refreshes projects after a single conversation delete', async () => {
-    // Regression for codex iteration 3 on PR #77: deleting a project's
+    // Deleting a project's
     // conversation must refetch the cached per-project counts, or the
     // sidebar keeps claiming chats the project no longer has.
     renderPage()

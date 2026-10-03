@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The one remembered-model ladder (F03-R1), shared by the new-chat sheet and
- * the summarize path (F14-R7) — the two must not disagree about when to ask.
+ * The one remembered-model ladder, shared by the new-chat sheet and
+ * the summarize path — the two must not disagree about when to ask.
  */
 class RememberedModelResolverTest {
 
@@ -57,7 +57,7 @@ class RememberedModelResolverTest {
         assertEquals(RememberedModel.Resolved(preselected), resolved)
     }
 
-    /** F10-R6: a preselect that died between the tap and the load falls through. */
+    /** A preselect that died between the tap and the load falls through. */
     @Test
     fun `a preselected service that stopped falls back to the remembered one`() {
         val stoppedPreselect = ModelOption.LocalService("llamacpp-preselected", "exited")

@@ -13,7 +13,7 @@ def test_failed_init_does_not_poison_later_calls(tmp_path):
     """A failed init_config (missing token) must not permanently disable
     re-validation and logging setup: once the token exists, the next call
     succeeds and installs the handlers. The flag must stay False across the
-    failure — this is what #191's fix pins."""
+    failure — that is what this pins."""
     saved_token = config.DASHBOARD_TOKEN
     saved_flag = config._config_initialized
     saved_cwd = os.getcwd()

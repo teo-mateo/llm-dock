@@ -54,7 +54,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Issue #271 — the edit identity survives every reload shape: rotation-style
+ * The edit identity survives every reload shape: rotation-style
  * re-entry is a fresh `load()` over a live ViewModel; process restoration is a
  * new ViewModel replaying the persisted record; and a target the server
  * dropped cancels explicitly with a notice instead of stranding the edit text

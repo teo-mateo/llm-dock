@@ -189,7 +189,7 @@ def test_unmapped_engines_send_nothing(engine):
 
 @pytest.mark.parametrize("level", [None, "", {}, {"id": ""}, {"id": None}, 0])
 def test_no_level_never_produces_fields(level):
-    # R6: no selection means no new key, on any engine.
+    # No selection means no new key, on any engine.
     for engine in ("llamacpp", "vllm"):
         assert rl.request_fields(level, engine) == {}
 

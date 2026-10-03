@@ -51,12 +51,12 @@ import org.junit.Test
 import java.util.concurrent.TimeUnit
 
 /**
- * The run lifecycle as the thread screen sees it (F04).
+ * The run lifecycle as the thread screen sees it.
  *
  * The stream is a [FakeSseTransport] so frame timing is deterministic; the JSON
  * calls — the load, the refetch every terminal triggers, the cancel — go
  * through a real [MockWebServer], because *whether a cancel request was sent*
- * is exactly what F04-R10 turns on.
+ * is exactly what that rule turns on.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadViewModelTest {
@@ -92,7 +92,7 @@ class ThreadViewModelTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(servicesTransport)
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.
@@ -117,7 +117,7 @@ class ThreadViewModelTest {
     /**
      * Built through a [ViewModelStore] rather than by calling the constructor,
      * so `store.clear()` reaches `onCleared()` and cancels `viewModelScope` —
-     * which is exactly what leaving the screen does, and what F04-R10 is about.
+     * which is exactly what leaving the screen does, and what that rule is about.
      */
     private fun viewModel(): ThreadViewModel = ViewModelProvider.create(
         store,
@@ -160,7 +160,7 @@ class ThreadViewModelTest {
         state.first { it is ThreadUiState.Loaded && predicate(it) } as ThreadUiState.Loaded
     }
 
-    // -- F04-R2 · the user's message renders first ---------------------------
+    // -- the user's message renders first ---------------------------
 
     @Test
     fun `the user's message shows before the first token, and never in the message list`() = threadTest {
@@ -176,7 +176,7 @@ class ThreadViewModelTest {
 
         val state = viewModel.awaitState { it.thread.streaming?.userMessage != null }
         assertEquals("what is a transistor", state.thread.streaming?.userMessage?.content)
-        // Architecture D3: `messages` still holds only what the server sent.
+        // `messages` still holds only what the server sent.
         assertEquals(2, state.thread.messages.size)
         assertTrue(state.thread.messages.none { it.content == "what is a transistor" })
         assertEquals("", state.composer)
@@ -222,7 +222,7 @@ class ThreadViewModelTest {
         assertEquals("second turn", drafts.saved[CONVERSATION_ID])
     }
 
-    // -- F04-R3 / D3 · streamed text is separate state -----------------------
+    // -- streamed text is separate state -----------------------
 
     @Test
     fun `deltas accumulate on the streaming turn, not into the message list`() = threadTest {
@@ -274,7 +274,7 @@ class ThreadViewModelTest {
         assertEquals("why", turn.reasoning)
     }
 
-    // -- F04-R5 · tool calls -------------------------------------------------
+    // -- tool calls -------------------------------------------------
 
     @Test
     fun `a pending call becomes one card that gains its arguments and result in place`() = threadTest {
@@ -343,7 +343,7 @@ class ThreadViewModelTest {
         assertEquals("Parser dropped a malformed tool call", warning.displayText)
     }
 
-    // -- F05-R6/R8 · artifact frames land on the streaming turn --------------
+    // -- artifact frames land on the streaming turn --------------
 
     @Test
     fun `an artifact frame is carried on the streaming turn as it arrives`() = threadTest {
@@ -367,7 +367,7 @@ class ThreadViewModelTest {
         assertEquals("<svg></svg>", artifacts.single().content)
     }
 
-    // -- F04-R7 · completion and title ---------------------------------------
+    // -- completion and title ---------------------------------------
 
     @Test
     fun `on message_saved the server's message replaces the streamed text`() = threadTest {
@@ -412,7 +412,7 @@ class ThreadViewModelTest {
         viewModel.awaitState { it.thread.streaming == null }
     }
 
-    // -- F04-R8 · failure ----------------------------------------------------
+    // -- failure ----------------------------------------------------
 
     @Test
     fun `an error frame drops the streamed turn and surfaces the persisted run error`() = threadTest {
@@ -435,7 +435,7 @@ class ThreadViewModelTest {
     }
 
     /**
-     * The other half of F04-R8: a failure keeps the partial. Unlike a cancel,
+     * The other half: a failure keeps the partial. Unlike a cancel,
      * `ChatRunner._fail` persists whatever text accumulated *and* stamps the
      * error onto that same assistant message, so after the refetch the turn is
      * a real message with real text — not an empty bubble with an error note.
@@ -465,7 +465,7 @@ class ThreadViewModelTest {
         assertFalse(state.runActive)
     }
 
-    // -- F04-R6 · stop -------------------------------------------------------
+    // -- stop -------------------------------------------------------
 
     @Test
     fun `stop cancels by conversation with the captured run id`() = threadTest {
@@ -492,7 +492,7 @@ class ThreadViewModelTest {
     /**
      * A cancelled run persists **no** assistant message. The stream just ends;
      * the partial existed only in the client's buffer and must not be presented
-     * as a saved turn (F04-R6, and the mockup's own correction).
+     * as a saved turn.
      */
     @Test
     fun `after a cancel the partial answer is dropped and not presented as saved`() = threadTest {
@@ -568,7 +568,7 @@ class ThreadViewModelTest {
         assertEquals("the retry is one cancel request, not two", requestsBeforeRetry + 1, server.requestCount)
     }
 
-    // -- F04-R10 · leaving is not cancelling ---------------------------------
+    // -- leaving is not cancelling ---------------------------------
 
     /**
      * The whole point of the background run model: the app unsubscribes and the
@@ -599,10 +599,10 @@ class ThreadViewModelTest {
         assertEquals(requestsBefore, server.requestCount)
     }
 
-    // -- Architecture P1 · deltas are coalesced ------------------------------
+    // -- deltas are coalesced ------------------------------
 
     /**
-     * The distinguishing test for P1. A thousand tokens are consumed and the
+     * The distinguishing test for coalescing. A thousand tokens are consumed and the
      * UI state is still untouched, because nothing reaches it until the window
      * elapses — an implementation that copied state per token would have
      * published a thousand times before this assertion ran.
@@ -662,7 +662,7 @@ class ThreadViewModelTest {
         },
     )[ThreadViewModel::class]
 
-    // -- F04-R1 · the draft --------------------------------------------------
+    // -- the draft --------------------------------------------------
 
     @Test
     fun `a stored draft is restored when the thread opens, and cleared once sent`() = threadTest {
@@ -692,7 +692,7 @@ class ThreadViewModelTest {
         assertEquals("survives a 401", drafts.saved[CONVERSATION_ID])
     }
 
-    // -- switch model (F07-R4) -------------------------------------------------
+    // -- switch model -------------------------------------------------
 
     @Test
     fun `openModelPicker subscribes to the live services stream, closeModelPicker cancels it`() = threadTest {

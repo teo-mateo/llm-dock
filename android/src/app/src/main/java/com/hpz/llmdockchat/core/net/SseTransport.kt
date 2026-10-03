@@ -10,7 +10,7 @@ data class StreamRequest(
 )
 
 /**
- * The only part of streaming that touches the network (Architecture D2).
+ * The only part of streaming that touches the network.
  *
  * Emits raw `data:` payloads in order. The flow **completes** when the server
  * closes the stream — with or without a terminal frame — and **fails** with an

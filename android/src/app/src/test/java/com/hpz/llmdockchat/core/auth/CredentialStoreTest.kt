@@ -4,12 +4,17 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.edit
 import com.hpz.llmdockchat.core.prefs.Stored
+import com.hpz.llmdockchat.core.net.DataStoreServerUrlStore
+import com.hpz.llmdockchat.testing.baseUrl
 import com.hpz.llmdockchat.testing.SoftwareSecretCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -48,19 +53,27 @@ class CredentialStoreTest {
             try {
                 val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = { file })
                 withTimeout(15_000) {
+                    val serverUrlStore = DataStoreServerUrlStore(store, scope)
+                    if (serverUrlStore.current() == null) {
+                        serverUrlStore.set(baseUrl("https://dock.example"))
+                        serverUrlStore.awaitPendingWrites()
+                    }
                     Session(
                         store,
-                        DataStoreCredentialStore(store, scope, cipher),
-                        DataStoreTokenStore(store, scope, cipher),
+                        serverUrlStore,
+                        DataStoreCredentialStore(store, scope, cipher, serverUrlStore),
+                        DataStoreTokenStore(store, scope, cipher, serverUrlStore),
                     ).block()
                 }
             } finally {
                 scope.cancel()
+                scope.coroutineContext[Job]?.cancelAndJoin()
             }
         }
 
     private class Session(
         val dataStore: DataStore<Preferences>,
+        val serverUrlStore: DataStoreServerUrlStore,
         val credentials: DataStoreCredentialStore,
         val tokens: DataStoreTokenStore,
     ) {
@@ -150,6 +163,79 @@ class CredentialStoreTest {
         assertNotNull(persisted)
         assertFalse(persisted!!.contains("totp-"))
         session(file, cipher) { assertEquals("totp-abcdefghijklmnop", tokens.current()) }
+    }
+
+    @Test
+    fun `saved secrets remain bound to their server after a cold start`() {
+        val file = folder.newFile("bound.preferences_pb")
+        val cipher = SoftwareSecretCipher()
+
+        session(file, cipher) {
+            credentials.save(Credential.Password(password))
+            tokens.update("totp-server-a")
+            credentials.awaitPendingWrites()
+            tokens.awaitPendingWrites()
+        }
+
+        session(file, cipher) {
+            serverUrlStore.set(baseUrl("https://other.example/path"))
+            serverUrlStore.awaitPendingWrites()
+        }
+
+        session(file, cipher) {
+            assertNull(credentials.current())
+            assertNull(tokens.current())
+            assertEquals(Stored.Ready(false), credentials.hasCredential.first { it is Stored.Ready })
+            assertEquals(Stored.Ready(null), tokens.token.first { it is Stored.Ready })
+        }
+    }
+
+    @Test
+    fun `legacy unbound secrets require a new sign-in`() {
+        val file = folder.newFile("legacy.preferences_pb")
+        val cipher = SoftwareSecretCipher()
+        session(file, cipher) {
+            dataStore.edit {
+                it[stringPreferencesKey("credential")] = cipher.encrypt(Credential.encode(Credential.Password(password)))
+                it[stringPreferencesKey("session_token")] = cipher.encrypt("totp-legacy")
+            }
+        }
+
+        session(file, cipher) {
+            assertNull(credentials.current())
+            assertNull(tokens.current())
+        }
+    }
+
+    @Test
+    fun `a late A update and clear cannot change B secrets`() {
+        val file = folder.newFile("late.preferences_pb")
+        val cipher = SoftwareSecretCipher()
+        val a = baseUrl("https://dock.example")
+        val b = baseUrl("https://other.example/path")
+
+        session(file, cipher) {
+            tokens.update("totp-A", a)
+            credentials.save(Credential.Password("A_PASSWORD"), a)
+            serverUrlStore.set(b)
+            tokens.update("totp-B", b)
+            credentials.save(Credential.Password("B_PASSWORD"), b)
+            tokens.update("totp-late-A", a)
+            credentials.save(Credential.Password("late A"), a)
+            tokens.clear(a)
+            credentials.clear(a)
+            assertEquals("totp-B", tokens.current())
+            assertEquals(Credential.Password("B_PASSWORD"), credentials.current())
+            serverUrlStore.awaitPendingWrites()
+            tokens.awaitPendingWrites()
+            credentials.awaitPendingWrites()
+        }
+
+        session(file, cipher) {
+            assertEquals(b, serverUrlStore.current())
+            assertEquals("totp-B", tokens.current())
+            assertEquals(Credential.Password("B_PASSWORD"), credentials.current())
+        }
     }
 
     @Test

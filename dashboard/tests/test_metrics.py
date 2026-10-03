@@ -552,7 +552,7 @@ class TestNinferMetrics:
         assert resp.status_code == 400
 
     def test_unsupported_engine_still_returns_empty(self, metrics_client):
-        # R4: engines without a curated set keep the existing empty response.
+        # Engines without a curated set keep the existing empty response.
         # The fixture has no such service, so drive the route's gate directly
         # through a stubbed config.
         from routes import metrics as metrics_mod

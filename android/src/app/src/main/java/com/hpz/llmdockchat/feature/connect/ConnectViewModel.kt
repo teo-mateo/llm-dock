@@ -106,11 +106,7 @@ class ConnectViewModel(
 
         _state.value = current.copy(busy = true, failure = null, notice = null, addressError = null)
         viewModelScope.launch {
-            // The address has to be stored before the probe: every request is
-            // built from it (F00-R1), so there is nowhere else to read it from.
-            serverUrlStore.set(server)
-
-            when (val reach = reachability.probe()) {
+            when (val reach = reachability.probe(server)) {
                 Reachability.Dashboard -> Unit
                 is Reachability.Unreachable -> return@launch fail(
                     "Could not reach a server at ${server.value}. ${reach.detail}".trim(),

@@ -39,8 +39,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * F03: the sheet's data load (F03-R1's third/fourth criteria, F03-R2, F03-R3)
- * and the create flow (F03-R1's fifth criterion). [ConversationsRepositoryTest]
+ * The sheet's data load and the create flow. [ConversationsRepositoryTest]
  * covers the exact wire payloads; this covers the ViewModel's decisions on
  * top of them.
  */
@@ -131,7 +130,7 @@ class NewChatViewModelTest {
         assertFalse(names.contains("vllm-nomic-embed-text-v1.5"))
         assertTrue(names.contains("llamacpp-gemma-4-26b-a4b-it-q8"))
         assertTrue(names.contains("vllm-qwen3-6-27b-fp8"))
-        // #269: the three engines the baseline classified as unknown now flow
+        // The three engines the classifier used to reject now flow
         // through the chat-capable filter, on their template_type and prefix.
         assertTrue(names.contains("ik-qwen3.6-27b-iq4xs"))
         assertTrue(names.contains("exl3-gemma-4-31b-it"))
@@ -152,7 +151,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * F03-R2's fourth criterion: "the row shows only Default and does not
+     * "The row shows only Default and does not
      * appear broken." [NewChatScreen] always renders the system-prompt row
      * off [NewChatUiState.Loaded.prompts] with no special-casing — an empty
      * list naturally leaves only the always-present "Default" choice in the
@@ -173,7 +172,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * F03-R3's third criterion: "the row is hidden rather than empty."
+     * "The row is hidden rather than empty."
      * [NewChatScreen] gates the whole Tools row on `mcpServers.isNotEmpty()`
      * — this proves the state that gate reads is correctly empty, not null
      * or a parse failure, when the registry has nothing enabled.
@@ -247,7 +246,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * F10-R6: the Models tab's "New chat" action passes a specific running
+     * The Models tab's "New chat" action passes a specific running
      * service, which must win over whatever [preferences] remembered from
      * last time — that is the entire point of tapping it from a particular row.
      */
@@ -298,7 +297,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * F07-R1's third criterion: a container started or stopped elsewhere
+     * A container started or stopped elsewhere
      * reaches an open picker with no manual refresh. `MainDispatcherRule`
      * runs `viewModelScope` unconfined, so the stream's snapshot and delta
      * are queued before [NewChatViewModel.load] runs — under Unconfined
@@ -431,7 +430,7 @@ class NewChatViewModelTest {
         assertFalse(loadedFinal.creating)
         assertEquals("new-conv-2", loadedFinal.toolsFailure?.conversationId)
         assertEquals("Sign in again to continue.", loadedFinal.toolsFailure?.message)
-        // Selections survive the failure, same as a failed create (F00-R4's "never swallow").
+        // Selections survive the failure, same as a failed create ("never swallow").
         assertEquals(model, loadedFinal.selectedModel)
         assertEquals(setOf("sympy-math"), loadedFinal.selectedMcpServerIds)
         assertFalse(loadedFinal.canStart) // Start is not the way out of this state
@@ -518,9 +517,9 @@ class NewChatViewModelTest {
         } as NewChatUiState.Loaded
 
     /**
-     * AC 1. The sheet opens with the remembered running model selected, the
+     * The sheet opens with the remembered running model selected, the
      * stream's first snapshot confirms it, then a delta stops it — Start goes
-     * off and the sheet asks for a new model (issue 266).
+     * off and the sheet asks for a new model.
      */
     @Test
     fun `a delta stopping the selected service disables Start and asks for a new model`() {
@@ -539,7 +538,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * AC 1 + AC 5. The invalidation clears the model row only: the tool
+     * The invalidation clears the model row only: the tool
      * selection rides through it untouched, and the prompt and summarize rows
      * keep their values (the pure [reconcileLiveServices] test pins the full
      * set, since scripted transport frames all land inside one `load()` here).
@@ -565,7 +564,7 @@ class NewChatViewModelTest {
         assertNull(state.summarizeUrl)
     }
 
-    /** AC 1. Removal arrives as absence from the next snapshot, not a delta. */
+    /** Removal arrives as absence from the next snapshot, not a delta. */
     @Test
     fun `a service absent from a later snapshot invalidates the selection`() {
         preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
@@ -584,7 +583,7 @@ class NewChatViewModelTest {
         assertFalse(state.canStart)
     }
 
-    /** AC 1. A row that stays running but stops being chat-capable is just as dead for a thread. */
+    /** A row that stays running but stops being chat-capable is just as dead for a thread. */
     @Test
     fun `a snapshot making the selected service non-chat invalidates the selection`() {
         preferences = FakeNewChatPreferences(initialModel = selectedRunningGemma)
@@ -602,7 +601,7 @@ class NewChatViewModelTest {
         assertFalse(state.canStart)
     }
 
-    /** AC 4. A local stop lands; the OpenRouter selection doesn't notice (issue 266). */
+    /** A local stop lands; the OpenRouter selection doesn't notice. */
     @Test
     fun `a remote selection survives local status deltas`() {
         preferences = FakeNewChatPreferences(initialModel = "openrouter:someone/retired-model")
@@ -625,7 +624,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * AC 2. running → exited → running: the invalidation is sticky (no
+     * Running → exited → running: the invalidation is sticky (no
      * auto-reselection), but the row is back in the picker and a fresh
      * selection re-enables Start.
      */
@@ -654,7 +653,7 @@ class NewChatViewModelTest {
     }
 
     /**
-     * AC 3. The probe's exact shape: `selectedModel` still carries the
+     * The probe's exact shape: `selectedModel` still carries the
      * `running` status captured at pick time while the live row is `exited` —
      * `create()` refuses it and invalidates instead of POSTing a dead thread.
      */
@@ -683,7 +682,7 @@ class NewChatViewModelTest {
         assertEquals(4, server.requestCount)
     }
 
-    /** AC 1 + AC 4, pure: the captured status is never consulted — the live row decides. */
+    /** Pure: the captured status is never consulted — the live row decides. */
     @Test
     fun `isLiveSelectable refuses a captured running status against an exited live row`() {
         val exited = ServiceSummary(name = "llamacpp-gemma-4-31b-it-q8", status = "exited", kind = "chat")
@@ -698,7 +697,7 @@ class NewChatViewModelTest {
         assertFalse((null as ModelOption?).isLiveSelectable(listOf(running)))
     }
 
-    /** AC 5, pure: the invalidation clears the model row and nothing else. */
+    /** Pure: the invalidation clears the model row and nothing else. */
     @Test
     fun `reconcileLiveServices refreshes a valid selection and leaves every other row untouched`() {
         val selection = ModelOption.LocalService(selectedRunningGemma, "exited")

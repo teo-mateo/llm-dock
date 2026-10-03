@@ -61,22 +61,22 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * The assistant answer's body (F05-R1/R2/R5/R7): split into blocks, each block
+ * The assistant answer's body: split into blocks, each block
  * memoized on its own raw text so a growing streamed answer only re-parses the
- * one block still being written (Architecture P2 — see
- * `core/markdown/MarkdownParser.kt` for the two-phase design).
+ * one block still being written (see
+  * core/markdown/MarkdownParser.kt for the two-phase design).
  *
  * [selectable] wraps the blocks in one [SelectionContainer] so selection spans
- * every block, not just a single paragraph (F05-R3's second criterion) — but
- * only while the message is in F06's selection mode. A [SelectionContainer]
+ * every block, not just a single paragraph — but
+ * only while the message is in selection mode. A [SelectionContainer]
  * claims long-press for its own selection-start gesture, which is exactly the
- * gesture F06-R1 needs for the action menu; rather than fight that
+  * gesture the action menu needs; rather than fight that
  * conflict on every message all the time, selection is off by default and
  * turned on per-message from the long-press menu's "Select text" row
  * (`ThreadMessages.kt`'s `LongPressableMessage`), which simultaneously stops
- * offering the long-press gesture for as long as it's on (F06-R4's second
- * criterion). See F06's *Deviations* for why this changes how F05-R3's
- * already-shipped selection is invoked, not whether it works.
+ * offering the long-press gesture for as long as it's on. The
+  * deviation record explains why this changes how the already-shipped
+  * selection is invoked, not whether it works.
  */
 @Composable
 fun MarkdownBody(raw: String, modifier: Modifier = Modifier, selectable: Boolean = false) {
@@ -164,7 +164,7 @@ private fun headingStyle(level: Int) = MaterialTheme.typography.bodyLarge.copy(
 )
 
 /**
- * F05-R2 — language label, copy button, and its own horizontal scroll so a
+ * Language label, copy button, and its own horizontal scroll so a
  * long line never pushes the message column sideways.
  */
 @Composable
@@ -205,7 +205,7 @@ private fun CodeBlockView(block: MdBlock.CodeBlock, colors: LlmColors) {
                 modifier = Modifier
                     .clickable {
                         // Exact code only — no fence markers, no reformatting
-                        // (F05-R2's second criterion).
+                        //.
                         clipboard.setText(AnnotatedString(block.code))
                         copied = true
                     }
@@ -275,7 +275,7 @@ private fun QuoteView(block: MdBlock.Quote, colors: LlmColors) {
     }
 }
 
-/** F05-R5 — scrolls sideways in its own box; the message column does not. */
+/** Scrolls sideways in its own box; the message column does not. */
 @Composable
 private fun TableView(block: MdBlock.Table, colors: LlmColors) {
     Box(
@@ -324,13 +324,13 @@ private fun HorizontalRuleView(colors: LlmColors) {
     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line))
 }
 
-// -- Artifacts (F05-R6/R8) ---------------------------------------------------
+// -- Artifacts ---------------------------------------------------
 
 /**
  * `svg` and `image` render as pictures, `code` as a code block, `html` as a
- * labelled placeholder (F05-R8, cut for v1 — no WebView sandbox for arbitrary
+ * labelled placeholder (cut: no WebView sandbox for arbitrary
  * scripted content on the phone). A failed decode falls back to a placeholder
- * rather than a broken message (F05-R6's fifth criterion).
+ * rather than a broken message.
  */
 @Composable
 fun ArtifactCard(artifact: ArtifactRecord, modifier: Modifier = Modifier) {
@@ -376,7 +376,7 @@ private fun HtmlArtifactPlaceholder(colors: LlmColors) {
 
 @Composable
 private fun ImageArtifactBody(artifact: ArtifactRecord, colors: LlmColors) {
-    // Same encoding the composer uses for attachments (F04-R9): a
+    // Same encoding the composer uses for attachments: a
     // `data:image/…;base64,…` URL.
     val bitmap = remember(artifact.content) { decodeDataUrl(artifact.content) }
     var fullScreen by remember { mutableStateOf(false) }
@@ -439,8 +439,8 @@ private fun SvgArtifactBody(artifact: ArtifactRecord, colors: LlmColors) {
 }
 
 /**
- * A static SVG has no interactivity to sandbox against, unlike F05-R8's
- * arbitrary HTML — so unlike that placeholder, rendering it in a plain
+ * A static SVG has no interactivity to sandbox against, unlike arbitrary
+ * HTML — so unlike that placeholder, rendering it in a plain
  * (JS-disabled) `WebView` is cheap and gives pinch-zoom for free via the
  * platform's own zoom controls, with no new dependency.
  */
@@ -508,7 +508,7 @@ private fun svgDocument(svg: String, zoomable: Boolean): String {
     """.trimIndent()
 }
 
-/** F05-R6's fourth criterion — tap an image, get it full-screen with pinch-zoom. */
+/** Tap an image, get it full-screen with pinch-zoom. */
 @Composable
 fun FullScreenBitmapViewer(bitmap: Bitmap, onDismiss: () -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
@@ -542,9 +542,9 @@ fun FullScreenBitmapViewer(bitmap: Bitmap, onDismiss: () -> Unit) {
     }
 }
 
-// -- Copy / share (F05-R3) ---------------------------------------------------
+// -- Copy / share ---------------------------------------------------
 
-/** Copies the message's raw Markdown source — not the rendered text (F05-R3's first criterion). */
+/** Copies the message's raw Markdown source — not the rendered text. */
 @Composable
 fun MessageActionsRow(content: String, modifier: Modifier = Modifier) {
     val colors = LlmTheme.colors

@@ -29,8 +29,12 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
+// One more than the ViewModel's publish batch: a lone Log frame is held by the coalescer, so only a
+// frame that trips the batch publishes a connection of its own.
+private const val LOG_PUBLISH_LINES = 65
+
 /**
- * F12-R1's frame handling, F12-R3's fallback, and F12-R4's level tagging —
+ * Frame handling, the stream-failure fallback, and level tagging —
  * driven directly against the ViewModel's event API rather than through
  * [LogsStreamRepository]'s flow machinery, which [LogsStreamRepositoryTest]
  * already covers. This is exactly what [LogsScreen]'s collector calls, so it
@@ -83,43 +87,149 @@ class LogsViewModelTest {
         assertEquals(LogsConnection.LIVE, state.connection)
     }
 
+    /**
+     * #274: a tab switch re-subscribes against the same ViewModel, so a snapshot must replace the
+     * previous tail rather than extend it — while two identical lines inside one snapshot stay two
+     * rows.
+     */
+    @Test
+    fun `identical text in one snapshot stays separate and a new snapshot does not copy the prior one`() {
+        val vm = viewModel()
+        repeat(2) {
+            vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        }
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("same text", "same text"), state.lines.map { it.text })
+        assertEquals(2, state.boundaryIndex)
+    }
+
+    /**
+     * Guards the per-attempt reset of the frame history: after a mid-stream drop the retry is a new
+     * connection, so a 404 before its first frame means the container is gone — not a second drop.
+     */
+    @Test
+    fun `a 404 before the first frame of a retry is NotCreated, not a repeat of the drop`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("booting"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        vm.onStreamFailed(RuntimeException("connection reset"))
+        assertTrue(vm.state.value is LogsUiState.Failed)
+
+        vm.onStreamAttemptStarted()
+        vm.onStreamFailed(fakeHttp404("Service has not been created yet"))
+
+        val state = vm.state.value
+        assertTrue(state is LogsUiState.NotCreated)
+        assertEquals("Service has not been created yet", (state as LogsUiState.NotCreated).message)
+    }
+
+
+    /**
+     * #275: the status must survive the boundary. Asserted across a full publication batch, because
+     * a lone live line is held by the coalescer and its own connection would go unchecked.
+     */
     @Test
     fun `live lines stay live and a new snapshot returns to connecting`() {
         val vm = viewModel()
 
         vm.onStreamEvent(LogStreamEvent.SnapshotStart)
-        vm.onStreamEvent(LogStreamEvent.Log("historical line"))
+        repeat(LOG_PUBLISH_LINES) { vm.onStreamEvent(LogStreamEvent.Log("historical $it")) }
         assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
 
         vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
-        vm.onStreamEvent(LogStreamEvent.Log("live line"))
+        repeat(LOG_PUBLISH_LINES) { vm.onStreamEvent(LogStreamEvent.Log("live $it")) }
         assertEquals(LogsConnection.LIVE, (vm.state.value as LogsUiState.Loaded).connection)
 
         vm.onStreamEvent(LogStreamEvent.SnapshotStart)
         vm.onStreamEvent(LogStreamEvent.Log("new snapshot line"))
         assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
+
         vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
         vm.onStreamEvent(LogStreamEvent.StreamEnd)
         assertEquals(LogsConnection.ENDED, (vm.state.value as LogsUiState.Loaded).connection)
     }
 
-    /** F12-R4: a line with no recognisable level renders plainly, not crashing or vanishing. */
+    /** A line with no recognisable level renders plainly, not crashing or vanishing. */
     @Test
     fun `an ERROR line is tagged, a plain line degrades to plain`() {
         val vm = viewModel()
 
         vm.onStreamEvent(LogStreamEvent.Log("ERROR: could not bind port"))
         vm.onStreamEvent(LogStreamEvent.Log("Loading safetensors shards: 33%"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
 
         val lines = (vm.state.value as LogsUiState.Loaded).lines
         assertEquals(LogLevel.ERROR, lines[0].level)
         assertEquals(LogLevel.PLAIN, lines[1].level)
     }
 
+    @Test
+    fun `live output is batched and terminal events flush pending lines`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        vm.onStreamEvent(LogStreamEvent.Log("first"))
+        vm.onStreamEvent(LogStreamEvent.Log("second"))
+        assertEquals(listOf("first"), (vm.state.value as LogsUiState.Loaded).lines.map { it.text })
+
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("first", "second"), state.lines.map { it.text })
+        assertEquals(LogsConnection.ENDED, state.connection)
+    }
+
+    @Test
+    fun `a long stream evicts oldest lines while preserving order and the current boundary`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("historical"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        repeat(15_000) { vm.onStreamEvent(LogStreamEvent.Log("live $it")) }
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(2_000, state.lines.size)
+        assertEquals("live 13000", state.lines.first().text)
+        assertEquals("live 14999", state.lines.last().text)
+        assertEquals(13_001L, state.evictedCount)
+        assertEquals(0, state.boundaryIndex)
+        assertTrue(state.lines.zipWithNext().all { (a, b) -> a.id < b.id })
+    }
+
+    @Test
+    fun `one oversized line is clipped and resubscription resets the eviction marker`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        repeat(40) { vm.onStreamEvent(LogStreamEvent.Log("x".repeat(100_000))) }
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        val bounded = vm.state.value as LogsUiState.Loaded
+        assertTrue(bounded.lines.sumOf { it.text.length } <= 512 * 1_024)
+        assertTrue(bounded.lines.all { it.text.length <= 16 * 1_024 })
+        assertTrue(bounded.lines.last().text.endsWith("[line truncated]"))
+        assertTrue(bounded.evictedCount > 0)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("fresh tail"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        val fresh = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("fresh tail"), fresh.lines.map { it.text })
+        assertEquals(0L, fresh.evictedCount)
+        assertEquals(1, fresh.boundaryIndex)
+        assertTrue(fresh.lines.first().id > bounded.lines.last().id)
+    }
+
     /**
-     * Bug-shaped: a viewmodel that treats `stream_end` as an error would show
-     * [LogsUiState.Failed] here, which is exactly what F12-R1's fourth
-     * criterion says must not happen for a container that was simply stopped.
+     * Guards against a viewmodel that treats `stream_end` as an error:
+     * [LogsUiState.Failed] must not appear for a container that was simply
+     * stopped.
      */
     @Test
     fun `stream_end is an ended state, not a failure`() {
@@ -146,9 +256,9 @@ class LogsViewModelTest {
     }
 
     /**
-     * Bug-shaped: a naive `onStreamFailed` that always shows a generic error
-     * would leave a `not-created` service on a blank/wrong screen — F12-R1's
-     * fifth criterion requires the dashboard's own 404 message specifically.
+     * Guards against a naive `onStreamFailed` that always shows a generic
+     * error: a `not-created` service would sit on a blank/wrong screen, so
+     * the dashboard's own 404 message is required specifically.
      */
     @Test
     fun `a 404 on the very first connection attempt is NotCreated, not Failed`() {
@@ -161,7 +271,7 @@ class LogsViewModelTest {
         assertEquals("Service has not been created yet", (state as LogsUiState.NotCreated).message)
     }
 
-    /** F12-R3: the stream could not be established (not a 404) — falls back to the one-shot fetch. */
+    /** The stream could not be established (not a 404) — falls back to the one-shot fetch. */
     @Test
     fun `a non-404 connection failure falls back to the one-shot fetch`() {
         server.enqueue(

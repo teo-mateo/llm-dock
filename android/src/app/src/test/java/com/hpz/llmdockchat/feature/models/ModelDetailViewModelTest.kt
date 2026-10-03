@@ -30,9 +30,9 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * F11-R1 (live status tracking a service that stops while the screen is
- * open) and F11-R2's fourth criterion (a 404 on the config fetch is a
- * partial view, not [ModelDetailUiState.Failed]).
+ * Live status tracking for a service that stops while the screen is open,
+ * and the rule that a 404 on the config fetch is a partial view, not
+ * [ModelDetailUiState.Failed].
  */
 class ModelDetailViewModelTest {
 
@@ -101,7 +101,7 @@ class ModelDetailViewModelTest {
         assertEquals(listOf("-ngl" to "99", "-fa" to "1"), state.config?.flags)
     }
 
-    /** F11-R2: "api_key does not appear" — the mapper must never read it off
+    /** "api_key does not appear" — the mapper must never read it off
      * the wire in the first place, so there is no field on [state.config] to
      * assert is null; this proves the DTO's absence didn't just get lucky. */
     @Test
@@ -118,10 +118,10 @@ class ModelDetailViewModelTest {
     }
 
     /**
-     * Bug-shaped: a detail screen that treats any config-fetch failure as
-     * fatal would show [ModelDetailUiState.Failed] for a container Docker
-     * knows about but `services.json` doesn't — exactly the case F11-R2's
-     * fourth criterion calls out as needing a graceful partial view. Confirms
+     * Guards against a detail screen that treats any config-fetch failure as
+     * fatal: it would show [ModelDetailUiState.Failed] for a container
+     * Docker knows about but `services.json` doesn't — the case that needs
+     * a graceful partial view. Confirms
      * the naive shape (any non-2xx -> Failed) is wrong by checking [Loaded]
      * comes back with [configMissing] set, not [Failed].
      */
@@ -152,7 +152,7 @@ class ModelDetailViewModelTest {
         assertTrue(state is ModelDetailUiState.Failed)
     }
 
-    /** F11-R1's first two criteria: status tracks the live stream, including a
+    /** Status tracks the live stream, including a
      * stop that happens while the screen is already open. */
     @Test
     fun `a status change on the live stream updates the open detail screen in place`() {
@@ -181,5 +181,29 @@ class ModelDetailViewModelTest {
             }
         } as ModelDetailUiState.Loaded
         assertEquals("exited", stopped.summary.status)
+    }
+
+    @Test
+    fun `a deletion event replaces an open detail with a missing state`() {
+        server.enqueue(MockResponse.Builder().body(serviceListBody).build())
+        server.enqueue(MockResponse.Builder().body(configBody).build())
+        val transport = ScriptedSseTransport()
+        transport.script(
+            ScriptedSseTransport.Leg(
+                payloads = listOf(
+                    """{"type":"snapshot","data":{"services":[{"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301}]}}""",
+                    """{"type":"delta","service_name":"llamacpp-a","status":"deleted","action":"service-deleted"}""",
+                ),
+                park = true,
+            ),
+        )
+        val vm = viewModel(transport)
+        vm.start()
+        settled(vm)
+        vm.startStreamLikeTheScreenWould()
+
+        runBlocking { withTimeout(10_000) { vm.state.first { it is ModelDetailUiState.Missing } } }
+        vm.requestStart()
+        assertEquals(ServiceActionState.Idle, vm.actionState.value)
     }
 }

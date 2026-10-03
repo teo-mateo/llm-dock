@@ -32,7 +32,7 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.designlab.theme.DesignLabTheme
 
 /**
- * Mockup — chat list. Dummy data, no ViewModel. Compared against the real
+ * Design-lab mock of the chat list. Dummy data, no ViewModel. Compared against the real
  * `ConversationListScreen`.
  */
 @Composable

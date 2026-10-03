@@ -13,7 +13,7 @@ import java.util.Locale
 /**
  * Server timestamps are UTC ISO-8601 (`2026-07-24T15:32:36Z`, sometimes with
  * microseconds). Rendered in device-local time, relative for recent items
- * (F00-R11).
+ *.
  *
  * Pure: the clock and zone are arguments, never `Instant.now()`.
  */

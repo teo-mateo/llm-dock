@@ -20,7 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** F11-R2's detail fetch and F11-R3/R4's start/stop calls. */
+/** Detail fetch and the start/stop calls. */
 class ServicesRepositoryTest {
 
     private lateinit var server: MockWebServer
@@ -66,9 +66,9 @@ class ServicesRepositoryTest {
     }
 
     /**
-     * Bug-shaped: a `detail` that treats every non-2xx the same way would
-     * surface this 404 as a generic failure, which is exactly what F11-R2's
-     * fourth criterion says the detail screen must not show as an error.
+     * Guards against a `detail` that treats every non-2xx the same way and
+     * surfaces this 404 as a generic failure — the detail screen must not
+     * show an error for a container `services.json` no longer lists.
      * This asserts the 404 comes back `Result.success(null)`, not a failure.
      */
     @Test
@@ -113,7 +113,7 @@ class ServicesRepositoryTest {
         assertEquals("/api/services/llamacpp-a/stop", request.url.encodedPath)
     }
 
-    /** F12-R3 — the one-shot fallback, split client-side rather than trusting the server's `lines` count. */
+    /** The one-shot fallback, split client-side rather than trusting the server's `lines` count. */
     @Test
     fun `fetchLogsOnce splits the logs blob into lines and hits the tail query param`() = runBlocking {
         server.enqueue(

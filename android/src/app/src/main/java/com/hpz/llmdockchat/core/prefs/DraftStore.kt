@@ -9,13 +9,13 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /**
- * Unsent composer text, per conversation (F04-R1, F00-R3).
+ * Unsent composer text, per conversation.
  *
  * Rotation and backgrounding alone would be served by `rememberSaveable`. Disk
  * is what covers the third case: a 401 whose silent re-auth fails routes to
  * Connect with `popUpTo(graph.id)`, which destroys the thread destination and
  * its ViewModel outright — there is no saved instance state left to restore
- * from. F00-R3 requires the draft to still be there afterwards, so it has to
+ * from. The draft has to still be there afterwards, so it has to
  * outlive the screen.
  */
 interface DraftStore {
