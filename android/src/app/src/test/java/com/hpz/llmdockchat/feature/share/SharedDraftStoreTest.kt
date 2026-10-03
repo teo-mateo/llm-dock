@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
 import com.hpz.llmdockchat.testing.FakeDraftStore
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -184,5 +185,106 @@ class SharedDraftStoreTest {
         dir.mkdirs()
         java.io.File(dir, "pending.json").writeText("not json")
         assertNull(SharedDraftStore(dir).pending.value)
+    }
+
+    /**
+     * The hazard the queue exists for: a dismissal followed immediately by a new
+     * share must not leave the dismissed one on disk. Writes land on another
+     * thread, so this only holds if they are applied in call order.
+     */
+    @Test
+    fun `writes made on the io scope reach disk in call order`() {
+        val other = Files.createTempDirectory("queued-drafts").toFile()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        try {
+            val queued = SharedDraftStore(other, scope)
+            queued.stage(StagedShare(text = "first"))
+            queued.clearPending()
+            queued.stage(StagedShare(text = "second"))
+            runBlocking { queued.awaitPendingWrites() }
+
+            assertEquals("second", SharedDraftStore(other).pending.value?.text)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /**
+     * Picking a target writes the attachments and then opens the thread, which
+     * reads them back a moment later. The read must answer for the write it
+     * follows, not for whatever was on disk when it started.
+     */
+    @Test
+    fun `attachments written on the io scope are readable as soon as they are asked for`() {
+        val other = Files.createTempDirectory("queued-attachments").toFile()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        try {
+            val queued = SharedDraftStore(other, scope)
+            queued.saveAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
+
+            assertEquals(
+                listOf("data:image/jpeg;base64,AAA"),
+                runBlocking { queued.attachments("conv-1") },
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /**
+     * The picker's Close button and the import run on different threads, so the
+     * dismissal has to win whichever of them touches the record last — otherwise a
+     * share the user threw away comes back after a restart. The window is a real
+     * interleaving, so this is a race run many times: an iteration that misses the
+     * window proves nothing, and one that lands cannot pass by luck.
+     */
+    @Test
+    fun `a dismissal racing the import never comes back`() = runBlocking {
+        repeat(200) { round ->
+            store.beginImport("tok")
+            val go = java.util.concurrent.CountDownLatch(1)
+            val importing = Thread {
+                go.await()
+                store.finishImport("tok", StagedShare(text = "arrived late"))
+            }
+            val dismissing = Thread {
+                go.await()
+                store.clearPending()
+            }
+            importing.start()
+            dismissing.start()
+            go.countDown()
+            importing.join()
+            dismissing.join()
+            store.awaitPendingWrites()
+
+            assertNull("round $round resurrected a dismissed share", store.pending.value)
+            assertNull("round $round wrote a dismissed share", SharedDraftStore(dir).pending.value)
+        }
+    }
+
+    @Test
+    fun `a placeholder is not content the picker can spend`() {
+        store.beginImport("tok")
+
+        store.reassign("conv-1", FakeDraftStore())
+
+        assertEquals("the incoming bytes still own the record", true, store.pending.value?.importing)
+    }
+
+    /**
+     * A drain that throws has to report: the caller is a screen sitting on Loading,
+     * and a deferred that never completes turns an I/O error into a permanent wait.
+     */
+    @Test
+    fun `a failing attachment read surfaces instead of hanging`() {
+        java.io.File(dir, "conv_conv-1").mkdirs()
+        java.io.File(dir, "conv_conv-1/0.txt").mkdir()
+
+        val failure = runCatching {
+            runBlocking { kotlinx.coroutines.withTimeout(5_000) { store.attachments("conv-1") } }
+        }.exceptionOrNull()
+
+        assertTrue("expected the read to fail, got: $failure", failure is java.io.IOException)
     }
 }

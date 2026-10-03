@@ -3,11 +3,14 @@ package com.hpz.llmdockchat
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.StagedShare
 import com.hpz.llmdockchat.testing.ShareIntents
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -100,14 +103,15 @@ class ShareRecreationInstrumentedTest {
         val (uri, intent) = ShareIntents.imageShare(targetContext, "recreate-check")
         assertNotNull(uri)
         val scenario = ActivityScenario.launch<MainActivity>(intent)
-        scenario.onActivity {
-            val staged = store(it).pending.value
-            assertNotNull("the image share must stage", staged)
-            assertTrue(
-                "the attachment must already be an in-process data URL",
-                staged?.attachments?.single()?.startsWith("data:image/jpeg;base64,") == true,
-            )
-        }
+        // The read runs on the application scope, so the content arrives after the
+        // activity has drawn. The placeholder in between is the point of the change;
+        // what has to survive is the content, once it lands.
+        val staged = scenario.awaitPending { it.attachments.isNotEmpty() }
+        assertTrue(
+            "the attachment must be an in-process data URL once the read lands",
+            staged.attachments.single().startsWith("data:image/jpeg;base64,"),
+        )
+        runBlocking { scenario.activityStore { store(it) }.awaitPendingWrites() }
         val modifiedBefore = pendingFile().lastModified()
         val pendingBefore: String? = scenario.activityStore { pendingState(it) }
         scenario.recreate()
@@ -156,6 +160,26 @@ class ShareRecreationInstrumentedTest {
         var result: T? = null
         onActivity { result = block(it) }
         return result as T
+    }
+
+    /**
+     * Polls from the instrumentation thread: the import is driven by the app's own
+     * scope, which this test neither owns nor can cancel, so a deadline is the only
+     * honest synchronisation.
+     */
+    private fun ActivityScenario<MainActivity>.awaitPending(predicate: (StagedShare) -> Boolean): StagedShare {
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            currentPending()?.let { if (predicate(it)) return it }
+            Thread.sleep(50)
+        }
+        throw AssertionError("shared content did not arrive within 10s")
+    }
+
+    private fun ActivityScenario<MainActivity>.currentPending(): StagedShare? {
+        var value: StagedShare? = null
+        onActivity { value = store(it).pending.value }
+        return value
     }
 
     private fun ActivityScenario<MainActivity>.closeQuietly() {

@@ -19,6 +19,12 @@ data class StagedShare(
     val attachments: List<String> = emptyList(),
     val error: String? = null,
     val url: String? = null,
+    /**
+     * A stream-backed share whose content is still being read. Held in memory
+     * only — [SharedDraftStore.beginImport] never writes it, so an import cut
+     * short by process death leaves no record stuck on "reading".
+     */
+    val importing: Boolean = false,
 ) {
     val hasContent: Boolean get() = text.isNotBlank() || attachments.isNotEmpty()
     val isEmpty: Boolean get() = !hasContent && error == null
@@ -42,6 +48,15 @@ sealed interface SharedKind {
     /** PDF/binary/unknown — nothing staged, the reason shown on the picker. */
     data class Unsupported(val reason: String) : SharedKind
 }
+
+/**
+ * Whether a share's content sits behind `EXTRA_STREAM`, and so behind a provider
+ * that may take its time. Owned by the classifier rather than the importer so
+ * the two cannot disagree about which mimes carry bytes: [classify]'s verdict
+ * for a request this reports [SharedRead.None] must not depend on the stream
+ * name, which is what lets intake stage it before asking the provider anything.
+ */
+enum class SharedRead { None, Stream }
 
 /**
  * Classifies a share intent. The precedence rules are fixed: `EXTRA_TEXT` wins for `text/plain` (apps like WhatsApp share a link as
@@ -98,6 +113,25 @@ object SharedKindParser {
             mime == null || mime == "*/*" -> sniff(streamName)
             else -> SharedKind.Unsupported("This file type can't be shared into a chat")
         }
+    }
+
+    /**
+     * Whether a request's content can only come from a stream read. Answers
+     * [classify]'s verdict from the extras alone: a kind that needs bytes
+     * returns [SharedRead.Stream] even when no stream arrived, because the read
+     * is what reports that absence as a failure rather than staging a share with
+     * nothing in it.
+     */
+    fun readFor(action: String, mimeType: String?, text: String?): SharedRead {
+        if (action != ACTION_SEND) return SharedRead.None
+        if (mimeType == "text/plain" && !text.isNullOrBlank()) return SharedRead.None
+        val mime = mimeType?.lowercase()
+        val streamBacked = mime == null || mime == "*/*" ||
+            mime.startsWith("image/") ||
+            mime.startsWith("text/") ||
+            mime == "application/json" ||
+            mime in CODE_MIME_TYPES
+        return if (streamBacked) SharedRead.Stream else SharedRead.None
     }
 
     /**

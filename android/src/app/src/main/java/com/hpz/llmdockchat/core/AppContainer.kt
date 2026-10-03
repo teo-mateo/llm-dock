@@ -44,7 +44,11 @@ import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
+import com.hpz.llmdockchat.feature.share.ContentResolverShareReader
+import com.hpz.llmdockchat.feature.share.SharedContentReader
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.ShareIntakeCoordinator
+import com.hpz.llmdockchat.feature.thread.AttachmentImporter
 import com.hpz.llmdockchat.feature.share.SummarizeCoordinator
 import com.hpz.llmdockchat.feature.share.SummarizeLauncher
 import kotlinx.coroutines.CoroutineScope
@@ -73,7 +77,7 @@ class AppContainer(
     val dispatchers: AppDispatchers = AppDispatchers(),
     cipher: SecretCipher = KeystoreSecretCipher(),
 ) {
-    private val appScope = CoroutineScope(SupervisorJob() + dispatchers.io)
+    val appScope = CoroutineScope(SupervisorJob() + dispatchers.io)
     private val dataStore = context.applicationContext.llmDockDataStore
 
     val sessionState = SessionState()
@@ -133,9 +137,25 @@ class AppContainer(
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
     val editStateStore: EditStateStore = DataStoreEditStateStore(dataStore, appScope)
 
+    // One instance, so no entry point that turns a `content://` Uri into bytes
+    // decides for itself which thread to do it on.
+    val sharedContentReader: SharedContentReader =
+        ContentResolverShareReader(context.applicationContext.contentResolver)
+
     /** Staged share content. Cache-dir files, so it survives process death but never a backup. */
     val sharedDraftStore: SharedDraftStore = SharedDraftStore(
         File(context.applicationContext.cacheDir, "shared-drafts"),
+        appScope,
+    )
+
+    val attachmentImporter: AttachmentImporter =
+        AttachmentImporter(sharedContentReader, dispatchers.io)
+
+    val shareIntake: ShareIntakeCoordinator = ShareIntakeCoordinator(
+        scope = appScope,
+        reader = sharedContentReader,
+        store = sharedDraftStore,
+        io = dispatchers.io,
     )
 
     /** The share picker's summarize path: create, tools, claim. */

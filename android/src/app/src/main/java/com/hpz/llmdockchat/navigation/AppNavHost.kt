@@ -298,6 +298,7 @@ fun AppNavHost(
                             conversationsRepository = container.conversationsRepository,
                             mcpServersRepository = container.mcpServersRepository,
                             promptsRepository = container.promptsRepository,
+                            attachmentImporter = container.attachmentImporter,
                         )
                     }
                 },

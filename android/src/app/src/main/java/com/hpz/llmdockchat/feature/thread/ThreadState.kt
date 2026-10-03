@@ -76,6 +76,8 @@ sealed interface ThreadUiState {
         val thread: ThreadState,
         val composer: String = "",
         val attachments: List<String> = emptyList(),
+        /** A picked or captured image is still being read and encoded. */
+        val attachmentImporting: Boolean = false,
         val sending: Boolean = false,
         val actionError: String? = null,
         val pendingDelete: ChatMessage? = null,
@@ -104,7 +106,7 @@ sealed interface ThreadUiState {
                 conversation.isGenerating
 
         val canSend: Boolean
-            get() = !runActive && (composer.isNotBlank() || attachments.isNotEmpty())
+            get() = !runActive && !attachmentImporting && (composer.isNotBlank() || attachments.isNotEmpty())
 
         val canSwitchModel: Boolean
             get() = !runActive

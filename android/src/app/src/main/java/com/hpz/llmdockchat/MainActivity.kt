@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,16 +29,10 @@ import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.share.SharedInlineFormatter
-import com.hpz.llmdockchat.feature.share.SharedKind
-import com.hpz.llmdockchat.feature.share.SharedKindParser
-import com.hpz.llmdockchat.feature.share.SharedUrlExtractor
 import com.hpz.llmdockchat.feature.share.ShareDeliveryToken
 import com.hpz.llmdockchat.feature.share.ShareIntake
 import com.hpz.llmdockchat.feature.share.ShareIntakeGate
-import com.hpz.llmdockchat.feature.share.StagedShare
-import com.hpz.llmdockchat.feature.thread.readImage
-import com.hpz.llmdockchat.feature.thread.toDataUrl
+import com.hpz.llmdockchat.feature.share.ShareRequest
 import com.hpz.llmdockchat.navigation.AppNavHost
 import com.hpz.llmdockchat.navigation.startDestination
 
@@ -85,12 +78,16 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Turns an arriving `ACTION_SEND` intent into a staged share,
-     * reading the stream *now*: the read grant on a shared `content://` Uri
-     * lasts only as long as this activity is alive, so the content must be
-     * copied into app storage at intent time. Images go through the
-     * same read-and-downscale pipeline as a gallery pick; text files
-     * are read and inlined as fenced blocks, web parity (`ChatInput.jsx`).
+     * Turns an arriving `ACTION_SEND` intent into a staged share.
+     *
+     * Only the delivery's *identity* is claimed here, on the main thread: the
+     * content behind `EXTRA_STREAM` is read on the application's I/O scope,
+     * because a provider stream can stall for as long as it likes and this runs
+     * inside `onCreate`. That scope outlives this activity, and the read grant on
+     * a shared `content://` Uri does not: a grant Android has already revoked
+     * surfaces as the typed failure the picker shows, and a placeholder left
+     * behind by a killed process is not rehydrated, so the user re-shares. Text
+     * shares and refusals need no read at all and are staged here, synchronously.
      *
      * Issue 261 — the gate decides whether this intent is a delivery to serve
      * or a redelivery to refuse, because Android hands the same launch intent
@@ -106,13 +103,22 @@ class MainActivity : ComponentActivity() {
         val store = container.sharedDraftStore
         val marked = intent.getStringExtra(ShareDeliveryToken.EXTRA_MARK)
         val stream = parcelableStream(intent)
-        val token = marked ?: ShareDeliveryToken.of(
+        val request = ShareRequest(
             action = intent.action.orEmpty(),
             mimeType = intent.type,
             text = intent.getStringExtra(Intent.EXTRA_TEXT),
-            streamUri = stream?.toString(),
             title = intent.getStringExtra(Intent.EXTRA_TITLE),
             subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
+            streamUri = stream?.toString(),
+            streamHint = stream?.lastPathSegment,
+        )
+        val token = marked ?: ShareDeliveryToken.of(
+            action = request.action,
+            mimeType = request.mimeType,
+            text = request.text,
+            streamUri = request.streamUri,
+            title = request.title,
+            subject = request.subject,
         )
         val decision = ShareIntakeGate.decide(
             action = intent.action,
@@ -129,40 +135,8 @@ class MainActivity : ComponentActivity() {
         when (decision) {
             ShareIntake.IgnoreRedelivery -> return
             ShareIntake.KeepHydrated -> store.rememberHandled(token)
-            ShareIntake.Stage -> Unit
+            ShareIntake.Stage -> container.shareIntake.submit(token, request)
         }
-        val kind = SharedKindParser.classify(
-            action = intent.action.orEmpty(),
-            mimeType = intent.type,
-            text = intent.getStringExtra(Intent.EXTRA_TEXT),
-            title = intent.getStringExtra(Intent.EXTRA_TITLE),
-            subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
-            hasStream = stream != null,
-            streamName = stream?.let { displayName(it) },
-        )
-        val share = when (kind) {
-            is SharedKind.Text -> StagedShare(text = kind.text, url = SharedUrlExtractor.firstUrl(kind.text))
-            is SharedKind.Image -> {
-                val uri = stream ?: return
-                val bitmap = runCatching { readImage(contentResolver, uri) }.getOrNull()
-                if (bitmap == null) {
-                    StagedShare(error = "That image could not be read.")
-                } else {
-                    StagedShare(attachments = listOf(bitmap.toDataUrl()))
-                }
-            }
-            is SharedKind.TextFile -> {
-                val uri = stream ?: return
-                val content = readSharedTextFile(uri)
-                if (content == null) {
-                    StagedShare(error = "That file could not be read.")
-                } else {
-                    StagedShare(text = SharedInlineFormatter.inlineFile(kind.name, content))
-                }
-            }
-            is SharedKind.Unsupported -> StagedShare(error = kind.reason)
-        }
-        store.stage(share, token)
     }
 
     private fun parcelableStream(intent: Intent): Uri? {
@@ -174,27 +148,6 @@ class MainActivity : ComponentActivity() {
             intent.getParcelableExtra(extra)
         }
     }
-
-    private fun displayName(uri: Uri): String? = runCatching {
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        }
-    }.getOrNull()
-
-    /** Bounded read — a huge file is truncated at the inline cap, not loaded whole. */
-    private fun readSharedTextFile(uri: Uri): String? = runCatching {
-        contentResolver.openInputStream(uri)?.use { stream ->
-            val max = SharedKindParser.MAX_INLINE_BYTES
-            val buffer = ByteArray(max + 1)
-            var total = 0
-            while (total <= max) {
-                val n = stream.read(buffer, total, max + 1 - total)
-                if (n < 0) break
-                total += n
-            }
-            String(buffer, 0, minOf(total, max), Charsets.UTF_8)
-        }
-    }.getOrNull()
 }
 
 /**

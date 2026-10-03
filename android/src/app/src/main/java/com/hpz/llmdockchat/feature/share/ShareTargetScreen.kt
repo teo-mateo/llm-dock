@@ -138,6 +138,13 @@ private fun ShareTargetContent(
                 is ShareTargetUiState.Loading -> LoadingState()
                 is ShareTargetUiState.Failed -> FailedState(state.message, onRetry)
                 is ShareTargetUiState.Loaded -> {
+                    // Picking a target takes the staged content with it, so while
+                    // the content is still being read the consuming actions wait.
+                    // The list itself stays scrollable and the header says why —
+                    // the read no longer holds the main thread, so this is the
+                    // provider being slow, not the app.
+                    val arrived = !state.share.importing
+                    val pickNewChat: () -> Unit = { if (arrived) onNewConversation() }
                     Column(Modifier.fillMaxSize()) {
                         ShareHeader(state.share)
                         SummarizeAction(state.summarize, onSummarize, onRetry)
@@ -160,7 +167,7 @@ private fun ShareTargetContent(
                             )
                         }
                         if (state.isEmpty) {
-                            EmptyState(onNewConversation)
+                            EmptyState(pickNewChat)
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize().testTag("share_target_list"),
@@ -171,13 +178,13 @@ private fun ShareTargetContent(
                                 // wants a brand-new chat is ordinary, not a first-run
                                 // case: a phone with one conversation must still be
                                 // able to start one.
-                                item { NewChatEntry(onNewConversation) }
+                                item { NewChatEntry(pickNewChat) }
                                 items(state.conversations, key = { it.id }) { item ->
                                     ConversationRowBody(
                                         item = item,
                                         selected = false,
                                         selectionMode = false,
-                                        onOpen = { onPickConversation(item) },
+                                        onOpen = { if (arrived) onPickConversation(item) },
                                         onLongPress = {},
                                     )
                                 }
@@ -252,7 +259,6 @@ private fun ShareHeader(share: StagedShare) {
     val error = share.error
     val thumbnail = share.attachments.firstOrNull()?.let { decodeDataUrl(it) }
     val snippet = share.text.lineSequence().firstOrNull()?.take(120).orEmpty()
-
     Row(
         Modifier
             .fillMaxWidth()
@@ -266,6 +272,26 @@ private fun ShareHeader(share: StagedShare) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         when {
+            share.importing -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = colors.accent,
+                    strokeWidth = 2.dp,
+                )
+                Column {
+                    Text(
+                        "Reading shared content…",
+                        color = colors.fg,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Choosing a chat unlocks when it lands.",
+                        color = colors.subtle,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
             error != null -> {
                 Icon(
                     DesignLabIcons.Close,
