@@ -85,10 +85,21 @@ export JAVA_HOME=/opt/android-studio/jbr
 Gradle root and `dashboard/.env` from its own path, so any subcommand
 works from anywhere.
 
-`testDebugUnitTest` has to be read rather than counted: `ThreadToolsTest`
-fails intermittently in a full-suite run both on the reasoning-level branch
-and on its base, so a red suite is not automatically this change's regression
-(recorded under *Suite run* in the reasoning-level spec under `docs/`).
+`testDebugUnitTest` has to be read rather than counted. Known intermittent
+full-suite failures include `ThreadToolsTest` (also observed on the base branch),
+`ThreadAutoSendTest` (the draft-save assertion can race a state emission), and
+`ThreadPromptSelectionTest` (timeouts on different test methods in separate
+full-suite runs, with all 11 tests green in isolation). For a failure in one of
+these classes, rerun it alone before attributing it to a change:
+
+```bash
+cd android/src
+JAVA_HOME=/opt/android-studio/jbr ./gradlew :app:testDebugUnitTest \
+  --tests com.hpz.llmdockchat.feature.thread.ThreadPromptSelectionTest
+```
+
+Replace the class name for the other two cases. The reasoning-level spec under
+`docs/` records the original `ThreadToolsTest` observation.
 
 ### AGP 9 differences that break old snippets
 

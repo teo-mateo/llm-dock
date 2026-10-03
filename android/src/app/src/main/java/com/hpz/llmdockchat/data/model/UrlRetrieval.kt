@@ -1,6 +1,6 @@
 package com.hpz.llmdockchat.data.model
 
-/** A server whose tools can read a given URL (issue 255 / F14-R7). */
+/** A server whose tools can read a given URL. */
 data class UrlFetchServer(val id: String, val name: String, val tools: List<String>)
 
 /** A probe candidate the dashboard could not reach — configured, but not answering. */

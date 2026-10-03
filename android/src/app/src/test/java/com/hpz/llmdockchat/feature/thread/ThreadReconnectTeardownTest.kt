@@ -49,7 +49,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * F09 review probe — two mechanisms `ThreadReattachTest` does not assert.
+ * Review probe — two mechanisms `ThreadReattachTest` does not assert.
  *
  * 1. A stream the server *closed* is never retried. That is what keeps Stop
  *    from starting a reconnect storm: a cancelled run emits no terminal frame
@@ -91,7 +91,7 @@ class ThreadReconnectTeardownTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.
@@ -201,7 +201,7 @@ class ThreadReconnectTeardownTest {
     }
 
     /**
-     * The same, but caught mid-*backoff* — the state F07's bug lived in, where a
+     * The same, but caught mid-*backoff* — the state the teardown bug lived in, where a
      * swallowed cancellation left a retry loop running with nothing on screen.
      * The wait here is 400 ms per attempt, so the loop is certainly parked in
      * `delay` when the ViewModel is cleared.

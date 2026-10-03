@@ -29,20 +29,20 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.McpServerInfo
 
 /**
- * Which MCP servers a thread may call (F03-R3, F08), shared by
+ * Which MCP servers a thread may call, shared by
  * [com.hpz.llmdockchat.feature.newchat.NewChatScreen] (picking a default for
  * a brand-new thread — the batched, not-yet-persisted selection) and
- * [com.hpz.llmdockchat.feature.thread.ThreadScreen] (F08's in-thread sheet,
+ * [com.hpz.llmdockchat.feature.thread.ThreadScreen] (the in-thread sheet,
  * where each [onToggle] is the caller's cue to persist immediately). Grown
- * out of F03's own private composable once F08 needed the same list and row
- * shape for an existing conversation — see F08's report for why sharing it
+  * out of the new-chat sheet's own private composable, once the in-thread
+  * sheet needed the same list and row shape for an existing conversation —
  * cost nothing: the list of servers, the checkbox row and the Done button are
  * identical in both places, only what a toggle *does* differs, and that
  * belongs to the caller's [onToggle], not to this composable.
  *
- * [hint], when non-null, renders above the list — F08 uses it for the
- * mockup's "Changes apply to the next message you send" (screen 07b); F03
- * passes none, since nothing has been sent yet for that to be true of.
+ * [hint], when non-null, renders above the list — the in-thread sheet uses
+  * it for "Changes apply to the next message you send"; the new-chat sheet
+  * passes none, since nothing has been sent yet for that to be true of.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

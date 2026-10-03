@@ -11,8 +11,8 @@ knowledge instead of from the page.
 CANDIDATE_TOKENS = ("fetch", "url", "browse", "web", "page", "readable")
 # A URL tool that hands back an image cannot ground a summary, so its presence
 # must not outrank a tool that returns prose. Deciding that from the *positive*
-# words fails — the `browser-fetch` screenshot docstring says "dynamic content"
-# and "<title> text" — so the signal is the output format the tool names.
+# words fails — a screenshot tool advertises "dynamic content" and "<title>
+# text" too — so the signal is the output format the tool names.
 NON_TEXT_OUTPUT_TOKENS = ("screenshot", "png", "jpeg", "gif", "image", "photo", "base64", "binary")
 
 PROBE_PARAM = "probe"

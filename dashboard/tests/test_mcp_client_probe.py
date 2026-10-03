@@ -1,4 +1,4 @@
-"""`MCPClientManager.discover_bounded` — the probe's discovery seam (issue 255)."""
+"""`MCPClientManager.discover_bounded` — the probe's discovery seam."""
 
 import concurrent.futures
 import os

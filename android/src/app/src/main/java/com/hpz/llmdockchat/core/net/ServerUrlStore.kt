@@ -7,7 +7,7 @@ import com.hpz.llmdockchat.core.prefs.ValuePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 
-/** The single stored server address every request is built from (F00-R1). */
+/** The single stored server address every request is built from. */
 interface ServerUrlStore {
     val baseUrl: StateFlow<Stored<BaseUrl>>
 

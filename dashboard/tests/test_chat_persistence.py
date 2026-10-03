@@ -1,10 +1,10 @@
-"""Persistence-policy seam for the chat runtime (Phase 8 of #58).
+"""Persistence-policy seam for the chat runtime.
 
 Runs the SAME monkeypatched model stream through ChatRunner under two
 policies — DbPersistencePolicy (durable) and NullPersistencePolicy (ephemeral)
 — and asserts the runtime drives an identical event stream either way, while
 only the durable policy writes to SQLite. This is the architectural hook Ghost
-Chat (#57) needs.
+Chat needs.
 """
 import json
 import os

@@ -56,8 +56,8 @@ function ConversationItem({ conv, activeId, depth, selectMode, selected, onToggl
           modifier-key state is not guaranteed to mirror the original
           mouse event. Reading shiftKey from the label click — and
           preventDefault-ing so the synthetic input toggle never fires —
-          keeps the full hit target consistent with the visible checkbox
-          (PR #48 codex iter 2). Direct clicks on the input must NOT be
+          keeps the full hit target consistent with the visible checkbox.
+          Direct clicks on the input must NOT be
           canceled — a canceled click makes the browser revert the native
           checked toggle after React has already committed checked=true,
           desyncing the visible box from selection state — so the input

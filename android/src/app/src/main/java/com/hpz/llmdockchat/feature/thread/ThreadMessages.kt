@@ -58,11 +58,11 @@ import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.data.model.parseModelRef
 
 /**
- * The mockup's split (screen 04): the user's own words in mono, the model's in
+ * The split from the original design: the user's own words in mono, the model's in
  * serif, so it is obvious who is talking without an avatar. Markdown rendering
- * is F05, via [MarkdownBody].
+  * is via [MarkdownBody].
  *
- * [selectable] is F06's selection mode (see [MarkdownBody]) — on for exactly
+ * [selectable] is the selection mode (see [MarkdownBody]) — on for exactly
  * the one message the long-press menu's "Select text" was tapped for.
  */
 @Composable
@@ -85,7 +85,7 @@ fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier, selectabl
 @Composable
 private fun UserBubble(message: ChatMessage, selectable: Boolean, modifier: Modifier = Modifier) {
     val colors = LlmTheme.colors
-    // F05-R6's fourth criterion: a photo the user attached opens full-screen
+    // A photo the user attached opens full-screen
     // with pinch-zoom, same as an image artifact — decoded once here so the
     // viewer (which wants a Bitmap) doesn't re-decode what the thumbnail
     // already did.
@@ -134,7 +134,7 @@ private fun UserBubble(message: ChatMessage, selectable: Boolean, modifier: Modi
 /**
  * Shared by a persisted assistant turn and the live one, so a streamed answer
  * and the saved message it becomes look identical — no visual jump when
- * `message_saved` lands and D3 swaps one for the other.
+ * `message_saved` lands and the swap replaces one with the other.
  */
 @Composable
 fun AssistantBubble(
@@ -167,7 +167,7 @@ fun AssistantBubble(
 }
 
 /**
- * F04-R4 — collapsed by default, and never mixed into the answer body. Absent
+ * Collapsed by default, and never mixed into the answer body. Absent
  * entirely when the model emitted no reasoning, so a non-thinking model shows
  * no empty block.
  */
@@ -206,7 +206,7 @@ private fun ReasoningBlock(reasoning: String) {
     }
 }
 
-/** F04-R5 — one line while running, updated in place when the result arrives. */
+/** One line while running, updated in place when the result arrives. */
 @Composable
 private fun ToolCallCard(call: ToolCallRecord) = ToolCallCard(
     name = call.name,
@@ -270,7 +270,7 @@ private fun MonoBlock(label: String, value: String) {
     }
 }
 
-/** Quiet, not a modal (F04-R5's fourth criterion). */
+/** Quiet, not a modal. */
 @Composable
 fun ParseWarningChip(warning: ParseWarning) {
     val colors = LlmTheme.colors
@@ -288,7 +288,7 @@ fun ParseWarningChip(warning: ParseWarning) {
     }
 }
 
-/** A failed run's message, attached to the turn it belongs to (F04-R8). */
+/** A failed run's message, attached to the turn it belongs to. */
 @Composable
 fun ErrorNote(message: String) {
     val colors = LlmTheme.colors
@@ -313,7 +313,7 @@ fun ErrorNote(message: String) {
  *
  * [onTap] is separate from [onRemove] on purpose: the composer's draft strip
  * passes only [onRemove], a sent message's thumbnail passes only [onTap]
- * (F05-R6's fourth criterion), and the two can coexist — the remove button is
+ *, and the two can coexist — the remove button is
  * a small circle drawn *after* the image, so it wins hit-testing in its own
  * corner and the image's tap handler only ever sees the rest of the thumbnail.
  */
@@ -366,13 +366,13 @@ fun ImageThumbnail(
     }
 }
 
-// -- F06 · long-press menu ----------------------------------------------------
+// -- long-press menu ----------------------------------------------------
 
 /**
  * One item in the list, with the long-press gesture that opens the action
- * menu (F06-R1). The gesture is entirely absent — not merely overridden —
+ * menu. The gesture is entirely absent — not merely overridden —
  * while [selectionActive], which is what keeps a text-selection drag from
- * also popping the menu (F06-R4's second criterion); see [MarkdownBody] for
+ * also popping the menu; see [MarkdownBody] for
  * why selection itself is gated behind the menu rather than always-on.
  */
 @Composable
@@ -396,7 +396,7 @@ fun LongPressableMessage(
 }
 
 /**
- * Screen 06b. A bottom sheet rather than [androidx.compose.material3.ModalBottomSheet]
+ * A bottom sheet rather than [androidx.compose.material3.ModalBottomSheet]
  * so it matches the rest of the feature's own `Dialog`-based overlays (the
  * artifact and image full-screen viewers) instead of pulling in a second
  * pattern for the same job. The scrim and the sheet each swallow their own
@@ -524,7 +524,7 @@ private fun ActionRow(
     }
 }
 
-/** The only way out of F06-R4's selection mode — see [MarkdownBody]. */
+/** The only way out of selection mode — see [MarkdownBody]. */
 @Composable
 fun SelectionDonePill(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LlmTheme.colors

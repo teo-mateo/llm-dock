@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Sanity check: with the new default prompt, can the model still answer
+"""Sanity check: with the built-in default prompt (chat/constants.py
+DEFAULT_MAIN_SYSTEM_PROMPT), can the model still answer
 a normal non-tool question without falling on its face?"""
 import json
 import os

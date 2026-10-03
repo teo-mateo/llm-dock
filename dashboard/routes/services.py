@@ -656,7 +656,7 @@ def get_flags_metadata(template_type):
 def set_public_port(service_name):
     """
     Set service to use the public port (3301).
-    If another service is using 3301, reassign it to a random 33XX port.
+    If another service is using 3301, reassign it to the lowest free 33XX port.
     """
     try:
         compose_mgr = ComposeManager(COMPOSE_FILE)
@@ -692,7 +692,7 @@ def set_public_port(service_name):
         updates_made = []
 
         if conflicting_service:
-            # Reassign conflicting service to random 33XX port
+            # Reassign conflicting service to the lowest free 33XX port
             new_port = compose_mgr.get_next_available_port(
                 start_port=3300, end_port=3399
             )

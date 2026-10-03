@@ -69,16 +69,16 @@ output — it must degrade to plain text, never mangle a line.
 - [ ] A line that matches nothing renders plainly and completely.
 - [ ] Colouring never truncates or reorders output.
 
-## F12-R5 · Share the buffer (Must)
+## F12-R5 · Share the buffer (Dropped)
 
 Hand what is on screen to any other app — the whole point when you want
 to paste a startup failure somewhere.
 
-**Acceptance criteria**
-
-- [ ] Share delivers the visible buffer as text, in order.
-- [ ] A large buffer is truncated with an explicit marker rather than
-      failing silently.
+**Dropped as unwanted (owner ruling, 2026-07-28, recorded in #293).**
+The log pane is for watching a container come up; pasting a startup
+failure is a desktop act, and the dashboard already offers the full log.
+No share affordance ships in the logs tab, and none of the acceptance
+criteria below apply.
 
 ## F12-R6 · Search within the buffer (Later)
 
@@ -95,7 +95,7 @@ Filtering the loaded buffer client-side. Not in v1.
 
 ## Deviations from the mockup
 
-None.
+F12-R5 (share the buffer) was dropped as unwanted; see its section.
 
 ## Out of scope
 

@@ -20,13 +20,10 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Placeholder for the thread itself (F04). Not one of the two placeholders
- * the F02 brief names (F10 Models, F03 new-chat) — it exists because
- * opening a row has nowhere real to go yet. See F02-conversation-list.md's
- * *Deviations* for why this was added: F02-R3's "tapping such a row opens
- * the thread already streaming, mid-answer" cannot be verified until F04
- * exists, so it is carried forward the same way F00's screen-level criteria
- * were carried forward to F02.
+ * Legacy placeholder for the thread itself, no longer reachable. It existed
+  * because opening a row had nowhere real to go, and "tap a row, find the
+  * thread already streaming mid-answer" could not be verified until a
+  * thread screen existed.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

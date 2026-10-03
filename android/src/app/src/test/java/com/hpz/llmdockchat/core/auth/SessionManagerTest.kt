@@ -92,7 +92,7 @@ class SessionManagerTest {
     }
 
     /**
-     * F01-R6's last criterion: a TOTP sign-in has nothing storable, so the
+     * A TOTP sign-in has nothing storable, so the
      * session cannot renew itself and the user will be asked again.
      */
     @Test

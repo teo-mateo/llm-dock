@@ -2,11 +2,11 @@ package com.hpz.llmdockchat.core.auth
 
 /**
  * A long-lived secret the app can exchange for a fresh session token without
- * asking the user anything (F01-R6).
+ * asking the user anything.
  *
  * `toString` is overridden on every variant. A data class would print the
  * secret into any log line, stack trace or crash report that happens to
- * interpolate it, which F01-R5 forbids outright.
+ * interpolate it — a secret in a log line is a leaked secret.
  */
 sealed interface Credential {
 

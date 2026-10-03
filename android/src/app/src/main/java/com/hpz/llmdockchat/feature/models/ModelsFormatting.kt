@@ -8,11 +8,10 @@ import kotlin.math.roundToInt
 
 /**
  * Pure formatting, split out of the Compose layer so it can be unit tested
- * without Robolectric (Architecture Part IV — logic criteria need only a JVM
- * test).
+ * without Robolectric (logic rules need only a JVM test).
  */
 
-/** F10-R1: "not-created" distinguishable from "exited", which carries its exit code. */
+/** "not-created" distinguishable from "exited", which carries its exit code. */
 fun ServiceSummary.statusLabel(): String = when {
     isRunning -> "Running"
     isExited -> exitCode?.let { "Exited (code $it)" } ?: "Exited"
@@ -23,7 +22,7 @@ fun ServiceSummary.statusLabel(): String = when {
 /**
  * The row's second line. Deliberately never says "uptime" — the payload only
  * carries the container's creation time, not its last start, so a restarted
- * container would show a wrong number under that name (F10's Deviations).
+ * container would show a wrong number under that name.
  * "created … ago" is honest about what the timestamp actually is.
  */
 fun ServiceSummary.subtitle(now: Instant, zone: ZoneId): String = buildList {

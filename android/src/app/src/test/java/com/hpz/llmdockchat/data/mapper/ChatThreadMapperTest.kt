@@ -11,8 +11,8 @@ import org.junit.Test
 /**
  * `GET /api/chat/conversations/<id>` carries artifacts as a sibling of
  * `messages` — `{message_id: [Artifact, …]}` — not nested on the message
- * (`chat/routes.py`, `chat/db.py:get_artifacts_for_conversation`). F05-R6/R8
- * render these, so the mapper folding them onto the right message by id is
+ * (`chat/routes.py`, `chat/db.py:get_artifacts_for_conversation`). They render
+ * in the transcript, so the mapper folding them onto the right message by id is
  * what makes that possible.
  */
 class ChatThreadMapperTest {
@@ -55,7 +55,7 @@ class ChatThreadMapperTest {
         assertEquals(emptyList<Any>(), domain.messages.single().artifacts)
     }
 
-    /** F08 reads the enabled tool set through this same mapper (Architecture D6). */
+    /** The enabled tool set is read through this same mapper. */
     @Test
     fun `mcp_servers is carried through to the domain model`() {
         val dto = ConversationDetailDto(
@@ -76,7 +76,7 @@ class ChatThreadMapperTest {
     }
 
     /**
-     * F15-R4: the level is read off the detail payload, and "model default"
+     * The level is read off the detail payload, and "model default"
      * must survive as `null` — not `""`, which the mapper would then treat as a
      * level name, and not `"off"`, which is an opposite instruction.
      */

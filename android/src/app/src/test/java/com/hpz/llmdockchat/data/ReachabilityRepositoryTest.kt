@@ -70,7 +70,7 @@ class ReachabilityRepositoryTest {
         server.close()
     }
 
-    /** F01-R2: a wrong host has to read as unreachable, not as a wrong code. */
+    /** A wrong host has to read as unreachable, not as a wrong code. */
     @Test
     fun `nothing listening reads as unreachable`() = runBlocking {
         val server = MockWebServer()

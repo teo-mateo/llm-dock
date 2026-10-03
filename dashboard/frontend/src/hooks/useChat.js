@@ -500,8 +500,7 @@ export default function useChat({ onConversationUpdated } = {}) {
         onRunStarted: handleRunStarted,
         onRunStatus: () => {
           // Terminal frame on a fresh send: the run ended before the stream
-          // could carry its tail (pre-#111 server behaviour closed it at the
-          // 3s idle backstop). The reply, if any, is already persisted — clear
+          // could carry its tail. The reply, if any, is already persisted — clear
           // the streaming state and refetch so the composer unblocks either
           // way instead of the stream ending as a silent no-op.
           setStreamingContent('')
@@ -709,7 +708,7 @@ export default function useChat({ onConversationUpdated } = {}) {
 
   const stopStreaming = useCallback(() => {
     // Explicit Stop must cancel the SERVER run, not just abort the SSE fetch:
-    // since Phase 4 the run continues in the background after the fetch closes.
+    // the run continues in the background after the fetch closes.
     // Cancel by conversation id so this works even if run_started has not yet
     // delivered the run id — the server created the run when the turn started,
     // so it is always findable from the conversation. Pass the captured run id

@@ -91,7 +91,7 @@ class Artifact:
 @dataclass
 class ChatRun:
     """A single model/tool turn, tracked independently of the HTTP response
-    that started it (issue #58). Persisted in the chat_runs table."""
+    that started it. Persisted in the chat_runs table."""
     id: str
     conversation_id: str
     status: str

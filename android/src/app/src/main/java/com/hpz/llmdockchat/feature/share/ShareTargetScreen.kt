@@ -50,10 +50,10 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import com.hpz.llmdockchat.feature.thread.decodeDataUrl
 
 /**
- * F14-R2 — the share-target picker: a full-screen list of conversations, most
+ * The share-target picker: a full-screen list of conversations, most
  * recent first, with the shared content staged on a header card above it.
  * Picking a row opens that thread with the content staged in the composer
- * (F14-R3); back dismisses the share entirely. The list is the same data and
+ *; back dismisses the share entirely. The list is the same data and
  * ordering as the Chats tab — `ConversationsRepository.list()` already asks
  * for `limit=-1&unfiled=true`, so project threads never appear here either.
  */
@@ -70,7 +70,7 @@ fun ShareTargetScreen(
 
     LaunchedEffect(Unit) { viewModel.refresh() }
 
-    // F14 — the system back must dismiss the share the same way the top-bar
+    // The system back must dismiss the share the same way the top-bar
     // close does: without [onDismiss] the pending record survives the pop and
     // the picker would re-open on the next launch (a ghost share).
     BackHandler(onBack = onDismiss)
@@ -166,7 +166,7 @@ private fun ShareTargetContent(
                                 modifier = Modifier.fillMaxSize().testTag("share_target_list"),
                                 contentPadding = PaddingValues(bottom = 24.dp),
                             ) {
-                                // F14-R6 — the entry sits above the list rather than
+                                // The entry sits above the list rather than
                                 // only inside its empty state, because the share that
                                 // wants a brand-new chat is ordinary, not a first-run
                                 // case: a phone with one conversation must still be
@@ -191,7 +191,7 @@ private fun ShareTargetContent(
 }
 
 /**
- * F14-R6 — start a chat to send this to. Opens the existing F03 new-chat sheet
+ * Start a chat to send this to. Opens the existing new-chat sheet
  * with the share still pending, so the created thread opens with the content
  * staged and backing out of the sheet lands back here with it intact.
  */
@@ -244,7 +244,7 @@ private fun NewChatEntry(onNewConversation: () -> Unit) {
 /**
  * What is being shared, so the user sees the payload before choosing a target:
  * a thumbnail for an image, the file name for a text file, the first line for
- * text, or the reason an unsupported share was refused (F14-R3).
+ * text, or the reason an unsupported share was refused.
  */
 @Composable
 private fun ShareHeader(share: StagedShare) {
@@ -342,7 +342,7 @@ private fun ShareHeader(share: StagedShare) {
 }
 
 /**
- * F14-R7 — the summarize action, or the reason there isn't one. A link with no
+ * The summarize action, or the reason there isn't one. A link with no
  * way to read it never becomes a turn: the model would answer from the URL and
  * the transcript would read like a summary of the page.
  */

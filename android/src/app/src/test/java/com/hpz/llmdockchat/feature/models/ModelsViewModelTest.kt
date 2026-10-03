@@ -34,9 +34,9 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * F10-R1's grouping and initial load (via [ModelsUiState.Loaded]),
- * F10-R1's fifth criterion (stale on a dropped stream) and F10-R3 (GPU state
- * flowing through). The teardown mechanism — F10-R3's third criterion — is
+ * Grouping and initial load (via [ModelsUiState.Loaded]), the
+ * stale-on-a-dropped-stream rule, and GPU state flowing through. The
+ * teardown mechanism is
  * covered separately in [ModelsViewModelTeardownTest], which needs real
  * cancellation rather than [MainDispatcherRule]'s unconfined dispatcher.
  */
@@ -102,7 +102,7 @@ class ModelsViewModelTest {
         val state = settled(viewModel) as ModelsUiState.Loaded
 
         // Fixture: five rows are "running" — the favourite gemma (3301),
-        // open-webui (3300) and the three #269 engines ik (3330), exl3 (3331),
+        // open-webui (3300) and the three newly-classified engines ik (3330), exl3 (3331),
         // ninfer (3332); everything else is exited or not-created. gemma is
         // `favorite: true` and the rest are not, so gemma leads despite the
         // higher port — favourites-first wins over host-port order, which is
@@ -131,7 +131,7 @@ class ModelsViewModelTest {
 
         // The sort is `sortedByDescending { favorite }`, which is *stable* —
         // that stability is the whole reason a service changing status does
-        // not shuffle its neighbours (F10-R2's second criterion). Assert it
+        // not shuffle its neighbours. Assert it
         // rather than trust the name: within each favourite-ness band the
         // server's own host_port order must survive.
         listOf(state.running, state.stopped).forEach { group ->
@@ -167,7 +167,7 @@ class ModelsViewModelTest {
     }
 
     /**
-     * F10-R1's fifth criterion: the live services stream dropping is surfaced
+     * The live services stream dropping is surfaced
      * as `stale = true` on the Models screen's own state, layered on top of
      * the initial REST load — [ServicesStreamRepositoryTest] already proves
      * the repository-level mechanism; this proves the ViewModel actually

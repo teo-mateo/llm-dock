@@ -52,10 +52,10 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Delete and edit-and-resend (F06-R2, F06-R3): the confirm-then-request shape,
+ * Delete and edit-and-resend: the confirm-then-request shape,
  * the two 409 paths (delete refused mid-run, edit rejected after the local
  * truncation already ran), and the discard count against a four-message
- * fixture recorded the same way the F04 ones were.
+ * fixture recorded the same way the run fixtures were.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadMessageActionsTest {
@@ -88,7 +88,7 @@ class ThreadMessageActionsTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.
@@ -143,7 +143,7 @@ class ThreadMessageActionsTest {
 
     private fun ThreadUiState.Loaded.message(id: String): ChatMessage = thread.messages.single { it.id == id }
 
-    // -- F06-R2 · delete -------------------------------------------------------
+    // -- delete -------------------------------------------------------
 
     @Test
     fun `deleting removes the message and it stays gone after a refetch`() = threadTest {
@@ -169,8 +169,7 @@ class ThreadMessageActionsTest {
     }
 
     /**
-     * The server's 409 guard against deleting mid-run — F06-R2's second
-     * criterion. The message must not vanish and reappear; it must never have
+     * The server's 409 guard against deleting mid-run. The message must not vanish and reappear; it must never have
      * moved, because nothing is removed until the request succeeds.
      */
     @Test
@@ -195,7 +194,7 @@ class ThreadMessageActionsTest {
         assertTrue(state.thread.messages.any { it.id == "m2" })
     }
 
-    /** The ViewModel's own guard — the menu is the first one, this is the second (F06-R2's third criterion). */
+    /** The ViewModel's own guard — the menu is the first one, this is the second. */
     @Test
     fun `requestDelete is refused while a run is active, so confirming does nothing`() = threadTest {
         conversation()
@@ -234,7 +233,7 @@ class ThreadMessageActionsTest {
         assertEquals(requestsBefore, server.requestCount)
     }
 
-    // -- F06-R3 · edit and resend -----------------------------------------------
+    // -- edit and resend -----------------------------------------------
 
     /**
      * `seq >= msg.seq` is what the server deletes (`db.py:create_run_with_user_message`);
@@ -272,7 +271,7 @@ class ThreadMessageActionsTest {
         assertEquals(1, viewModel.awaitState { it.pendingEdit != null }.pendingEdit!!.discardCount)
     }
 
-    /** Only a user message may be edited — the ViewModel's own guard, behind the menu's (F06-R3's fourth criterion). */
+    /** Only a user message may be edited — the ViewModel's own guard, behind the menu's. */
     @Test
     fun `beginEdit on an assistant message is refused`() = threadTest {
         conversation()
@@ -330,8 +329,7 @@ class ThreadMessageActionsTest {
      * The truncation in [ThreadViewModel.confirmEdit] is optimistic — applied
      * before the server has actually accepted the edit. A 409 means it
      * accepted nothing, so the rollback has to prove that by asking the
-     * server again rather than trusting its own arithmetic (F06-R3's last
-     * criterion).
+     * server again rather than trusting its own arithmetic.
      */
     @Test
     fun `a 409 on edit leaves the thread intact, verified by refetch`() = threadTest {

@@ -52,10 +52,10 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The "tools for this chat" sheet (F08) — the in-thread half of F03-R3's
- * server list, and the toggle-with-optimistic-revert shape that
- * `mcp_servers`/`mcp_servers_json`'s read/write asymmetry (Architecture D6)
- * forces on every write here.
+ * The "tools for this chat" sheet — the in-thread half of the server list,
+ * and the toggle-with-optimistic-revert shape that
+ * `mcp_servers`/`mcp_servers_json`'s read/write asymmetry forces on every
+ * write here.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadToolsTest {
@@ -89,7 +89,7 @@ class ThreadToolsTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.
@@ -158,7 +158,7 @@ class ThreadToolsTest {
         state.first { it is ThreadUiState.Loaded && predicate(it) } as ThreadUiState.Loaded
     }
 
-    // -- F08-R1 · listing --------------------------------------------------
+    // -- listing --------------------------------------------------
 
     @Test
     fun `openSettings fetches the registry and populates the sheet`() = threadTest {
@@ -207,13 +207,13 @@ class ThreadToolsTest {
         val state = viewModel.awaitState { it.settings != null }
 
         // The sheet opens — it also holds the text-size control, which has
-        // nothing to do with the run. F08-R4's actual guarantee is that a
+        // nothing to do with the run. The real guarantee is that a
         // toggle cannot race the turn in flight, and that is enforced in
         // `toggleTool` (see the refusal test below), not by hiding the sheet.
         assertEquals(false, state.canToggleTools)
     }
 
-    // -- F08-R2 · toggle persists, with optimistic revert on failure -------
+    // -- toggle persists, with optimistic revert on failure -------
 
     @Test
     fun `toggling an unset server PUTs mcp_servers_json and reflects it immediately`() = threadTest {

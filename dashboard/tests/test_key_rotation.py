@@ -100,7 +100,7 @@ def test_rotate_rolls_back_services_json_on_compose_failure(compose_manager, mon
 
 def test_route_does_not_commit_env_before_services_and_compose(tmp_path, monkeypatch):
     """Route-level: a compose failure must NOT have touched .env /
-    GLOBAL_API_KEY, and services.json must be unchanged (codex iter 1)."""
+    GLOBAL_API_KEY, and services.json must be unchanged."""
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
@@ -153,8 +153,8 @@ def test_route_does_not_commit_env_before_services_and_compose(tmp_path, monkeyp
 
 
 def test_save_services_db_atomic_on_write_failure(compose_manager, monkeypatch):
-    """A failed services.json write must leave the original file intact
-    (codex iter 2: truncate-then-write would corrupt the rotation commit)."""
+    """A failed services.json write must leave the original file intact —
+    truncate-then-write would corrupt the rotation commit."""
     import os as _os
 
     original_bytes = compose_manager.services_db_path.read_bytes()
@@ -179,7 +179,7 @@ def test_save_services_db_atomic_on_write_failure(compose_manager, monkeypatch):
 
 def test_concurrent_rotations_keep_stores_consistent(tmp_path, monkeypatch):
     """Two concurrent rotate requests must not interleave their
-    services.json/compose vs .env writes (codex iter 2)."""
+    services.json/compose vs .env writes."""
     import threading
     import time
     import config
@@ -244,7 +244,7 @@ def test_concurrent_rotations_keep_stores_consistent(tmp_path, monkeypatch):
 
 def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
     """A service created while a rotation is in flight must not be silently
-    dropped by rotation's wholesale snapshot write (codex iter 3)."""
+    dropped by rotation's wholesale snapshot write."""
     import threading
     import time
     import config
@@ -319,7 +319,7 @@ def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
 
 def test_shared_lock_is_one_object_across_blueprints():
     """services routes, benchmarking routes, and db_lock must all serialize
-    on the *same* lock object (codex iter 4)."""
+    on the *same* lock object."""
     import db_lock
     import routes.services as svc
     import benchmarking.routes as bench
@@ -332,7 +332,7 @@ def test_shared_lock_is_one_object_across_blueprints():
 
 def test_rotation_not_reverted_by_concurrent_benchmark_apply(tmp_path, monkeypatch):
     """A benchmark apply running concurrently with a rotation must not write
-    its stale full service config back and revert the api_key (codex iter 4)."""
+    its stale full service config back and revert the api_key."""
     import threading
     import time
     import config
@@ -413,7 +413,7 @@ def test_rotation_not_reverted_by_concurrent_benchmark_apply(tmp_path, monkeypat
 
 def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch):
     """If a running affected container can't be stopped, the response must
-    NOT report unqualified success (codex iter 4)."""
+    NOT report unqualified success."""
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
@@ -460,7 +460,7 @@ def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch)
 
 def test_rotation_vs_concurrent_start_no_stale_key_container(tmp_path, monkeypatch):
     """A previously-stopped service started concurrently with a rotation must
-    not end up running with the revoked key (codex iter 5)."""
+    not end up running with the revoked key."""
     import threading
     import time
     import config

@@ -5,9 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * F04 review probe — adversarial input against [parseFrame]'s totality claim
- * (Architecture D2). Left in place per WORK_INSTRUCTIONS §4; delete before
- * committing the feature.
+ * Review probe — adversarial input against [parseFrame]'s totality claim.
+ * Kept deliberately.
  */
 class RunEventParserAdversarialTest {
 

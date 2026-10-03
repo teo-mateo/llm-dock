@@ -1,7 +1,7 @@
 package com.hpz.llmdockchat.data.model
 
 /**
- * The seven engines the dashboard colour-codes its badges by (F02-R2), plus
+ * The seven engines the dashboard colour-codes its badges by, plus
  * [Engine.OPEN_ROUTER] for a hosted model and [Engine.UNKNOWN] for a service it
  * cannot classify — a thread pointing at a deleted or renamed service must still
  * render, unstyled, not crash the row. The seven are every engine the dashboard

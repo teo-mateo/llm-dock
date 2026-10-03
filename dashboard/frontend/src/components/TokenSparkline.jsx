@@ -13,7 +13,7 @@ import {
 } from '../runnerSprite'
 
 // Canvas is immediate-mode; read resolved token values at draw time so a
-// theme swap repaints with the right colors (issue #5 §8).
+// theme swap repaints with the right colors.
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }

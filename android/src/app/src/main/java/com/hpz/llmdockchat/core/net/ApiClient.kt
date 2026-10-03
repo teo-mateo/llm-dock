@@ -14,7 +14,7 @@ import java.io.IOException
 /**
  * One-shot JSON calls. Resolves the base URL per request, so changing the
  * server address takes effect without restarting the app or rebuilding the
- * HTTP stack (F00-R1).
+ * HTTP stack.
  *
  * Throws [ApiException]; callers that want a value-typed failure use
  * [apiCall].
@@ -36,7 +36,7 @@ class ApiClient(
      * [headers] is how the login routes carry their own credential —
      * `X-TOTP-Code`, or the password as an `Authorization` bearer. The
      * interceptor leaves a request that already has an `Authorization` header
-     * alone, so a caller-supplied one is never overwritten (F00-R2).
+     * alone, so a caller-supplied one is never overwritten.
      */
     suspend fun <T> request(
         method: String,

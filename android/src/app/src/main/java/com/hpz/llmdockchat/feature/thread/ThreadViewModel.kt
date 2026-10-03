@@ -115,10 +115,10 @@ class ThreadViewModel(
     }
 
     /**
-     * F14-R7 — the thread a summarize tap opened owes exactly one turn, and
+     * The thread a summarize tap opened owes exactly one turn, and
      * reading the claim is what spends it: whatever becomes of this send, no
      * later visit fires a second one. A pre-frame failure restores the text to
-     * the composer through the ordinary F04 path, so the retry is the user's
+     * the composer through the ordinary send path, so the retry is the user's
      * tap rather than a silent resubmission.
      */
     private suspend fun fireAutoSend() {
@@ -126,7 +126,7 @@ class ThreadViewModel(
         if (loaded()?.runActive == true) return
         val message = attachmentStore?.takeAutoSend(conversationId) ?: return
         autoSendFired = true
-        // F14-R7's exactly-one-turn contract outranks an interrupted edit:
+        // The exactly-one-turn contract outranks an interrupted edit:
         // the claim spends the composer, so a restored edit banner over the
         // text about to be sent would be a new inconsistency.
         val withEdit = loaded()
@@ -167,7 +167,7 @@ class ThreadViewModel(
 
     /**
      * One id-reconcile of the open edit against a fresh server list, applied
-     * by every full reload (F06-R3, issue #271). A reload must never strand the
+     * by every full reload. A reload must never strand the
      * composer with edit text and no edit identity — the silent edit→new-send
      * conversion this replaces — and must never leave a confirm pointed at a
      * message the server has since dropped.
@@ -840,6 +840,7 @@ class ThreadViewModel(
             } else {
                 loadedCurrent.thread.messages
             }
+            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
             _state.value = loadedCurrent.copy(
                 sending = false,
                 thread = loadedCurrent.thread.copy(streaming = null, messages = messages),
@@ -847,7 +848,6 @@ class ThreadViewModel(
                 attachments = loadedCurrent.attachments.ifEmpty { restoreOnEarlyFailure?.images.orEmpty() },
                 actionError = error.appError.displayMessage,
             )
-            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
             return
         }
 

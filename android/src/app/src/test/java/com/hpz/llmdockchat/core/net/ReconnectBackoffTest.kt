@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * F09-R4's third criterion, as arithmetic: bounded in both directions. No wall
+ * Backoff bounds, as arithmetic: bounded in both directions. No wall
  * clock is involved — the schedule is a pure function, so the property is
  * asserted rather than timed.
  */

@@ -1,4 +1,4 @@
-"""Tests for chat_runs storage (Phase 2 of #58).
+"""Tests for chat_runs storage.
 
 No background execution yet — these exercise the DB methods and the
 active_run enrichment on conversation payloads. Stub-free; pure SQLite.
@@ -232,7 +232,7 @@ def test_completed_run_clears_active_run_in_list():
     assert convs[0].active_run is None
 
 
-# -- last_run on single-conversation load (Phase 7) ---------------------
+# -- last_run on single-conversation load ------------------------------
 
 
 def test_get_conversation_includes_last_run_none_when_no_runs():

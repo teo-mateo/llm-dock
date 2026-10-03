@@ -6,7 +6,7 @@ package com.hpz.llmdockchat.core.net
  * Feed it one line at a time; it returns a payload when a blank line closes an
  * event. It does **not** look inside a payload — `[DONE]`, a heartbeat and a
  * typed frame are all just strings here, and the consumer decides what they
- * mean (Architecture D2).
+ * mean.
  */
 class SseFrameParser {
 

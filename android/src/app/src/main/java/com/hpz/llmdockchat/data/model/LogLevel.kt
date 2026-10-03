@@ -4,10 +4,10 @@ package com.hpz.llmdockchat.data.model
 enum class LogLevel { ERROR, WARN, INFO, PLAIN }
 
 /**
- * F12-R4: colour by level where the line makes it derivable. This is pattern
+ * Colour by level where the line makes it derivable. This is pattern
  * matching over unstructured container output, not a log parser — it must
  * never throw, never touch the line's text, and degrade to [LogLevel.PLAIN]
- * for anything it doesn't recognise (F12-R4's second criterion). Checked in
+ * for anything it doesn't recognise. Checked in
  * priority order so a line mentioning both, e.g. "WARN: retrying after ERROR",
  * reads as the more severe of the two.
  */

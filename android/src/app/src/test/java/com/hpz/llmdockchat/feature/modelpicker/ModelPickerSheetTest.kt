@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * F07-RO (owner-requested deviation from F07-R2): the picker no longer has a
+ * Owner-requested deviation: the picker no longer has a
  * "Stopped" section, so [runningChatCapable] and [NOTHING_RUNNING_TEXT] are
  * pulled out of [ModelPickerSheet] to be testable without Compose — there is
  * no on-device way to see the empty state, since the dev rig always has at

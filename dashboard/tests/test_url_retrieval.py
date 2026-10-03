@@ -1,4 +1,4 @@
-"""Pure classification rules behind `?probe=url-fetch` (issue 255)."""
+"""Pure classification rules behind `?probe=url-fetch`."""
 
 import os
 import sys

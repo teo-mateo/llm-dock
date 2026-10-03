@@ -1,10 +1,10 @@
-"""Chat run status vocabulary (Phase 2 of #58).
+"""Chat run status vocabulary.
 
 A *run* is one model/tool turn whose lifecycle is tracked independently of the
 HTTP response that started it. This module holds only the status vocabulary so
 both the DB layer and (later) the background runner agree on the allowed values
 without importing each other. The persistence methods live on ChatDB; a richer
-ChatRunRepository may wrap them once the background runner needs it (Phase 3+).
+ChatRunRepository may wrap them once the background runner needs it.
 """
 
 
