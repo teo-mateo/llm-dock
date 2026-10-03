@@ -28,10 +28,10 @@ TEMPLATE_TYPE_TO_ENGINE = {
     "ninfer": "ninfer",
 }
 
-# Entries the guard found to be absent from the engine's recorded surface
-# (2026-09-15, measured; full evidence on #207). The test asserts each of them is
-# STILL absent below, so this list can only shrink, and only when the entry is
-# fixed (rename/delete) in flag_metadata.py and dropped here in the same change.
+# Entries the guard found to be absent from the engine's recorded surface.
+# The test asserts each of them is STILL absent below, so this list can only
+# shrink, and only when the entry is fixed (rename/delete) in flag_metadata.py
+# and dropped here in the same change.
 STALE = {}
 
 
@@ -68,7 +68,7 @@ def test_metadata_cli_in_recorded_surface(template_type):
     sorted((e, c) for e, s in STALE.items() for c in s),
 )
 def test_stale_entries_still_absent(engine, cli):
-    """Pin the #207 findings as still-broken. If the flag comes back in the surface
+    """Pin each STALE entry as still-broken. If the flag comes back in the surface
     (pin moved, engine re-added it) this fails so the entry gets re-verified and
     the STALE list entry dropped - the list must never outlive its reason."""
     assert cli not in set(load_surface(engine)["flags"]), (

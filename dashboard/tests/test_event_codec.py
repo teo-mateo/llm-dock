@@ -1,4 +1,4 @@
-"""Unit tests for chat.event_codec (Phase 1 of #58).
+"""Unit tests for chat.event_codec.
 
 Pin the SSE framing so the wire format is stable across persisted chat,
 spinoff, and future run/ghost streams. The delta passthrough is asserted to

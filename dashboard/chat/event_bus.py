@@ -1,4 +1,4 @@
-"""In-memory pub/sub for live run observers (Phase 3 of #58).
+"""In-memory pub/sub for live run observers.
 
 This is NOT a source of truth — it only fans out live runtime events from a
 background run to whoever is currently watching (an SSE response, a reattached

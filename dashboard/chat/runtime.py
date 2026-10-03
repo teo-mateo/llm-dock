@@ -1,8 +1,8 @@
-"""Chat turn runtime (Phase 3 of #58).
+"""Chat turn runtime.
 
 ChatRunner is the background job-runner core: it executes one model/tool turn
 and persists the result, decoupled from any Flask SSE response. It can be
-called directly (a unit test, a background thread in Phase 4) — it never reads
+called directly (a unit test, a background worker thread) — it never reads
 Flask globals and never depends on a live SSE client.
 
 Responsibilities (mirrors the persistence the old routes._stream_response did
@@ -92,7 +92,7 @@ def auto_generate_title(db, conv_id: str, first_user_content: str, service_name:
 class ChatRuntimeEvent:
     """A normalized event published to the bus during a run.
 
-    `type` is one of the runtime event types (#58): run_started, delta,
+    `type` is one of the runtime event types: run_started, delta,
     tool_call_pending, tool_call, tool_result, artifact, parse_warning,
     run_completed, run_failed. SSE encoding of these lives in event_codec.
     """
@@ -123,7 +123,7 @@ class ChatTurnRequest:
 class ChatRunner:
     def __init__(self, db=None, event_bus=None, persistence=None):
         # Persistence is delegated to a policy so the same stream can run
-        # DB-backed or ephemeral (Ghost Chat, #57). Default to the durable
+        # DB-backed or ephemeral (Ghost Chat). Default to the durable
         # policy built from `db` so existing callers are unchanged; pass an
         # explicit `persistence` to override (e.g. NullPersistencePolicy).
         self.db = db

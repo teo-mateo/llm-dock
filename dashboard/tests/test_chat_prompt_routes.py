@@ -1,4 +1,4 @@
-"""Tests for the chat prompt CRUD HTTP API (issue #96).
+"""Tests for the chat prompt CRUD HTTP API.
 
 Covers all six routes: GET /list, POST /create, GET /single, PUT /update,
 DELETE, and PATCH /reorder. Each route is exercised for auth gating, happy

@@ -319,7 +319,7 @@ class TestApplyBenchmark:
 class TestBenchOnlyFlags:
     def test_skip_list_is_the_canonical_set(self):
         # apply's skip-list and the set the badge endpoint serves must be one
-        # canonical object - #218 was exactly this list drifting from the UI's.
+        # canonical object - this list drifting from the UI's is the bug.
         from benchmarking import validators
         from flag_metadata import LLAMACPP_BENCH_ONLY_FLAGS
         assert validators.BENCHMARK_ONLY_FLAGS is LLAMACPP_BENCH_ONLY_FLAGS

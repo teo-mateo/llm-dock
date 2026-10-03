@@ -121,7 +121,7 @@ class TestListFiles:
         assert out.startswith("Error:")
 
     def test_entry_cap_truncates_with_notice(self, proj_root, monkeypatch):
-        # regression: codex 1.1 — unbounded listings would blow the model
+        # regression: unbounded listings would blow the model
         # context on a big-but-legitimate project
         monkeypatch.setattr(srv, "MAX_LIST_ENTRIES", 3)
         for i in range(6):
@@ -159,7 +159,7 @@ class TestReadFile:
         assert srv.read_file("x.txt").startswith("Error:")
 
     def test_long_file_is_chunked_with_continuation_offset(self, proj_root, monkeypatch):
-        # regression: codex 2.1 — a near-2MB file must not enter the model
+        # regression: a near-2MB file must not enter the model
         # context in one tool response
         monkeypatch.setattr(srv, "MAX_READ_CHARS", 10)
         (proj_root / "long.txt").write_text("abcdefghijKLMNO")
@@ -253,7 +253,7 @@ class TestSearchFiles:
         assert len(out.splitlines()) == 3
 
     def test_cap_enforced_after_name_match(self, tmp_path, monkeypatch):
-        # regression: codex 1.3 — a name match landing exactly on the cap
+        # regression: a name match landing exactly on the cap
         # let the same file's content matches overshoot it
         root = tmp_path / "cap-proj"
         root.mkdir()
@@ -269,7 +269,7 @@ class TestSearchFiles:
         assert "truncated at 2 matches" in lines[-1]
 
     def test_scan_budget_stops_early_with_notice(self, tmp_path, monkeypatch):
-        # regression: codex 1.2 — a no-match query must stop reading files
+        # regression: a no-match query must stop reading files
         # once the byte budget is spent instead of grinding to the timeout
         root = tmp_path / "budget-proj"
         root.mkdir()
@@ -512,7 +512,7 @@ class TestScopedManager:
         # live tool-progress callback to the inner manager, exactly like the
         # plain manager — otherwise project conversations crash on the first
         # write_file/create_file with "unexpected keyword argument
-        # 'progress_callback'" (caught IRL, not by the suite).
+        # 'progress_callback'".
         inner = FakeManager()
         scoped = ProjectScopedMCPManager(inner, "/data/projects/p1")
 
@@ -599,8 +599,7 @@ class TestRuntimeAutoEnable:
 
 class TestSnapshotThreading:
     """The snapshot must actually travel start() → executor → _execute →
-    ChatTurnRequest → run() → _build_stream, not merely exist as a field
-    (regression: codex #82 1.2)."""
+    ChatTurnRequest → run() → _build_stream, not merely exist as a field."""
 
     def test_run_manager_threads_snapshot_into_the_request(self):
         import threading as _threading
@@ -631,10 +630,10 @@ class TestSnapshotThreading:
         assert captured["request"].conversation is conv
 
     def test_dbless_run_consumes_the_snapshot(self):
-        # The ephemeral-caller contract (the Ghost Chat #57 shape): no db
+        # The ephemeral-caller contract (the Ghost Chat shape): no db
         # wired, the run-creation site passes the snapshot explicitly, and
         # it reaches _build_stream through run() itself — resolution stays
-        # with the caller, never the runner (codex #82 1.1).
+        # with the caller, never the runner.
         from types import SimpleNamespace
         from chat.persistence import NullPersistencePolicy
         from chat.runtime import ChatTurnRequest
@@ -696,7 +695,7 @@ class TestRoutesHelper:
 
 
 class TestDeletedProjectSweep:
-    """Regression: codex PR84 3.1 — a write-tool call landing after the
+    """Regression: a write-tool call landing after the
     user deletes the project must not leave an orphan project directory.
     The scoped manager revalidates at its commit point (after every
     project-files call, success or failure) and sweeps the directory when
@@ -788,8 +787,7 @@ class TestDeletedProjectSweep:
 
 class TestSpinoffInheritance:
     """Membership is root-only: spin-offs keep project_id NULL and follow
-    their root ancestor. Tool scoping must resolve through the chain
-    (regression: codex 3.1)."""
+    their root ancestor. Tool scoping must resolve through the chain."""
 
     @pytest.fixture
     def db(self, tmp_path):
@@ -860,7 +858,7 @@ class TestSpinoffInheritance:
         assert ("get_all_tools", [SERVER_ID]) in mgr.calls
 
     def test_spinoff_cannot_carry_project_directly(self, db):
-        # DB-level enforcement of root-only membership (codex arch rec 2):
+        # DB-level enforcement of root-only membership:
         # neither inserting a spin-off with a project nor attaching a
         # project to an existing spin-off can slip past the triggers.
         import sqlite3
@@ -888,7 +886,7 @@ class TestSpinoffInheritance:
 
 class TestRunAsyncTimeout:
     def test_timeout_cancels_the_coroutine(self):
-        # regression: codex 1.2 — a timed-out call must not leave the
+        # regression: a timed-out call must not leave the
         # coroutine (and the server subprocess it holds) running on the
         # loop after the caller has already received the error
         import asyncio

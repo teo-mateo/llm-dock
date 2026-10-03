@@ -1,4 +1,4 @@
-"""Per-conversation reasoning level: persistence, write-time guard, run-time guard (R4, R7).
+"""Per-conversation reasoning level: persistence, write-time guard, run-time guard.
 
 Two enforcement points by design. The conversation write paths reject a level
 the service does not declare, so a stored value is always one that was legal
@@ -26,7 +26,7 @@ TOKEN = "test-token-rl-chat"
 CONVERSATIONS_PATH = "/api/chat/conversations"
 
 # Two services with different ladders: what one offers and the other does not
-# is the substance of R7.
+# is the substance of the guards.
 LEVELS = {
     "llamacpp-a": "off,low,medium,xhigh",
     "vllm-b": "off,minimal,max",
@@ -70,7 +70,7 @@ def _create(client, **extra):
     return r.get_json()
 
 
-# -- storage (R4) ---------------------------------------------------------
+# -- storage --------------------------------------------------------------
 
 
 def test_new_conversation_without_a_level_is_null(client):
@@ -131,7 +131,7 @@ def test_update_conversation_accepts_the_column_in_the_allowlist():
     assert db.get_conversation("c1").main_service == "s"
 
 
-# -- write-time guard (R7) ------------------------------------------------
+# -- write-time guard -----------------------------------------------------
 
 
 def test_level_offered_by_the_service_is_accepted(client):

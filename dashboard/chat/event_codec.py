@@ -1,6 +1,6 @@
 """SSE encoding for chat runtime events.
 
-Extracted from chat.routes (Phase 1 of #58) so the wire format lives in one
+Extracted from chat.routes so the wire format lives in one
 place and can be shared by persisted chat, spinoff, run reattachment, and
 future ghost streams. The frontend SSE parser should not need to know which
 producer emitted a frame.
@@ -47,7 +47,7 @@ def encode_sse_delta(raw: str) -> str:
     frame: the raw OpenAI-compatible chunk is passed straight through, exactly
     as the old code did. This is the one documented exception to typed framing.
     Normalizing it is a coordinated frontend+backend change deferred to its own
-    PR (#58); keeping the exception in one function makes that change a
+    PR; keeping the exception in one function makes that change a
     one-line edit here plus its frontend counterpart.
     """
     return f"data: {raw}\n\n"

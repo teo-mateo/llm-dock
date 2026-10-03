@@ -28,7 +28,7 @@ def iter_log_events(container, tail: int, stop_event: threading.Event):
 
     def _reader():
         try:
-            # Capture T₀ before the phase-1 fetch so the follow window
+            # Capture T₀ before the initial fetch so the follow window
             # overlaps slightly rather than leaving a gap.
             since = datetime.now(timezone.utc)
 

@@ -220,7 +220,7 @@ class TestFileLoading:
 class TestToolHints:
     """The system-prompt suffix must present tools by their callable names.
 
-    #21: the model emitted bare names (the server id, or the tool name
+    The model emitted bare names (the server id, or the tool name
     without the prefix) because the hints anchored on the bare form. The
     hint is where the model learns the contract, so it must show the full
     namespaced names, plus a contract line up front.
