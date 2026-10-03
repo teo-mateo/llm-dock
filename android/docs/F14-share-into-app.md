@@ -292,13 +292,14 @@ Precedence rules (decision 4.7): `EXTRA_TEXT` wins for `text/plain`;
 `EXTRA_STREAM` wins for `image/*`; a `text/plain` share with only
 `EXTRA_STREAM` is a text file.
 
-The `EXTRA_STREAM` content must be **read while the receiving activity is
-alive** — the read grant is valid only for that lifetime — and written to app
-storage before the picker hands the share to a conversation. The read is not
-allowed on the main thread: the picker opens on a "reading" placeholder, the
-consuming actions unlock when the bytes land, and an import cut short by
-process death leaves no placeholder behind (the user re-shares rather than the
-picker sitting on "reading" forever).
+The `EXTRA_STREAM` content is **read on the application's I/O scope** — the import
+outlives the receiving activity, while Android's read grant for the shared
+`content://` Uri does not, so a revoked grant surfaces as the typed failure rather
+than as a hang — and written to app storage before the picker hands the share to a
+conversation. The read is not allowed on the main thread: the picker opens on a
+"reading" placeholder, the consuming actions unlock when the bytes land, and an
+import cut short by process death leaves no placeholder behind (the user re-shares
+rather than the picker sitting on "reading" forever).
 
 ### 4.3 Pending-share store
 

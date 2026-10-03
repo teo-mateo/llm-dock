@@ -115,8 +115,15 @@ object SharedKindParser {
         }
     }
 
-    fun readFor(action: String, mimeType: String?, text: String?, hasStream: Boolean): SharedRead {
-        if (action != ACTION_SEND || !hasStream) return SharedRead.None
+    /**
+     * Whether a request's content can only come from a stream read. Answers
+     * [classify]'s verdict from the extras alone: a kind that needs bytes
+     * returns [SharedRead.Stream] even when no stream arrived, because the read
+     * is what reports that absence as a failure rather than staging a share with
+     * nothing in it.
+     */
+    fun readFor(action: String, mimeType: String?, text: String?): SharedRead {
+        if (action != ACTION_SEND) return SharedRead.None
         if (mimeType == "text/plain" && !text.isNullOrBlank()) return SharedRead.None
         val mime = mimeType?.lowercase()
         val streamBacked = mime == null || mime == "*/*" ||

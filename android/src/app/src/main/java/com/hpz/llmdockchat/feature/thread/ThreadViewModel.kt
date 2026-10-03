@@ -155,6 +155,7 @@ class ThreadViewModel(
             ),
             composer = edit.composer ?: current?.composer ?: draft,
             attachments = ((edit.attachments ?: current?.attachments).orEmpty() + staged).distinct(),
+            attachmentImporting = current?.attachmentImporting ?: false,
             sending = current?.sending ?: false,
             actionError = current?.actionError ?: edit.cancelNotice,
             pendingDelete = current?.pendingDelete?.takeIf { pending ->

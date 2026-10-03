@@ -83,11 +83,11 @@ class MainActivity : ComponentActivity() {
      * Only the delivery's *identity* is claimed here, on the main thread: the
      * content behind `EXTRA_STREAM` is read on the application's I/O scope,
      * because a provider stream can stall for as long as it likes and this runs
-     * inside `onCreate`. The read grant on a shared `content://` Uri lasts only
-     * as long as this activity is alive, which is the lifetime the import runs
-     * within; an import killed with the activity leaves no record, and the user
-     * re-shares. Text shares and refusals need no read at all and are staged
-     * here, synchronously.
+     * inside `onCreate`. That scope outlives this activity, and the read grant on
+     * a shared `content://` Uri does not: a grant Android has already revoked
+     * surfaces as the typed failure the picker shows, and a placeholder left
+     * behind by a killed process is not rehydrated, so the user re-shares. Text
+     * shares and refusals need no read at all and are staged here, synchronously.
      *
      * Issue 261 — the gate decides whether this intent is a delivery to serve
      * or a redelivery to refuse, because Android hands the same launch intent

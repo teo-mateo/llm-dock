@@ -137,11 +137,8 @@ class AppContainer(
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
     val editStateStore: EditStateStore = DataStoreEditStateStore(dataStore, appScope)
 
-    /**
-     * Provider reads for shared and attached content. One instance: every entry
-     * point that turns a `content://` Uri into bytes goes through it, so none of
-     * them does it on the main thread.
-     */
+    // One instance, so no entry point that turns a `content://` Uri into bytes
+    // decides for itself which thread to do it on.
     val sharedContentReader: SharedContentReader =
         ContentResolverShareReader(context.applicationContext.contentResolver)
 
@@ -151,11 +148,9 @@ class AppContainer(
         appScope,
     )
 
-    /** Gallery picks and camera captures: decode, downscale and encode off the main thread. */
     val attachmentImporter: AttachmentImporter =
         AttachmentImporter(sharedContentReader, dispatchers.io)
 
-    /** Share intake: claims the delivery, stages what the intent carries, reads the rest on I/O. */
     val shareIntake: ShareIntakeCoordinator = ShareIntakeCoordinator(
         scope = appScope,
         reader = sharedContentReader,

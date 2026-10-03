@@ -865,8 +865,9 @@ private fun ThreadComposer(
     // read", which the synchronous version of this callback could not do.
     LaunchedEffect(state.attachmentImporting) {
         if (state.attachmentImporting) return@LaunchedEffect
-        pendingCapture?.let { discardCapture(context, it) }
+        val capture = pendingCapture
         pendingCapture = null
+        capture?.let { discardCapture(context, it) }
     }
 
     Column(
@@ -947,7 +948,11 @@ private fun ThreadComposer(
 
         ComposerRow(
             value = state.composer,
-            enabled = !state.runActive,
+            // An import in flight blocks the whole row: sending now would ship the
+            // turn without the photo being read, and a second pick would start a
+            // second import whose completion the single capture-slot cleanup below
+            // cannot tell apart from the first.
+            enabled = !state.runActive && !state.attachmentImporting,
             canSend = state.canSend,
             runActive = state.runActive,
             stopping = state.thread.streaming?.stopping == true,

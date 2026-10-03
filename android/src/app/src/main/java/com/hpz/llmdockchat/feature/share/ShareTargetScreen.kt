@@ -167,7 +167,7 @@ private fun ShareTargetContent(
                             )
                         }
                         if (state.isEmpty) {
-                            EmptyState(onNewConversation)
+                            EmptyState(pickNewChat)
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize().testTag("share_target_list"),

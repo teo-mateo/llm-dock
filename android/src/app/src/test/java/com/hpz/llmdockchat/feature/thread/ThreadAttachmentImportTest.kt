@@ -131,6 +131,13 @@ class ThreadAttachmentImportTest {
         server.enqueue(MockResponse.Builder().body(readFixture("conversation_completed.json")).build())
     }
 
+    /** The same conversation under another title, so a reload is observable in the state. */
+    private fun conversationReloaded() {
+        val body = readFixture("conversation_completed.json")
+            .replace("Testing Specific Greeting Request", "Reloaded After The Pick")
+        server.enqueue(MockResponse.Builder().body(body).build())
+    }
+
     private fun viewModel(reader: SharedContentReader?): ThreadViewModel {
         val importer = reader?.let { AttachmentImporter(it, Dispatchers.IO) }
         return ViewModelProvider.create(
@@ -232,5 +239,62 @@ class ThreadAttachmentImportTest {
         val failed = viewModel.awaitState("an unwired pick went silent") { it.actionError != null }
         assertEquals("That image could not be read.", failed.actionError)
         assertFalse(failed.attachmentImporting)
+    }
+
+    /**
+     * Send snapshots the strip, so a turn started mid-import would go out without
+     * the photo and leave it materialising in a composer the run has disabled.
+     */
+    @Test
+    fun `a turn cannot be sent while a pick is still being read`() = threadTest {
+        conversation()
+        val release = CountDownLatch(1)
+        val reader = StubReader(ENCODED, block = {
+            assertTrue("the import never resumed", release.await(5, TimeUnit.SECONDS))
+        })
+        val viewModel = viewModel(reader)
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        viewModel.importAttachment(PICKED, "That image could not be read.")
+        viewModel.onComposerChange("a caption")
+        val busy = viewModel.awaitState("the pick was never acknowledged as reading") { it.attachmentImporting }
+
+        assertFalse("Send would have shipped the turn without the photo", busy.canSend)
+        viewModel.send()
+
+        release.countDown()
+        val done = viewModel.awaitState("the attachment never arrived") { it.attachments.isNotEmpty() }
+        assertTrue("the composer unlocks once the bytes exist", done.canSend)
+    }
+
+    /**
+     * The failure path hands back a Retry button, and a reload rebuilds the screen
+     * state: losing the in-flight flag there would let the camera cleanup delete a
+     * file the import is still holding open.
+     */
+    @Test
+    fun `a reload while a pick is being read keeps the pick acknowledged`() = threadTest {
+        conversation()
+        conversationReloaded()
+        val release = CountDownLatch(1)
+        val reader = StubReader(ENCODED, block = {
+            assertTrue("the import never resumed", release.await(5, TimeUnit.SECONDS))
+        })
+        val viewModel = viewModel(reader)
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.importAttachment(PICKED, "That image could not be read.")
+        viewModel.awaitState("the pick was never acknowledged as reading") { it.attachmentImporting }
+
+        viewModel.load()
+        val reloaded = withTimeout(10_000) {
+            viewModel.state.first {
+                it is ThreadUiState.Loaded && it.conversation.title == "Reloaded After The Pick"
+            } as ThreadUiState.Loaded
+        }
+
+        assertTrue("the reload dropped the in-flight pick", reloaded.attachmentImporting)
+        release.countDown()
     }
 }

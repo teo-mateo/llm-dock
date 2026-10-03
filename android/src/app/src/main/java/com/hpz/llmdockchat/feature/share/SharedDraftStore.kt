@@ -56,6 +56,17 @@ class SharedDraftStore(
 
     private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
+    private var importToken: String? = null
+
+    /**
+     * Serialises a pending-record transition with the disk write that backs it.
+     * The write queue is FIFO, so without this memory can settle in one order and
+     * `pending.json` in another: a dismissal that won the race in memory can still
+     * be followed on disk by the write it displaced, and the share the user threw
+     * away returns after a restart.
+     */
+    private val pendingCommit = Any()
+
     init {
         scope.launch {
             for (write in writes) runCatching { write() }
@@ -72,9 +83,11 @@ class SharedDraftStore(
      * consume-once flow.
      */
     fun stage(share: StagedShare, token: String? = null) {
-        if (token != null) rememberHandled(token)
-        _pending.value = share
-        enqueue { writePending(share) }
+        synchronized(pendingCommit) {
+            if (token != null) rememberHandled(token)
+            _pending.value = share
+            enqueue { writePending(share) }
+        }
     }
 
     /** Claims a delivery without staging anything — the [ShareIntake.KeepHydrated] path. */
@@ -86,27 +99,43 @@ class SharedDraftStore(
     /**
      * A stream-backed share is being read. In memory only: an import cut short by
      * process death leaves no record, so the user re-shares instead of the picker
-     * sitting on "reading" forever.
+     * sitting on "reading" forever. [token] is the delivery the placeholder stands
+     * for, which is what [finishImport] has to match.
      */
-    fun beginImport() {
-        _pending.value = StagedShare(importing = true)
+    fun beginImport(token: String) {
+        synchronized(pendingCommit) {
+            importToken = token
+            _pending.value = StagedShare(importing = true)
+        }
     }
 
     /**
-     * Replaces the [beginImport] placeholder. A no-op once the user dismissed the
-     * picker — content that arrives for a share already thrown away stays thrown
-     * away.
+     * Replaces the [beginImport] placeholder of [token]. Anything else that has
+     * happened to the pending share in the meantime — dismissed, consumed by a
+     * pick, superseded by a newer delivery — wins, and this import's content is
+     * dropped rather than resurrected.
+     *
+     * The apply happens under [pendingCommit]: the reader of this share runs on
+     * I/O while the picker's Close button runs on the main thread, and a share the
+     * user threw away has to stay thrown away in memory *and* on disk.
      */
-    fun finishImport(share: StagedShare) {
-        if (_pending.value?.importing != true) return
-        _pending.value = share
-        enqueue { writePending(share) }
+    fun finishImport(token: String, share: StagedShare) {
+        synchronized(pendingCommit) {
+            if (importToken != token) return
+            val current = _pending.value ?: return
+            if (!current.importing) return
+            _pending.value = share
+            importToken = null
+            enqueue { writePending(share) }
+        }
     }
 
     /** Dismissing the picker, or a share already consumed by a pick. */
     fun clearPending() {
-        _pending.value = null
-        enqueue { deletePending() }
+        synchronized(pendingCommit) {
+            _pending.value = null
+            enqueue { deletePending() }
+        }
     }
 
     /**
@@ -118,6 +147,9 @@ class SharedDraftStore(
      */
     fun reassign(conversationId: String, drafts: DraftStore) {
         val share = _pending.value ?: return
+        // A placeholder is not content: spending it would hand the user an empty
+        // composer and throw the incoming bytes away.
+        if (share.importing) return
         if (share.text.isNotBlank()) drafts.save(conversationId, share.text)
         saveAttachments(conversationId, share.attachments)
         clearPending()
@@ -245,7 +277,14 @@ class SharedDraftStore(
      */
     private suspend fun <T> drain(op: suspend () -> T): T {
         val done = CompletableDeferred<T>()
-        writes.send { done.complete(op()) }
+        writes.send {
+            try {
+                done.complete(op())
+            } catch (failure: Throwable) {
+                done.completeExceptionally(failure)
+                throw failure
+            }
+        }
         return done.await()
     }
 

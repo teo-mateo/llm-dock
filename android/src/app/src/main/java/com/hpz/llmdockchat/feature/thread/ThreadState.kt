@@ -106,7 +106,7 @@ sealed interface ThreadUiState {
                 conversation.isGenerating
 
         val canSend: Boolean
-            get() = !runActive && (composer.isNotBlank() || attachments.isNotEmpty())
+            get() = !runActive && !attachmentImporting && (composer.isNotBlank() || attachments.isNotEmpty())
 
         val canSwitchModel: Boolean
             get() = !runActive

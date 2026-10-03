@@ -112,9 +112,7 @@ object ShareImport {
     const val FILE_UNREADABLE = "That file could not be read."
 
     fun plan(request: ShareRequest): ShareImportPlan {
-        if (SharedKindParser.readFor(request.action, request.mimeType, request.text, request.hasStream) !=
-            SharedRead.None
-        ) {
+        if (SharedKindParser.readFor(request.action, request.mimeType, request.text) != SharedRead.None) {
             return ShareImportPlan.Deferred
         }
         return ShareImportPlan.Immediate(shareFor(request))
@@ -133,9 +131,10 @@ object ShareImport {
                     attempt { reader.readInlineText(uri) }?.let {
                         StagedShare(text = SharedInlineFormatter.inlineFile(kind.name, it))
                     } ?: StagedShare(error = FILE_UNREADABLE)
-                // The provider's name reclassified the share — a `content://` stream
-                // whose display name is a PDF, say. The verdict is the classifier's.
-                else -> shareOf(classify(request, request.hasStream, name))
+                // A stream whose provider name classifies as neither an image nor
+                // inlinable text (a PDF, say) is the classifier's refusal, not a
+                // read failure.
+                else -> shareOf(kind)
             }
         }
 
@@ -166,8 +165,10 @@ object ShareImport {
     private fun shareOf(kind: SharedKind): StagedShare = when (kind) {
         is SharedKind.Text -> StagedShare(text = kind.text, url = SharedUrlExtractor.firstUrl(kind.text))
         is SharedKind.Unsupported -> StagedShare(error = kind.reason)
-        // A stream-backed share whose bytes have not been read yet: empty, and says so.
-        else -> StagedShare(importing = true)
+        // Only reachable with no stream to read — a share that wants bytes and
+        // carries none. [SharedKindParser.readFor] sends every other case to
+        // [resolve], which is the only producer of the "reading" placeholder.
+        else -> StagedShare(error = FILE_UNREADABLE)
     }
 
     private const val FALLBACK_NAME = "file.txt"
@@ -178,10 +179,11 @@ object ShareImport {
  * content on [scope].
  *
  * The token is claimed before anything is read: a read can stall or throw, and a
- * served delivery must stay served whatever the read did. `currentToken` is what
- * makes the second of two shares win — an import that finishes out of order
- * finds its token no longer current and drops its own result rather than
- * overwriting what the user shared last.
+ * served delivery must stay served whatever the read did. The store is what makes
+ * the second of two shares win — [SharedDraftStore.beginImport] names the
+ * delivery whose placeholder is staged, so an import that finishes out of order
+ * finds its own placeholder gone and drops its result rather than overwriting
+ * what the user shared last.
  */
 class ShareIntakeCoordinator(
     private val scope: CoroutineScope,
@@ -190,19 +192,13 @@ class ShareIntakeCoordinator(
     private val io: CoroutineDispatcher,
 ) {
 
-    private var currentToken: String? = null
-
     fun submit(token: String, request: ShareRequest) {
-        currentToken = token
         store.rememberHandled(token)
         when (val plan = ShareImport.plan(request)) {
             is ShareImportPlan.Immediate -> store.stage(plan.share)
             ShareImportPlan.Deferred -> {
-                store.beginImport()
-                scope.launch {
-                    val share = ShareImport.resolve(request, reader, io)
-                    if (currentToken == token) store.finishImport(share)
-                }
+                store.beginImport(token)
+                scope.launch { store.finishImport(token, ShareImport.resolve(request, reader, io)) }
             }
         }
     }
