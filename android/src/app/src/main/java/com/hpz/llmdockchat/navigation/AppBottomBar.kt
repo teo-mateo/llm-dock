@@ -28,7 +28,7 @@ private val TABS = listOf(
 )
 
 /**
- * The bottom bar (Architecture D12, F02-R7): present on the conversation
+ * The bottom bar: present on the conversation
  * list and the models list, and on those screens only — pushed destinations
  * (thread, new chat, model detail, logs) render without it. The third
  * "Design" tab is the design-lab gallery (`feature/designlab`), a visual

@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Classification rules for a share intent (F14-R1/R3). */
+/** Classification rules for a share intent. */
 class SharedKindParserTest {
 
     private fun classify(

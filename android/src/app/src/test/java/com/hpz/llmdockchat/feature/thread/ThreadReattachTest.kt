@@ -55,9 +55,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * F09 · coming back to a run that was already going.
+ * Coming back to a run that was already going.
  *
- * The three run-producing endpoints share one reader (Architecture D2), so
+ * The three run-producing endpoints share one reader, so
  * nothing here is a second parser — these tests are about what the *reader is
  * pointed at*, and about the one thing reattachment can get catastrophically
  * wrong: `GET /api/chat/runs/<id>/stream` replays the whole run from the
@@ -103,7 +103,7 @@ class ThreadReattachTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.
@@ -167,7 +167,7 @@ class ThreadReattachTest {
             ?: throw AssertionError("never reached: $what — last state was ${state.value}")
     }
 
-    // -- F09-R1 · detect an in-flight run --------------------------------------
+    // -- detect an in-flight run --------------------------------------
 
     /**
      * The criterion is "*before any stream data arrives*", so the reattach leg
@@ -208,7 +208,7 @@ class ThreadReattachTest {
         assertTrue("nothing should have been subscribed", transport.requests.isEmpty())
     }
 
-    // -- F09-R2 · reattach with replay ------------------------------------------
+    // -- reattach with replay ------------------------------------------
 
     /**
      * **The duplication test.** Two consecutive reattaches to one run, as
@@ -285,7 +285,7 @@ class ThreadReattachTest {
         viewModel.awaitState("the live tail") {
             it.thread.streaming?.content == "everything generated while away. and the rest"
         }
-        // And it lands on the server's copy, like any other terminal (D3).
+        // And it lands on the server's copy, like any other terminal.
         viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
     }
 
@@ -337,7 +337,7 @@ class ThreadReattachTest {
         assertFalse("a run that does not exist must not lock the composer", state.runActive)
     }
 
-    // -- F09-R3 · Stop still works after reattaching -----------------------------
+    // -- Stop still works after reattaching -----------------------------
 
     /**
      * The guard has to be the run id the *reattached* stream announced, not
@@ -429,7 +429,7 @@ class ThreadReattachTest {
         assertEquals("""{"expected_run_id":"run-2"}""", cancelTwo.body?.utf8())
     }
 
-    // -- F09-R4 · honest offline behaviour ---------------------------------------
+    // -- honest offline behaviour ---------------------------------------
 
     /**
      * The fourth criterion, which is the one with teeth: mid-drop, the turn must
@@ -546,7 +546,7 @@ class ThreadReattachTest {
         assertEquals(1, transport.requests.size)
     }
 
-    // -- F09-R5 · catching up on what happened while away -------------------------
+    // -- catching up on what happened while away -------------------------
 
     @Test
     fun `a run that failed while the app was away shows its error on reopening`() = threadTest {
@@ -585,7 +585,7 @@ class ThreadReattachTest {
         assertEquals(MessageRole.USER, state.thread.messages.last().role)
     }
 
-    // -- #262 · a silent close is not the end of the run -------------------------
+    // -- a silent close is not the end of the run -------------------------
 
     /**
      * The reviewed failure. The server ended the connection mid-run without a

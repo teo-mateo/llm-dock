@@ -47,12 +47,12 @@ import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
 import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 
 /**
- * Screen 03 · New chat sheet (F03). A pushed screen rather than a modal, as
- * established in F02's placeholder and Architecture D12 — [NEW_CHAT] carries
+ * · New chat sheet. A pushed screen rather than a modal, as
+ * established by the placeholder it replaced — [NEW_CHAT] carries
  * no bottom bar. Three rows at most (Model, system prompt, tools) with the
- * project row cut entirely (F03-R4, withdrawn); the tools row is hidden
+ * project row cut entirely (withdrawn); the tools row is hidden
  * outright when no servers are available, keeping the sheet coherent at any
- * combination of optional data (F03-R6).
+ * combination of optional data.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -332,8 +332,8 @@ private fun StartButton(enabled: Boolean, creating: Boolean, label: String, onCl
 /**
  * S1 fix-up: the conversation was created but the follow-up `mcp_servers_json`
  * PUT failed. Shown in place of the Start button — the create call itself is
- * never retried, only the tools assignment (S1's brief: "keep the sheet up
- * ... Retry / Open anyway", contained to this screen rather than passed
+ * never retried, only the tools assignment — "keep the sheet up
+  * ... Retry / Open anyway" — contained to this screen rather than passed
  * through the nav graph).
  */
 @Composable

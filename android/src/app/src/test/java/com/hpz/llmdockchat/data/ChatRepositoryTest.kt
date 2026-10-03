@@ -30,7 +30,7 @@ import org.junit.Test
 import java.util.concurrent.TimeUnit
 
 /**
- * The three run-producing endpoints through the real transport (F04).
+ * The three run-producing endpoints through the real transport.
  *
  * The fixtures are dashboard recordings, replayed byte for byte — including the
  * throttled case, which forces every frame to span several socket reads.
@@ -88,7 +88,7 @@ class ChatRepositoryTest {
     /**
      * A run that failed before producing any text saves no assistant message —
      * the error lives on `last_run`, which is the only place the app can find
-     * it after reopening the thread (F04-R8's third criterion).
+     * it after reopening the thread.
      */
     @Test
     fun `a failed run's error survives on last_run with no assistant message`() = runTest {
@@ -157,7 +157,7 @@ class ChatRepositoryTest {
 
     /**
      * Every frame here spans several socket reads. The transport reassembles
-     * them (F00), so the parser sees whole payloads and the event sequence is
+     * them, so the parser sees whole payloads and the event sequence is
      * byte-for-byte the same as the unthrottled case.
      */
     @Test
@@ -175,7 +175,7 @@ class ChatRepositoryTest {
     /**
      * The POST *is* the stream, so a second send while a run is active fails
      * the flow before a single frame — which is how the ViewModel knows to drop
-     * the optimistic user message rather than leave a phantom (F04-R2).
+     * the optimistic user message rather than leave a phantom.
      */
     @Test
     fun `a concurrent send fails the stream with the server's 409 message`() = runTest {
@@ -244,7 +244,7 @@ class ChatRepositoryTest {
         assertTrue(events.filterIsInstance<RunEvent.Delta>().first().reasoning.length > 200)
     }
 
-    // -- delete (F06) ----------------------------------------------------------
+    // -- delete ----------------------------------------------------------
 
     @Test
     fun `delete DELETEs the message path`() = runTest {
@@ -288,7 +288,7 @@ class ChatRepositoryTest {
         assertEquals("""{"expected_run_id":"r1"}""", request.body?.utf8())
     }
 
-    /** Stopping a run that already finished is a 200 no-op, not an error (F04-R6). */
+    /** Stopping a run that already finished is a 200 no-op, not an error. */
     @Test
     fun `cancelling a finished run succeeds with a null run`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"run": null}""").build())
@@ -305,7 +305,7 @@ class ChatRepositoryTest {
         assertEquals("{}", server.takeRequest().body?.utf8())
     }
 
-    // -- switch model (F07-R4) ------------------------------------------------
+    // -- switch model ------------------------------------------------
 
     @Test
     fun `updateMainService PUTs the conversation with the new main_service`() = runTest {

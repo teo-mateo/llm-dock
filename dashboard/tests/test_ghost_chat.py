@@ -1,4 +1,4 @@
-"""Ghost chat (issue #57): POST /api/chat/ghost — stateless, zero-trace SSE.
+"""Ghost chat: POST /api/chat/ghost — stateless, zero-trace SSE.
 
 The endpoint must stream the same wire surface as a normal turn (raw deltas,
 tool_call / tool_result / artifact, [DONE], legacy error frame) while

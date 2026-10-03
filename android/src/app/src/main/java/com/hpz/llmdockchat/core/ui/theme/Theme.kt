@@ -11,7 +11,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Follows the system theme (F00-R7). No dynamic colour: the palette is part of
+ * Follows the system theme. No dynamic colour: the palette is part of
  * the product identity and has to match the desktop dashboard, so wallpaper
  * extraction would be a regression, not a feature.
  */

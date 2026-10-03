@@ -41,8 +41,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
   // ChatPage passes onEditorDirtyChange as a fresh inline function every
   // render. Hold it behind a ref so notifyDirty stays identity-stable —
   // otherwise the editor-reset effect below would re-fire on every parent
-  // rerender (each streaming delta!) and silently unmount a dirty editor
-  // (codex iteration 1, P1).
+  // rerender (each streaming delta!) and silently unmount a dirty editor.
   const onDirtyRef = useRef(onEditorDirtyChange)
   useEffect(() => { onDirtyRef.current = onEditorDirtyChange }, [onEditorDirtyChange])
   const notifyDirty = useCallback((d) => {
@@ -113,8 +112,7 @@ export default function ProjectChatSplit({ project, conversationId, refreshKey =
       )}
       {/* The pane stays MOUNTED while collapsed (display:none) so an
           in-flight upload keeps its state alive and its follow-up
-          refresh lands in the tree the user sees on re-expand (codex
-          iteration 3, P2). */}
+          refresh lands in the tree the user sees on re-expand. */}
       <div
         className="flex-shrink-0 border-r border-border overflow-hidden"
         style={{

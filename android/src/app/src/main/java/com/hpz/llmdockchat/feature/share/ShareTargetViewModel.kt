@@ -14,10 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * F00-R5's four states, for the share-target picker (F14-R2). Same list data
+ * The four UI states, for the share-target picker. Same list data
  * as the Chats tab — `ConversationsRepository.list()` is already
  * `updated_at DESC` and `unfiled=true` — but no selection, swipe or delete:
- * the actions are picking a row, and summarizing a shared page (F14-R7).
+ * the actions are picking a row, and summarizing a shared page.
  */
 sealed interface ShareTargetUiState {
     data object Loading : ShareTargetUiState
@@ -69,7 +69,7 @@ class ShareTargetViewModel(
     /**
      * The conversation list and the retrieval probe are independent reads, so
      * they run together: by the time a finger reaches the summarize action the
-     * tap must not wait on anything (F14-R8).
+     * tap must not wait on anything.
      */
     fun refresh() {
         val current = _state.value
@@ -100,7 +100,7 @@ class ShareTargetViewModel(
     /**
      * One tap of "Summarise". [onOpened] navigates to the thread that now owes
      * one turn; [onChooseModel] opens the new-chat sheet with the share still
-     * staged, for a remembered model that is gone or stopped (F14-R7).
+     * staged, for a remembered model that is gone or stopped.
      */
     fun summarize(onOpened: (String) -> Unit, onChooseModel: () -> Unit) {
         val loaded = _state.value as? ShareTargetUiState.Loaded ?: return

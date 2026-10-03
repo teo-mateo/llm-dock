@@ -1,7 +1,7 @@
 package com.hpz.llmdockchat.core.net
 
 /**
- * How long to wait before the next reconnect attempt (F09-R4).
+ * How long to wait before the next reconnect attempt.
  *
  * Two things have to be true at once, and they pull in opposite directions: the
  * app must not hammer a server that is not there, and it must not give up

@@ -22,7 +22,7 @@ private const val BASE64_MARKER = ";base64,"
  * A photo straight off a modern phone camera is several thousand pixels wide
  * and multiple megabytes; base64 inflates it by a third again, and it all goes
  * into a JSON body and then into a SQLite row. Downscaling first is what makes
- * F04-R9's "a large photo is downscaled rather than failing" true.
+ * the promise "a large photo is downscaled rather than failing" true.
  */
 const val MAX_ATTACHMENT_EDGE_PX = 1568
 private const val JPEG_QUALITY = 85

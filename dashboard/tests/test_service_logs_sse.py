@@ -77,7 +77,7 @@ def client(app):
 
 
 # ---------------------------------------------------------------------------
-# T1 – auth
+# auth
 # ---------------------------------------------------------------------------
 
 class TestAuth:
@@ -87,7 +87,7 @@ class TestAuth:
 
 
 # ---------------------------------------------------------------------------
-# T2 – 404 when no container
+# 404 when no container
 # ---------------------------------------------------------------------------
 
 class TestNotFound:
@@ -100,7 +100,7 @@ class TestNotFound:
 
 
 # ---------------------------------------------------------------------------
-# T3 / T4 – content-type and headers
+# content-type and headers
 # ---------------------------------------------------------------------------
 
 class TestHeaders:
@@ -124,7 +124,7 @@ class TestHeaders:
 
 
 # ---------------------------------------------------------------------------
-# T5 – event sequence
+# event sequence
 # ---------------------------------------------------------------------------
 
 class TestEventSequence:
@@ -174,7 +174,7 @@ class TestEventSequence:
 
 
 # ---------------------------------------------------------------------------
-# T6 / T7 / T8 – tail clamping
+# tail clamping
 # ---------------------------------------------------------------------------
 
 class TestTailClamping:
@@ -201,7 +201,7 @@ class TestTailClamping:
 
 
 # ---------------------------------------------------------------------------
-# T9 – Docker error produces error event
+# Docker error produces error event
 # ---------------------------------------------------------------------------
 
 class TestDockerError:
@@ -217,7 +217,7 @@ class TestDockerError:
 
 
 # ---------------------------------------------------------------------------
-# T10 – multi-line chunks split correctly
+# multi-line chunks split correctly
 # ---------------------------------------------------------------------------
 
 class TestLineSplitting:
@@ -259,7 +259,7 @@ class TestLineSplitting:
 
 
 # ---------------------------------------------------------------------------
-# T11–T13 – iter_log_events unit tests (helper in isolation)
+# iter_log_events unit tests (helper in isolation)
 # ---------------------------------------------------------------------------
 
 class TestIterLogEvents:

@@ -5,7 +5,7 @@ const MAX_POINTS = 20
 
 // Canvas is immediate-mode, so it can't ride the CSS cascade on a theme
 // swap — read the resolved token values at draw time and repaint when the
-// theme changes (issue #5 §8).
+// theme changes.
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }

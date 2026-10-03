@@ -28,7 +28,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * F11-R3/R4/F10-R5's confirm-then-act flow: naming the service, one at a
+ * The confirm-then-act flow: naming the service, one at a
  * time, surfacing a failure without pretending success. Uses a real
  * [MockWebServer] round trip (like [com.hpz.llmdockchat.feature.models.ModelsViewModelTest]) rather than
  * a fake repository, so a bug in [ServicesRepository]'s own start/stop
@@ -36,7 +36,7 @@ import org.junit.Test
  */
 class ServiceControlControllerTest {
 
-    // Main is set unconfined (F11-R4's own reasoning, MainDispatcherRule's
+    // Main is set unconfined (MainDispatcherRule's
     // doc): `scope.launch { ... }` in ServiceControlController runs eagerly
     // up to its first real suspension, which is the `withContext(Dispatchers.IO)`
     // inside ApiClient — a genuine dispatcher hop, not a race. So the state
@@ -73,9 +73,9 @@ class ServiceControlControllerTest {
     }
 
     /**
-     * Bug-shaped: a naive controller that calls the repository straight from
-     * `requestStop` (no confirm step at all) would stop the container the
-     * instant the row's Stop button is tapped — exactly what F11-R3 forbids.
+     * Guards against a naive controller that calls the repository straight
+     * from `requestStop` (no confirm step at all) stopping the container
+     * the instant the row's Stop button is tapped.
      * This asserts the state stays `Confirming` and nothing hit the wire.
      */
     @Test
@@ -118,7 +118,7 @@ class ServiceControlControllerTest {
     }
 
     /**
-     * F11-R4's third criterion: "cannot be double-fired". `confirm()` runs
+     * "Cannot be double-fired": `confirm()` runs
      * eagerly up to the real dispatcher hop (see the class doc), so by the
      * time it returns the service is genuinely mid-request — a second
      * `requestStart` right then must be refused, not queued for after.

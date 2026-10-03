@@ -19,9 +19,9 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Placeholder for F02-R8's primary action — the real destination is F03's
- * new-chat sheet. A pushed screen rather than a modal for now, since the
- * sheet itself is not built; it carries no bottom bar (Architecture D12).
+ * Legacy placeholder for the new-chat sheet, no longer reachable. It was a
+  * pushed screen rather than a modal from the start, and carries no bottom
+  * bar — the same shape the real sheet later kept.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

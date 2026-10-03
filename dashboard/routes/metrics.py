@@ -48,8 +48,7 @@ LLAMACPP_CURATED_METRICS = {
 # Emitted by the ninfer-metrics.patch engine route (12 unlabeled families rendered
 # from the engine's published RuntimeStats snapshot plus the startup-resolved KV
 # capacity). Spec-acceptance and preemption families are deliberately absent: NInfer
-# has no service-level aggregate for either, so the panel renders those as "—" (see
-# docs/plans/ninfer-metrics.md).
+# has no service-level aggregate for either, so the panel renders those as "—".
 NINFER_CURATED_METRICS = {
     "ninfer:prompt_tokens_total",
     "ninfer:generation_tokens_total",
@@ -65,8 +64,8 @@ NINFER_CURATED_METRICS = {
     "ninfer:host_kv_occupied_bytes",
 }
 
-# Source: Pennyroyal v2.5.3 observability/metrics_collector.py. The two
-# acceptance/cache-hit values are gauges, not lifetime counter ratios.
+# Mirrors the Pennyroyal metrics collector (image pin in sglang/Dockerfile).
+# The two acceptance/cache-hit values are gauges, not lifetime counter ratios.
 SGLANG_CURATED_METRICS = {
     "sglang:num_running_reqs", "sglang:num_queue_reqs",
     "sglang:token_usage", "sglang:cache_hit_rate", "sglang:gen_throughput",

@@ -20,7 +20,7 @@ import com.hpz.llmdockchat.data.dto.TokenVerificationDto
  */
 class AuthService(private val api: ApiClient) {
 
-    /** `POST /api/auth/session` with the dashboard password as the bearer (F01-R4). */
+    /** `POST /api/auth/session` with the dashboard password as the bearer. */
     suspend fun signIn(credential: Credential): Result<String> = when (credential) {
         is Credential.Password -> token(
             path = Endpoints.AUTH_SESSION,
@@ -29,7 +29,7 @@ class AuthService(private val api: ApiClient) {
     }
 
     /**
-     * `POST /api/auth/login` with the six-digit code as `X-TOTP-Code` (F01-R3).
+     * `POST /api/auth/login` with the six-digit code as `X-TOTP-Code`.
      *
      * Never sent on any other route: an expired `totp-` bearer makes
      * `require_auth` return 401 before it reaches the `X-TOTP-Code` branch

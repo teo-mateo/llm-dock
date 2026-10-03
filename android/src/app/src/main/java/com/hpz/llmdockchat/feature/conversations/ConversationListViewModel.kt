@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * F00-R5's four states, plus the two things F02 layers on top of "populated":
- * a background [refreshing] flag (F02-R1's fourth criterion — no full-screen
- * spinner over already-loaded content) and multi-select (F02-R5).
+ * The four UI states, plus the two things the list layers on top of
+  * "populated": a background [refreshing] flag (no full-screen spinner over
+  * already-loaded content) and multi-select.
  */
 sealed interface ConversationListUiState {
     data object Loading : ConversationListUiState
@@ -25,7 +25,7 @@ sealed interface ConversationListUiState {
         val conversations: List<ConversationSummary>,
         val refreshing: Boolean = false,
         val selection: Set<String> = emptySet(),
-        /** A delete that failed — surfaced once, not swallowed (F00-R4). */
+        /** A delete that failed — surfaced once, not swallowed. */
         val actionError: String? = null,
         /**
          * Swiped away but not yet deleted on the server. Held here rather than
@@ -64,7 +64,7 @@ class ConversationListViewModel(
      * second, redundant request against that first one.
      *
      * Called on first load, on explicit retry, and every time the list screen
-     * is returned to (F02-R1). Already-loaded content stays on screen while a
+     * is returned to. Already-loaded content stays on screen while a
      * refresh is in flight — only a cold start or a retry-from-failure shows
      * the full loading state.
      */

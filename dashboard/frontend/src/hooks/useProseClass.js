@@ -1,7 +1,7 @@
 import { useTheme } from '../contexts/ThemeContext'
 
 /**
- * Shared markdown/prose class helper (issue #5, owner note 6).
+ * Shared markdown/prose class helper.
  *
  * `prose-invert` is the Tailwind Typography dark-on-light inversion and is
  * only correct in the dark theme. Rather than repeating

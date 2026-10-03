@@ -15,9 +15,8 @@ import org.junit.Test
 
 /**
  * [GpuStreamRepository.stream] — the transport wiring and the
- * available/unavailable mapping (F10-R3). The teardown test is the one that
- * matters most here: F10-R3's third criterion is "closing the tab stops the
- * stream", and a test that only checks a UI flag would prove nothing — see
+ * available/unavailable mapping. The teardown test is the one that
+ * matters most here: closing the tab must stop the stream, and a test that only checks a UI flag would prove nothing — see
  * `ThreadReconnectTeardownTest` and `OkHttpSseTransportTest`'s "abandoning a
  * quiet stream" for the same pattern on other streams.
  */
@@ -37,7 +36,7 @@ class GpuStreamRepositoryTest {
 
         // Connecting, not Unavailable: no frame has arrived, which is not the
         // same claim as "this host has no usable GPU" and must not render as
-        // one. F10-R3's fourth criterion — never "available" with stale zeros —
+        // one. The freshness rule — never "available" with stale zeros —
         // is unchanged; this is the other half of the same distinction.
         assertEquals(GpuState.Connecting, emissions[0])
         val available = emissions[1] as GpuState.Available
@@ -77,7 +76,7 @@ class GpuStreamRepositoryTest {
      * [FakeSseTransport.cancelled] only completes if the fake's flow was
      * really cancelled, which only happens if [Job.cancel] genuinely
      * propagates through [GpuStreamRepository.stream]'s reconnect loop — a
-     * fake that "completed on its own" (F09's post-mortem on the F07 bug)
+     * fake that "completed on its own"
      * would let this pass without proving anything.
      */
     @Test

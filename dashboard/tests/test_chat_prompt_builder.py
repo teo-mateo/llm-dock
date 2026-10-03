@@ -1,4 +1,4 @@
-"""Unit tests for chat.prompt_builder.build_chat_messages (Phase 1 of #58).
+"""Unit tests for chat.prompt_builder.build_chat_messages.
 
 The builder was extracted from _stream_response; these pin its system-prompt
 augmentation (tool hints + date line) and its delegation of row->dict shaping

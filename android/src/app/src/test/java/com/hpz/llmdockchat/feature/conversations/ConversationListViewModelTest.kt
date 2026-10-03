@@ -26,7 +26,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-/** List state transitions (F00-R5, F02-R1) and selection (F02-R5). */
+/** List state transitions and selection. */
 class ConversationListViewModelTest {
 
     @get:Rule
@@ -102,7 +102,7 @@ class ConversationListViewModelTest {
 
         // The very next state after kicking off a refresh from Loaded must
         // still be Loaded (with refreshing=true) — never Loading, which would
-        // blank the screen over content that is already on it (F02-R1).
+        // blank the screen over content that is already on it.
         assertTrue(viewModel.state.value is ConversationListUiState.Loaded)
         assertTrue((viewModel.state.value as ConversationListUiState.Loaded).refreshing)
     }

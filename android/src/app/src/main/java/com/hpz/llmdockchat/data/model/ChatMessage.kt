@@ -19,7 +19,7 @@ data class ToolCallRecord(
     val isRunning: Boolean get() = result == null
 }
 
-/** `{kind, snippet, description}` — surfaced quietly on the turn (F04-R5). */
+/** `{kind, snippet, description}` — surfaced quietly on the turn. */
 data class ParseWarning(
     val kind: String?,
     val description: String?,
@@ -32,7 +32,7 @@ data class ParseWarning(
 }
 
 /**
- * A tool-produced artifact (F05-R6/R8) — `svg`, `image`, `html` or `code`.
+ * A tool-produced artifact — `svg`, `image`, `html` or `code`.
  * Persisted ones arrive out of band, in `GET /api/chat/conversations/<id>`'s
  * top-level `artifacts: {message_id: [...]}` map (`chat/db.py:get_artifacts_for_conversation`),
  * not nested on the message itself; the mapper folds them in by id.
@@ -46,7 +46,7 @@ data class ArtifactRecord(
 
 /**
  * A message as the **server** has it. The client never fabricates one of these
- * from streamed text — that is Architecture D3, and it is what keeps a
+ * from streamed text, and that is what keeps a
  * cancelled run from inventing an assistant turn that does not exist.
  */
 data class ChatMessage(
@@ -79,14 +79,14 @@ data class ConversationDetail(
     val lastRun: LastRun?,
     val updatedAt: String?,
     /**
-     * The enabled MCP server ids (F08). Read-only here — `mcp_servers` on the
+     * The enabled MCP server ids. Read-only here — `mcp_servers` on the
      * wire is a read-only array; changing it goes through
      * `ConversationsRepository.setMcpServers`'s `mcp_servers_json` PUT
-     * (Architecture D6), never a write to this field.
+     *, never a write to this field.
      */
     val mcpServers: List<String> = emptyList(),
     /**
-     * The managed prompt this conversation references (F03 follow-up), or
+     * The managed prompt this conversation references, or
      * null for none. This is the selection's identity — [mainSystemPrompt]
      * is the resolved copy, which a legacy conversation carries with no
      * reference at all.
@@ -94,7 +94,7 @@ data class ConversationDetail(
     val promptId: String? = null,
     val mainSystemPrompt: String = "",
     /**
-     * The reasoning level declared for this thread (F15), or null for "model
+     * The reasoning level declared for this thread, or null for "model
      * default" — which is **not** the level `"off"`: `null` says nothing to the
      * model, `"off"` actively tells it not to think. Server state, written only
      * through [com.hpz.llmdockchat.data.ConversationsRepository.setReasoningLevel].

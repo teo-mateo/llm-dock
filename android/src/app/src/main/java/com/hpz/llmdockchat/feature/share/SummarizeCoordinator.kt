@@ -18,7 +18,7 @@ sealed interface SummarizeOutcome {
     /** The thread exists, tools are on it, and its claim is waiting to be sent. */
     data class Opened(val conversationId: String) : SummarizeOutcome
 
-    /** No usable remembered model — the sheet takes over with the intent intact (F14-R7). */
+    /** No usable remembered model — the sheet takes over with the intent intact. */
     data object ChooseModel : SummarizeOutcome
 
     /** Nothing was sent. The picker stays put with the reason on screen. */
@@ -33,7 +33,7 @@ interface SummarizeLauncher {
 }
 
 /**
- * The direct path (F14-R7): create a thread on the remembered model, put the
+ * The direct path: create a thread on the remembered model, put the
  * URL-fetching server on it, file the claim, and hand the caller the id to
  * open. Every step is one round trip and none of them starts a container, so
  * the tap costs what the server already had to do anyway.

@@ -21,7 +21,7 @@ sealed interface ModelDetailUiState {
     data class Loaded(
         val summary: ServiceSummary,
         val config: ServiceConfig? = null,
-        /** F11-R2's fourth criterion: Docker knows this container but
+        /** Docker knows this container but
          * `services.json` doesn't (a 404 on the config fetch). Shown as a
          * graceful partial view, never as [Failed]. */
         val configMissing: Boolean = false,
@@ -31,11 +31,11 @@ sealed interface ModelDetailUiState {
 }
 
 /**
- * F11-R1's detail screen. [summary] tracks the same live services stream the
- * Models list uses (F11-R1's first two criteria) — [ModelDetailScreen]
+ * The detail screen. [summary] tracks the same live services stream the
+ * Models list uses — [ModelDetailScreen]
  * collects [observeServicesStream] from a composition-scoped `LaunchedEffect`,
  * the same ownership split [ModelsViewModel] uses and for the same reason
- * (F11-R1's third criterion: navigating back and forward must not lose the
+  * (navigating back and forward must not lose the
  * live connection, which only holds if the stream is re-subscribed by a
  * fresh composition each time, not kept in this ViewModel's own scope across
  * a back-then-forward that recreates it).
@@ -76,9 +76,9 @@ class ModelDetailViewModel(
             }
 
             val config = servicesRepository.detail(serviceName).getOrElse {
-                // A failed config fetch is not fatal to the screen — F11-R1
-                // still needs to show live status even if the read-only
-                // config (F11-R2, Should) could not be loaded.
+                // A failed config fetch is not fatal to the screen: it still
+                // needs to show live status even if the read-only
+               // config could not be loaded.
                 null
             }
             _state.value = ModelDetailUiState.Loaded(summary = summary, config = config, configMissing = config == null)

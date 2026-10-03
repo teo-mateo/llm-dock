@@ -8,7 +8,7 @@ import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.OpenRouterAvailability
 
 /**
- * `GET /api/chat/settings/openrouter-models` (F03). Read-only from the
+ * `GET /api/chat/settings/openrouter-models`. Read-only from the
  * phone — never call the PUT/DELETE variants of this endpoint here; editing
  * the curated list is dashboard Tools-page work.
  */

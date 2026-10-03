@@ -2,14 +2,12 @@
 """Direct-API control for the reasoning-level sweep.
 
 Bypasses pi entirely: POSTs the same tasks straight to an OpenAI-compatible
-server (llama.cpp) using exactly the chat_template_kwargs that pi's
-"chat-template" thinking format sends for each pi level. This answers the
-question the pi sweep cannot on its own: is the server honoring the
-reasoning_effort strings, or only the enable_thinking on/off toggle?
+server (llama.cpp) using the chat_template_kwargs table below for each
+reasoning level. This answers the question the pi sweep cannot on its own:
+is the server honoring the reasoning_effort strings, or only the
+enable_thinking on/off toggle?
 
-Variant -> chat_template_kwargs (mirrors pi's buildChatTemplateValues for a
-model with thinkingLevelMap off->"none", low->"low", medium->"medium",
-high/xhigh/max->"xhigh"):
+Variant -> chat_template_kwargs:
 
     none    {"enable_thinking": false, "reasoning_effort": "none"}
     low     {"enable_thinking": true,  "reasoning_effort": "low"}

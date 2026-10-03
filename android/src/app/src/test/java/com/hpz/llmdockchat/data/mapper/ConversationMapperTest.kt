@@ -11,8 +11,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The wire↔domain seam for conversation rows (Architecture D6). The two
- * cases F02-R3 is most likely to get wrong: a null `active_run`, and one
+ * The wire↔domain seam for conversation rows. The two
+ * cases most likely to go wrong: a null `active_run`, and one
  * carrying a terminal status — both must map to "not generating".
  */
 class ConversationMapperTest {

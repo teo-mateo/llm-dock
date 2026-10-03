@@ -520,7 +520,7 @@ describe('ProjectPage open-editor mutation guard (regression: codex 2.1)', () =>
     mockMove.mockImplementation(() => new Promise(res => { resolveMove = res }))
     dragAndDrop(screen.getByTestId('tree-node-docs'), screen.getByTestId('tree-node-archive'))
     await waitFor(() => expect(mockMove).toHaveBeenCalledWith('p1', 'docs', 'archive/docs'))
-    // In flight: no writable textarea exists — the iteration-2 guard's
+    // In flight: no writable textarea exists — the guard's
     // pre-await dirty sample can't be raced by typing.
     expect(screen.queryByTestId('editor-textarea')).toBeNull()
 
@@ -586,8 +586,7 @@ describe('ProjectPage rename selection follow (regression: codex 1.1)', () => {
     // Selection followed docs/inner → notes/inner instead of falling back.
     await waitFor(() => expect(screen.getByTestId('crumb-notes/inner')).toBeTruthy())
     // And the expansion set followed too: the selected tree row is
-    // actually visible, not hidden inside a collapsed "notes" branch
-    // (regression: codex 3.1).
+    // actually visible, not hidden inside a collapsed "notes" branch.
     expect(screen.getByTestId('tree-node-notes/inner')).toBeTruthy()
   })
 

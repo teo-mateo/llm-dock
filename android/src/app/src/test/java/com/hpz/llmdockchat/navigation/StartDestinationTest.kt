@@ -16,7 +16,7 @@ class StartDestinationTest {
         )
     }
 
-    /** F01-R6: the credential renews the session, so a dead token is not a prompt. */
+    /** The credential renews the session, so a dead token is not a prompt. */
     @Test
     fun `a stored credential is enough on its own`() {
         assertEquals(

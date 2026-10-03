@@ -22,13 +22,13 @@ describe('pendingFlushDecision', () => {
   })
 
   it('abandons when the user has navigated to a different conversation', () => {
-    // codex iter 3 P1: a late getConversation resolving for C must not
+    // A late getConversation resolving for C must not
     // trigger a background send once the route is B.
     expect(pendingFlushDecision(pending, 'B', { id: 'C' }, false)).toBe('abandon')
   })
 
   it('waits (not abandon) while convId is null between ref-set and navigate commit', () => {
-    // Bug behind #46 not fixing /new-chat-issue: handleCreateAndSend sets
+    // handleCreateAndSend sets
     // pendingMsgRef.current synchronously then calls navigate(); a render
     // can fire with convId still null (route hasn't committed yet) and
     // pendingMsgRef already set. Treating that as 'abandon' would clear

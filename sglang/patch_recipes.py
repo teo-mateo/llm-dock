@@ -18,7 +18,8 @@ def patch_recipe(source):
     replace(r"--quantization modelopt_fp4", '--quantization "$LLM_DOCK_TARGET_QUANTIZATION"')
     replace(r"--mem-fraction-static 0\.981",
             '--mem-fraction-static "${PENNY_MEM_FRACTION_STATIC:-0.981}"')
-    # Older local builds hardcode capacity; current upstream uses these knobs.
+    # These knobs may be absent from a given upstream build, so absence is
+    # tolerated: plain str.replace no-ops here, unlike the raising replace().
     source = source.replace('--max-running-requests 4',
                             '--max-running-requests "${MAX_RUNNING_REQUESTS:-4}"')
     source = source.replace('--max-mamba-cache-size 24',
@@ -27,8 +28,8 @@ def patch_recipe(source):
                             'max_mamba_cache_size=${MAX_MAMBA_CACHE_SIZE:-24}')
     source = source.replace('--hicache-size 32',
                             '--hicache-size "${PENNY_HICACHE_SIZE_GB:-32}"')
-    # Include changes in the namespace itself, rather than overriding argv
-    # after the namespace helper has already run.
+    # Patch inside the namespace field list itself so the values exist before
+    # cache-identity derivation (see launcher.py), not overridden in argv later.
     replace(r'  --field "cuda_arch=12\.0"',
             '  --field "target_quantization=$LLM_DOCK_TARGET_QUANTIZATION" \\\n'
             '  --field "llm_dock_max_running_requests=${MAX_RUNNING_REQUESTS:-4}" \\\n'

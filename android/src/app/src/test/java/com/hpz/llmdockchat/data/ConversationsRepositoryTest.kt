@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** `GET/DELETE /api/chat/conversations*` end to end (F02). */
+/** `GET/DELETE /api/chat/conversations*` end to end. */
 class ConversationsRepositoryTest {
 
     private lateinit var server: MockWebServer
@@ -113,7 +113,7 @@ class ConversationsRepositoryTest {
         assertTrue(request.body?.utf8().orEmpty().contains(""""ids":["a","b"]"""))
     }
 
-    // -- create (F03-R1, F03-R2) --
+    // -- create --
 
     @Test
     fun `create with only a model sends just main_service`() = runTest {
@@ -141,7 +141,7 @@ class ConversationsRepositoryTest {
     }
 
     /**
-     * The load-bearing case (F03-R2): "Default" must send NEITHER `prompt_id`
+     * The load-bearing case: "Default" must send NEITHER `prompt_id`
      * NOR `main_system_prompt` — not nulls, not empty strings — so the server
      * falls back to its own configured default rather than treating an
      * explicit empty prompt as the conversation's system prompt.
@@ -167,7 +167,7 @@ class ConversationsRepositoryTest {
         assertEquals("main_service is required", http.message)
     }
 
-    // -- setMcpServers (F03-R3) --
+    // -- setMcpServers --
 
     @Test
     fun `setMcpServers PUTs mcp_servers_json as a JSON-encoded array string`() = runTest {
@@ -185,7 +185,7 @@ class ConversationsRepositoryTest {
     }
 
     /**
-     * F15-R4's load-bearing pair. `ApiJson` runs with `explicitNulls = false`, so
+     * The load-bearing pair. `ApiJson` runs with `explicitNulls = false`, so
      * the clear cannot be a serialized data class — that would PUT `{}`, which
      * the server answers with 200 and its usual "everything you asked for"
      * payload, clearing nothing. Asserting the exact body is the only way to
@@ -228,7 +228,7 @@ class ConversationsRepositoryTest {
         assertTrue(http.message.contains("not offered"))
     }
 
-    // -- setPrompt (F03 follow-up: prompt_id reference) --
+    // -- setPrompt (prompt_id reference) --
 
     @Test
     fun `selecting a prompt PUTs the id as the whole body`() = runTest {

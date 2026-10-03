@@ -9,7 +9,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Silent re-authentication (F01-R6): exchanges the stored credential for a
+ * Silent re-authentication: exchanges the stored credential for a
  * fresh session token so the user only ever sees Connect after an explicit
  * sign-out or a credential the dashboard rejects.
  *

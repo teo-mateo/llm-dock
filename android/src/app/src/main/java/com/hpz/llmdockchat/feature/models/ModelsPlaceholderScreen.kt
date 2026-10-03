@@ -18,10 +18,9 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Placeholder for the Models tab (F10). F02 only needs it to exist as a
- * bottom-bar destination so the two-tab scaffold has somewhere to switch to
- * (Architecture D12) — start/stop, logs and everything else in `docs/F10-…`
- * is out of scope here.
+ * Legacy placeholder for the Models tab, no longer reachable: the real
+  * models list replaced it. It existed so the two-tab scaffold had somewhere
+  * to switch to while start/stop, logs and the rest were still unbuilt.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

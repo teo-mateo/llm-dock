@@ -46,7 +46,7 @@ data class ParseWarningDto(
 /**
  * `last_run` on a single-conversation load — the trimmed shape that, unlike
  * `active_run`, carries `error`. It is how a run that failed while the app was
- * elsewhere surfaces on reopening the thread (F04-R8).
+ * elsewhere surfaces on reopening the thread.
  */
 @Serializable
 data class LastRunDto(
@@ -79,7 +79,7 @@ data class ConversationDetailDto(
     @SerialName("mcp_servers") val mcpServers: List<String> = emptyList(),
     /** The managed prompt this conversation references, or null for none. */
     @SerialName("prompt_id") val promptId: String? = null,
-    /** F15: null / absent = "model default" (the server sends no reasoning field). */
+    /** Null / absent = "model default" (the server sends no reasoning field). */
     @SerialName("reasoning_level") val reasoningLevel: String? = null,
     @SerialName("active_run") val activeRun: ActiveRunDto? = null,
     @SerialName("last_run") val lastRun: LastRunDto? = null,
@@ -97,7 +97,7 @@ data class SendMessageRequestDto(
     val images: List<String>? = null,
 )
 
-/** `POST …/cancel-active-run` body — the guard against a stale Stop (F04-R6). */
+/** `POST …/cancel-active-run` body — the guard against a stale Stop. */
 @Serializable
 data class CancelRunRequestDto(@SerialName("expected_run_id") val expectedRunId: String? = null)
 
@@ -109,7 +109,7 @@ data class CancelRunRequestDto(@SerialName("expected_run_id") val expectedRunId:
 @Serializable
 data class CancelRunResponseDto(val run: LastRunDto? = null)
 
-/** `DELETE …/messages/<id>` → `{"ok": true}` (F06). Nothing else is returned —
+/** `DELETE …/messages/<id>` → `{"ok": true}`. Nothing else is returned —
  *  the caller already knows which message it deleted. */
 @Serializable
 data class DeleteMessageResponseDto(val ok: Boolean = false)

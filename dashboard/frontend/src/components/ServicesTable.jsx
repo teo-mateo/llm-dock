@@ -562,7 +562,7 @@ function PortCell({ service, onSetPublicPort }) {
 }
 
 // Mobile (md:hidden) stacked card — same data/actions as a table row,
-// no horizontal scroll (issue #39).
+// no horizontal scroll.
 function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onToggleFavorite, onEdit, onViewLogs, onDelete }) {
   const engine = getEngine(service.name)
   const infra = isInfra(service.name)

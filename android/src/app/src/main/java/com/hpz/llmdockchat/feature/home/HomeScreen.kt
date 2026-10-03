@@ -30,9 +30,9 @@ import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Placeholder for the conversation list (F02). It shows what F01 can prove:
- * which server the app is talking to, that the stored session actually works,
- * and the way back out (F01-R7).
+ * Legacy placeholder for the conversation list, no longer reachable. It
+  * showed what sign-in could prove: which server the app is talking to, that the stored session actually works,
+ * and the way back out.
  */
 @Composable
 fun HomeScreen(viewModel: HomeViewModel, onSignedOut: () -> Unit, modifier: Modifier = Modifier) {

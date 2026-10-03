@@ -19,7 +19,7 @@ import org.junit.Test
 import java.util.concurrent.TimeUnit
 
 /**
- * TEMPORARY independent review probe (f00-review, narrow re-review pass).
+ * Independent review probe.
  *
  * Safe to delete — it duplicates coverage `OkHttpSseTransportTest` already
  * owns and adds no production dependency. Deliberately kept to the one case

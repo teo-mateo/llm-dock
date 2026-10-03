@@ -10,9 +10,9 @@ import org.junit.Test
 /**
  * [ServiceSummary.isChatCapable] against the dashboard's own filter
  * (`dashboard/frontend/src/hooks/useRunningServices.js`): a recognised engine
- * prefix AND `(kind || 'chat') === 'chat'`. F07's brief called out checking
- * this rather than trusting F03's build of it — the blank-kind case here is
- * exactly the gap that check found: F03's `kind == "chat"` rejected a blank
+ * prefix AND `(kind || 'chat') === 'chat'`. The web filter was checked checking
+ * against the real service list rather than trusting the build — the blank-kind case here is
+ * exactly the gap that check found: a `kind == "chat"` check rejected a blank
  * `kind`, where the web treats it as `"chat"`.
  */
 class ServiceSummaryTest {
@@ -53,7 +53,7 @@ class ServiceSummaryTest {
     @Test
     fun `a stopped chat-capable service is still chat-capable, just not running`() {
         // Data-model level only: isChatCapable is a static property of the
-        // service, independent of its current status. Since F07-RO, the
+        // service, independent of its current status. Since the owner-requested
         // picker itself additionally requires isRunning before a local
         // service is shown at all — see ModelPickerSheetTest.
         val service = ServiceSummary("ds4-a", "exited", "chat")
@@ -113,9 +113,9 @@ class ServiceSummaryTest {
     }
 
     /**
-     * F15-R8's proof for the 90 % of services that declare no ladder: the new
-     * field defaults to empty, so a row that predates F15 is still equal to
-     * itself. Every pre-F15 assertion in this suite stays green unchanged.
+     * The proof for the 90 % of services that declare no ladder: the new
+     * field defaults to empty, so a row that predates the ladder field is equal to
+     * itself. Every pre-ladder assertion in this suite stays green unchanged.
      */
     @Test
     fun `a row with no reasoning_levels maps to exactly the pre-F15 summary`() {

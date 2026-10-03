@@ -1,25 +1,25 @@
 package com.hpz.llmdockchat.data.model
 
-/** A row of `GET /api/services` (F03, F07, F10). */
+/** A row of `GET /api/services`. */
 data class ServiceSummary(
     val name: String,
     val status: String,
     val kind: String,
-    /** `host_port` server-side — the port the picker shows (F07-R1). 0 when the server omitted it. */
+    /** `host_port` server-side — the port the picker shows. 0 when the server omitted it. */
     val port: Int = 0,
-    /** Set on the dashboard; the phone only ever reads it (F07-R5). */
+    /** Set on the dashboard; the phone only ever reads it. */
     val favorite: Boolean = false,
-    /** Only set when [status] is `"exited"` (F10-R1's third criterion). */
+    /** Only set when [status] is `"exited"`. */
     val exitCode: Int? = null,
     /** Weights-on-disk size, pre-formatted server-side (e.g. `"25.74 GB"`). Null when unknown. */
     val modelSizeStr: String? = null,
-    /** The container's creation time, ISO-8601 UTC. Not a start time — see [[F10-models-list.md]]'s Deviations. */
+    /** The container's creation time, ISO-8601 UTC. Not a start time. */
     val createdAt: String? = null,
     /**
-     * F15: reasoning levels this service declares, in declaration order —
+     * Reasoning levels this service declares, in declaration order —
      * never sorted, never completed. Empty when it declares none (and the
      * server collapses an invalid declaration to none too), which is what
-     * hides the level control on 90 % of services (F15-R3, F15-R8).
+     * hides the level control on 90 % of services.
      */
     val reasoningLevels: List<String> = emptyList(),
     /**

@@ -1,10 +1,10 @@
-"""Tests for the background ChatRunner (Phase 3 of #58).
+"""Tests for the background ChatRunner.
 
 The runner executes a turn and persists the result without any Flask SSE
 response. Model/tool streams are monkeypatched — no Docker, GPU, or model.
 
 These use a temp FILE-backed ChatDB (not :memory:) so the persistence path
-matches Phase 4, where the runner executes on a background thread and the
+matches production, where the runner executes on a background thread and the
 shared :memory: connection (check_same_thread=True) would break.
 """
 import json
