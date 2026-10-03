@@ -83,6 +83,26 @@ class LogsViewModelTest {
         assertEquals(LogsConnection.LIVE, state.connection)
     }
 
+    @Test
+    fun `live lines stay live and a new snapshot returns to connecting`() {
+        val vm = viewModel()
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("historical line"))
+        assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        vm.onStreamEvent(LogStreamEvent.Log("live line"))
+        assertEquals(LogsConnection.LIVE, (vm.state.value as LogsUiState.Loaded).connection)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("new snapshot line"))
+        assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+        assertEquals(LogsConnection.ENDED, (vm.state.value as LogsUiState.Loaded).connection)
+    }
+
     /** F12-R4: a line with no recognisable level renders plainly, not crashing or vanishing. */
     @Test
     fun `an ERROR line is tagged, a plain line degrades to plain`() {

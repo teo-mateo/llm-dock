@@ -72,6 +72,7 @@ class LogsViewModel(
     private val lines = mutableListOf<LogLine>()
     private var boundaryIndex: Int? = null
     private var sawAnyFrame = false
+    private var receivingSnapshot = true
 
     /** Collected by [LogsScreen] — see the class doc. Never started from here. */
     fun observeLogStream(): Flow<LogStreamEvent> = logsStreamRepository.stream(serviceName)
@@ -79,13 +80,17 @@ class LogsViewModel(
     fun onStreamEvent(event: LogStreamEvent) {
         sawAnyFrame = true
         when (event) {
-            is LogStreamEvent.SnapshotStart -> publish(LogsConnection.CONNECTING)
+            is LogStreamEvent.SnapshotStart -> {
+                receivingSnapshot = true
+                publish(LogsConnection.CONNECTING)
+            }
             is LogStreamEvent.Log -> {
                 lines += LogLine(event.line, classifyLogLevel(event.line))
-                publish(LogsConnection.CONNECTING)
+                publish(if (receivingSnapshot) LogsConnection.CONNECTING else LogsConnection.LIVE)
             }
             is LogStreamEvent.SnapshotEnd -> {
                 boundaryIndex = lines.size
+                receivingSnapshot = false
                 publish(LogsConnection.LIVE)
             }
             is LogStreamEvent.StreamEnd -> publish(LogsConnection.ENDED)
