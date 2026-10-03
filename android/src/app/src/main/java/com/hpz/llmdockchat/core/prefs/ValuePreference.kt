@@ -39,6 +39,7 @@ class ValuePreference<T : Any>(
     private val key = stringPreferencesKey(name)
     private val state = MutableStateFlow<Stored<T>>(Stored.Loading)
     private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val writeLock = Any()
 
     val flow: StateFlow<Stored<T>> = state.asStateFlow()
 
@@ -70,14 +71,29 @@ class ValuePreference<T : Any>(
     }
 
     fun set(value: T) {
-        state.value = Stored.Ready(value)
-        val encoded = encode(value)
-        enqueue { dataStore.edit { it[key] = encoded } }
+        synchronized(writeLock) {
+            state.value = Stored.Ready(value)
+            val encoded = encode(value)
+            enqueue { dataStore.edit { it[key] = encoded } }
+        }
     }
 
     fun clear() {
-        state.value = Stored.Ready(null)
-        enqueue { dataStore.edit { it.remove(key) } }
+        synchronized(writeLock) {
+            state.value = Stored.Ready(null)
+            enqueue { dataStore.edit { it.remove(key) } }
+        }
+    }
+
+    fun clearIf(predicate: (T) -> Boolean) {
+        get()
+        synchronized(writeLock) {
+            val value = state.value.valueOrNull ?: return
+            if (predicate(value)) {
+                state.value = Stored.Ready(null)
+                enqueue { dataStore.edit { it.remove(key) } }
+            }
+        }
     }
 
     private fun enqueue(write: suspend () -> Unit) {

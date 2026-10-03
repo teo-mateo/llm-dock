@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.core.auth
 
+import com.hpz.llmdockchat.core.net.BaseUrl
+
 /**
  * Exchanges the stored credential for a fresh session token, or returns null
  * when there is no credential to exchange.
@@ -10,6 +12,7 @@ package com.hpz.llmdockchat.core.auth
  */
 fun interface Reauthenticator {
     fun reauthenticate(): String?
+    fun reauthenticate(server: BaseUrl?): String? = reauthenticate()
 
     companion object {
         val NoCredential = Reauthenticator { null }
@@ -24,4 +27,5 @@ class ReauthenticatorHolder(
     @Volatile var delegate: Reauthenticator = Reauthenticator.NoCredential,
 ) : Reauthenticator {
     override fun reauthenticate(): String? = delegate.reauthenticate()
+    override fun reauthenticate(server: BaseUrl?): String? = delegate.reauthenticate(server)
 }

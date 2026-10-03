@@ -4,10 +4,13 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.ValuePreference
+import com.hpz.llmdockchat.core.prefs.valueOrNull
+import com.hpz.llmdockchat.core.net.ServerUrlStore
+import com.hpz.llmdockchat.core.net.BaseUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -26,15 +29,18 @@ interface CredentialStore {
 
     /** Blocks until the first disk read lands; for network threads only. */
     fun current(): Credential?
+    fun current(server: BaseUrl?): Credential? = current()
 
-    fun save(credential: Credential)
+    fun save(credential: Credential, server: BaseUrl? = null)
     fun clear()
+    fun clear(server: BaseUrl?) = clear()
 }
 
 class DataStoreCredentialStore(
     dataStore: DataStore<Preferences>,
     scope: CoroutineScope,
     cipher: SecretCipher,
+    private val serverUrlStore: ServerUrlStore,
 ) : CredentialStore {
 
     private val pref = ValuePreference(
@@ -44,22 +50,31 @@ class DataStoreCredentialStore(
         // A blob that will not decrypt — a restored backup, a reset Keystore —
         // reads as "no credential" rather than as an error. The cost is one
         // sign-in, and the alternative is an app that cannot start.
-        decode = { stored -> cipher.decrypt(stored)?.let(Credential::decode) },
-        encode = { credential -> cipher.encrypt(Credential.encode(credential)).orEmpty() },
+        decode = { stored -> cipher.decrypt(stored)?.let { raw ->
+            ServerBoundSecret.decode(raw, Credential::decode)
+        } },
+        encode = { bound -> cipher.encrypt(bound.encode(Credential::encode)).orEmpty() },
     )
 
-    override val hasCredential: StateFlow<Stored<Boolean>> = pref.flow
-        .map { stored ->
-            when (stored) {
-                Stored.Loading -> Stored.Loading
-                is Stored.Ready -> Stored.Ready(stored.value != null)
-            }
+    override val hasCredential: StateFlow<Stored<Boolean>> = combine(pref.flow, serverUrlStore.baseUrl) { secret, server ->
+        when {
+            secret is Stored.Loading || server is Stored.Loading -> Stored.Loading
+            else -> Stored.Ready(secret.valueOrNull?.server == server.valueOrNull && secret.valueOrNull != null)
         }
-        .stateIn(scope, SharingStarted.Eagerly, Stored.Loading)
+    }.stateIn(scope, SharingStarted.Eagerly, Stored.Loading)
 
-    override fun current(): Credential? = pref.get()
-    override fun save(credential: Credential) = pref.set(credential)
+    override fun current(): Credential? = current(serverUrlStore.current())
+    override fun current(server: BaseUrl?): Credential? = pref.get()?.takeIf { it.server == server }?.secret
+    override fun save(credential: Credential, server: BaseUrl?) {
+        val target = checkNotNull(server ?: serverUrlStore.current())
+        serverUrlStore.ifCurrent(target) { pref.set(ServerBoundSecret(target, credential)) }
+    }
     override fun clear() = pref.clear()
+    override fun clear(server: BaseUrl?) {
+        if (server != null) serverUrlStore.ifCurrent(server) {
+            pref.clearIf { it.server == server }
+        }
+    }
 
     /** Test support: writes are enqueued, so "on disk yet?" needs a join. */
     internal suspend fun awaitPendingWrites() = pref.awaitPendingWrites()

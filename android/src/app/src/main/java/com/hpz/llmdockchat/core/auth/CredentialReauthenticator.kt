@@ -2,6 +2,8 @@ package com.hpz.llmdockchat.core.auth
 
 import com.hpz.llmdockchat.core.error.AppError
 import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.net.BaseUrl
+import com.hpz.llmdockchat.core.net.ServerUrlStore
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicInteger
@@ -32,11 +34,12 @@ class CredentialReauthenticator(
     private val credentials: CredentialStore,
     private val sessionState: SessionState,
     private val maxConsecutiveFailures: Int = DEFAULT_MAX_CONSECUTIVE_FAILURES,
-    private val exchange: (Credential) -> Result<String>,
+    private val serverUrlStore: ServerUrlStore? = null,
+    private val exchange: (Credential, BaseUrl?) -> Result<String>,
 ) : Reauthenticator {
 
     private val lock = ReentrantLock()
-    private var inFlight: FutureTask<String?>? = null
+    private var inFlight: Pair<BaseUrl?, FutureTask<String?>>? = null
     private val consecutiveFailures = AtomicInteger(0)
 
     /** Called when the user signs in, so a fresh credential starts from zero. */
@@ -44,29 +47,33 @@ class CredentialReauthenticator(
         consecutiveFailures.set(0)
     }
 
-    override fun reauthenticate(): String? {
+    override fun reauthenticate(): String? = reauthenticate(serverUrlStore?.current())
+
+    override fun reauthenticate(server: BaseUrl?): String? {
         if (consecutiveFailures.get() >= maxConsecutiveFailures) return null
+        if (!isCurrent(server)) return null
 
         var owner = false
         val task = lock.withLock {
-            inFlight ?: FutureTask(::exchangeOnce).also {
-                inFlight = it
-                owner = true
-            }
+            inFlight?.takeIf { it.first == server }?.second
+                ?: FutureTask { exchangeOnce(server) }.also {
+                    inFlight = server to it
+                    owner = true
+                }
         }
 
         if (owner) {
             try {
                 task.run()
             } finally {
-                lock.withLock { inFlight = null }
+                lock.withLock { if (inFlight?.second === task) inFlight = null }
             }
         }
 
         return try {
-            task.get()
+            task.get()?.takeIf { isCurrent(server) }
         } catch (e: ExecutionException) {
-            consecutiveFailures.incrementAndGet()
+            if (isCurrent(server)) consecutiveFailures.incrementAndGet()
             null
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -74,35 +81,47 @@ class CredentialReauthenticator(
         }
     }
 
-    private fun exchangeOnce(): String? {
+    private fun exchangeOnce(server: BaseUrl?): String? {
+        if (!isCurrent(server)) return null
         // Nothing to exchange: a TOTP sign-in stores no credential, because no
         // endpoint this app may call hands out the secret. Say so plainly
         // rather than dropping the user on a bare Connect screen.
-        val credential = credentials.current() ?: return refuse(NO_CREDENTIAL)
+        val credential = credentials.current(server) ?: return refuse(NO_CREDENTIAL, server)
 
-        val result = exchange(credential)
+        val result = exchange(credential, server)
+        if (!isCurrent(server)) return null
         result.getOrNull()?.takeIf { it.isNotBlank() }?.let { token ->
-            consecutiveFailures.set(0)
-            sessionState.authenticated()
-            return token
+            return if (withCurrent(server) {
+                consecutiveFailures.set(0)
+                sessionState.authenticated()
+            }) token else null
         }
 
         // 401 from `/api/auth/session` means the password itself is wrong — the
         // dashboard's password changed, or it was mistyped and this is the
         // first request since. Retrying can never succeed, so drop it.
         if (result.exceptionOrNull()?.appError.isRejection()) {
-            credentials.clear()
-            return refuse(REJECTED)
+            credentials.clear(server)
+            return refuse(REJECTED, server)
         }
 
-        consecutiveFailures.incrementAndGet()
+        withCurrent(server) { consecutiveFailures.incrementAndGet() }
         return null
     }
 
-    private fun refuse(reason: String): String? {
-        sessionState.requireAuthentication(reason)
+    private fun refuse(reason: String, server: BaseUrl?): String? {
+        withCurrent(server) { sessionState.requireAuthentication(reason) }
         return null
     }
+
+    private fun withCurrent(server: BaseUrl?, action: () -> Unit): Boolean = when {
+        serverUrlStore == null -> { action(); true }
+        server == null -> false
+        else -> serverUrlStore.ifCurrent(server, action)
+    }
+
+    private fun isCurrent(server: BaseUrl?): Boolean =
+        serverUrlStore == null || (server != null && serverUrlStore.current() == server)
 
     private fun AppError?.isRejection(): Boolean = when (this) {
         AppError.Unauthenticated -> true

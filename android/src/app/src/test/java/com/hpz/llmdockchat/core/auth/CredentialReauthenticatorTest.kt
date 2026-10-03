@@ -30,7 +30,7 @@ class CredentialReauthenticatorTest {
         credentials = credentials,
         sessionState = sessionState,
         maxConsecutiveFailures = maxConsecutiveFailures,
-        exchange = exchange,
+        exchange = { credential, _ -> exchange(credential) },
     )
 
     private fun rejected() =

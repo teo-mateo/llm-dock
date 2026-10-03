@@ -26,32 +26,48 @@ class AuthInterceptor(
     private val tokenStore: TokenStore,
     private val sessionState: SessionState,
     private val reauthenticator: Reauthenticator = Reauthenticator.NoCredential,
+    private val serverUrlStore: ServerUrlStore? = null,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val active = serverUrlStore?.current()
+        if (!Endpoints.establishesSession(request) && serverUrlStore != null &&
+            (active == null || !active.contains(request.url))
+        ) {
+            throw ApiException(AppError.Unauthenticated)
+        }
         val outgoing = when {
             // The caller brought its own credential — /api/auth/session posts
             // the dashboard password as its bearer.
             request.header(AUTHORIZATION) != null -> request
             Endpoints.establishesSession(request) -> request
-            else -> request.newBuilder().header(AUTHORIZATION, "Bearer ${bearer()}").build()
+            else -> request.newBuilder().header(AUTHORIZATION, "Bearer ${bearer(active)}").build()
         }
 
         val response = chain.proceed(outgoing)
-        response.header(TOTP_TOKEN_HEADER)?.takeIf { it.isNotBlank() }?.let(tokenStore::update)
+        if (!Endpoints.establishesSession(outgoing) &&
+            (serverUrlStore == null || (active != null &&
+                active.contains(outgoing.url) && serverUrlStore.current() == active))
+        ) {
+            response.header(TOTP_TOKEN_HEADER)?.takeIf { it.isNotBlank() }?.let { tokenStore.update(it, active) }
+        }
         return response
     }
 
-    private fun bearer(): String {
-        tokenStore.current()?.takeIf { it.isNotBlank() }?.let { return it }
+    private fun bearer(server: BaseUrl?): String {
+        tokenStore.current(server)?.takeIf { it.isNotBlank() }?.let { return it }
 
-        val fresh = reauthenticator.reauthenticate()?.takeIf { it.isNotBlank() }
-        if (fresh == null) {
-            sessionState.requireAuthentication()
+        val fresh = reauthenticator.reauthenticate(server)?.takeIf { it.isNotBlank() }
+        if (serverUrlStore != null && serverUrlStore.current() != server) {
             throw ApiException(AppError.Unauthenticated)
         }
-        tokenStore.update(fresh)
+        if (fresh == null) {
+            if (serverUrlStore == null) sessionState.requireAuthentication()
+            else if (server != null) serverUrlStore.ifCurrent(server) { sessionState.requireAuthentication() }
+            throw ApiException(AppError.Unauthenticated)
+        }
+        tokenStore.update(fresh, server)
         return fresh
     }
 

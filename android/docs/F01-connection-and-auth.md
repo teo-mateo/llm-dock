@@ -195,6 +195,14 @@ yet", not "no".
 
 ## Deviations
 
+**Saved sessions are bound to one normalized server address.** A candidate
+address is probed and authenticated without changing the active address. A
+failed attempt leaves the previous session with its previous server; a
+successful attempt replaces the address, token and saved password together.
+Tokens and passwords saved by older builds had no server identity, so they are
+ignored after upgrade and the user signs in once more. The address remains
+prefilled. This avoids guessing which server an old credential belongs to.
+
 **F01-R5 — the TOTP secret is not stored, and cannot be.** R5 offers
 "the password, or the TOTP secret if the user chooses to store it" as the
 credential. Only the password is implemented.

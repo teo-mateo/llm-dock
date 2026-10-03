@@ -53,7 +53,7 @@ class ConnectViewModel(
     val state: StateFlow<ConnectUiState> = _state.asStateFlow()
 
     init {
-        // Prefilled on every later visit, including after a sign-out,
+        // Prefilled on every later visit (F01-R1), including after a sign-out,
         // which keeps the address on purpose.
         viewModelScope.launch {
             serverUrlStore.baseUrl.collect { stored ->
@@ -82,7 +82,7 @@ class ConnectViewModel(
     }
 
     /**
-     * Six digits and nothing else. Submitting on the sixth removes the
+     * Six digits and nothing else. Submitting on the sixth (F01-R3) removes the
      * button press that a code with a 30-second life cannot afford.
      */
     fun onCodeChange(value: String) {
@@ -95,7 +95,7 @@ class ConnectViewModel(
         val current = _state.value
         if (current.busy) return
 
-        // Rejected inline, before anything reaches the network.
+        // Rejected inline, before anything reaches the network (F01-R1).
         val server = when (val parsed = BaseUrl.normalize(current.address)) {
             is BaseUrlResult.Invalid -> {
                 _state.value = current.copy(addressError = parsed.reason)
@@ -106,11 +106,7 @@ class ConnectViewModel(
 
         _state.value = current.copy(busy = true, failure = null, notice = null, addressError = null)
         viewModelScope.launch {
-            // The address has to be stored before the probe: every request is
-            // built from it, so there is nowhere else to read it from.
-            serverUrlStore.set(server)
-
-            when (val reach = reachability.probe()) {
+            when (val reach = reachability.probe(server)) {
                 Reachability.Dashboard -> Unit
                 is Reachability.Unreachable -> return@launch fail(
                     "Could not reach a server at ${server.value}. ${reach.detail}".trim(),
@@ -135,7 +131,7 @@ class ConnectViewModel(
     /**
      * The address is left exactly as typed, and so is the method — only the
      * secret is cleared, so the next attempt starts from an empty code or an
-     * empty password rather than from a stale one.
+     * empty password rather than from a stale one (F01-R3, F01-R4).
      */
     private fun fail(message: String) {
         _state.value = _state.value.copy(busy = false, failure = message, code = "")
