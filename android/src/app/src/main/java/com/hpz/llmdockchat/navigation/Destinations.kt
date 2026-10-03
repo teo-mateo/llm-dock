@@ -23,6 +23,15 @@ object Destinations {
     /** The share-target picker, pushed on top of [TABS] without the bottom bar. */
     const val SHARE_PICKER = "share_picker"
 
+    /**
+     * The signed-in account screen — the server address, what keeps the session
+     * alive, and sign out. Pushed on top of [TABS] without the bottom bar, and
+     * deliberately a destination rather than a sheet: signing out clears the whole
+     * authenticated graph, and a sheet would be left floating over a list that
+     * can no longer load.
+     */
+    const val ACCOUNT = "account"
+
     private const val THREAD_ROUTE = "thread"
     const val THREAD = "$THREAD_ROUTE/{conversationId}"
     fun thread(conversationId: String) = "$THREAD_ROUTE/$conversationId"
