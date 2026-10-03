@@ -840,6 +840,7 @@ class ThreadViewModel(
             } else {
                 loadedCurrent.thread.messages
             }
+            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
             _state.value = loadedCurrent.copy(
                 sending = false,
                 thread = loadedCurrent.thread.copy(streaming = null, messages = messages),
@@ -847,7 +848,6 @@ class ThreadViewModel(
                 attachments = loadedCurrent.attachments.ifEmpty { restoreOnEarlyFailure?.images.orEmpty() },
                 actionError = error.appError.displayMessage,
             )
-            if (loadedCurrent.composer.isBlank() && restored.isNotBlank()) drafts.save(conversationId, restored)
             return
         }
 
