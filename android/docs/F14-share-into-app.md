@@ -194,9 +194,9 @@ where Android reclaims the app.
 - \[x\] Share text → pick a chat → force-stop the app → relaunch: the
       thread opens with the text still in the composer.
 - \[x\] Same for an image: the attachment is still staged after a
-      force-stop (bytes copied to app storage at intent time — the
-      source `content://` grant does not outlive the receiving
-      activity).
+      force-stop (bytes copied to app storage as soon as the provider
+      read finishes — the source `content://` grant does not outlive
+      the receiving activity).
 - \[x\] A 401 round trip \(F00-R3\) does not lose the staged content.
 - \[x\] Sending or leaving the thread clears the staged record — the next
       visit to the thread shows no ghost attachment.
@@ -292,9 +292,13 @@ Precedence rules (decision 4.7): `EXTRA_TEXT` wins for `text/plain`;
 `EXTRA_STREAM` wins for `image/*`; a `text/plain` share with only
 `EXTRA_STREAM` is a text file.
 
-The `EXTRA_STREAM` content must be **copied into app storage
-immediately** on intent receipt — the read grant is valid only for the
-receiving activity's lifetime.
+The `EXTRA_STREAM` content must be **read while the receiving activity is
+alive** — the read grant is valid only for that lifetime — and written to app
+storage before the picker hands the share to a conversation. The read is not
+allowed on the main thread: the picker opens on a "reading" placeholder, the
+consuming actions unlock when the bytes land, and an import cut short by
+process death leaves no placeholder behind (the user re-shares rather than the
+picker sitting on "reading" forever).
 
 ### 4.3 Pending-share store
 
@@ -393,6 +397,17 @@ No new endpoints, no new server code (R-A).
   files into the message, and this feature does the same (F14-R3).
   Recorded here so the plan never describes a file attachment the
   backend cannot hold.
+- **Provider reads moved off the main thread** (issue 278). The intent
+  originally decoded, downscaled, compressed and wrote the shared bytes inside
+  `onCreate`, and a gallery pick or camera capture did the same inside its
+  result callback — hundreds of milliseconds of UI freeze on a camera-sized
+  original, and an unbounded stall on a cloud-backed provider stream. Intake now
+  claims the delivery's identity synchronously and reads the bytes on the
+  application's I/O scope, which is why a stream-backed share appears in the
+  picker as a placeholder first: the alternative is a picker that opens late
+  enough to look broken. Two consequences the UI carries rather than hides: the
+  consuming actions wait for the content, and a slow provider is visible as
+  "Reading shared content…".
 - **No mockup exists for this feature.** The 16 validated screens have
   no share-target screen; the picker is specified from the conversation
   list's visual language rather than a signed-off drawing.
@@ -468,8 +483,12 @@ No new endpoints, no new server code (R-A).
 
 - **JVM tests:** `SharedContentParser` (MIME classification, text-file
   truncation, precedence rules), the pending-share store (reassign,
-  consume-once, clear-on-leave), `ShareTargetViewModel` (four states,
-  ordering), thread apply-once semantics.
+  consume-once, clear-on-leave, write ordering on the I/O scope),
+  `ShareTargetViewModel` (four states,
+  ordering), thread apply-once semantics, `ShareImport` (what needs a read at
+  all, the typed failure when the provider throws, a late read losing to a newer
+  share), `ThreadAttachmentImportTest` (the composer's busy/arrived/failed
+  states for a pick).
 - **Device:** extend `android/scripts/dev.sh` with share helpers, e.g.
   `dev.sh share-text "…"` and `dev.sh share-image <uri>`, wrapping
   `adb shell am start -a android.intent.action.SEND …`. Image shares

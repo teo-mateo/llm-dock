@@ -1,11 +1,14 @@
 package com.hpz.llmdockchat.feature.share
 
 import com.hpz.llmdockchat.core.prefs.DraftStore
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -32,40 +35,78 @@ import java.io.File
  * it, and never backed up. The text half of a share goes through
  * [DraftStore] (existing per-conversation drafts); only attachments live
  * here.
+ *
+ * Every write is queued on [scope] and applied in call order, the
+ * [com.hpz.llmdockchat.core.prefs.ValuePreference] arrangement: the in-memory
+ * flow updates synchronously so the UI never waits on a file, and the disk write
+ * happens later, on I/O, without the ordering hazard that an unordered write
+ * brings (`clearPending` immediately followed by `stage` must not resurrect a
+ * share). [drain] is how a reader asks for "everything I enqueued has reached
+ * disk", which is what makes a pick-then-open round trip behave.
  */
-class SharedDraftStore(private val dir: File) {
+class SharedDraftStore(
+    private val dir: File,
+    scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined),
+) {
 
     private val _pending = MutableStateFlow<StagedShare?>(readPending())
     val pending: StateFlow<StagedShare?> = _pending.asStateFlow()
 
     private val _handled = MutableStateFlow(readHandledToken())
 
+    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    init {
+        scope.launch {
+            for (write in writes) runCatching { write() }
+        }
+    }
+
     /** The last delivery claimed by intake; a redelivery with this token is refused. */
     val handledToken: String? get() = _handled.value
 
     /**
-     * Called at intent time, on the main thread — small files, one-off.
-     * [token] records the delivery as handled *before* the pending record is
-     * written: the crash window between the two then loses a share (the user
-     * re-shares) rather than replaying one, the safe direction for a
+     * Called at intent time. [token] claims the delivery before the pending
+     * record is queued: the crash window between the two then loses a share (the
+     * user re-shares) rather than replaying one, the safe direction for a
      * consume-once flow.
      */
     fun stage(share: StagedShare, token: String? = null) {
         if (token != null) rememberHandled(token)
-        writePending(share)
         _pending.value = share
+        enqueue { writePending(share) }
     }
 
     /** Claims a delivery without staging anything — the [ShareIntake.KeepHydrated] path. */
     fun rememberHandled(token: String) {
-        writeHandled(token)
         _handled.value = token
+        enqueue { writeHandled(token) }
+    }
+
+    /**
+     * A stream-backed share is being read. In memory only: an import cut short by
+     * process death leaves no record, so the user re-shares instead of the picker
+     * sitting on "reading" forever.
+     */
+    fun beginImport() {
+        _pending.value = StagedShare(importing = true)
+    }
+
+    /**
+     * Replaces the [beginImport] placeholder. A no-op once the user dismissed the
+     * picker — content that arrives for a share already thrown away stays thrown
+     * away.
+     */
+    fun finishImport(share: StagedShare) {
+        if (_pending.value?.importing != true) return
+        _pending.value = share
+        enqueue { writePending(share) }
     }
 
     /** Dismissing the picker, or a share already consumed by a pick. */
     fun clearPending() {
-        deletePending()
         _pending.value = null
+        enqueue { deletePending() }
     }
 
     /**
@@ -91,18 +132,20 @@ class SharedDraftStore(private val dir: File) {
      * follows it, cancelling the action the user just took.
      */
     fun stageForAutoSend(conversationId: String, message: String) {
-        dir.mkdirs()
-        val file = autoSendFile(conversationId)
-        val tmp = File(dir, "${file.name}.tmp")
-        tmp.writeText(message)
-        tmp.renameTo(file)
+        enqueue {
+            dir.mkdirs()
+            val file = autoSendFile(conversationId)
+            val tmp = File(dir, "${file.name}.tmp")
+            tmp.writeText(message)
+            tmp.renameTo(file)
+        }
         clearPending()
     }
 
     /** Reads the claim and spends it, so no second visit can send it again. */
-    suspend fun takeAutoSend(conversationId: String): String? = withContext(Dispatchers.IO) {
+    suspend fun takeAutoSend(conversationId: String): String? = drain {
         val file = autoSendFile(conversationId)
-        if (!file.exists()) return@withContext null
+        if (!file.exists()) return@drain null
         val message = runCatching { file.readText() }.getOrNull()
         file.delete()
         message?.takeIf { it.isNotBlank() }
@@ -110,15 +153,17 @@ class SharedDraftStore(private val dir: File) {
 
     fun saveAttachments(conversationId: String, attachments: List<String>) {
         if (attachments.isEmpty()) return
-        val convDir = conversationDir(conversationId).apply { mkdirs() }
-        convDir.listFiles().orEmpty().forEach { it.delete() }
-        attachments.forEachIndexed { index, dataUrl ->
-            File(convDir, "$index.txt").writeText(dataUrl)
+        enqueue {
+            val convDir = conversationDir(conversationId).apply { mkdirs() }
+            convDir.listFiles().orEmpty().forEach { it.delete() }
+            attachments.forEachIndexed { index, dataUrl ->
+                File(convDir, "$index.txt").writeText(dataUrl)
+            }
         }
     }
 
     /** Read back the staged attachments for a conversation. */
-    suspend fun attachments(conversationId: String): List<String> = withContext(Dispatchers.IO) {
+    suspend fun attachments(conversationId: String): List<String> = drain {
         val files = conversationDir(conversationId).listFiles().orEmpty()
             .sortedBy { it.nameWithoutExtension.toIntOrNull() }
         files.mapNotNull { file -> file.readText().takeIf { it.isNotEmpty() } }
@@ -130,23 +175,27 @@ class SharedDraftStore(private val dir: File) {
      * later re-entry cannot resurrect a removed attachment — no ghosts.
      */
     fun removeAttachment(conversationId: String, index: Int) {
-        val convDir = conversationDir(conversationId)
-        if (!convDir.exists()) return
-        File(convDir, "$index.txt").delete()
-        val remaining = convDir.listFiles().orEmpty().sortedBy { it.nameWithoutExtension.toIntOrNull() }
-        remaining.forEachIndexed { i, file ->
-            if (file.name != "$i.txt") {
-                val target = File(convDir, "$i.txt")
-                target.delete()
-                file.renameTo(target)
+        enqueue {
+            val convDir = conversationDir(conversationId)
+            if (!convDir.exists()) return@enqueue
+            File(convDir, "$index.txt").delete()
+            val remaining = convDir.listFiles().orEmpty().sortedBy { it.nameWithoutExtension.toIntOrNull() }
+            remaining.forEachIndexed { i, file ->
+                if (file.name != "$i.txt") {
+                    val target = File(convDir, "$i.txt")
+                    target.delete()
+                    file.renameTo(target)
+                }
             }
         }
     }
 
     /** Send, or leaving the thread — the staged record is spent. */
     fun clear(conversationId: String) {
-        conversationDir(conversationId).deleteRecursively()
-        autoSendFile(conversationId).delete()
+        enqueue {
+            conversationDir(conversationId).deleteRecursively()
+            autoSendFile(conversationId).delete()
+        }
     }
 
     private fun autoSendFile(conversationId: String): File = File(dir, "conv_$conversationId.autosend.txt")
@@ -185,6 +234,23 @@ class SharedDraftStore(private val dir: File) {
     }
 
     private fun conversationDir(conversationId: String): File = File(dir, "conv_$conversationId")
+
+    private fun enqueue(write: suspend () -> Unit) {
+        writes.trySend(write)
+    }
+
+    /**
+     * Runs [op] on the write queue, after everything enqueued before this call:
+     * a reader must not see a state older than the write it is answering for.
+     */
+    private suspend fun <T> drain(op: suspend () -> T): T {
+        val done = CompletableDeferred<T>()
+        writes.send { done.complete(op()) }
+        return done.await()
+    }
+
+    /** Returns once every write enqueued before this call has reached disk. */
+    internal suspend fun awaitPendingWrites() = drain { Unit }
 
     private companion object {
         const val PENDING_FILE = "pending.json"

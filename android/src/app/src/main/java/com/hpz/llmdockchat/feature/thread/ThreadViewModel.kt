@@ -54,6 +54,7 @@ class ThreadViewModel(
     private val coalesceWindowMs: Long = DEFAULT_COALESCE_WINDOW_MS,
     private val reconnectInitialMs: Long = ReconnectBackoff.DEFAULT_INITIAL_MS,
     private val reconnectMaxMs: Long = ReconnectBackoff.DEFAULT_MAX_MS,
+    private val attachmentImporter: AttachmentImporter? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ThreadUiState>(ThreadUiState.Loading)
@@ -408,6 +409,27 @@ class ThreadViewModel(
     fun addAttachment(dataUrl: String) {
         val current = loaded() ?: return
         _state.value = current.copy(attachments = current.attachments + dataUrl)
+    }
+
+    /**
+     * Reads a picked or captured image off the main thread and publishes only the
+     * finished attachment. [failureMessage] is the caller's, because only the
+     * caller knows whether this was a gallery pick, a capture, or a camera that
+     * never opened.
+     */
+    fun importAttachment(uri: String, failureMessage: String) {
+        val importer = attachmentImporter ?: return reportAttachmentFailure(failureMessage)
+        val opening = loaded() ?: return
+        _state.value = opening.copy(attachmentImporting = true, actionError = null)
+        viewModelScope.launch {
+            val attachment = importer.import(uri)
+            val current = loaded() ?: return@launch
+            _state.value = if (attachment == null) {
+                current.copy(attachmentImporting = false, actionError = failureMessage)
+            } else {
+                current.copy(attachmentImporting = false, attachments = current.attachments + attachment)
+            }
+        }
     }
 
     fun removeAttachment(index: Int) {

@@ -82,6 +82,7 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
+import com.hpz.llmdockchat.feature.share.ShareImport
 import kotlinx.coroutines.launch
 
 /**
@@ -137,6 +138,7 @@ fun ThreadScreen(
         onRetry = viewModel::load,
         onDismissError = viewModel::dismissActionError,
         onAddAttachment = viewModel::addAttachment,
+        onImportAttachment = viewModel::importAttachment,
         onRemoveAttachment = viewModel::removeAttachment,
         onAttachmentFailed = viewModel::reportAttachmentFailure,
         onRequestDelete = viewModel::requestDelete,
@@ -177,6 +179,7 @@ private fun ThreadContent(
     onRetry: () -> Unit,
     onDismissError: () -> Unit,
     onAddAttachment: (String) -> Unit,
+    onImportAttachment: (String, String) -> Unit,
     onRemoveAttachment: (Int) -> Unit,
     onAttachmentFailed: (String) -> Unit,
     onRequestDelete: (ChatMessage) -> Unit,
@@ -281,6 +284,7 @@ private fun ThreadContent(
                     },
                     onStop = onStop,
                     onAddAttachment = onAddAttachment,
+                    onImportAttachment = onImportAttachment,
                     onRemoveAttachment = onRemoveAttachment,
                     onAttachmentFailed = onAttachmentFailed,
                     onCancelEdit = onCancelEdit,
@@ -825,6 +829,7 @@ private fun ThreadComposer(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onAddAttachment: (String) -> Unit,
+    onImportAttachment: (String, String) -> Unit,
     onRemoveAttachment: (Int) -> Unit,
     onAttachmentFailed: (String) -> Unit,
     onCancelEdit: () -> Unit,
@@ -833,10 +838,7 @@ private fun ThreadComposer(
     val context = LocalContext.current
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val bitmap = runCatching { readImage(context.contentResolver, uri) }.getOrNull()
-        if (bitmap == null) onAttachmentFailed("That image could not be read.")
-        else onAddAttachment(bitmap.toDataUrl())
+        if (uri != null) onImportAttachment(uri.toString(), ShareImport.IMAGE_UNREADABLE)
     }
 
     // `TakePicturePreview` returns the camera app's *thumbnail*
@@ -845,14 +847,26 @@ private fun ThreadComposer(
     // which then goes through exactly the same read-and-downscale path as a
     // gallery pick.
     var pendingPhoto by remember { mutableStateOf<Uri?>(null) }
+    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val uri = pendingPhoto
         pendingPhoto = null
-        if (!saved || uri == null) return@rememberLauncherForActivityResult
-        val bitmap = runCatching { readImage(context.contentResolver, uri) }.getOrNull()
-        if (bitmap == null) onAttachmentFailed("That photo could not be read.")
-        else onAddAttachment(bitmap.toDataUrl())
-        discardCapture(context, uri)
+        if (uri == null) return@rememberLauncherForActivityResult
+        if (saved) {
+            pendingCapture = uri
+            onImportAttachment(uri.toString(), ShareImport.PHOTO_UNREADABLE)
+        } else {
+            discardCapture(context, uri)
+        }
+    }
+
+    // The capture file is ours, so it goes away — but not while the import still
+    // holds the Uri: deleting it mid-read is how a photo turns into "could not be
+    // read", which the synchronous version of this callback could not do.
+    LaunchedEffect(state.attachmentImporting) {
+        if (state.attachmentImporting) return@LaunchedEffect
+        pendingCapture?.let { discardCapture(context, it) }
+        pendingCapture = null
     }
 
     Column(
@@ -903,6 +917,17 @@ private fun ThreadComposer(
                     ImageThumbnail(dataUrl, size = 58.dp, onRemove = { onRemoveAttachment(index) })
                 }
             }
+        }
+
+        // The read is off the main thread, so it can be slow without the screen
+        // freezing; this is what says the pick was taken and is not lost.
+        if (state.attachmentImporting) {
+            Text(
+                "Reading image…",
+                color = colors.subtle,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().testTag("attachment_importing"),
+            )
         }
 
         // The server ignored this turn's reasoning level. Phrased by the
@@ -984,7 +1009,7 @@ private fun ThreadStreamingPreview() {
             ),
             listState = rememberLazyListState(),
             onBack = {}, onComposerChange = {}, onSend = {}, onStop = {}, onRetry = {},
-            onDismissError = {}, onAddAttachment = {}, onRemoveAttachment = {}, onAttachmentFailed = {},
+            onDismissError = {}, onAddAttachment = {}, onImportAttachment = { _, _ -> }, onRemoveAttachment = {}, onAttachmentFailed = {},
             onRequestDelete = {}, onCancelDelete = {}, onConfirmDelete = {},
             onBeginEdit = {}, onCancelEdit = {}, onRequestEditConfirm = {}, onCancelEditConfirm = {}, onConfirmEdit = {},
             onOpenModelPicker = {}, onCloseModelPicker = {}, onSwitchModel = {},

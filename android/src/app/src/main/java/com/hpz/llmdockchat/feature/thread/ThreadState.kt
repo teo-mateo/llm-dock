@@ -76,6 +76,8 @@ sealed interface ThreadUiState {
         val thread: ThreadState,
         val composer: String = "",
         val attachments: List<String> = emptyList(),
+        /** A picked or captured image is still being read and encoded. */
+        val attachmentImporting: Boolean = false,
         val sending: Boolean = false,
         val actionError: String? = null,
         val pendingDelete: ChatMessage? = null,

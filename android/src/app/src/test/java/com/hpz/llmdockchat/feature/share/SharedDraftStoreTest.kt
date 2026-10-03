@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
 import com.hpz.llmdockchat.testing.FakeDraftStore
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -184,5 +185,49 @@ class SharedDraftStoreTest {
         dir.mkdirs()
         java.io.File(dir, "pending.json").writeText("not json")
         assertNull(SharedDraftStore(dir).pending.value)
+    }
+
+    /**
+     * The hazard the queue exists for: a dismissal followed immediately by a new
+     * share must not leave the dismissed one on disk. Writes land on another
+     * thread, so this only holds if they are applied in call order.
+     */
+    @Test
+    fun `writes made on the io scope reach disk in call order`() {
+        val other = Files.createTempDirectory("queued-drafts").toFile()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        try {
+            val queued = SharedDraftStore(other, scope)
+            queued.stage(StagedShare(text = "first"))
+            queued.clearPending()
+            queued.stage(StagedShare(text = "second"))
+            runBlocking { queued.awaitPendingWrites() }
+
+            assertEquals("second", SharedDraftStore(other).pending.value?.text)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /**
+     * Picking a target writes the attachments and then opens the thread, which
+     * reads them back a moment later. The read must answer for the write it
+     * follows, not for whatever was on disk when it started.
+     */
+    @Test
+    fun `attachments written on the io scope are readable as soon as they are asked for`() {
+        val other = Files.createTempDirectory("queued-attachments").toFile()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        try {
+            val queued = SharedDraftStore(other, scope)
+            queued.saveAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
+
+            assertEquals(
+                listOf("data:image/jpeg;base64,AAA"),
+                runBlocking { queued.attachments("conv-1") },
+            )
+        } finally {
+            scope.cancel()
+        }
     }
 }
