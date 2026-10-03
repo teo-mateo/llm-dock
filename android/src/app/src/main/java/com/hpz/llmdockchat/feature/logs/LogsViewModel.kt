@@ -14,10 +14,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.ArrayDeque
 
 /** One rendered row. [level] degrades to [LogLevel.PLAIN] for anything F12-R4 doesn't recognise. */
-data class LogLine(val text: String, val level: LogLevel)
+data class LogLine(val id: Long, val text: String, val level: LogLevel)
+
+private const val MAX_LOG_LINES = 2_000
+private const val MAX_LOG_CHARS = 512 * 1_024
+private const val MAX_LOG_LINE_CHARS = 16 * 1_024
+private const val LOG_PUBLISH_BATCH = 64
+private const val LOG_PUBLISH_DELAY_MS = 50L
+private const val LINE_TRUNCATED = "… [line truncated]"
 
 /** How the on-screen buffer was populated, and whether it is still live. */
 enum class LogsConnection {
@@ -48,6 +58,7 @@ sealed interface LogsUiState {
         /** Index into [lines] where the historical tail ended — null until `snapshot_end` (or never, for [LogsConnection.FALLBACK]). */
         val boundaryIndex: Int?,
         val connection: LogsConnection,
+        val evictedCount: Long,
     ) : LogsUiState
 }
 
@@ -69,9 +80,14 @@ class LogsViewModel(
     private val _state = MutableStateFlow<LogsUiState>(LogsUiState.Loading)
     val state: StateFlow<LogsUiState> = _state.asStateFlow()
 
-    private val lines = mutableListOf<LogLine>()
+    private val lines = ArrayDeque<LogLine>()
+    private var retainedChars = 0
+    private var nextLineId = 0L
+    private var evictedCount = 0L
     private var boundaryIndex: Int? = null
     private var sawAnyFrame = false
+    private var unpublishedLines = 0
+    private var pendingPublication: Job? = null
 
     /** Collected by [LogsScreen] — see the class doc. Never started from here. */
     fun observeLogStream(): Flow<LogStreamEvent> = logsStreamRepository.stream(serviceName)
@@ -79,17 +95,33 @@ class LogsViewModel(
     fun onStreamEvent(event: LogStreamEvent) {
         sawAnyFrame = true
         when (event) {
-            is LogStreamEvent.SnapshotStart -> publish(LogsConnection.CONNECTING)
-            is LogStreamEvent.Log -> {
-                lines += LogLine(event.line, classifyLogLevel(event.line))
+            is LogStreamEvent.SnapshotStart -> {
+                resetBuffer()
                 publish(LogsConnection.CONNECTING)
+            }
+            is LogStreamEvent.Log -> {
+                appendLine(event.line)
+                val connection = if (boundaryIndex == null) LogsConnection.CONNECTING else LogsConnection.LIVE
+                unpublishedLines++
+                if (unpublishedLines >= LOG_PUBLISH_BATCH || lines.size == 1) {
+                    publish(connection)
+                } else if (pendingPublication == null) {
+                    pendingPublication = viewModelScope.launch {
+                        delay(LOG_PUBLISH_DELAY_MS)
+                        publish(connection)
+                    }
+                }
             }
             is LogStreamEvent.SnapshotEnd -> {
                 boundaryIndex = lines.size
                 publish(LogsConnection.LIVE)
             }
             is LogStreamEvent.StreamEnd -> publish(LogsConnection.ENDED)
-            is LogStreamEvent.Error -> _state.value = LogsUiState.Failed(event.message)
+            is LogStreamEvent.Error -> {
+                pendingPublication?.cancel()
+                pendingPublication = null
+                _state.value = LogsUiState.Failed(event.message)
+            }
             is LogStreamEvent.Unknown -> Unit
         }
     }
@@ -106,6 +138,8 @@ class LogsViewModel(
      * (F12-R3); if that fails too, the failure is shown as-is.
      */
     fun onStreamFailed(error: Throwable) {
+        pendingPublication?.cancel()
+        pendingPublication = null
         if (sawAnyFrame) {
             // A drop mid-stream, not a failure to connect — the buffer already on
             // screen stays, but it's no longer live.
@@ -124,9 +158,8 @@ class LogsViewModel(
         viewModelScope.launch {
             servicesRepository.fetchLogsOnce(serviceName).fold(
                 onSuccess = { fetched ->
-                    lines.clear()
-                    lines += fetched.map { LogLine(it, classifyLogLevel(it)) }
-                    boundaryIndex = null
+                    resetBuffer()
+                    fetched.forEach(::appendLine)
                     publish(LogsConnection.FALLBACK)
                 },
                 onFailure = { failure ->
@@ -142,6 +175,34 @@ class LogsViewModel(
     }
 
     private fun publish(connection: LogsConnection) {
-        _state.value = LogsUiState.Loaded(lines.toList(), boundaryIndex, connection)
+        pendingPublication?.cancel()
+        pendingPublication = null
+        unpublishedLines = 0
+        _state.value = LogsUiState.Loaded(lines.toList(), boundaryIndex, connection, evictedCount)
+    }
+
+    private fun resetBuffer() {
+        pendingPublication?.cancel()
+        pendingPublication = null
+        unpublishedLines = 0
+        lines.clear()
+        retainedChars = 0
+        evictedCount = 0
+        boundaryIndex = null
+    }
+
+    private fun appendLine(raw: String) {
+        val text = if (raw.length > MAX_LOG_LINE_CHARS) {
+            raw.take(MAX_LOG_LINE_CHARS - LINE_TRUNCATED.length) + LINE_TRUNCATED
+        } else {
+            raw
+        }
+        lines.addLast(LogLine(nextLineId++, text, classifyLogLevel(text)))
+        retainedChars += text.length
+        while (lines.size > MAX_LOG_LINES || retainedChars > MAX_LOG_CHARS) {
+            retainedChars -= lines.removeFirst().text.length
+            evictedCount++
+            boundaryIndex = boundaryIndex?.let { (it - 1).coerceAtLeast(0) }
+        }
     }
 }
