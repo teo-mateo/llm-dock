@@ -33,11 +33,26 @@ sealed interface ConversationListUiState {
          * window cannot resurrect the row.
          */
         val pendingUndo: PendingUndo? = null,
+        /**
+         * Rows whose DELETE is in flight, past the undo window. Kept apart from
+         * [pendingUndo] because the row must stay hidden even after the snackbar
+         * is gone: the server lists it until the delete lands, and a refresh
+         * arriving in between would put a row back that is already being deleted.
+         */
+        val pendingDeletion: Set<String> = emptySet(),
+        /**
+         * Rows this screen has already deleted successfully. A list response
+         * fetched before the DELETE landed still contains them, and the server
+         * will never hand those ids out again, so such a row is not news — it is
+         * a stale snapshot of a conversation that is gone.
+         */
+        val deletedIds: Set<String> = emptySet(),
     ) : ConversationListUiState {
-        /** What the list draws: the pending row is already gone from it. */
+        /** What the list draws: swiped and mid-deletion rows are gone from it. */
         val visible: List<ConversationSummary>
-            get() = pendingUndo?.let { pending -> conversations.filterNot { it.id == pending.id } }
-                ?: conversations
+            get() = conversations.filterNot {
+                it.id == pendingUndo?.id || it.id in pendingDeletion || it.id in deletedIds
+            }
 
         val isEmpty: Boolean get() = visible.isEmpty()
         val selectionMode: Boolean get() = selection.isNotEmpty()
@@ -51,6 +66,7 @@ sealed interface ConversationListUiState {
 
 class ConversationListViewModel(
     private val repository: ConversationsRepository,
+    private val undoWindowMs: Long = UNDO_WINDOW_MS,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ConversationListUiState>(ConversationListUiState.Loading)
@@ -69,30 +85,47 @@ class ConversationListViewModel(
      * the full loading state.
      */
     fun refresh() {
-        val current = _state.value
-        _state.value = when (current) {
+        val generation = ++refreshGeneration
+        _state.value = when (val current = _state.value) {
             is ConversationListUiState.Loaded -> current.copy(refreshing = true, actionError = null)
             else -> ConversationListUiState.Loading
         }
         viewModelScope.launch {
             repository.list().fold(
-                onSuccess = { conversations ->
-                    val loaded = current as? ConversationListUiState.Loaded
-                    val selection = loaded?.selection.orEmpty()
-                        .intersect(conversations.map { it.id }.toSet())
-                    _state.value = ConversationListUiState.Loaded(
-                        conversations = conversations,
-                        selection = selection,
-                        // Carried across: the server still has this row, so a
-                        // refresh mid-window would otherwise pop it back.
-                        pendingUndo = loaded?.pendingUndo,
-                    )
-                },
+                onSuccess = { conversations -> applyRefresh(generation, conversations) },
                 onFailure = { failure ->
-                    _state.value = ConversationListUiState.Failed(failure.appError.displayMessage)
+                    if (generation == refreshGeneration) {
+                        _state.value = ConversationListUiState.Failed(failure.appError.displayMessage)
+                    }
                 },
             )
         }
+    }
+
+    /**
+     * A response replaces the rows and nothing else. The undo, the mid-deletion
+     * set and the selection are read from the state as it is *now*, not from the
+     * state as it was when the request left: a swipe or a selection tap that
+     * happened while this request was in flight would otherwise be rolled back to
+     * its pre-request value, which pops the swiped row back into the list while
+     * its still-running deletion timer goes on to delete it behind a snackbar
+     * that has already disappeared.
+     *
+     * A superseded response writes nothing at all, so an older refresh cannot
+     * overwrite a newer one's rows, undo, or error.
+     */
+    private fun applyRefresh(generation: Int, conversations: List<ConversationSummary>) {
+        if (generation != refreshGeneration) return
+        val latest = _state.value as? ConversationListUiState.Loaded
+        val alreadyGone = latest?.deletedIds.orEmpty()
+        val rows = conversations.filterNot { it.id in alreadyGone }
+        _state.value = ConversationListUiState.Loaded(
+            conversations = rows,
+            selection = latest?.selection?.intersect(rows.map { it.id }.toSet()).orEmpty(),
+            pendingUndo = latest?.pendingUndo,
+            pendingDeletion = latest?.pendingDeletion.orEmpty(),
+            deletedIds = alreadyGone,
+        )
     }
 
     /**
@@ -102,13 +135,29 @@ class ConversationListViewModel(
     fun delete(id: String) {
         viewModelScope.launch {
             repository.delete(id).fold(
-                onSuccess = { refresh() },
+                onSuccess = {
+                    markDeleted(listOf(id))
+                    refresh()
+                },
                 onFailure = { failure -> reportActionFailure(failure.appError.displayMessage) },
             )
         }
     }
 
+    /**
+     * Records deletes that landed, so the refresh that follows one — which may
+     * have been fetched before the server acted — cannot put the row back. The
+     * ids leave the selection with them: a selection that still names deleted
+     * rows offers an action on nothing.
+     */
+    private fun markDeleted(ids: List<String>) = updateLoaded {
+        it.copy(deletedIds = it.deletedIds + ids, selection = it.selection - ids.toSet())
+    }
+
     private var undoJob: Job? = null
+
+    /** Only the newest refresh may write the state; see [applyRefresh]. */
+    private var refreshGeneration = 0
 
     /**
      * Swipe-to-delete with an undo window instead of a confirm dialog.
@@ -128,7 +177,7 @@ class ConversationListViewModel(
         commitPendingNow()
         updateLoaded { it.copy(pendingUndo = ConversationListUiState.PendingUndo(item.id, item.title)) }
         undoJob = viewModelScope.launch {
-            delay(UNDO_WINDOW_MS)
+            delay(undoWindowMs)
             commitPending(item.id)
         }
     }
@@ -141,19 +190,27 @@ class ConversationListViewModel(
 
     /** Commits without waiting — used when a second swipe arrives, and on clear-down. */
     private fun commitPendingNow() {
-        val pending = (_state.value as? ConversationListUiState.Loaded)?.pendingUndo ?: return
+        val loaded = _state.value as? ConversationListUiState.Loaded ?: return
+        val pending = loaded.pendingUndo ?: return
         undoJob?.cancel()
         undoJob = null
+        // Its DELETE is already open. Sending a second one would earn a 404 for a
+        // conversation the user has deleted exactly once, and the error would read
+        // as if their swipe had failed.
+        if (pending.id in loaded.pendingDeletion) return
         viewModelScope.launch { commitPending(pending.id) }
     }
 
     private suspend fun commitPending(id: String) {
+        updateLoaded { it.copy(pendingDeletion = it.pendingDeletion + id) }
         repository.delete(id).fold(
             onSuccess = {
                 updateLoaded {
                     it.copy(
                         conversations = it.conversations.filterNot { row -> row.id == id },
                         pendingUndo = it.pendingUndo?.takeIf { pending -> pending.id != id },
+                        pendingDeletion = it.pendingDeletion - id,
+                        deletedIds = it.deletedIds + id,
                     )
                 }
             },
@@ -163,6 +220,7 @@ class ConversationListViewModel(
                 updateLoaded {
                     it.copy(
                         pendingUndo = it.pendingUndo?.takeIf { pending -> pending.id != id },
+                        pendingDeletion = it.pendingDeletion - id,
                         actionError = failure.appError.displayMessage,
                     )
                 }
@@ -175,7 +233,10 @@ class ConversationListViewModel(
         if (ids.isEmpty()) return
         viewModelScope.launch {
             repository.deleteMany(ids).fold(
-                onSuccess = { refresh() },
+                onSuccess = {
+                    markDeleted(ids)
+                    refresh()
+                },
                 onFailure = { failure -> reportActionFailure(failure.appError.displayMessage) },
             )
         }

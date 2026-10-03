@@ -63,15 +63,26 @@ walk away, come back, the answer is there.
 
 ## F02-R4 · Delete a conversation (Must)
 
-Swipe on a row to delete, behind a confirm (F00-R9), via
-`DELETE /api/chat/conversations/<id>`.
+Swipe on a row to delete via `DELETE /api/chat/conversations/<id>`, held behind
+an undo window instead of a confirm: the row leaves the list at once, nothing is
+sent for 3 s, and an indefinite snackbar names the thread with an Undo action
+(F00-R9's confirmation is served by being reversible rather than by asking).
 
 **Acceptance criteria**
 
-- [ ] The confirm names the thread's title.
-- [ ] After confirming, the row is gone and stays gone after a refetch.
+- [x] The snackbar names the thread's title.
+- [x] After the window expires, the row is gone and stays gone after a refetch.
+- [x] Undo inside the window restores the row with no request made.
+- [x] Swiping while a refresh is in flight keeps the row hidden and the Undo
+      available for the whole window (issue 272).
+- [x] Once the window has expired, a list response fetched before the delete
+      landed does not bring the row back (issue 272).
+- [x] A delete that fails brings the row back with the server's message
+      (issue 272).
+- [x] Swiping a second row while the first delete is still open deletes the
+      first conversation exactly once (issue 272).
+- [x] A selection change made during a refresh survives the response (issue 272).
 - [ ] Deleting a thread with an active run does not leave a ghost row.
-- [ ] Cancelling the swipe restores the row with no request made.
 
 ## F02-R5 · Batch delete (Should)
 
@@ -134,6 +145,20 @@ A primary action opens the new-chat sheet (F03).
 | POST | `/api/chat/conversations/delete` |
 
 ## Deviations from the mockup
+
+- **Undo instead of a confirm** (F02-R4). The mockup asks before deleting. The
+  shipped rule holds the request back for 3 s instead, which is a stronger
+  guarantee than a dialog: an undo costs no request and no second round trip, and
+  an optimistic delete cannot be undone anyway — the server assigns ids, so
+  re-creating the thread would produce a different conversation. The snackbar
+  carries the title for the same reason the confirm did.
+- **A refresh cannot resurrect a row you deleted** (issue 272). The list response
+  is applied to the state as it is when the response *arrives*, not as it was when
+  the request left, and only by the newest refresh; swipes, selection taps, open
+  deletions, and ids already deleted are all carried across. Applying the response
+  to the pre-request snapshot was simpler to write and lost the undo snackbar of a
+  row whose deletion timer was still running — the UI said the delete had been
+  cancelled and then deleted it anyway.
 
 - **No last-line preview.** Screen 02 draws a preview line under each
   title. The list endpoint returns conversation rows only — no messages —
