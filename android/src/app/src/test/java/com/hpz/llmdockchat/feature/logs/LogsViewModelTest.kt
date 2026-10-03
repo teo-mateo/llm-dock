@@ -29,6 +29,10 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
+// One more than the ViewModel's publish batch: a lone Log frame is held by the coalescer, so only a
+// frame that trips the batch publishes a connection of its own.
+private const val LOG_PUBLISH_LINES = 65
+
 /**
  * Frame handling, the stream-failure fallback, and level tagging —
  * driven directly against the ViewModel's event API rather than through
@@ -123,6 +127,32 @@ class LogsViewModelTest {
         val state = vm.state.value
         assertTrue(state is LogsUiState.NotCreated)
         assertEquals("Service has not been created yet", (state as LogsUiState.NotCreated).message)
+    }
+
+
+    /**
+     * #275: the status must survive the boundary. Asserted across a full publication batch, because
+     * a lone live line is held by the coalescer and its own connection would go unchecked.
+     */
+    @Test
+    fun `live lines stay live and a new snapshot returns to connecting`() {
+        val vm = viewModel()
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        repeat(LOG_PUBLISH_LINES) { vm.onStreamEvent(LogStreamEvent.Log("historical $it")) }
+        assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        repeat(LOG_PUBLISH_LINES) { vm.onStreamEvent(LogStreamEvent.Log("live $it")) }
+        assertEquals(LogsConnection.LIVE, (vm.state.value as LogsUiState.Loaded).connection)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("new snapshot line"))
+        assertEquals(LogsConnection.CONNECTING, (vm.state.value as LogsUiState.Loaded).connection)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+        assertEquals(LogsConnection.ENDED, (vm.state.value as LogsUiState.Loaded).connection)
     }
 
     /** A line with no recognisable level renders plainly, not crashing or vanishing. */
