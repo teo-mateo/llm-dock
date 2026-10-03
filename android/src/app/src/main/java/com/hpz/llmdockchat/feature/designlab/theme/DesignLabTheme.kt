@@ -17,10 +17,10 @@ import androidx.compose.ui.unit.sp
 /**
  * Design-lab proposal tokens (feature/designlab only). These are a sandbox —
  * the real app theme lives in `core/ui/theme` and is untouched. This palette
- * starts from `docs/android/chat-app-mockups.html`'s `--d-*` custom
- * properties (the ones the owner said already look better than the app) and
+ * starts from the reference design's `--d-*` custom properties
+  (the ones the owner said already look better than the app) and
  * pushes further: a truer black app background, one accent doing real work
- * (violet, not the mockup's blue — chosen so accent chips don't collide with
+ * (violet, not the reference design's blue — chosen so accent chips don't collide with
  * the "running" green or the streaming amber), and a light theme built on
  * warm ink-on-paper rather than grey-on-white so both modes have an actual
  * contrast floor instead of everything living within one flat band.

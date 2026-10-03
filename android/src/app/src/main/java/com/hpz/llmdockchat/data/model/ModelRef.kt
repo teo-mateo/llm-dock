@@ -2,7 +2,7 @@ package com.hpz.llmdockchat.data.model
 
 /**
  * A conversation's `main_service`, normalised once at the wire↔domain seam
- * (Architecture D6) instead of every screen re-parsing the `openrouter:`
+ * instead of every screen re-parsing the `openrouter:`
  * prefix for itself.
  */
 sealed interface ModelRef {
@@ -30,7 +30,7 @@ fun parseModelRef(raw: String): ModelRef =
         ModelRef.Local(raw)
     }
 
-/** The inverse of [parseModelRef] — what F03 sends as `main_service` on create. */
+/** The inverse of [parseModelRef] — what is sent as `main_service` on create. */
 val ModelRef.wireValue: String
     get() = when (this) {
         is ModelRef.Local -> serviceName

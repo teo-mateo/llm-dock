@@ -49,7 +49,7 @@ class HealthConnectivityTest {
         val tokenStore = object : TokenStore {
             override val token: StateFlow<Stored<String>> = tokenHolder
             override fun current(): String? = tokenHolder.value.valueOrNull
-            override fun update(token: String) { tokenHolder.value = Stored.Ready(token) }
+            override fun update(token: String, server: BaseUrl?) { tokenHolder.value = Stored.Ready(token) }
             override fun clear() { tokenHolder.value = Stored.Ready(null) }
         }
 

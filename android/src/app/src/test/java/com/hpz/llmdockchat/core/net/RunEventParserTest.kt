@@ -6,9 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Every row of F04's frame table, against SSE recorded from the dashboard
- * (Architecture Part IV — a hand-written fixture only encodes what you think
- * the server sends).
+ * Every frame kind, against SSE recorded from the dashboard — a
+ * hand-written fixture only encodes what you think the server sends.
  *
  * The recordings under `fixtures/sse` were captured with `curl -N` against
  * `llamacpp-gemma-4-26b-a4b-it-q8` on :3301; `backend-frames.sse` was produced
@@ -27,7 +26,7 @@ class RunEventParserTest {
     }
 
     /**
-     * F15-R6. `chat/routes.py:_start_run_response` puts the level the run
+     * `chat/routes.py:_start_run_response` puts the level the run
      * resolved to, and a note when it dropped the stored one, on the
      * synthesized frame — extras the send path alone receives.
      */
@@ -83,7 +82,7 @@ class RunEventParserTest {
         assertEquals(RunEvent.Delta(content = "", reasoning = "The user"), event)
     }
 
-    /** Architecture D6: some models send `reasoning` instead of `reasoning_content`. */
+    /** Some models send `reasoning` instead of `reasoning_content`. */
     @Test
     fun `a model that sends reasoning instead of reasoning_content is read the same way`() {
         val event = parseFrame("""{"choices":[{"delta":{"reasoning":"thinking"}}]}""")
@@ -180,7 +179,7 @@ class RunEventParserTest {
         )
     }
 
-    // -- the cases that must not crash the stream (Architecture D2) -----------
+    // -- the cases that must not crash the stream -----------
 
     @Test
     fun `an unrecognised typed frame becomes Unknown rather than throwing`() {
@@ -243,8 +242,8 @@ class RunEventParserTest {
     }
 
     /**
-     * `[DONE]` is not the end of the stream — the load-bearing fact behind
-     * F04-R7. Two frames follow it in this recording.
+     * `[DONE]` is not the end of the stream. Two frames follow it in this
+     * recording.
      */
     @Test
     fun `frames follow the DONE sentinel in a real recording`() {
@@ -297,7 +296,7 @@ class RunEventParserTest {
     /**
      * The replay buffer folds a whole run of deltas into one frame carrying
      * both halves at once, so the client must not assume one delta is one
-     * token (Architecture P1's note, F09-R2).
+     * token.
      */
     @Test
     fun `the recorded reattach replays a coalesced delta before the live tail`() {

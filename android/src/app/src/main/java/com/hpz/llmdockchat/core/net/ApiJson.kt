@@ -4,7 +4,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * `ignoreUnknownKeys` is not a convenience here: the dashboard is under active
- * development and adds fields without a client release (Architecture D2).
+ * development and adds fields without a client release.
  */
 val ApiJson: Json = Json {
     ignoreUnknownKeys = true

@@ -3,7 +3,7 @@ import { fetchAPI } from '../api'
 import { renderCommandPreview } from './commandPreview'
 import useResizableWidth from '../hooks/useResizableWidth'
 
-// The parameter-name column is operator-resized (issue #289): flag names are
+// The parameter-name column is operator-resized: flag names are
 // often too long for a fixed box, so its width is a persisted drag target
 // bounded by the rows container. One source for the bounds — the hook and the
 // keyboard handler both read these so they cannot drift.

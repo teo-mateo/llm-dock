@@ -14,7 +14,7 @@ import java.io.IOException
 
 /**
  * SSE over an authenticated OkHttp call — the reason a plain `EventSource`
- * cannot be used (F00-R6).
+ * cannot be used.
  *
  * The body is read line by line off a buffered source, so a frame split across
  * socket reads is reassembled before the parser ever sees it. [client] must be

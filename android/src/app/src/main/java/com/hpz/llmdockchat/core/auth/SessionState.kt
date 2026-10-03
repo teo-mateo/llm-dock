@@ -5,10 +5,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * App-wide "the session is gone" signal (F00-R3, narrowed by F01-R6). The HTTP
+ * App-wide "the session is gone" signal. The HTTP
  * stack raises it; the app shell observes it and routes to Connect.
  *
- * Under F01 an ordinary 401 no longer reaches here — silent re-auth absorbs it.
+ * An ordinary 401 no longer reaches here — silent re-auth absorbs it.
  * This fires only when re-authentication itself cannot succeed: no stored
  * credential, or one the dashboard rejects.
  *
@@ -24,7 +24,7 @@ class SessionState {
 
     /**
      * Why Connect is being shown, when there is something worth saying —
-     * F01-R6 requires the app to explain a rejected credential rather than
+     * The app must explain a rejected credential rather than
      * silently reappearing at the login screen. Null after a plain sign-out.
      */
     val reason: StateFlow<String?> = _reason.asStateFlow()
@@ -44,7 +44,7 @@ class SessionState {
         _authenticationRequired.value = false
     }
 
-    /** Sign-out (F01-R7): back to Connect, with nothing to explain. */
+    /** Sign-out: back to Connect, with nothing to explain. */
     fun signedOut() {
         _reason.value = null
         _authenticationRequired.value = true

@@ -1,7 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
 /**
- * The URL a share is actually about (F14-R7). Only a `text/plain` share is
+ * The URL a share is actually about. Only a `text/plain` share is
  * ever scanned — a text file inlined as a fenced block routinely contains
  * links and is not a shared page — and the first match wins, because a share
  * of the form `title url` or `url (via …)` names one page.

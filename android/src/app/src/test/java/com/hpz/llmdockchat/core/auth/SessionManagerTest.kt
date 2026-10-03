@@ -40,7 +40,7 @@ class SessionManagerTest {
         serverUrlStore.set(serverUrl)
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore, sessionState))
-            .authenticator(SessionAuthenticator(tokenStore, sessionState) { null })
+            .authenticator(SessionAuthenticator(tokenStore, sessionState, com.hpz.llmdockchat.core.auth.Reauthenticator { null }))
             .build()
         val authService = AuthService(
             ApiClient(client, serverUrlStore, ApiJson, Dispatchers.IO),
@@ -54,7 +54,7 @@ class SessionManagerTest {
             reauthenticator = CredentialReauthenticator(
                 credentials = credentials,
                 sessionState = sessionState,
-                exchange = { Result.failure(IllegalStateException("not used")) },
+                exchange = { _, _ -> Result.failure(IllegalStateException("not used")) },
             ),
         )
     }
@@ -92,7 +92,7 @@ class SessionManagerTest {
     }
 
     /**
-     * F01-R6's last criterion: a TOTP sign-in has nothing storable, so the
+     * A TOTP sign-in has nothing storable, so the
      * session cannot renew itself and the user will be asked again.
      */
     @Test

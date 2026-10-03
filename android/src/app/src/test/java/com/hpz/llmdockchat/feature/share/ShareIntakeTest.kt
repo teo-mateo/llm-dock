@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The share intake gate (issue 261): which deliveries are staged, which
+ * The share intake gate: which deliveries are staged, which
  * hydrated records are kept, which redeliveries are refused. Primitives in,
  * no `Intent` — the same android.jar-free arrangement as [SharedKindParserTest]
  * that makes the rules testable at all.
@@ -52,7 +52,7 @@ class ShareIntakeTest {
     @Test
     fun `an unmarked onNewIntent replaces the record even for an identical payload`() {
         // A user who shares the same line twice while the app is open must win
-        // (F14-R1): identity gates redelivery, never delivery, so the
+        // Identity gates redelivery, never delivery, so the
         // new-intent arm sits ahead of the handled-token check.
         assertEquals(ShareIntake.Stage, decide(viaNewIntent = true, token = "same", handledToken = "same"))
     }

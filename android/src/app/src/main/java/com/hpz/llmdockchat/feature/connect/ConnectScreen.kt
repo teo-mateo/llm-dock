@@ -59,8 +59,8 @@ import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Screen 01 · Connect. Both ways in are on the one screen, as the dashboard's
- * own login page has them (F01-R4): no menu, no second screen.
+ * · Connect. Both ways in are on the one screen, as the dashboard's
+ * own login page has them: no menu, no second screen.
  */
 @Composable
 fun ConnectScreen(viewModel: ConnectViewModel, onSignedIn: () -> Unit, modifier: Modifier = Modifier) {
@@ -100,14 +100,14 @@ private fun ConnectContent(
         modifier = modifier
             .fillMaxSize()
             .background(colors.app)
-            // Connect has no Scaffold, so it owns its own insets (fix pass
-            // A2 — nothing above it supplies any). `safeDrawing` is the union
+            // Connect has no Scaffold, so it owns its own insets — nothing
+            // above it supplies any. `safeDrawing` is the union
             // of the system bars, the cutout and the IME, and it sits
             // *outside* the scroll so the keyboard shrinks the viewport and
             // the form scrolls inside it. Inside the scroll — where
             // `imePadding()` used to be — it only lengthened the content,
             // which on a window the OEM also resizes for the IME meant the
-            // keyboard was paid for twice (fix pass B1).
+            // keyboard was paid for twice.
             .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 22.dp, vertical = 28.dp),
@@ -307,7 +307,7 @@ private fun PasswordField(
 
 /**
  * Six cells over one hidden field: a numeric keyboard, no separate submit, and
- * the caret visible where the next digit lands (F01-R3).
+ * the caret visible where the next digit lands.
  */
 @Composable
 private fun CodeField(state: ConnectUiState, onCodeChange: (String) -> Unit) {

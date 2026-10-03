@@ -1,4 +1,4 @@
-"""Conversations reference a managed prompt by id (#123).
+"""Conversations reference a managed prompt by id.
 
 The stored main_system_prompt is still the copy the run path reads — setting
 prompt_id resolves and stores the prompt's content, so old rows and hand
@@ -163,7 +163,7 @@ def test_create_payload_carries_prompt_id_in_the_list_and_single(client):
 
 
 def test_update_points_an_existing_conversation_at_a_managed_prompt(client):
-    """The gap #123 names: today an existing conversation cannot be pointed
+    """The gap this closes: today an existing conversation cannot be pointed
     at a managed prompt at all, so this is the whole feature for old rows."""
     prompt = _create_prompt(client, content="fresh managed text")
     conv = _create_conversation(client, main_system_prompt="stale text")
@@ -234,7 +234,7 @@ def test_deleting_the_prompt_detaches_the_reference_but_keeps_the_text(client):
 
 
 def test_editing_a_prompt_does_not_rewrite_conversations(client):
-    """Decided in #123: the stored copy wins. Re-pointing is an explicit
+    """The stored copy wins; re-pointing is an explicit
     update that pulls the fresh content."""
     prompt = _create_prompt(client, content="v1")
     conv = _create_conversation(client, prompt_id=prompt["id"])

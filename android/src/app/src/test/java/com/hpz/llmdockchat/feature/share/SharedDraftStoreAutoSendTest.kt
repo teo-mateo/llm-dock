@@ -9,7 +9,7 @@ import org.junit.Test
 import java.nio.file.Files
 
 /**
- * The summarize claim (F14-R7): durable, spent by one read, and filed where an
+ * The summarize claim: durable, spent by one read, and filed where an
  * attachment write cannot reach it — the three things that make "at most one
  * turn per summarize" true across process death.
  */
@@ -44,7 +44,7 @@ class SharedDraftStoreAutoSendTest {
         assertNull(take())
     }
 
-    /** F14-R7's process-death criterion: the intent outlives the store object. */
+    /** Process-death: the intent outlives the store object. */
     @Test
     fun `a claim survives process death and is still owed exactly once`() {
         store.stageForAutoSend(CONV, "summarise it")

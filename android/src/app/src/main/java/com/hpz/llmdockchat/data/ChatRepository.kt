@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 
 /**
- * A thread and the runs that happen in it (F04).
+ * A thread and the runs that happen in it.
  *
  * The three run-producing endpoints emit the same frames, so they share one
  * reader: [send], [editAndResend] and [reattach] differ only in the request
@@ -30,7 +30,7 @@ import kotlinx.serialization.encodeToString
  *
  * None of the stream functions cancels anything server-side. Collecting stops
  * when the collector goes away; the run keeps going and persists its reply
- * (F04-R10). Cancelling is [cancelActiveRun] and nothing else.
+ *. Cancelling is [cancelActiveRun] and nothing else.
  */
 class ChatRepository(
     private val api: ApiClient,
@@ -60,7 +60,7 @@ class ChatRepository(
             ),
         )
 
-    /** `PUT …/messages/<msg_id>` — edit and re-run, used by F06. Same frames. */
+    /** `PUT …/messages/<msg_id>` — edit and re-run. Same frames. */
     fun editAndResend(
         conversationId: String,
         messageId: String,
@@ -77,7 +77,7 @@ class ChatRepository(
     )
 
     /**
-     * `GET /api/chat/runs/<id>/stream` — replay then live tail, used by F09.
+     * `GET /api/chat/runs/<id>/stream` — replay then live tail, used when reattaching.
      * Present here because it is the third producer of the same frames and
      * proving that with the reattach fixtures is what makes "one reader" true
      * rather than asserted.
@@ -86,7 +86,7 @@ class ChatRepository(
         runStream(StreamRequest(path = Endpoints.runStream(runId)))
 
     /**
-     * Cancel by conversation, not by run id (F04-R6): the server always knows a
+     * Cancel by conversation, not by run id: the server always knows a
      * conversation's active run, so Stop works even before `run_started` was
      * seen. [expectedRunId] stops a stale Stop from killing a newer run.
      *
@@ -104,7 +104,7 @@ class ChatRepository(
     }
 
     /**
-     * `DELETE …/messages/<msg_id>` (F06). The server refuses with 409 while a
+     * `DELETE …/messages/<msg_id>`. The server refuses with 409 while a
      * run is active in this conversation — the in-flight turn is not yet
      * persisted, and deleting a prior message mid-run would leave the
      * transcript inconsistent. That surfaces here as an ordinary failure; the
@@ -120,10 +120,9 @@ class ChatRepository(
     }
 
     /**
-     * `PUT /api/chat/conversations/<id>` with `main_service` (F07-R4). The
+     * `PUT /api/chat/conversations/<id>` with `main_service`. The
      * caller guards against an active run — the server has no special-cased
-     * rejection for this field, so the guard is entirely client-side, same as
-     * F06-R3's edit-while-a-run-is-active guard.
+     * rejection for this field, so the guard is entirely client-side, same as the edit-while-a-run-is-active guard.
      */
     suspend fun updateMainService(conversationId: String, mainService: String): Result<Unit> = apiCall {
         api.request(

@@ -12,6 +12,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 @JvmInline
 value class BaseUrl private constructor(val value: String) {
 
+    fun contains(url: HttpUrl): Boolean {
+        val base = value.toHttpUrl()
+        val prefix = base.pathSegments.filter { it.isNotEmpty() }
+        return base.scheme == url.scheme && base.host == url.host && base.port == url.port &&
+            url.pathSegments.take(prefix.size) == prefix
+    }
+
     fun resolve(path: String, query: Map<String, String> = emptyMap()): HttpUrl {
         val builder = value.toHttpUrl().newBuilder()
         path.split('/').filter { it.isNotEmpty() }.forEach { builder.addPathSegment(it) }

@@ -34,7 +34,7 @@ class FakeTokenStore(initial: String? = null) : TokenStore {
     private val state = MutableStateFlow<Stored<String>>(Stored.Ready(initial))
     override val token: StateFlow<Stored<String>> = state.asStateFlow()
     override fun current(): String? = state.value.valueOrNull
-    override fun update(token: String) { state.value = Stored.Ready(token) }
+    override fun update(token: String, server: BaseUrl?) { state.value = Stored.Ready(token) }
     override fun clear() { state.value = Stored.Ready(null) }
 }
 
@@ -53,7 +53,7 @@ class FakeCredentialStore(initial: Credential? = null) : CredentialStore {
 
     override fun current(): Credential? = state.value.valueOrNull
 
-    override fun save(credential: Credential) {
+    override fun save(credential: Credential, server: BaseUrl?) {
         state.value = Stored.Ready(credential)
         presence.value = Stored.Ready(true)
     }
@@ -172,7 +172,7 @@ class FakeSseTransport : SseTransport {
 
 /**
  * A [SseTransport] that serves a *different* scripted connection to each `open`
- * — which [FakeSseTransport] cannot, and which is the whole subject of F09: a
+ * — which [FakeSseTransport] cannot, and which is the whole subject of reattachment: a
  * run is streamed, the socket drops, and the client reattaches to the same run
  * over a second connection that replays it from the beginning.
  *

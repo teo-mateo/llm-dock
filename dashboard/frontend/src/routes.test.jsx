@@ -12,8 +12,8 @@ import { AppShell, DefaultLayout } from './layout'
 
 // The data router's route table is the single source of truth for paths, and
 // nothing else renders it — so pin its matching here: every production path
-// resolves to the intended element, and the shell/layout wrapping is what it
-// used to be under <BrowserRouter> + <Routes>. Initial matches are computed
+// resolves to the intended element, and the shell/layout wrapping matches
+// too. Initial matches are computed
 // synchronously at router creation, so no rendering (and no network) is
 // needed.
 function leafFor(path) {

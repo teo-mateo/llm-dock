@@ -1,4 +1,4 @@
-"""`GET /api/chat/mcp-servers` with and without `?probe=url-fetch` (issue 255).
+"""`GET /api/chat/mcp-servers` with and without `?probe=url-fetch`.
 
 The no-param response shape is pinned because the web dashboard's tool toggles
 read it and must not see a new key.

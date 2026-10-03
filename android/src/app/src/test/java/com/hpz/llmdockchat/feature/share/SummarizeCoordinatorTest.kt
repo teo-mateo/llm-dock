@@ -29,7 +29,7 @@ import org.junit.Test
 import java.nio.file.Files
 
 /**
- * The direct summarize path (F14-R7): one create, one tools write, one claim —
+ * The direct summarize path: one create, one tools write, one claim —
  * and nothing at all when either write fails, because a thread without its
  * fetcher would answer the instruction from the URL alone.
  */
@@ -144,7 +144,7 @@ class SummarizeCoordinatorTest {
         assertNull(claim())
     }
 
-    /** F14-R5 — a stopped remembered model is a choice, not a dead thread. */
+    /** A stopped remembered model is a choice, not a dead thread. */
     @Test
     fun `a stopped remembered model asks for a choice`() {
         enqueue()
@@ -154,7 +154,7 @@ class SummarizeCoordinatorTest {
         assertEquals(2, server.requestCount)
     }
 
-    /** #269 acceptance — a newly-supported engine resolves like any other. */
+    /** A newly-supported engine resolves like any other. */
     @Test
     fun `a running exl3 remembered model is accepted for summarization`() {
         store.stage(StagedShare(text = URL, url = URL))
@@ -177,7 +177,7 @@ class SummarizeCoordinatorTest {
         assertEquals(3, server.requestCount)
     }
 
-    /** F14-R3 — tools are the precondition, so a failed tools write sends nothing. */
+    /** Tools are the precondition, so a failed tools write sends nothing. */
     @Test
     fun `a failed tools write files no claim`() {
         store.stage(StagedShare(text = URL, url = URL))

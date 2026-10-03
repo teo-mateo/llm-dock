@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * One typed frame from `GET /api/services/<name>/logs/stream` (F12-R1). The
+ * One typed frame from `GET /api/services/<name>/logs/stream`. The
  * `: keepalive` comment frame never reaches here — [SseFrameParser] drops any
  * line starting with `:` before a payload is ever assembled.
  *
@@ -16,13 +16,13 @@ sealed interface LogStreamEvent {
     /** The historical tail is about to start. */
     data object SnapshotStart : LogStreamEvent
 
-    /** One log line, verbatim — never reordered, never truncated (F12-R4's third criterion). */
+    /** One log line, verbatim — never reordered, never truncated. */
     data class Log(val line: String) : LogStreamEvent
 
-    /** The tail is done; anything after this is live output (F12-R1's second criterion). */
+    /** The tail is done; anything after this is live output. */
     data object SnapshotEnd : LogStreamEvent
 
-    /** The container's log stream ended — an end state, not a failure (F12-R1's fourth criterion). */
+    /** The container's log stream ended — an end state, not a failure. */
     data object StreamEnd : LogStreamEvent
 
     data class Error(val message: String) : LogStreamEvent

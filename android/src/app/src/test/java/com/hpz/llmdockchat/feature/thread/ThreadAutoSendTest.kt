@@ -45,7 +45,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * F14-R7's other half: the thread a summarize tap opened sends its one claim
+ * The other half: the thread a summarize tap opened sends its one claim
  * on opening — once, ever — and a send that never reached the server puts the
  * prepared turn back where the user can tap Send themselves.
  */
@@ -160,7 +160,7 @@ class ThreadAutoSendTest {
         assertEquals(1, transport.requests.size)
     }
 
-    /** F14-R6 — a send that never got a frame hands the text back to the user. */
+    /** A send that never got a frame hands the text back to the user. */
     @Test
     fun `an early failure restores the prepared turn to the composer`() = runBlocking {
         conversation()

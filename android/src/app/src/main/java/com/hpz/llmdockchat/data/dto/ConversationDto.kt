@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * `last_run`. The server only ever attaches a run whose status is `queued` or
  * `running` (`chat/db.py:_attach_active_runs`, `chat/runs.py:ACTIVE_STATUSES`),
  * but the mapper re-checks `status` anyway rather than trusting presence alone
- * (Architecture D2's "never trust an unrecognised value" posture).
+ * (the "never trust an unrecognised value" posture).
  */
 @Serializable
 data class ActiveRunDto(
@@ -19,7 +19,7 @@ data class ActiveRunDto(
     @SerialName("started_at") val startedAt: String? = null,
 )
 
-/** One row of `GET /api/chat/conversations`. Only the fields F02 renders. */
+/** One row of `GET /api/chat/conversations`. Only the rendered fields. */
 @Serializable
 data class ConversationDto(
     val id: String = "",
@@ -48,12 +48,12 @@ data class DeleteConversationsRequestDto(val ids: List<String>)
 data class DeleteConversationsResponseDto(val ok: Boolean = false, val deleted: Int = 0)
 
 /**
- * `POST /api/chat/conversations` request body (F03-R1). [ApiJson] has
+ * `POST /api/chat/conversations` request body. [ApiJson] has
  * `explicitNulls = false` and default `encodeDefaults = false`, so a null
  * [promptId] and null [mainSystemPrompt] are both omitted from the wire —
  * not sent as `null`. That distinction is load-bearing: with neither field
  * present, `create_conversation` in `dashboard/chat/routes.py` falls back to
- * the server's configured default system prompt (F03-R2); sending an
+ * the server's configured default system prompt; sending an
  * explicit null or empty string would not.
  */
 @Serializable
@@ -64,7 +64,7 @@ data class CreateConversationRequestDto(
 )
 
 /**
- * Only what F03 needs out of `POST`/`PUT /api/chat/conversations(/<id>)`'s
+ * Only what the new-chat sheet needs out of `POST`/`PUT /api/chat/conversations(/<id>)`'s
  * response — the server returns the full conversation
  * (`to_dict(include_messages=True)` on create, `to_dict()` on update); the
  * rest is ignored via `ignoreUnknownKeys`.
@@ -74,17 +74,17 @@ data class ConversationIdResponseDto(val id: String = "")
 
 /**
  * `PUT /api/chat/conversations/<id>` body for setting a fresh thread's tools
- * (F03-R3). `POST /api/chat/conversations` does not accept `mcp_servers_json`
+ *. `POST /api/chat/conversations` does not accept `mcp_servers_json`
  * at all — `create_conversation` builds the row from a fixed field set that
  * excludes it — so tool selection on a brand-new thread is always this
- * follow-up PUT, the same call F08 uses to change it later.
+ * follow-up PUT, the same call the tools sheet uses to change it later.
  */
 @Serializable
 data class UpdateMcpServersRequestDto(@SerialName("mcp_servers_json") val mcpServersJson: String)
 
 /**
  * `PUT /api/chat/conversations/<id>` body for switching a thread's model
- * mid-conversation (F07-R4). Earlier messages are untouched — each already
+ * mid-conversation. Earlier messages are untouched — each already
  * carries its own `model_service` — only the next turn is affected.
  */
 @Serializable

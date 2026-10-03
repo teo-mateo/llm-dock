@@ -4,12 +4,12 @@ import kotlinx.serialization.Serializable
 
 /**
  * What a share intent turned into, staged for the user to adapt before sending
- * (F14-R3). [text] is composer text — the shared text/link itself, or a text
+ *. [text] is composer text — the shared text/link itself, or a text
  * file inlined as a fenced code block (web parity, `ChatInput.jsx`).
  * [attachments] are `data:image/jpeg;base64,…` URLs through the same pipeline
- * as F04-R9. [error] is set when the share was unsupported (PDF, binary) —
+  * as an in-app attachment. [error] is set when the share was unsupported (PDF, binary) —
  * nothing is staged, the picker shows the reason. [url] is set only for a
- * text share that carries an HTTP(S) link (F14-R7) — the page the summarize
+ * text share that carries an HTTP(S) link — the page the summarize
  * action would fetch, captured at intent time so the picker never re-derives
  * it from edited text.
  */
@@ -44,8 +44,7 @@ sealed interface SharedKind {
 }
 
 /**
- * Classifies a share intent (F14). The precedence rules are F14's decision
- * 4.7: `EXTRA_TEXT` wins for `text/plain` (apps like WhatsApp share a link as
+ * Classifies a share intent. The precedence rules are fixed: `EXTRA_TEXT` wins for `text/plain` (apps like WhatsApp share a link as
  * text *and* a preview image — the link is what the user asked to send);
  * `EXTRA_STREAM` wins for an image share; a `text/plain` share with only a
  * stream is a text file.

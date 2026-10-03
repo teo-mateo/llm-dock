@@ -110,7 +110,7 @@ class AuthInterceptorTest {
     }
 
     /**
-     * F01-R6 narrows the rule above. A dashboard restart 401s the first
+     * A narrower rule than the one above: a dashboard restart 401s the first
      * request, which discards the dead token; failing everything queued behind
      * it would take a signed-in user to Connect for no reason.
      */
@@ -119,7 +119,7 @@ class AuthInterceptorTest {
         tokenStore.clear()
         server.enqueue(MockResponse.Builder().body("{}").build())
         val minted = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(tokenStore, sessionState) { "totp-minted" })
+            .addInterceptor(AuthInterceptor(tokenStore, sessionState, com.hpz.llmdockchat.core.auth.Reauthenticator { "totp-minted" }))
             .build()
 
         val code = minted.newCall(

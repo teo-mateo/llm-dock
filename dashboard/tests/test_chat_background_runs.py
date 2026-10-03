@@ -1,4 +1,4 @@
-"""Background-run lifecycle tests (Phase 4 of #58).
+"""Background-run lifecycle tests.
 
 Sends now start a background run; the SSE response is only an observer.
 These cover: a run completing after the observer detaches (navigation is not

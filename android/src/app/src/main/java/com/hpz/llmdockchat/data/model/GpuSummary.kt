@@ -1,6 +1,6 @@
 package com.hpz.llmdockchat.data.model
 
-/** One GPU, as F10-R3's header shows it — real numbers only, no per-container split (F10-R4). */
+/** One GPU, as the GPU header shows it — real numbers only, no per-container split. */
 data class GpuSummary(
     val index: Int,
     val name: String,
@@ -29,8 +29,7 @@ data class GpuSummary(
  * What the GPU header shows, live from `GET /api/gpu/stream`. [Unavailable]
  * covers both shapes the endpoint can hand back for "nothing to show": an
  * `{"error": …}` frame (`nvidia-smi` failed) and a `{"gpus": []}` frame (no
- * GPU present) — the service list must keep working in either case (F10-R3's
- * fourth criterion).
+ * GPU present) — the service list must keep working in either case.
  */
 sealed interface GpuState {
     /**

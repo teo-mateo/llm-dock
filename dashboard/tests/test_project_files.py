@@ -248,7 +248,7 @@ class TestOps:
         assert pf.read_text(made_root, "f.txt")["content"] == "two"
 
     def test_write_text_conflict_even_with_identical_mtime(self, made_root):
-        """Regression (PR #79 codex 1.1): the revision must not be
+        """Regression: the revision must not be
         timestamp-based at ANY precision — Linux stamps writes within one
         kernel timer tick identically, so even mtime_ns collides for quick
         successive saves. Force the worst case: content changed while the
@@ -267,7 +267,7 @@ class TestOps:
         assert pf.read_text(made_root, "f.txt")["content"] == "other tab"
 
     def test_write_text_create_only(self, made_root):
-        """Regression (PR #79 codex 2.2): a new-file save carries a
+        """Regression: a new-file save carries a
         create-only precondition, so a stale tree snapshot can't silently
         overwrite a file that appeared on disk since."""
         node = pf.write_text(made_root, "f.txt", "created", create_only=True)
@@ -283,7 +283,7 @@ class TestOps:
         assert e.value.status == 409
 
     def test_writes_preserve_permission_bits(self, made_root):
-        """Regression (PR #79 codex 3.2): mkstemp stages at 0600 — an edit
+        """Regression: mkstemp stages at 0600 — an edit
         or overwriting upload must not strip the target's mode (e.g. a
         0755 script's exec bit), and fresh files get 0644, not 0600."""
         node = pf.write_text(made_root, "run.sh", "#!/bin/sh\n")
@@ -333,7 +333,7 @@ class TestOps:
         assert e.value.status == 413
 
     def test_write_text_rejects_nul_content(self, made_root):
-        """Regression (PR #79 codex 4.2): read_text calls NUL binary, so
+        """Regression: read_text calls NUL binary, so
         accepting it on write would create a file the editor can't reopen."""
         with pytest.raises(pf.ProjectFilesError) as e:
             pf.write_text(made_root, "f.txt", "before\x00after")
@@ -749,7 +749,7 @@ def test_project_delete_removes_files_dir(client, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Stable error codes (codex arch review rec 4)
+# Stable error codes
 # ---------------------------------------------------------------------------
 
 
@@ -813,7 +813,7 @@ class TestErrorCodes:
 
 class TestWriteTextCAS:
     """write_text's base_revision comparison and its os.replace are one
-    atomic unit under a cross-process lock (regression: codex PR84 1.1).
+    atomic unit under a cross-process lock.
     A writer landing between another writer's check and publish must
     block, then observe the published content and conflict — never be
     silently overwritten. flock contends between separate opens even in
@@ -917,7 +917,7 @@ class TestWriteTextCAS:
         return t, resume, errors
 
     def test_overwrite_upload_blocks_during_cas(self, made_root, monkeypatch):
-        # Regression: codex PR84 2.1 — the OTHER mutators must take the
+        # Regression: the OTHER mutators must take the
         # same lock, or an explorer upload landing inside the CAS window
         # would be silently replaced by the paused writer's publication.
         import threading
@@ -969,8 +969,8 @@ class TestWriteTextCAS:
 
 
 class TestWriteTextMustExist:
-    """must_exist: the replace-only precondition (regression: codex
-    PR84 2.2 — evaluated inside the lock, not pre-checked by callers)."""
+    """must_exist: the replace-only precondition, evaluated inside the lock,
+    not pre-checked by callers."""
 
     def test_missing_file_404(self, made_root):
         with pytest.raises(pf.ProjectFilesError) as e:
@@ -1090,7 +1090,7 @@ class TestCopy:
     def test_copy_into_self_via_symlink_alias_rejected(self, made_root):
         # The client-path prefix check can't see that "alias/copy" is
         # physically d/copy when alias -> d; the physical-path comparison
-        # must catch it (regression: codex PR83 4.1).
+        # must catch it.
         pf.mkdir(made_root, "d")
         self._write(made_root, "d/x.txt")
         os.symlink(os.path.join(made_root, "d"), os.path.join(made_root, "alias"))
@@ -1102,8 +1102,7 @@ class TestCopy:
     def test_copy_depth_cap_via_symlink_alias(self, made_root):
         # A root-level alias to a deep directory spells a 2-component
         # client path whose PHYSICAL depth is at the cap — the copied
-        # directory's children would land past it (regression: codex
-        # PR83 5.1).
+        # directory's children would land past it.
         deep_parts = ["p"] * (pf.MAX_PATH_DEPTH - 1)
         deep_abs = os.path.join(made_root, *deep_parts)
         os.makedirs(deep_abs)

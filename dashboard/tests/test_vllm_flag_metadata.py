@@ -5,9 +5,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flag_metadata import VLLM_FLAGS
 
-# The 21 entries added in #196 (the issue's 20, plus --enable-prompt-tokens-details,
-# re-derived from services.json in step 4: it runs on every vLLM service here and had
-# no metadata entry).
+# The 21 flags this module's metadata added beyond its original set, including
+# --enable-prompt-tokens-details (it runs on every vLLM service here and had no
+# metadata entry).
 NEW_KEYS = {
     "runner": "--runner",
     "convert": "--convert",
@@ -45,8 +45,8 @@ REQUIRED_FIELDS = ("cli", "type", "category", "description", "impact")
 
 
 def test_entry_count_tracks_additions_and_removals():
-    # 30 pre-existing + the 21 from #196 (named in NEW_KEYS) - the 4 removed in
-    # #207 (upstream-deleted flags the surface guard caught).
+    # 30 pre-existing + the 21 in NEW_KEYS - 4 upstream-deleted flags the
+    # surface guard caught.
     assert len(VLLM_FLAGS) == 47, (
         f"VLLM_FLAGS holds {len(VLLM_FLAGS)} entries; expected 30 + 21 - 4"
     )
@@ -86,8 +86,8 @@ def test_json_valued_flags_have_no_prefill_default():
 
 
 def test_prefill_values_are_documented_choices():
-    # Choices as documented for v0.24.0 and re-verified against the built image's
-    # `serve --help=all` (image id and vllm --version are recorded in the PR body).
+    # Re-verified against the built image's `serve --help=all` (the image pin
+    # lives in vllm/Dockerfile).
     assert VLLM_FLAGS["optimization_level"]["default"] in ("0", "1", "2", "3")
     assert VLLM_FLAGS["performance_mode"]["default"] in (
         "balanced",

@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /**
- * Sizes are in `sp` throughout so the device font scale applies (F00-R8).
+ * Sizes are in `sp` throughout so the device font scale applies.
  * Model output is read for minutes at a time, so body line height is generous.
  */
 val Typography = Typography(
@@ -53,5 +53,5 @@ val Typography = Typography(
     ),
 )
 
-/** Container logs and code blocks (F05, F12). */
+/** Container logs and code blocks. */
 val MonoFontFamily: FontFamily = FontFamily.Monospace

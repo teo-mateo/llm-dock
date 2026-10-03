@@ -3,7 +3,7 @@ package com.hpz.llmdockchat.data.model
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** [classifyLogLevel] — pattern matching over unstructured lines (F12-R4). Never touches the text. */
+/** [classifyLogLevel] — pattern matching over unstructured lines. Never touches the text. */
 class LogLevelTest {
 
     @Test

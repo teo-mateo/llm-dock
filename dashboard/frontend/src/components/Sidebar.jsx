@@ -8,7 +8,7 @@ const STORAGE_KEY = 'llmdock.sidebar.collapsed'
 function readCollapsed() {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
-    // Default collapsed (issue #29 §2) when nothing stored.
+    // Default collapsed when nothing stored.
     return v === null ? true : v === 'true'
   } catch {
     return true

@@ -158,22 +158,21 @@ def test_delete_when_no_customization_is_noop(client):
     assert body["current"] == DEFAULT_MAIN_SYSTEM_PROMPT
 
 
-# -- Regression for acceptance criterion #2 -----------------------------
+# -- Regression: the built-in baseline must stay tool-agnostic ------------
 
 
 def test_builtin_prompt_has_no_tool_specific_guidance():
     """The default prompt must NOT mention any specific tool category.
 
-    Acceptance criterion #2: "A new conversation created with no MCP
-    servers enabled has a system prompt with no mention of web search,
-    web fetch, or other tool-specific behavior." The augmentation step
-    in routes._stream_response only appends tool_hints when MCP servers
-    are enabled — so this guarantee reduces to "the built-in baseline
+    A new conversation created with no MCP servers enabled must get a system
+    prompt with no mention of web search, web fetch, or other tool-specific
+    behavior. The augmentation step in routes only appends tool_hints when MCP
+    servers are enabled — so this guarantee reduces to "the built-in baseline
     is clean".
     """
     # Words and phrases that would indicate tool-specific guidance has
     # leaked back into the baseline. We compare case-insensitively. The
-    # list mirrors the categories called out in issue #23.
+    # list mirrors the tool categories the registry ships.
     banned = [
         "web search", "web_search", "websearch",
         "web fetch", "web_fetch", "fetch_url",

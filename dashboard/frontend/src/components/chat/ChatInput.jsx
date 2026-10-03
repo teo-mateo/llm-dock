@@ -4,7 +4,7 @@ import { pickFence } from '../../utils/fence'
 // Attach allowlist. Non-image entries are inlined into the outgoing message
 // as fenced code blocks (see buildMessage). PDFs are intentionally excluded
 // — they can't be extracted client-side without a parser; the full artifact
-// store in issue #28 will handle binary uploads.
+// store will handle binary uploads.
 const ALLOWED_EXT = new Set([
   // text / docs
   'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'log',
@@ -144,7 +144,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, pendingInser
 
   // Shared ingest path for the attach button, drag-and-drop and paste.
   // Images flow through the existing image pipeline; other allowlisted
-  // files are shown as attachment chips (affordance only — transport is #28).
+  // files are shown as attachment chips (affordance only — transport is not wired yet).
   function ingestFiles(fileList) {
     if (disabled) return
     for (const file of fileList) {
