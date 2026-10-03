@@ -50,6 +50,63 @@ afterEach(() => {
   sseHookCalls.count = 0
 })
 
+const STORAGE_KEY = 'llmdock.service-params.flag-column-width'
+
+function stubGeometry(width) {
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+    width, height: 24, top: 0, left: 0, right: width, bottom: 24, x: 0, y: 0, toJSON: () => ({}),
+  }))
+  return spy
+}
+
+describe('ServiceConfigPanel parameter-name divider', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    localStorage.removeItem(STORAGE_KEY)
+  })
+
+  it('renders a vertical separator between the name and value fields', () => {
+    stubGeometry(1000)
+    setup(BASE)
+    const divider = screen.getAllByRole('separator')[0]
+    expect(divider).toHaveAttribute('aria-orientation', 'vertical')
+    expect(divider).toHaveAccessibleName('Resize parameter name column')
+  })
+
+  it('widens the name column when the divider is dragged', () => {
+    stubGeometry(1000)
+    setup(BASE)
+    const flag = screen.getByDisplayValue('-ngl')
+    const divider = screen.getAllByRole('separator')[0]
+    fireEvent.mouseDown(divider)
+    fireEvent.mouseMove(window, { clientX: 400 })
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('400')
+    expect(flag.style.width).toMatch(/px/)
+    fireEvent.mouseUp(window)
+  })
+
+  it('resizes with the arrow keys and persists the width', () => {
+    localStorage.setItem(STORAGE_KEY, '160')
+    stubGeometry(1000)
+    setup(BASE)
+    const divider = screen.getAllByRole('separator')[0]
+    fireEvent.keyDown(divider, { key: 'ArrowRight' })
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('170')
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('160')
+  })
+
+  it('never narrows the name column below its minimum', () => {
+    localStorage.setItem(STORAGE_KEY, '160')
+    stubGeometry(1000)
+    setup(BASE)
+    const divider = screen.getAllByRole('separator')[0]
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('140')
+  })
+})
+
 describe('ServiceConfigPanel reasoning levels', () => {
   it('initializes the field from the stored declaration', () => {
     setup({ ...BASE, reasoning_levels: 'off,low,medium' })

@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fetchAPI } from '../api'
 import { renderCommandPreview } from './commandPreview'
+import useResizableWidth from '../hooks/useResizableWidth'
+
+// The parameter-name column is operator-resized (issue #289): flag names are
+// often too long for a fixed box, so its width is a persisted drag target
+// bounded by the rows container. One source for the bounds — the hook and the
+// keyboard handler both read these so they cannot drift.
+const FLAG_MIN_W = 140
+const FLAG_MAX_FRACTION = 0.6
+const FLAG_DEFAULT_W = 160
+// The handle is a w-4 transparent hit area centered on the column boundary; the
+// name field is inset by half its width so an 8px gutter separates the line from
+// both fields and the line stays centered under the cursor.
+const FLAG_HANDLE_OFFSET = 8
 
 let nextParamId = 0
 
@@ -39,6 +52,22 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
   const [commandPreviewOpen, setCommandPreviewOpen] = useState(false)
 
   const initialized = useRef(false)
+
+  const { containerRef, currentWidth, startDrag, dragging, setCurrentWidth } = useResizableWidth({
+    storageKey: 'llmdock.service-params.flag-column-width',
+    minWidth: FLAG_MIN_W,
+    maxFraction: FLAG_MAX_FRACTION,
+    defaultWidthPx: FLAG_DEFAULT_W,
+  })
+
+  const handleDividerKey = useCallback((e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const delta = e.key === 'ArrowRight' ? 10 : -10
+    const rect = containerRef.current?.getBoundingClientRect()
+    const max = rect ? Math.max(FLAG_MIN_W, Math.floor(rect.width * FLAG_MAX_FRACTION)) : Infinity
+    setCurrentWidth(w => Math.min(Math.max((w || FLAG_DEFAULT_W) + delta, FLAG_MIN_W), max))
+  }, [containerRef, setCurrentWidth])
 
   // Initialize form from config
   useEffect(() => {
@@ -185,6 +214,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
 
   return (
     <div className="bg-surface rounded-lg border border-border">
+      {dragging && <div className="fixed inset-0 z-50 cursor-col-resize" aria-hidden="true" />}
       {/* Header */}
       <div className="px-5 py-4 border-b border-border flex justify-between items-center">
         <h2 className="text-lg font-semibold text-fg">Configuration</h2>
@@ -272,33 +302,36 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
               <i className="fa-solid fa-plus mr-1"></i>Add parameter
             </button>
           </div>
-          <div className="space-y-0.5">
+          <div className="relative space-y-0.5" ref={containerRef}>
             {params.map(({ id, flag, value }, idx) => {
               const tooltip = getTooltip(flag)
               const isDuplicate = flag && duplicateFlags.has(flag)
               const isTrailingEmpty = idx === params.length - 1 && !flag && !value
               return (
-                <div key={id} className="flex items-center gap-2 rounded px-3 py-1">
+                <div key={id} className="flex items-center rounded py-1">
                   <input
                     ref={el => { if (el && justAddedIdRef.current === id) { el.focus(); justAddedIdRef.current = null } }}
                     value={flag}
                     onChange={e => handleParamFlagChange(id, e.target.value)}
                     disabled={saving}
                     placeholder="-flag"
-                    className={`bg-surface-strong border rounded px-2 py-1 font-mono text-sm w-40 text-fg focus:outline-none disabled:opacity-50 ${isDuplicate ? 'border-danger focus:border-danger' : 'border-border-strong focus:border-accent'}`}
+                    style={{ width: Math.max(0, currentWidth - FLAG_HANDLE_OFFSET) }}
+                    className={`shrink-0 bg-surface-strong border rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none disabled:opacity-50 ${isDuplicate ? 'border-danger focus:border-danger' : 'border-border-strong focus:border-accent'}`}
                     title={isDuplicate ? 'Duplicate flag' : tooltip || undefined}
                   />
+                  {/* Invisible gutter; the single divider below is positioned over it. */}
+                  <div className="w-4 shrink-0" aria-hidden="true" />
                   <input
                     value={value}
                     onChange={e => handleParamValueChange(id, e.target.value)}
                     disabled={saving}
                     placeholder="value"
-                    className="flex-1 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent disabled:opacity-50"
+                    className="min-w-0 flex-1 bg-surface-strong border border-border-strong rounded px-2 py-1 font-mono text-sm text-fg focus:outline-none focus:border-accent disabled:opacity-50"
                   />
                   <button
                     onClick={() => handleParamRemove(id)}
                     disabled={saving || isTrailingEmpty}
-                    className={`disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-fg-subtle hover:text-danger-fg'}`}
+                    className={`ml-2 shrink-0 disabled:opacity-50 cursor-pointer ${isTrailingEmpty ? 'invisible' : 'text-fg-subtle hover:text-danger-fg'}`}
                     aria-label={`Remove parameter ${flag || '(empty)'}`}
                   >
                     <i className="fa-solid fa-xmark"></i>
@@ -306,8 +339,25 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
                 </div>
               )
             })}
+            {/* One continuous handle across the whole block, positioned at the column
+                boundary and centered so the gutter stays even. Hover or drag lights the
+                entire line — a per-row handle lit only the hovered segment while a drag
+                lit every segment at once, which read as inconsistent. */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize parameter name column"
+              tabIndex={0}
+              onMouseDown={startDrag}
+              onKeyDown={handleDividerKey}
+              title="Drag, or focus and press arrow keys, to resize the parameter name column"
+              style={{ left: currentWidth }}
+              className="group/sep absolute top-0 bottom-0 z-10 flex w-4 -translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center focus:outline-none"
+            >
+              <span className={`h-full w-0.5 rounded transition-colors ${dragging ? 'bg-accent' : 'bg-border group-hover/sep:bg-accent group-focus/sep:bg-accent'}`} />
+            </div>
             {hasDuplicates && (
-              <p className="text-danger-fg text-xs mt-1 px-3">
+              <p className="text-danger-fg text-xs mt-1">
                 Duplicate flags: {[...duplicateFlags].join(', ')}
               </p>
             )}
