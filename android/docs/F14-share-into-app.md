@@ -430,7 +430,13 @@ No new endpoints, no new server code (R-A).
   hydration, so `reassign` suspends and the navigation is sequenced after it (a
   thread that loaded before the merge would open without the content it was opened
   with), and both destination writes are flushed before `pending.json` is deleted,
-  so a death mid-transfer re-offers the share rather than losing it.
+  so a death mid-transfer re-offers the share rather than losing it. One more place
+  the merge has to reach: a thread that is already open keeps its on-screen composer
+  across a reload, because a background refresh must never wipe what the user is
+  typing — so the merged draft would have stayed on disk and off the screen. The
+  thread therefore adopts a draft that grew by appending to exactly the text it last
+  stored (`ThreadViewModel.adoptedDraft`); any other difference is the reload racing
+  the user's own keystrokes, where the screen is newer and wins.
 - **No mockup exists for this feature.** The 16 validated screens have
   no share-target screen; the picker is specified from the conversation
   list's visual language rather than a signed-off drawing.
