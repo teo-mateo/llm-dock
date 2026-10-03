@@ -97,7 +97,7 @@ data class ServicesStreamState(val services: List<ServiceSummary>, val stale: Bo
 /**
  * Pure and separately tested. A [ServiceStreamEvent.Snapshot] replaces
  * [current] wholesale; a [ServiceStreamEvent.Delta] updates the one named
- * service in place, leaving every other row untouched; [ServiceStreamEvent.Error]
+ * service in place, or removes it on deletion, leaving every other row untouched; [ServiceStreamEvent.Error]
  * and [ServiceStreamEvent.Unknown] leave [current] as it was — an unrecognised
  * frame is exactly the case a live picker must not go blank over.
  *
@@ -109,7 +109,9 @@ data class ServicesStreamState(val services: List<ServiceSummary>, val stale: Bo
 fun mergeServiceEvent(current: List<ServiceSummary>, event: ServiceStreamEvent): List<ServiceSummary> =
     when (event) {
         is ServiceStreamEvent.Snapshot -> event.services.map { it.toDomain() }
-        is ServiceStreamEvent.Delta -> current.map { service ->
+        is ServiceStreamEvent.Delta -> if (event.action == "service-deleted" || event.status == "deleted") {
+            current.filterNot { it.name == event.serviceName }
+        } else current.map { service ->
             if (service.name != event.serviceName) {
                 service
             } else {

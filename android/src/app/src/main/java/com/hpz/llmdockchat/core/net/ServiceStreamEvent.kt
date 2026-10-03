@@ -15,10 +15,9 @@ import kotlinx.serialization.json.booleanOrNull
  * nothing but "SSE" (`dashboard/routes/services.py:services_stream`, not
  * `chat/run_manager.py`).
  *
- * [Delta] deliberately carries only [serviceName], [status], [favorite] and
- * [reasoningLevels] — the fields a picker and the thread header actually need
- * to update in place (`ComposeManagerEvent`'s `action`/`container_id`/
- * `timestamp` are not read). Neither this type nor [Snapshot] (via
+ * [Delta] carries the fields needed to update a row, plus [action] so a
+ * service-deleted event can remove it. Container ID and timestamp are not
+ * read. Neither this type nor [Snapshot] (via
  * [ServiceDto]) ever has a field for `api_key`, so one cannot leak through here
  * even by accident (F07-R6).
  */
@@ -43,6 +42,7 @@ sealed interface ServiceStreamEvent {
         val status: String?,
         val favorite: Boolean?,
         val reasoningLevels: List<String>? = null,
+        val action: String? = null,
     ) : ServiceStreamEvent
 
     data class Error(val message: String) : ServiceStreamEvent
@@ -84,6 +84,7 @@ private fun JsonObject.deltaFrame(payload: String): ServiceStreamEvent {
         status = string("status"),
         favorite = (metadata?.get("favorite") as? JsonPrimitive)?.booleanOrNull,
         reasoningLevels = ladder?.let { parseReasoningLevels(it) },
+        action = string("action"),
     )
 }
 

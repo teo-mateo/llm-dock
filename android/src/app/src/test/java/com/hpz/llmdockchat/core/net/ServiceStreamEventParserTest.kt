@@ -46,7 +46,7 @@ class ServiceStreamEventParserTest {
                 "metadata": {"favorite": true}}""",
         )
         assertEquals(
-            ServiceStreamEvent.Delta(serviceName = "llamacpp-gemma-4-26b-a4b-it-q8", status = "exited", favorite = true),
+            ServiceStreamEvent.Delta(serviceName = "llamacpp-gemma-4-26b-a4b-it-q8", status = "exited", favorite = true, action = "die"),
             event,
         )
     }
@@ -58,7 +58,7 @@ class ServiceStreamEventParserTest {
                 "action": "start", "container_id": "def456", "timestamp": "2026-07-25T00:00:02Z"}""",
         )
         assertEquals(
-            ServiceStreamEvent.Delta(serviceName = "vllm-qwen3-6-27b-fp8", status = "running", favorite = null),
+            ServiceStreamEvent.Delta(serviceName = "vllm-qwen3-6-27b-fp8", status = "running", favorite = null, action = "start"),
             event,
         )
     }
@@ -108,6 +108,7 @@ class ServiceStreamEventParserTest {
                 status = null,
                 favorite = null,
                 reasoningLevels = listOf("off", "low"),
+                action = "metadata-changed",
             ),
             event,
         )

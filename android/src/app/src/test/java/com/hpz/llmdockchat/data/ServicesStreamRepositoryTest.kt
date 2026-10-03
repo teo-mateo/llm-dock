@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.data
 
 import com.hpz.llmdockchat.core.net.ServiceStreamEvent
+import com.hpz.llmdockchat.core.net.parseServiceStreamFrame
 import com.hpz.llmdockchat.data.dto.ServiceDto
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -78,6 +79,22 @@ class ServicesStreamRepositoryTest {
     fun `a delta for an unknown service name changes nothing`() {
         val delta = ServiceStreamEvent.Delta(serviceName = "does-not-exist", status = "running", favorite = null)
         assertEquals(listOf(running, stopped), mergeServiceEvent(listOf(running, stopped), delta))
+    }
+
+    @Test
+    fun `a deletion delta removes only the named row`() {
+        val event = parseServiceStreamFrame(
+            """{"type":"delta","service_name":"llamacpp-a","status":"deleted","action":"service-deleted"}""",
+        )
+        assertEquals(listOf(stopped), mergeServiceEvent(listOf(running, stopped), event))
+        assertEquals(listOf(stopped), mergeServiceEvent(listOf(stopped), event))
+    }
+
+    @Test
+    fun `deleted status or deletion action alone removes a row`() {
+        val rows = listOf(running, stopped)
+        assertEquals(listOf(stopped), mergeServiceEvent(rows, ServiceStreamEvent.Delta("llamacpp-a", "deleted", null)))
+        assertEquals(listOf(stopped), mergeServiceEvent(rows, ServiceStreamEvent.Delta("llamacpp-a", null, null, action = "service-deleted")))
     }
 
     @Test
