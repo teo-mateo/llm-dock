@@ -12,8 +12,8 @@ import java.nio.file.Files
 
 /**
  * The staged-share store: pending lifecycle, per-conversation attachment
- * records, and the reassign/remove/clear semantics that make F14-R5's
- * force-stop and no-ghost criteria true.
+ * records, and the reassign/remove/clear semantics behind the force-stop
+ * and no-ghost rules.
  */
 class SharedDraftStoreTest {
 

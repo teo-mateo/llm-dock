@@ -82,9 +82,8 @@ import java.time.Instant
 import java.time.ZoneId
 
 /**
- * Screen 02 · Conversations — the app's home screen (F02). Deviates from the
- * mockup as recorded in `F02-conversation-list.md`'s *Deviations*: no
- * last-line preview, no search, no project groups.
+ * Conversations — the app's home screen. Deviates from the original design:
+ * no last-line preview, no search, no project groups.
  */
 @Composable
 fun ConversationListScreen(
@@ -99,7 +98,7 @@ fun ConversationListScreen(
     // Fires on every (re)composition of this screen — cold start, and every
     // return to it after a tab switch or popping back from a thread, because
     // Navigation Compose disposes and re-invokes the destination's content
-    // each time it stops being current (F02-R1's first and fourth criteria).
+    // each time it stops being current.
     LaunchedEffect(Unit) { viewModel.refresh() }
 
     ConversationListContent(
@@ -226,7 +225,7 @@ private fun ConversationListContent(
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize().testTag("conversation_list"),
-                                // Fix pass A5: the FAB floats over the list, so
+                                // The FAB floats over the list, so
                                 // without this the last conversation's title
                                 // sits under it and its timestamp is
                                 // unreachable — there is no further scroll.
@@ -288,7 +287,7 @@ private fun ConversationListContent(
 }
 
 /**
- * Fix pass A3 — "the conversation I just started is not in the list".
+ * Keeps "the conversation I just started is not in the list" from happening.
  *
  * The refresh on return does happen; what goes wrong is where the new row
  * lands. `LazyColumn` anchors its viewport on the first visible item's *key*,
@@ -428,8 +427,8 @@ private fun ConversationRow(
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             // Never let the library commit the dismiss itself — a swipe only
-            // opens the confirm dialog (F02-R4); the row always springs back
-            // (F00-R9's "cancelling leaves state untouched" applies to the
+            // opens the confirm dialog; the row always springs back
+            // ("cancelling leaves state untouched" applies to the
             // gesture too, not just the dialog).
             if (value != SwipeToDismissBoxValue.Settled) onRequestDelete()
             false
@@ -611,7 +610,7 @@ private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
     Engine.UNKNOWN -> engineUnknown
 }
 
-/** The live "generating" dot (F02-R3) — any thread with a non-terminal run. */
+/** The live "generating" dot — any thread with a non-terminal run. */
 @Composable
 private fun GeneratingIndicator(run: ActiveRun?) {
     val colors = LlmTheme.colors

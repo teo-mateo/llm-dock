@@ -1,4 +1,4 @@
-"""Wire shape for reasoning levels (R5, R6, R7), asserted on the payload dict.
+"""Wire shape for reasoning levels, asserted on the payload dict.
 
 The interesting assertion is the negative one: with no level the payload gains
 no key at all, which is what makes the feature invisible to services that don't
@@ -72,7 +72,7 @@ def _send(monkeypatch, svc, level):
     {"host_port": 1234, "api_key": "k", "template_type": "vllm"},
 ])
 def test_payload_is_unchanged_without_a_level(monkeypatch, svc):
-    """R6. Not merely "no reasoning field was added" — the payload is the exact
+    """Not merely "no reasoning field was added" — the payload is the exact
     key set an un-featured request produces."""
     captured = _send(monkeypatch, svc, None)
     assert set(captured) == {"messages", "stream"}
@@ -86,7 +86,7 @@ def test_empty_string_level_behaves_as_absent(monkeypatch):
     assert set(_send(monkeypatch, _llamacpp(), "")) == {"messages", "stream"}
 
 
-# -- llamacpp (R5) --------------------------------------------------------
+# -- llamacpp -----------------------------------------------------------
 
 
 def test_llamacpp_named_level_sets_reasoning_effort(monkeypatch):
@@ -135,7 +135,7 @@ def test_vllm_off_sends_no_kwargs(monkeypatch):
     assert "chat_template_kwargs" not in captured
 
 
-# -- unmapped engines (R7) -----------------------------------------------
+# -- unmapped engines ---------------------------------------------------
 
 
 @pytest.mark.parametrize("engine", ["ik_llamacpp", "tabbyapi", "ds4", ""])
@@ -194,7 +194,7 @@ def test_openrouter_off_is_spelled_none_on_the_wire(monkeypatch):
     assert set(captured["reasoning"]) == {"effort"}
 
 
-# -- a level the service no longer offers (R7) ---------------------------
+# -- a level the service no longer offers --------------------------------
 
 
 @pytest.mark.parametrize("level", ["ultra", "minimal", "LOW", " low"])

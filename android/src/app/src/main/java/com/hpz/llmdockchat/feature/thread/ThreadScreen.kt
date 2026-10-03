@@ -85,10 +85,10 @@ import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
 import kotlinx.coroutines.launch
 
 /**
- * Screen 04 · the thread, mid-answer (F04).
+ * · the thread, mid-answer.
  *
- * Deviates from the mockup as recorded in `F04-chat-turn-and-streaming.md`:
- * no tok/s readout in the stop bar, and no critique overlay.
+ * Deviates from the original design:
+  * no tok/s readout in the stop bar, and no critique overlay.
  */
 @Composable
 fun ThreadScreen(
@@ -104,11 +104,11 @@ fun ThreadScreen(
     // carries the streaming turn across.
     LaunchedEffect(Unit) { viewModel.load() }
 
-    // F14 — leaving the thread spends the staged share record, so a later
+    // Leaving the thread spends the staged share record, so a later
     // visit shows no ghost attachment. Both the top-bar back button and the
     // system back go through here; a 401 teardown pops the graph directly and
     // does not, which is exactly what keeps the staged content across a forced
-    // re-login round trip (F14-R5).
+    // re-login round trip.
     val leaveThread = {
         viewModel.leaveThread()
         onBack()
@@ -233,7 +233,7 @@ private fun ThreadContent(
                 onBack = onBack,
                 action = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // F15 — beside the settings button, in its row, on its axis:
+                        // Beside the settings button, in its row, on its axis:
                         // both are quiet 48 dp header controls, so they read as one
                         // group instead of a control drifting under the gear.
                         loaded?.takeIf { it.reasoningControlVisible }?.let { thread ->
@@ -260,7 +260,7 @@ private fun ThreadContent(
             )
         },
         // The composer is the Scaffold's bottom bar rather than the last child
-        // of the body (fix pass B1). That is what keeps the keyboard from
+        // of the body. That is what keeps the keyboard from
         // destroying the screen: Scaffold measures the bar first and gives the
         // thread what is left, instead of a Column handing the composer an
         // unbounded height and squeezing the list — and the app bar — to
@@ -275,7 +275,7 @@ private fun ThreadContent(
                         // even if you had scrolled up to re-read something.
                         following = true
                         // Send, while editing a message, means "edit and
-                        // resend" — F06-R3 — which opens the discard-count
+                        // resend" — which opens the discard-count
                         // confirm rather than posting straight away.
                         if (it.editingMessage != null) onRequestEditConfirm() else onSend()
                     },
@@ -304,7 +304,7 @@ private fun ThreadContent(
         }
     }
 
-    // F00-R9 / F06-R2 / F06-R3 — each destructive action confirms, naming the
+    // Each destructive action confirms, naming the
     // specific target: the delete dialog has nothing else to name (there is
     // one message), the edit dialog states the discard count in numbers.
     loaded?.pendingDelete?.let {
@@ -346,7 +346,7 @@ private fun ThreadContent(
         )
     }
 
-    // F07-R4 — the same picker as F03's, reached from the overflow menu.
+    // The same picker as the new-chat sheet's, reached from the overflow menu.
     loaded?.modelPicker?.let { picker ->
         ModelPickerSheet(
             services = picker.services,
@@ -358,9 +358,9 @@ private fun ThreadContent(
         )
     }
 
-    // F15 — the level sheet. Opened from the header chip, and it dismisses on
+    // The level sheet. Opened from the header chip, and it dismisses on
     // write success rather than on tap, so a send right after a choice cannot
-    // use the level before it (F15-R2's last criterion).
+    // use the level before it.
     loaded?.reasoningPicker?.let { picker ->
         ReasoningLevelSheet(
             ladder = loaded.ladder,
@@ -374,7 +374,7 @@ private fun ThreadContent(
     // One sheet for everything about this chat (replaces the two-item overflow
     // menu). Selected tool ids come from the conversation itself, not local
     // sheet state: `mcpServers` is the server's own array, and `toggleTool`
-    // updates it optimistically the instant a row is tapped (F08-R2).
+    // updates it optimistically the instant a row is tapped.
     loaded?.settings?.let { settings ->
         ChatSettingsSheet(
             modelName = loaded.conversation.modelRef.displayName,
@@ -430,8 +430,8 @@ private fun ThreadHeader(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("thread_title"),
             )
-            // F04-R3: who is answering stays visible for the whole turn, not
-            // just at the moment it starts. F15's level control sits in the
+            // Who is answering stays visible for the whole turn, not
+            // just at the moment it starts. The level control sits in the
             // header's action row rather than here, so this line keeps its full
             // width even on a service with a long name.
             if (model != null) {
@@ -467,13 +467,13 @@ private fun LoadedThread(
         streaming?.reasoning?.length.orZero() +
         state.thread.messages.size
 
-    // F04-R3. Following the tail has to be a *mode*, not a measurement taken
+    // Following the tail has to be a *mode*, not a measurement taken
     // when the effect happens to run. Deriving it from `canScrollForward`
     // loses a race with the stream: a delta makes the list scrollable one
     // frame before the effect that would have scrolled it runs, so the first
     // delta reads "not at the bottom", declines to scroll, and the thread
-    // never follows again. That is fix pass A1 — it passed on the emulator
-    // only because the taller viewport delayed the first overflow.
+    // never follows again\. It passed on a test device only because the taller
+    // viewport delayed the first overflow.
     //
     // The mode is turned off by the reader dragging the content downwards
     // (nested scroll below), and turned back on by the list settling at its
@@ -511,7 +511,7 @@ private fun LoadedThread(
         listState.scrollToItem(count - 1)
     }
 
-    // F06-R1/R4 — one menu open at a time, one message in selection mode at a
+    // One menu open at a time, one message in selection mode at a
     // time. Neither survives navigating away; there is nothing to restore.
     var menuMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var selectionModeMessageId by remember { mutableStateOf<String?>(null) }
@@ -538,7 +538,7 @@ private fun LoadedThread(
             )
 
             streaming?.let { turn ->
-                // Screen 08a's banner. Only on a turn this client did not
+                // The in-flight banner\. Only on a turn this client did not
                 // start — it explains why an answer is already half written.
                 if (turn.reattached && !turn.unconfirmed) {
                     item(key = "reattached_banner") { ReattachedBanner() }
@@ -549,13 +549,13 @@ private fun LoadedThread(
                     }
                 }
                 // Its own item, so a delta recomposes this element alone
-                // rather than the whole column (Architecture P2).
+                // rather than the whole column.
                 item(key = "streaming") { StreamingBubble(turn) }
             }
 
             // A persisted failure has no message of its own when the model
             // died before producing any text; the run's error is still the
-            // truth about that turn (F04-R8).
+            // truth about that turn.
             if (streaming == null) {
                 state.runError?.takeIf { state.thread.messages.lastOrNull()?.error == null }?.let { error ->
                     item(key = "run_error") {
@@ -591,7 +591,7 @@ private fun LoadedThread(
         MessageActionsSheet(
             message = message,
             canEdit = message.role == MessageRole.USER && !state.runActive,
-            // F06-R2's third criterion — Delete is not offered at all while a
+            // Delete is not offered at all while a
             // run is active, on top of the server's own 409 guard.
             canDelete = !state.runActive,
             onDismiss = { menuMessage = null },
@@ -637,7 +637,7 @@ private fun StreamingBubble(turn: StreamingTurn) {
         trailing = {
             turn.toolCalls.forEach { ToolCallCard(it) }
             when {
-                // F09-R4's fourth criterion. The text above is real and stays,
+                // The text above is real and stays,
                 // but the turn is *not* finished — the run is still going on the
                 // server and this client has lost the thread of it. Shown even
                 // when there is output, which is exactly when a plain silence
@@ -650,8 +650,8 @@ private fun StreamingBubble(turn: StreamingTurn) {
 }
 
 /**
- * Screen 08a. Says why an answer is already in progress in a thread that was
- * just opened — the run outlived the app, which is the whole point of F09.
+ * Says why an answer is already in progress in a thread that was
+ * just opened — the run outlived the app, which is the whole point of reattach.
  */
 @Composable
 private fun ReattachedBanner() {
@@ -682,7 +682,7 @@ private fun ReattachedBanner() {
     }
 }
 
-/** Screen 08b's honest offline line, on the turn rather than as a modal. */
+/** The honest offline line, on the turn rather than as a modal. */
 @Composable
 private fun ReconnectingIndicator() {
     val colors = LlmTheme.colors
@@ -797,8 +797,8 @@ private fun FailedState(message: String, onRetry: () -> Unit) {
 
 /**
  * The optimistic user turn lives inside `streaming`, never in
- * [ThreadState.messages] (Architecture D3) — which is what makes a 409 leave no
- * phantom behind (F04-R2): dropping `streaming` drops it.
+ * [ThreadState.messages] — which is what makes a 409 leave no
+ * phantom behind: dropping `streaming` drops it.
  */
 private fun PendingUserMessage.asMessage() = ChatMessage(
     id = "pending",
@@ -816,7 +816,7 @@ private fun PendingUserMessage.asMessage() = ChatMessage(
 
 /**
  * Grows to five lines and then scrolls; Enter inserts a newline and the button
- * sends, the opposite of the desktop (F04-R1).
+ * sends, the opposite of the desktop.
  */
 @Composable
 private fun ThreadComposer(
@@ -839,7 +839,7 @@ private fun ThreadComposer(
         else onAddAttachment(bitmap.toDataUrl())
     }
 
-    // Fix pass A4. `TakePicturePreview` returns the camera app's *thumbnail*
+    // `TakePicturePreview` returns the camera app's *thumbnail*
     // (the MediaStore `"data"` extra) — a couple of hundred pixels, useless to
     // a vision model. `TakePicture` writes the real capture to a Uri we own,
     // which then goes through exactly the same read-and-downscale path as a
@@ -872,9 +872,9 @@ private fun ThreadComposer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // F06-R3 — Send now means "edit and resend" (wired one level up); this
-        // says so, and gives a way out that touches nothing (F06-R3's third
-        // criterion: cancelling leaves the thread byte-identical).
+        // Send now means "edit and resend" (wired one level up); this
+        // says so, and gives a way out that touches nothing
+        // (cancelling leaves the thread byte-identical).
         if (state.editingMessage != null) {
             Row(
                 Modifier.fillMaxWidth().testTag("editing_banner"),
@@ -905,10 +905,10 @@ private fun ThreadComposer(
             }
         }
 
-        // F15-R6 — the server ignored this turn's reasoning level. Phrased by the
+        // The server ignored this turn's reasoning level. Phrased by the
         // server, shown here rather than in the message list because it is about
         // the request that was made, and it stays put beside the control that
-        // named the level (F15's Deviations). It outlives the turn and is cleared
+        // named the level\. It outlives the turn and is cleared
         // by the next send. A silently dropped level reads exactly like a model
         // that chose not to think.
         state.reasoningNotice?.let { note ->

@@ -9,10 +9,10 @@ import okhttp3.Response
 
 /**
  * Attaches `Authorization: Bearer <token>` to every request that needs one, and
- * adopts a rotated `X-TOTP-Token` when the dashboard issues one (F00-R2).
+ * adopts a rotated `X-TOTP-Token` when the dashboard issues one.
  *
  * With no token stored it mints one from the credential before sending
- * (F01-R6). That is not a nicety: a dashboard restart 401s the first request,
+ *. That is not a nicety: a dashboard restart 401s the first request,
  * which discards the dead token, and every request queued behind it would
  * otherwise fail here with nothing stored — turning one expired session into a
  * trip to the Connect screen. The exchange is single-flight, so a request
@@ -20,7 +20,7 @@ import okhttp3.Response
  * second.
  *
  * Only when there is nothing left to try is the request failed here rather than
- * sent, as F00-R2 requires.
+ * sent, per the auth contract.
  */
 class AuthInterceptor(
     private val tokenStore: TokenStore,

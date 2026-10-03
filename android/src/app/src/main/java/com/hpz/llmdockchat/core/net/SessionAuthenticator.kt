@@ -10,11 +10,11 @@ import okhttp3.Route
 
 /**
  * A 401 is a normal event: the dashboard keeps sessions in process memory, so
- * a restart invalidates every token (F00-R3).
+ * a restart invalidates every token.
  *
  * Retrying is safe because `require_auth` returns 401 *before* invoking the
  * route, so nothing was created server-side by the rejected attempt
- * (Architecture D4).
+ *.
  */
 class SessionAuthenticator(
     private val tokenStore: TokenStore,
@@ -37,7 +37,7 @@ class SessionAuthenticator(
 
         // A concurrent request already re-authenticated and stored a newer
         // token. Retrying with it costs nothing; exchanging the credential
-        // again would be the second half of the stampede F01 exists to avoid.
+        // again would be the second half of the stampede silent re-auth avoids.
         if (attempted != null && !stored.isNullOrBlank() && attempted != stored) {
             return if (priorResponses(response) > 1) giveUp(active) else retryWith(response, stored)
         }

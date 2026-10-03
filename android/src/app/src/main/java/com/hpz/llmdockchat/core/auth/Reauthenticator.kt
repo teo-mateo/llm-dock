@@ -7,8 +7,8 @@ import com.hpz.llmdockchat.core.net.BaseUrl
  * when there is no credential to exchange.
  *
  * Called from OkHttp's `Authenticator` on a network thread, so it blocks.
- * F00 ships [NoCredential]; F01 supplies the real implementation by setting
- * [ReauthenticatorHolder.delegate].
+ * The initial build ships [NoCredential]; sign-in supplies the real
+  * implementation by setting [ReauthenticatorHolder.delegate].
  */
 fun interface Reauthenticator {
     fun reauthenticate(): String?
@@ -21,7 +21,7 @@ fun interface Reauthenticator {
 
 /**
  * Indirection so the OkHttp client can be built before a credential source
- * exists. Without it, F01 would have to rebuild the HTTP stack at login.
+ * exists. Without it, sign-in would have to rebuild the HTTP stack.
  */
 class ReauthenticatorHolder(
     @Volatile var delegate: Reauthenticator = Reauthenticator.NoCredential,

@@ -20,7 +20,7 @@ const conv = (i) => ({ id: `c${i}`, title: `C${i}`, updated_at: '2026-01-01' })
 
 describe('useConversations full-list fetch', () => {
   it('requests the entire list in ONE unlimited call — no offset pagination', async () => {
-    // Regression for codex iterations 2+4 on PR #77: project grouping must
+    // Project grouping must
     // never operate on a partial list, and offset pagination over the
     // mutable updated_at ordering can skip or duplicate rows when
     // conversations are touched between page fetches. A single request is

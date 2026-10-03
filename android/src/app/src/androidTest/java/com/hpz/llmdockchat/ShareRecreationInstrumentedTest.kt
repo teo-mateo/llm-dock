@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Issue 261: recreation must never replay a consumed share. Everything routes
+ * Recreation must never replay a consumed share. Everything routes
  * through the real activity + container + cache dir — the unit suite cannot
  * launch activities, and the stubs cannot build `Intent`s, so the redelivery
  * round trip (mark written, `setIntent`, parcel copy back through

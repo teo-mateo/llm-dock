@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** One rendered row. [level] degrades to [LogLevel.PLAIN] for anything F12-R4 doesn't recognise. */
+/** One rendered row. [level] degrades to [LogLevel.PLAIN] for anything unrecognised. */
 data class LogLine(val text: String, val level: LogLevel)
 
 /** How the on-screen buffer was populated, and whether it is still live. */
@@ -30,7 +30,7 @@ enum class LogsConnection {
     /** The container's log stream ended normally (`stream_end`) — not a failure. */
     ENDED,
 
-    /** The stream could not be established; [LogsUiState.Loaded.lines] came from the one-shot fallback (F12-R3). */
+    /** The stream could not be established; [LogsUiState.Loaded.lines] came from the one-shot fallback. */
     FALLBACK,
 }
 
@@ -52,13 +52,13 @@ sealed interface LogsUiState {
 }
 
 /**
- * F12-R1/R2/R3/R4. [observeLogStream] is collected by [LogsScreen] from a
+ * [observeLogStream] is collected by [LogsScreen] from a
  * composition-scoped `LaunchedEffect`, not from [viewModelScope] — the same
- * split [ModelDetailViewModel] uses, and for the same reason: F10 shipped a
- * bug where a stream launched in `viewModelScope` outlived the screen because
+ * split [ModelDetailViewModel] uses, and for the same reason: an early build shipped
+  * a bug where a stream launched in `viewModelScope` outlived the screen because
  * Navigation Compose keeps the ViewModel alive across a tab switch. Collecting
  * in the screen's own composition means leaving it cancels the flow, which
- * cancels the underlying OkHttp call (F12-R1's last criterion).
+ * cancels the underlying OkHttp call.
  */
 class LogsViewModel(
     private val serviceName: String,
@@ -101,9 +101,9 @@ class LogsViewModel(
 
     /**
      * The stream could not be established at all. A 404 means the service has
-     * no container yet (F12-R1's fifth criterion) — shown as [LogsUiState.NotCreated],
+     * no container yet — shown as [LogsUiState.NotCreated],
      * never an empty screen. Anything else falls back to the one-shot fetch
-     * (F12-R3); if that fails too, the failure is shown as-is.
+     *; if that fails too, the failure is shown as-is.
      */
     fun onStreamFailed(error: Throwable) {
         if (sawAnyFrame) {

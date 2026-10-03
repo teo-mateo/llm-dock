@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * The live `GET /api/services/<name>/logs/stream` (F12-R1).
+ * The live `GET /api/services/<name>/logs/stream`.
  *
  * Deliberately unlike [GpuStreamRepository] and [ServicesStreamRepository]:
  * this does **not** loop and reconnect on its own. A container's log stream

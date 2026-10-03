@@ -1,7 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
 /**
- * The user turn a summarize tap sends (F14-R7).
+ * The user turn a summarize tap sends.
  *
  * The grounding contract travels in the user message rather than the system
  * prompt: it stays visible in the transcript, and `main_system_prompt` would

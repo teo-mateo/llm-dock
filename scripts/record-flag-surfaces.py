@@ -7,8 +7,9 @@ image's help printer, parses the option names, and rewrites the snapshot files
 atomically. Run it after a pin moves (ARG VLLM_BASE, DS4_COMMIT, NINFER_COMMIT,
 TABBYAPI_REF) or after a llama.cpp/ik_llama.cpp image rebuild.
 
-Per-engine facts measured 2026-09-15:
-  vllm           serve --help=all REQUIRES --gpus all on the pinned base (v0.24.0-cu129):
+Per-engine facts:
+  vllm           serve --help=all REQUIRES --gpus all on the image pinned in
+                 vllm/Dockerfile:
                  without a device the parser construction dies in
                  vllm/config/device.py ("Failed to infer device type") before printing.
                  VLLM_TARGET_DEVICE=cpu does NOT work around it on this pin.

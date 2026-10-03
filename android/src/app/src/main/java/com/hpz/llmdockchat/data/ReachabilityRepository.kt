@@ -5,7 +5,7 @@ import com.hpz.llmdockchat.core.net.BaseUrl
 import com.hpz.llmdockchat.core.net.appError
 
 /**
- * What `GET /api/health` says about an address the user typed (F01-R2).
+ * What `GET /api/health` says about an address the user typed.
  *
  * The distinction is the whole point: "wrong host" and "wrong code" are the two
  * failures a user cannot otherwise tell apart, because both surface as a login

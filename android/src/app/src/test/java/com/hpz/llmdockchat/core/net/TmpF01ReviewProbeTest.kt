@@ -20,7 +20,7 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Review probe (F01). Left in place per WORK_INSTRUCTIONS.md; asserts only what
+ * Review probe, kept deliberately; asserts only what
  * the implementation actually does today, so it will not flake.
  */
 class TmpF01ReviewProbeTest {

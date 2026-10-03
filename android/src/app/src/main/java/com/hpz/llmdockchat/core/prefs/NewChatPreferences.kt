@@ -6,8 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 
 /**
- * What the new-chat sheet remembers across app restarts (F03-R1's fourth
- * criterion, F03-R3's second). Unlike [com.hpz.llmdockchat.core.net.ServerUrlStore]
+ * What the new-chat sheet remembers across app restarts. Unlike [com.hpz.llmdockchat.core.net.ServerUrlStore]
  * or [com.hpz.llmdockchat.core.auth.TokenStore], nothing here is read from an
  * OkHttp callback thread — every caller is already inside a ViewModel
  * coroutine — so the interface is plain `suspend`, not the blocking

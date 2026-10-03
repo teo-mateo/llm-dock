@@ -33,7 +33,7 @@ class ServiceStreamEventParserTest {
         assertTrue(snapshot.services[0].favorite)
         assertEquals("embedding", snapshot.services[1].kind)
         // ServiceDto has no api_key property at all — there is nowhere for the
-        // value to have landed, which is exactly F07-R6's point.
+        // value to have landed, which is exactly the point.
         val fields = ServiceDto::class.java.declaredFields.map { it.name }
         assertTrue(fields.none { it.contains("api_key", ignoreCase = true) || it.equals("apiKey", ignoreCase = true) })
     }
@@ -46,7 +46,7 @@ class ServiceStreamEventParserTest {
                 "metadata": {"favorite": true}}""",
         )
         assertEquals(
-            ServiceStreamEvent.Delta(serviceName = "llamacpp-gemma-4-26b-a4b-it-q8", status = "exited", favorite = true),
+            ServiceStreamEvent.Delta(serviceName = "llamacpp-gemma-4-26b-a4b-it-q8", status = "exited", favorite = true, action = "die"),
             event,
         )
     }
@@ -58,7 +58,7 @@ class ServiceStreamEventParserTest {
                 "action": "start", "container_id": "def456", "timestamp": "2026-07-25T00:00:02Z"}""",
         )
         assertEquals(
-            ServiceStreamEvent.Delta(serviceName = "vllm-qwen3-6-27b-fp8", status = "running", favorite = null),
+            ServiceStreamEvent.Delta(serviceName = "vllm-qwen3-6-27b-fp8", status = "running", favorite = null, action = "start"),
             event,
         )
     }
@@ -91,7 +91,7 @@ class ServiceStreamEventParserTest {
         assertEquals(ServiceStreamEvent.Unknown("not json"), parseServiceStreamFrame("not json"))
     }
 
-    // -- F15: the reasoning ladder on the two frames that carry it -----------------
+    // -- the reasoning ladder on the two frames that carry it -----------------
 
     @Test
     fun `a metadata-changed delta from a ladder edit carries the new ladder`() {
@@ -108,13 +108,14 @@ class ServiceStreamEventParserTest {
                 status = null,
                 favorite = null,
                 reasoningLevels = listOf("off", "low"),
+                action = "metadata-changed",
             ),
             event,
         )
     }
 
     /**
-     * F15-R5's anti-clear rule. The favourite route reuses the
+     * The anti-clear rule. The favourite route reuses the
      * `metadata-changed` action and sends `favorite` only, so "the frame said
      * nothing" has to stay distinguishable from "the service declares nothing"
      * — otherwise starring a model on the dashboard empties its ladder.

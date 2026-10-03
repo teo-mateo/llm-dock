@@ -10,7 +10,7 @@ import { isOpenRouterService, serviceNameForModel } from '../../utils/openrouter
 // native <option> elements cannot render them.
 
 // Icons keyed off the level token, since any name can be declared. Free Font
-// Awesome 6.5.1 only — the natural fa-gauge-low is pro-only, so it renders empty.
+// Awesome free set only (pinned in index.html) — the natural fa-gauge-low is pro-only, so it renders empty.
 const ICON_RULES = [
   [/^off$/, 'fa-ban'],
   [/^(minimal|low|lite|quick)$/, 'fa-feather'],

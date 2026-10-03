@@ -4,11 +4,11 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.parseModelRef
 
-/** What the remembered model resolved to (F03-R1). */
+/** What the remembered model resolved to. */
 sealed interface RememberedModel {
     data class Resolved(val option: ModelOption) : RememberedModel
 
-    /** Remembered, but deleted, renamed or stopped — the sheet must ask (F03-R1's fourth criterion). */
+    /** Remembered, but deleted, renamed or stopped — the sheet must ask. */
     data class Unavailable(val raw: String) : RememberedModel
 
     /** No prior chat. */
@@ -17,13 +17,13 @@ sealed interface RememberedModel {
 
 /**
  * The one remembered-model ladder. The new-chat sheet and the share-summarize
- * path (F14-R7) both start from the same preference and must reach the same
+ * path both start from the same preference and must reach the same
  * verdict — a summarize that silently picked a stopped model while the sheet
  * would have asked is the bug this single owner prevents.
  */
 object RememberedModelResolver {
     /**
-     * [preselectedServiceName] (F10-R6) wins outright when it is running;
+     * [preselectedServiceName] wins outright when it is running;
      * otherwise the remembered model decides. A remote model dropped from the
      * curated list is still valid — the list is a picker, not an allowlist.
      */

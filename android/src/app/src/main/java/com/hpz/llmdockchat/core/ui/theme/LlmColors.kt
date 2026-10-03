@@ -6,11 +6,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * The app's semantic colour tokens (Architecture D11). Screens reference these,
+ * The app's semantic colour tokens. Screens reference these,
  * never a literal — a hardcoded hex is a light-mode bug waiting to happen.
  *
- * Dark is the mockups' palette verbatim (`docs/android/chat-app-mockups.html`,
- * the `--d-*` custom properties). Light is derived: same hierarchy, same accent
+ * Dark is the reference palette verbatim: the
+  * `--d-*` custom properties from the original design. Light is derived: same hierarchy, same accent
  * family, surfaces inverted. The engine chip pairs come from the dashboard's own
  * badges (`dashboard/frontend/src/index.css`), which already ships both themes,
  * so a thread's chip reads the same on the phone as on the desktop.

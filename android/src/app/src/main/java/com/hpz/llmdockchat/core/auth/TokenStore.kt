@@ -32,7 +32,7 @@ interface TokenStore {
 }
 
 /**
- * Encrypted at rest alongside the credential (F01-R5). The token is disposable,
+ * Encrypted at rest alongside the credential. The token is disposable,
  * but it is a working bearer for eight sliding hours, so it gets the same
  * treatment rather than sitting in plain preferences.
  */

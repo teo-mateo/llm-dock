@@ -30,7 +30,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.nio.file.Files
 
-/** The share-target picker's four states (F14-R2, F00-R5). */
+/** The share-target picker's four states. */
 class ShareTargetViewModelTest {
 
     @get:Rule
@@ -143,7 +143,7 @@ class ShareTargetViewModelTest {
         viewModel = ShareTargetViewModel(repository, store, launcher)
     }
 
-    /** F14-R7 / F14-R1 — a shared link and a server that can fetch it: the action is offered. */
+    /** A shared link and a server that can fetch it: the action is offered. */
     @Test
     fun `a shared link offers summarize when a server can fetch it`() {
         server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
@@ -155,7 +155,7 @@ class ShareTargetViewModelTest {
         assertEquals(SummarizeOption.Ready("https://example.com/a", listOf("webfetch")), state.summarize)
     }
 
-    /** F14-R10 — no link in the share, no action at all. */
+    /** No link in the share, no action at all. */
     @Test
     fun `a share without a link offers no summarize action`() {
         server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
@@ -166,7 +166,7 @@ class ShareTargetViewModelTest {
         assertEquals(SummarizeOption.NotShared, (settled() as ShareTargetUiState.Loaded).summarize)
     }
 
-    /** F14-R3 / F14-R4 — nothing configured blocks the action with what to do about it. */
+    /** Nothing configured blocks the action with what to do about it. */
     @Test
     fun `no page-fetch tool blocks the action with what to do about it`() {
         stubProbe(UrlRetrieval(supported = true, servers = emptyList(), failures = emptyList()))
@@ -218,7 +218,7 @@ class ShareTargetViewModelTest {
         assertEquals(SummarizeOption.UNREACHABLE, summarize)
     }
 
-    /** F14-R5 — no usable model: the sheet takes over and the share survives. */
+    /** No usable model: the sheet takes over and the share survives. */
     @Test
     fun `a missing model choice keeps the share staged`() {
         stubOutcome(SummarizeOutcome.ChooseModel)
@@ -235,7 +235,7 @@ class ShareTargetViewModelTest {
         assertEquals("https://example.com/a", launcher.launchedWith?.first)
     }
 
-    /** F14-R6 — a failed launch leaves the reason on the picker and files nothing. */
+    /** A failed launch leaves the reason on the picker and files nothing. */
     @Test
     fun `a failed launch shows the reason and files no claim`() {
         stubOutcome(SummarizeOutcome.Failed("Nope"))

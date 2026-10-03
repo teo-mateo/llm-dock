@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
                 // that can put a bar's *background* behind the system bar while
                 // padding that bar's *content* clear of it. Consuming them here
                 // as well is what produced the grey bands under every screen
-                // (fix pass A2), so this layer contributes nothing but a colour.
+                //, so this layer contributes nothing but a colour.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * F14 — a second share while the app is already open lands here, not in a
+     * A second share while the app is already open lands here, not in a
      * stacked second activity (`singleTask`). The intake gate stages it and
      * the NavHost's pending-share observer navigates to the picker.
      */
@@ -85,11 +85,11 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * F14 — turns an arriving `ACTION_SEND` intent into a staged share,
+     * Turns an arriving `ACTION_SEND` intent into a staged share,
      * reading the stream *now*: the read grant on a shared `content://` Uri
      * lasts only as long as this activity is alive, so the content must be
-     * copied into app storage at intent time (F14-R5). Images go through the
-     * same read-and-downscale pipeline as a gallery pick (F04-R9); text files
+     * copied into app storage at intent time. Images go through the
+     * same read-and-downscale pipeline as a gallery pick; text files
      * are read and inlined as fenced blocks, web parity (`ChatInput.jsx`).
      *
      * Issue 261 — the gate decides whether this intent is a delivery to serve

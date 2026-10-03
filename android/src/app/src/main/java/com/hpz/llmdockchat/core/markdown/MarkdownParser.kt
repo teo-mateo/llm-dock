@@ -14,14 +14,13 @@ import androidx.compose.ui.text.withStyle
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
 
 /**
- * A hand-rolled block-level Markdown renderer (F05-R1/R2/R5/R7). No third-party
- * Markdown library is in Architecture D7's verified dependency set — the
+ * A hand-rolled block-level Markdown renderer. No third-party
+ * Markdown library is in the verified dependency set — the
  * construct list here is fixed and modest, syntax highlighting is explicitly
  * out of scope, and streaming needs precise control over how an unterminated
- * construct renders, which a general GFM library does not expose. See the F05
- * implementation report for the fuller reasoning.
+ * construct renders, which a general GFM library does not expose..
  *
- * Two-phase, matching Architecture P2:
+ * Two-phase:
  *
  * 1. [splitMdBlocks] — a cheap line scan that finds block *boundaries* only.
  *    It is prefix-stable: once a block is closed (a blank line, or a new block
@@ -258,7 +257,7 @@ private fun parseTable(lines: List<String>, colors: LlmColors): MdBlock {
         }
     }
     // A ragged row (too few/many cells) is padded/truncated rather than
-    // crashing the message (F05-R5's second criterion).
+    // crashing the message.
     val rows = lines.drop(2).filter { it.isNotBlank() }.map { rowLine ->
         val cells = splitTableRow(rowLine).map { it.trim() }
         List(header.size) { i -> parseInline(cells.getOrElse(i) { "" }, colors) }
@@ -270,14 +269,12 @@ private fun parseTable(lines: List<String>, colors: LlmColors): MdBlock {
 
 /**
  * Bold, italic, inline code, links and `$…$`/`$$…$$` maths passthrough
- * (F05-R7), single pass, no recursive nesting of emphasis inside emphasis —
- * a deliberate scope cut (this renders one model's output on one phone; see
- * the F05 implementation report).
+ *, single pass, no recursive nesting of emphasis inside emphasis —
+ * a deliberate scope cut (this renders one model's output on one phone).
  *
  * An unterminated marker (an opening `**` with no closing `**` anywhere in
  * the text that has arrived so far) falls back to its literal characters
- * rather than being swallowed — F05-R1's fourth criterion and F05-R7's
- * second: nothing is silently stripped.
+  * rather than being swallowed: nothing is silently stripped.
  */
 fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotatedString {
     var i = 0
@@ -346,7 +343,7 @@ fun parseInline(raw: String, colors: LlmColors): AnnotatedString = buildAnnotate
                 if (image == null) {
                     append(c); i++
                 } else {
-                    // Inline images are not rendered on the phone (F05-R6
+                    // Inline images are not rendered on the phone (that rule
                     // covers artifacts, not arbitrary remote images), so this
                     // is a caption, not a control: no link, nothing to tap,
                     // and no pretence that the picture is one tap away. With

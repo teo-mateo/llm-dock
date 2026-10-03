@@ -97,7 +97,7 @@ class AuthServiceTest {
     }
 
     /**
-     * F01-R3: "shows the server's message". A 401 from a login route means the
+     * "Shows the server's message": a 401 from a login route means the
      * credential just supplied is wrong, not that the session has gone, so the
      * dashboard's own words have to survive the error mapping.
      */

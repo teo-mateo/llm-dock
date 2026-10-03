@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The pure half of F04-R9's downscaling. The decode itself needs a device;
+ * The pure half of image downscaling. The decode itself needs a device;
  * picking the sample size does not, and it is the part that decides whether a
  * 12-megapixel photo is ever fully materialised in memory.
  */

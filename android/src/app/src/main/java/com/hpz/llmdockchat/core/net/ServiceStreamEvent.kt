@@ -9,18 +9,17 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
 /**
- * One frame of `GET /api/services/stream` (F07-R1's third criterion), read the
+ * One frame of `GET /api/services/stream`, read the
  * same way [parseFrame] reads a chat run — pure, total, dependency-light — but
  * this is its own parser, not a reuse of [parseFrame]: the two endpoints share
  * nothing but "SSE" (`dashboard/routes/services.py:services_stream`, not
  * `chat/run_manager.py`).
  *
- * [Delta] deliberately carries only [serviceName], [status], [favorite] and
- * [reasoningLevels] — the fields a picker and the thread header actually need
- * to update in place (`ComposeManagerEvent`'s `action`/`container_id`/
- * `timestamp` are not read). Neither this type nor [Snapshot] (via
+ * [Delta] carries the fields needed to update a row, plus [action] so a
+ * service-deleted event can remove it. Container ID and timestamp are not
+ * read. Neither this type nor [Snapshot] (via
  * [ServiceDto]) ever has a field for `api_key`, so one cannot leak through here
- * even by accident (F07-R6).
+ * even by accident.
  */
 sealed interface ServiceStreamEvent {
 
@@ -36,13 +35,14 @@ sealed interface ServiceStreamEvent {
      * service declares none. Both `update_service` and the favourite route
      * emit the same `metadata-changed` action, and only the first sends
      * `reasoning_levels` — collapsing null into `[]` here would empty a
-     * ladder every time someone stars a model (F15's anti-clear rule, F15-R5).
+     * ladder every time someone stars a model.
      */
     data class Delta(
         val serviceName: String,
         val status: String?,
         val favorite: Boolean?,
         val reasoningLevels: List<String>? = null,
+        val action: String? = null,
     ) : ServiceStreamEvent
 
     data class Error(val message: String) : ServiceStreamEvent
@@ -84,6 +84,7 @@ private fun JsonObject.deltaFrame(payload: String): ServiceStreamEvent {
         status = string("status"),
         favorite = (metadata?.get("favorite") as? JsonPrimitive)?.booleanOrNull,
         reasoningLevels = ladder?.let { parseReasoningLevels(it) },
+        action = string("action"),
     )
 }
 

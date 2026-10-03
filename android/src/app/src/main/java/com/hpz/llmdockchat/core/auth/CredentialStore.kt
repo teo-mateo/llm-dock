@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * The credential that survives a dead session token (F01-R5). Encrypted at
+ * The credential that survives a dead session token. Encrypted at
  * rest by construction: the store never sees plaintext on disk, only what
  * [SecretCipher] hands it.
  *

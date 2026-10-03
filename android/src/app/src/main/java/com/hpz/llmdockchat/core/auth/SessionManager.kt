@@ -18,8 +18,8 @@ class SessionManager(
 ) {
 
     /**
-     * F01-R4. The password is kept (encrypted) so the session can be renewed
-     * without asking again — the trade-off F01-R5 spells out.
+     * Password login. The password is kept (encrypted) so the session can
+      * be renewed without asking again — the deliberate trade-off.
      */
     suspend fun signInWithPassword(server: BaseUrl, password: String): Result<Unit> {
         val credential = Credential.Password(password)
@@ -27,14 +27,14 @@ class SessionManager(
     }
 
     /**
-     * F01-R3. Nothing is stored but the token: no endpoint this app may call
+     * TOTP login. Nothing is stored but the token: no endpoint this app may call
      * exposes the TOTP secret, so there is nothing to renew the session with
      * once it dies. The user is told so on the Connect screen.
      */
     suspend fun signInWithTotpCode(server: BaseUrl, code: String): Result<Unit> =
         signIn(server, null) { authService.signInWithTotpCode(code, server) }
 
-    /** F01-R7. The address stays; the token and the credential do not. */
+    /** Sign-out. The address stays; the token and the credential do not. */
     fun signOut() {
         tokenStore.clear()
         credentials.clear()

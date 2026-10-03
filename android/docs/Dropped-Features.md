@@ -173,6 +173,7 @@ charts. Not on the phone; the Models tab is status, control and logs.
 | HTML artifacts rendered in a WebView | F05-R8 | A WebView per artifact. Open them on the desktop. |
 | Maths rendering | F05-R7 | Decision 5: cut. Exists in the web UI, so parity would have allowed it, but it is a WebView or a native maths renderer per formula. LaTeX passes through as legible source instead. |
 | Log search | F12-R6 | Buffer filtering, cheap to add later. |
+| Sharing the log buffer | F12-R5 | Dropped as unwanted (owner ruling, 2026-07-28): watching logs on the phone is the feature; pasting them elsewhere is a desktop act. |
 | Syntax highlighting in code blocks | F05-R2 | A monospace block with a language label meets the requirement. |
 
 Light theme is **not** on this list any more — decision 2 put both

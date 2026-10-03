@@ -51,14 +51,14 @@ import java.util.concurrent.TimeUnit
 /**
  * What the end of a run leaves on screen.
  *
- * Every terminal refetches and drops `streaming` (Architecture D3), which is
+ * Every terminal refetches and drops `streaming`, which is
  * right up to the point where the refetch itself fails: the server's copy is
  * then unreachable and dropping the turn would take the whole exchange —
  * answer, error and the user's own message — off screen with nothing said. So
  * the turn is held over instead, marked unconfirmed, until a load succeeds.
  *
- * These three cases came out of the F04 review; they are here rather than in
- * [ThreadViewModelTest] because F09's reattach lands on the same terminal path.
+ * These three cases came out of review; they are here rather than in
+ * [ThreadViewModelTest] because reattach lands on the same terminal path.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadTerminalPathTest {
@@ -91,7 +91,7 @@ class ThreadTerminalPathTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.

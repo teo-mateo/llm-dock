@@ -172,7 +172,7 @@ class FakeSseTransport : SseTransport {
 
 /**
  * A [SseTransport] that serves a *different* scripted connection to each `open`
- * — which [FakeSseTransport] cannot, and which is the whole subject of F09: a
+ * — which [FakeSseTransport] cannot, and which is the whole subject of reattachment: a
  * run is streamed, the socket drops, and the client reattaches to the same run
  * over a second connection that replays it from the beginning.
  *

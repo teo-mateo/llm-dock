@@ -3,13 +3,13 @@ package com.hpz.llmdockchat.core.markdown
 import androidx.compose.ui.text.AnnotatedString
 
 /**
- * A block-level Markdown construct (F05-R1), already inline-styled — bold,
+ * A block-level Markdown construct, already inline-styled — bold,
  * italic, inline code and links are resolved into the [AnnotatedString]s here,
  * so the render layer only lays blocks out.
  *
  * Produced by [parseMdBlock] from one raw block's source text. The block
  * boundaries themselves come from [splitMdBlocks], which is prefix-stable
- * (Architecture P2): an already-closed block's raw text never changes as the
+ *: an already-closed block's raw text never changes as the
  * stream grows, so only the still-open last block needs reparsing.
  */
 sealed interface MdBlock {
@@ -20,7 +20,7 @@ sealed interface MdBlock {
     /**
      * `closed` is false while the block still lacks its closing fence — the
      * content keeps growing but the block never stops being a code block, which
-     * is what keeps an open fence from flickering (F05-R1's second criterion).
+     * is what keeps an open fence from flickering.
      */
     data class CodeBlock(val language: String?, val code: String, val closed: Boolean) : MdBlock
 
@@ -36,7 +36,7 @@ sealed interface MdBlock {
 
     data object Rule : MdBlock
 
-    /** `$$…$$` on its own line(s) — F05-R7, literal source, not evaluated. */
+    /** `$$…$$` on its own line(s): literal source, not evaluated. */
     data class MathBlock(val source: String) : MdBlock
 }
 

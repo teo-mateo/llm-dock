@@ -86,8 +86,7 @@ TOOLS_SCHEMA = [
 # ---------------------------------------------------------------------------
 
 # Canned results live as a flat catalog; the fake search picks the best
-# matches per query so the model sees DIFFERENT results when it refines
-# (vs. the placeholder-looking same-results-every-time loop in v1).
+# matches per query so the model sees DIFFERENT results when it refines.
 CATALOG = [
     {
         "id": "dell-community",
@@ -246,7 +245,7 @@ CANNED_FETCH = {
 
 
 FAILED_URLS = {
-    # 403 to exercise the "don't retry" path
+    # A 403 so the fake fetch hands the model an error payload for this URL
     "https://www.reddit.com/r/buildapc/comments/1d8k9r2/rtx_3090_repad_thermalright_odyssey_results/": (
         403,
         "Forbidden (Cloudflare)",
@@ -283,8 +282,8 @@ def load_system_prompt(path_or_keyword):
 
     - 'default' (or unset): import DEFAULT_MAIN_SYSTEM_PROMPT from the
       dashboard module so the harness mirrors a fresh conversation's
-      starting state — and append the same date line `_stream_response`
-      injects at request time.
+      starting state — and append the same date line that
+      chat/prompt_builder.py:_date_line injects at request time.
     - any other value: treat as a path to a text file. No date injection;
       put a date in your prompt file yourself if you need it.
     """

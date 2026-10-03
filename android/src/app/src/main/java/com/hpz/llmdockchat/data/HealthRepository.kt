@@ -9,8 +9,8 @@ import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.ServerHealth
 
 /**
- * `GET /api/health` — the one endpoint F00 wires end-to-end. Unauthenticated,
- * so it also serves as F01's reachability check for a server URL the user has
+ * `GET /api/health` — wired end to end. Unauthenticated, so it
+  * also serves as the reachability check for a server URL the user has
  * typed but not yet signed in to.
  */
 class HealthRepository(private val api: ApiClient) {

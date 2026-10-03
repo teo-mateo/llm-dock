@@ -7,8 +7,7 @@ afterEach(() => cleanup())
 
 const MISSING_IMAGE = 'llm-dock-llamacpp:glm5next-0910-lru'
 
-// The backend shape for an image that does not exist locally (issue #233's
-// service was configured with exactly this).
+// The backend shape for an image that does not exist locally.
 const missingImageInfo = {
   name: MISSING_IMAGE,
   exists: false,

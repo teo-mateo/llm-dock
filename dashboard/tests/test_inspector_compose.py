@@ -160,6 +160,6 @@ def test_get_compose_service_ports_parses_inspected_mapping(ports_env):
 
 
 def test_get_compose_service_ports_survives_inspected_service(ports_env):
-    # The historical bug: int("127.0.0.1") raised and took out the whole map.
+    # Guards the parse: int("127.0.0.1") must not raise and take out the whole map.
     port_map = docker_utils.get_compose_service_ports()
     assert set(port_map) == {"svc-plain", "svc-inspected", "svc-noports"}

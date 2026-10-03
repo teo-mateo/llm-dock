@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  * The half of an open edit that cannot be re-derived from the server: which
  * message is being edited, and the draft the edit clobbered (the Cancel
  * target). The edit text itself is not stored — while an edit is open,
- * `DraftStore` mirrors the live composer, so the text rides the F04-R1 path.
+ * `DraftStore` mirrors the live composer, so the text rides the draft path.
  *
  * Attachments are deliberately excluded: picked draft attachments do not
  * survive process death anywhere in this app, and image data URLs are
@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
 data class EditSession(val messageId: String, val composerBeforeEdit: String)
 
 /**
- * Edit mode across process death (F06-R3). Rotation and backgrounding are
+ * Edit mode across process death. Rotation and backgrounding are
  * served by the surviving ViewModel; disk is for the case that destroys it —
  * the failed-reauth Connect round trip and force-stop, both of which land on
  * a cold `load()` with no edit state in memory.

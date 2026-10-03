@@ -169,7 +169,7 @@ export async function requestCritique(messageId, { contextWindow = 10, extraInst
   })
 }
 
-// -- Runs (cancellation, issue #58) --
+// -- Runs (cancellation) --
 
 // Cancel a conversation's active run by conversation id. The Stop button uses
 // this so cancellation never depends on having captured the run id from the

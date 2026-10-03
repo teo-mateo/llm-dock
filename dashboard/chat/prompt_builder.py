@@ -1,9 +1,9 @@
 """Prompt construction for chat turns.
 
-Extracted from chat.routes._stream_response (Phase 1 of #58) so the message
+Extracted from the chat send route so the message
 array can be built from explicit inputs rather than Flask globals / a live
-Conversation row. This lets the upcoming background runtime and non-persisted
-modes (Ghost Chat, #57) build prompts the same way persisted chat does.
+Conversation row. This lets the background runtime and non-persisted
+modes (Ghost Chat) build prompts the same way persisted chat does.
 """
 import datetime
 

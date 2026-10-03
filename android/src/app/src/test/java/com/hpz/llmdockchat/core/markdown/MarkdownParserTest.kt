@@ -9,10 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * F05-R1/R2/R5/R7's hand-rolled block parser (`MarkdownParser.kt`). Every
+ * The hand-rolled block parser (`MarkdownParser.kt`). Every
  * construct, its unterminated form, LaTeX passthrough and non-Markdown text
- * are exercised here — logic criteria backed by a JVM test, per
- * `WORK_INSTRUCTIONS.md` §7.
+ * are exercised here — every one of them backed by a JVM test.
  */
 class MarkdownParserTest {
 
@@ -173,9 +172,9 @@ class MarkdownParserTest {
 
     @Test
     fun `an open fence with no closing marker still renders as a code block, not raw text`() {
-        // The mid-stream case (F05-R1's second criterion): the fence opened but
+        // The mid-stream case: the fence opened but
         // has not closed yet. It must already be a CodeBlock, not a Paragraph
-        // that later flips — that flip is exactly the flicker the spec forbids.
+        // that later flips — that flip is exactly the flicker that would corrupt the stream.
         val code = block("```python\nprint(1)\nstill typ") as MdBlock.CodeBlock
         assertEquals("python", code.language)
         assertEquals("print(1)\nstill typ", code.code)
@@ -188,7 +187,7 @@ class MarkdownParserTest {
         assertEquals("    indented line\n\ttabbed", code.code)
     }
 
-    // -- tables (F05-R5) -----------------------------------------------------
+    // -- tables -----------------------------------------------------
 
     @Test
     fun `a well-formed table parses its header, alignment and rows`() {
@@ -230,7 +229,7 @@ class MarkdownParserTest {
         assertTrue(result is MdBlock.Paragraph || result is MdBlock.CodeBlock)
     }
 
-    // -- maths passthrough (F05-R7) --------------------------------------------
+    // -- maths passthrough --------------------------------------------
 
     @Test
     fun `inline math with underscores, asterisks and backslashes survives intact`() {

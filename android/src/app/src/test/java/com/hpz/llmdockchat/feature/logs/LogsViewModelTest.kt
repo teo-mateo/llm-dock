@@ -30,7 +30,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * F12-R1's frame handling, F12-R3's fallback, and F12-R4's level tagging —
+ * Frame handling, the stream-failure fallback, and level tagging —
  * driven directly against the ViewModel's event API rather than through
  * [LogsStreamRepository]'s flow machinery, which [LogsStreamRepositoryTest]
  * already covers. This is exactly what [LogsScreen]'s collector calls, so it
@@ -83,7 +83,7 @@ class LogsViewModelTest {
         assertEquals(LogsConnection.LIVE, state.connection)
     }
 
-    /** F12-R4: a line with no recognisable level renders plainly, not crashing or vanishing. */
+    /** A line with no recognisable level renders plainly, not crashing or vanishing. */
     @Test
     fun `an ERROR line is tagged, a plain line degrades to plain`() {
         val vm = viewModel()
@@ -97,9 +97,9 @@ class LogsViewModelTest {
     }
 
     /**
-     * Bug-shaped: a viewmodel that treats `stream_end` as an error would show
-     * [LogsUiState.Failed] here, which is exactly what F12-R1's fourth
-     * criterion says must not happen for a container that was simply stopped.
+     * Guards against a viewmodel that treats `stream_end` as an error:
+     * [LogsUiState.Failed] must not appear for a container that was simply
+     * stopped.
      */
     @Test
     fun `stream_end is an ended state, not a failure`() {
@@ -126,9 +126,9 @@ class LogsViewModelTest {
     }
 
     /**
-     * Bug-shaped: a naive `onStreamFailed` that always shows a generic error
-     * would leave a `not-created` service on a blank/wrong screen — F12-R1's
-     * fifth criterion requires the dashboard's own 404 message specifically.
+     * Guards against a naive `onStreamFailed` that always shows a generic
+     * error: a `not-created` service would sit on a blank/wrong screen, so
+     * the dashboard's own 404 message is required specifically.
      */
     @Test
     fun `a 404 on the very first connection attempt is NotCreated, not Failed`() {
@@ -141,7 +141,7 @@ class LogsViewModelTest {
         assertEquals("Service has not been created yet", (state as LogsUiState.NotCreated).message)
     }
 
-    /** F12-R3: the stream could not be established (not a 404) — falls back to the one-shot fetch. */
+    /** The stream could not be established (not a 404) — falls back to the one-shot fetch. */
     @Test
     fun `a non-404 connection failure falls back to the one-shot fetch`() {
         server.enqueue(

@@ -4,7 +4,7 @@ import com.hpz.llmdockchat.core.ui.theme.DarkLlmColors
 import org.junit.Test
 
 /**
- * Scratch probes for the F05 review — not part of the feature's test suite.
+ * Review probes — not part of the feature's test suite.
  * Prints observations to stdout; no assertions, so it can't fail a real run.
  */
 class ProbeF05ReviewTest {

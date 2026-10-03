@@ -3,7 +3,7 @@
 ik_llamacpp was missing from the allow-list: the pure get_flag_metadata()
 handles it (sharing LLAMACPP_LLAMA_SERVER_FLAGS), so the 400 silently
 blanked the parameter reference for 1 of 6 engines — on the details page
-and in the create-service modal (issue #232 verification). The invariant
+and in the create-service modal. The invariant
 pinned here: a template_type POST /api/services accepts must also serve
 its flag metadata, or the config UI degrades without any error surfacing.
 """

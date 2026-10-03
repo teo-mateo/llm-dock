@@ -50,14 +50,14 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The app's navigation graph (Architecture D12). Connect is a destination like
+ * The app's navigation graph. Connect is a destination like
  * any other rather than a modal in front of the app, so returning to it clears
  * the back stack — a back press from Connect leaves the app instead of walking
  * into a screen the session can no longer load.
  *
  * [Destinations.CHATS] and [Destinations.MODELS] live in the nested
  * [Destinations.TABS] graph and share [AppBottomBar]; [Destinations.THREAD]
- * and [Destinations.NEW_CHAT] are pushed on top of it without one (F02-R7).
+ * and [Destinations.NEW_CHAT] are pushed on top of it without one.
  */
 @Composable
 fun AppNavHost(
@@ -66,21 +66,21 @@ fun AppNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
-    // Raised only when silent re-authentication cannot succeed (F01-R6), and by
-    // sign-out (F01-R7). Observed here, once, rather than in every screen —
-    // that is the point of Architecture D4.
+    // Raised only when silent re-authentication cannot succeed, and by
+    // sign-out. Observed here, once, rather than in every screen —
+    // that is the point of observing it once.
     val authenticationRequired by container.sessionState.authenticationRequired.collectAsState()
     LaunchedEffect(authenticationRequired) {
         if (authenticationRequired) navController.toConnect()
     }
 
-    // F14 — a staged share navigates to the target picker, wherever the app
+    // A staged share navigates to the target picker, wherever the app
     // is: cold start from a share (the store hydrates from disk before the
     // NavHost composes), a share arriving mid-app, or a re-login round trip
     // (Connect's onSignedIn checks the store itself). Skipped while on Connect
     // — the user isn't signed in yet — while already on the picker, so a
     // second share while it's open just replaces the staged content, and while
-    // the new-chat sheet is open (issue 261): the sheet *is* the share flow's
+    // the new-chat sheet is open: the sheet *is* the share flow's
     // continuation screen, and navigating to the picker again while it is open
     // is what puts a second picker on the stack. The route is read inside the
     // effect once the graph has a current destination — during a restore the
@@ -121,7 +121,7 @@ fun AppNavHost(
             ConnectScreen(
                 viewModel = viewModel,
                 onSignedIn = {
-                    // F14 — a share that arrived while signed out resumes on
+                    // A share that arrived while signed out resumes on
                     // the target picker after sign-in, not on the Chats tab.
                     val pending = container.sharedDraftStore.pending.value != null
                     navController.navigate(
@@ -257,7 +257,7 @@ fun AppNavHost(
                     }
                 },
                 onNewConversation = { navController.navigate(Destinations.newChat()) },
-                // F14-R7 — the direct path lands on the thread that now owes one
+                // The direct path lands on the thread that now owes one
                 // turn; a remembered model that is gone or stopped falls back to
                 // the sheet, with the share still staged (nothing is lost).
                 onSummarize = {
@@ -282,7 +282,7 @@ fun AppNavHost(
             val viewModel: ThreadViewModel = viewModel(
                 // Keyed by conversation so two threads visited in a row never
                 // share a ViewModel — and so its stream, which is scoped to
-                // this destination, dies with the destination (Architecture D5).
+                // this destination, dies with the destination.
                 key = "thread_$conversationId",
                 factory = viewModelFactory {
                     initializer {
@@ -331,7 +331,7 @@ fun AppNavHost(
 }
 
 /**
- * The new-chat sheet, in its two entries (F03 ordinary, F14-R7 summarize). One
+ * The new-chat sheet, in its two entries (ordinary and summarize). One
  * body so the two cannot drift on what creating a conversation does — the
  * summarize entry differs only in the mode it hands the ViewModel.
  */
@@ -364,7 +364,7 @@ private fun NewChatDestination(
         viewModel = viewModel,
         onBack = { navController.popBackStack() },
         onConversationCreated = { id ->
-            // F14 — a conversation created from the share picker takes
+            // A conversation created from the share picker takes
             // the staged content with it; the picker below is popped too
             // so Back from the new thread lands on Chats, not on an
             // empty picker. A summarize run counts as share-origin even
@@ -385,14 +385,14 @@ private fun NewChatDestination(
 }
 
 /**
- * Wraps a tab's content in the shared bottom bar (F02-R7). Tab switches
+ * Wraps a tab's content in the shared bottom bar. Tab switches
  * `popUpTo` [Destinations.CHATS] — the [Destinations.TABS] graph's own,
  * fixed start route, not the outer [NavHost]'s (which may be Connect) — with
  * `saveState`/`restoreState`, the standard bottom-nav idiom: each tab's
  * ViewModel and `rememberSaveable` state (including scroll position) survive
  * switching away and back.
  *
- * Insets (fix pass A2): this Scaffold applies none of its own
+ * Insets: this Scaffold applies none of its own
  * ([WindowInsets] of zero) — [AppBottomBar] is a `NavigationBar`, which pads
  * itself clear of the navigation bar while keeping its background behind it.
  * `consumeWindowInsets` then tells the tab's own Scaffold that the bottom is

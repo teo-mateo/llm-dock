@@ -30,8 +30,8 @@ import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 /**
- * Placeholder until F01 brings the Connect screen. It doubles as the palette
- * proof sheet for F00-R7: every token that later features depend on is on
+ * Legacy placeholder, no longer reachable from navigation. It doubles as a
+  * palette proof sheet: every token the app depends on is on
  * screen, so a dark/light screenshot pair shows whether both are styled.
  */
 @Composable

@@ -39,7 +39,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 
 /**
- * F04-R1. Multi-line, five lines then internal scroll, Enter is a newline.
+ * Multi-line, five lines then internal scroll, Enter is a newline.
  *
  * [ImeAction.Default] on a multi-line field is what gives the IME a return key
  * that inserts a newline instead of a "send" key — the opposite of the desktop,

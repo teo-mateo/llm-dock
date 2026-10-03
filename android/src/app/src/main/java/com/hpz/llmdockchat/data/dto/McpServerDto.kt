@@ -3,7 +3,7 @@ package com.hpz.llmdockchat.data.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** One URL-capable server from the `url_fetch` block of the probe (F14-R7). */
+/** One URL-capable server from the `url_fetch` block of the probe. */
 @Serializable
 data class UrlFetchServerDto(
     val id: String = "",
@@ -23,7 +23,7 @@ data class UrlFetchDto(
     val failures: List<UrlFetchFailureDto> = emptyList(),
 )
 
-/** One row of `GET /api/chat/mcp-servers` (F03-R3). */
+/** One row of `GET /api/chat/mcp-servers`. */
 @Serializable
 data class McpServerDto(
     val id: String = "",
@@ -33,7 +33,7 @@ data class McpServerDto(
 )
 
 /**
- * `GET /api/chat/mcp-servers` (F03-R3, F08). [urlFetch] is present only when
+ * `GET /api/chat/mcp-servers`. [urlFetch] is present only when
  * the request carried `probe=url-fetch`, and only when the dashboard knows the
  * capability at all — a null here means an older server, not "no tools".
  */

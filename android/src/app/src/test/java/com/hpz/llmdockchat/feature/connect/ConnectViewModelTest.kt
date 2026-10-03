@@ -95,7 +95,7 @@ class ConnectViewModelTest {
         .body("""{"token": "totp-fresh", "expires_in": 28800}""")
         .build()
 
-    /** F01-R1: "rejected inline before any request is made". */
+    /** "rejected inline before any request is made". */
     @Test
     fun `a malformed address never reaches the network`() {
         viewModel.onAddressChange("http://")
@@ -180,7 +180,7 @@ class ConnectViewModelTest {
     }
 
     /**
-     * F01-R2's whole purpose: separate "wrong address" from "wrong credential".
+     * The whole purpose: separate "wrong address" from "wrong credential".
      * A host that answers but is not the dashboard must not consume a code.
      */
     @Test
@@ -198,7 +198,7 @@ class ConnectViewModelTest {
         assertNull(tokenStore.current())
     }
 
-    /** F01-R3: the server's own message, the address untouched, ready to retry. */
+    /** The server's own message, the address untouched, ready to retry. */
     @Test
     fun `an invalid code shows the server's message and leaves the address alone`() {
         server.enqueue(healthy())
@@ -218,7 +218,7 @@ class ConnectViewModelTest {
         assertNull(credentials.current())
     }
 
-    /** F01-R3: "submits without needing a separate button press once complete". */
+    /** "submits without needing a separate button press once complete". */
     @Test
     fun `the sixth digit submits on its own`() {
         server.enqueue(healthy())

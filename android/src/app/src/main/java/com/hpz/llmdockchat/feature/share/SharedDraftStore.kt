@@ -11,19 +11,19 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
- * Where a share lives between the intent and the send (F14). Three records:
+ * Where a share lives between the intent and the send. Three records:
  *
  * - **The pending share** — unassigned, staged at intent time and shown on
  *   the target picker. Survives navigation, the Connect round trip, and
- *   process death (F14-R5): the record is a JSON file in [dir] and the
+ *   process death: the record is a JSON file in [dir] and the
  *   in-memory [pending] is hydrated from it at construction.
  * - **Per-conversation attachments** — written when the user picks a target
  *   ([reassign]), read back by the thread's `load()` so a force-stop between
- *   the pick and the send does not lose the staged image (F14-R5). One file
+ *   the pick and the send does not lose the staged image. One file
  *   per attachment, named `0.txt`, `1.txt`…, so removing one renumbers the
  *   rest and the record stays index-aligned with the composer's list.
  * - **The handled token** — the delivery identity of the share this task most
- *   recently claimed, in `handled.json` ([stage] with a token, issue 261).
+ *   recently claimed, in `handled.json` ([stage] with a token).
  *   [clearPending], [reassign] and [clear] deliberately do not clear it: the
  *   claim must outlive the record it refers to, so a redelivery of an already
  *   served intent is refused at intake instead of re-staging a consumed share.
@@ -83,7 +83,7 @@ class SharedDraftStore(private val dir: File) {
     }
 
     /**
-     * F14-R7 — the summarize claim: one prepared user turn owed to one
+     * The summarize claim: one prepared user turn owed to one
      * conversation, written before the thread opens and consumed by its first
      * `load()`. A sibling of [PENDING_FILE] rather than a child of the
      * conversation directory, because [saveAttachments] wipes that directory —
@@ -117,7 +117,7 @@ class SharedDraftStore(private val dir: File) {
         }
     }
 
-    /** Read back the staged attachments for a conversation (F14-R5's force-stop case). */
+    /** Read back the staged attachments for a conversation. */
     suspend fun attachments(conversationId: String): List<String> = withContext(Dispatchers.IO) {
         val files = conversationDir(conversationId).listFiles().orEmpty()
             .sortedBy { it.nameWithoutExtension.toIntOrNull() }
@@ -127,7 +127,7 @@ class SharedDraftStore(private val dir: File) {
     /**
      * The composer's remove button keeps the record aligned with the on-screen
      * list — the file for that index is deleted and the rest renumbered, so a
-     * later re-entry cannot resurrect a removed attachment (F14-R5's "no ghost").
+     * later re-entry cannot resurrect a removed attachment — no ghosts.
      */
     fun removeAttachment(conversationId: String, index: Int) {
         val convDir = conversationDir(conversationId)

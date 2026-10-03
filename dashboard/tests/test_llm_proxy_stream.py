@@ -1,4 +1,4 @@
-"""stream_chat_completion upstream-connection teardown (Phase 5 of #58).
+"""stream_chat_completion upstream-connection teardown.
 
 Cooperative cancellation closes the generator (GeneratorExit); the streaming
 `requests` response must be released in a finally either way, so a cancelled
