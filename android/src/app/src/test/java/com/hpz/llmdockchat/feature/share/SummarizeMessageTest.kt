@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The prepared summarize turn (F14-R7) and the label it is offered under. */
+/** The prepared summarize turn and the label it is offered under. */
 class SummarizeMessageTest {
 
     private val url = "https://example.com/a/b?x=1#frag"
@@ -22,7 +22,7 @@ class SummarizeMessageTest {
         assertTrue(message.contains("say exactly which of those happened"))
     }
 
-    /** R9: nothing may assume this install's server or tool names. */
+    /** Nothing may assume this install's server or tool names. */
     @Test
     fun `no tool or server name is baked into the turn`() {
         listOf("webfetch", "websearch", "browser-fetch", "fetch_readable", "ragflow").forEach {

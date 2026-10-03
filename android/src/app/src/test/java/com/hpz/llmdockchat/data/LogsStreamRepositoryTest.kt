@@ -51,7 +51,7 @@ class LogsStreamRepositoryTest {
      * The mechanism, not a flag — same pattern as
      * [GpuStreamRepositoryTest]'s "cancelling the collector actually tears
      * down the open connection": a collector going away (leaving the logs
-     * screen, F12-R1's last criterion) must actually cancel the underlying
+     * screen) must actually cancel the underlying
      * transport call, not just stop reading from it.
      */
     @Test

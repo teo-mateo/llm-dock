@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * The inline file format must match the web's `ChatInput.jsx` `buildMessage`:
  * `**Attached file: \`name\`**` plus a fenced code block, fence-picked so
- * content containing backticks never breaks it (F14-R3).
+ * content containing backticks never breaks it.
  */
 class SharedInlineFormatterTest {
 

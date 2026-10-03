@@ -9,10 +9,10 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 /**
- * [ServiceSummary.statusLabel] and [ServiceSummary.subtitle] — F10-R1's third
- * and fourth criteria (an exited service names its exit code; not-created is
- * distinguishable from exited) and the Deviations note on uptime (never say
- * "uptime" for a value that is really the container's creation time).
+ * [ServiceSummary.statusLabel] and [ServiceSummary.subtitle] — an exited
+ * service names its exit code, not-created is distinguishable from exited,
+ * and a value that is really the container's creation time is never called
+ * "uptime".
  */
 class ModelsFormattingTest {
 
@@ -90,7 +90,7 @@ class ModelsFormattingTest {
 
     @Test
     fun `mibToGb renders up to one decimal place, dropping a trailing zero`() {
-        // Matches the mockup's own style — "61.4 / 96 GB", not "61.4 / 96.0 GB".
+        // Matches the web dashboard's style — "61.4 / 96 GB", not "61.4 / 96.0 GB".
         assertEquals("95.6", mibToGb(97887))
         assertEquals("60", mibToGb(61440))
     }

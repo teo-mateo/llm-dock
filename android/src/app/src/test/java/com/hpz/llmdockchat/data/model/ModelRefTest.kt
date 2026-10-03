@@ -3,7 +3,7 @@ package com.hpz.llmdockchat.data.model
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Engine derivation and the `openrouter:` display rule (F02-R2). */
+/** Engine derivation and the `openrouter:` display rule. */
 class ModelRefTest {
 
     @Test

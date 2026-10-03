@@ -87,7 +87,7 @@ class ServicesStreamRepositoryTest {
         assertEquals(current, mergeServiceEvent(current, ServiceStreamEvent.Unknown("garbage")))
     }
 
-    // -- F15: ladder deltas merge independently of status and favorite ------------
+    // -- ladder deltas merge independently of status and favorite ------------
 
     @Test
     fun `a ladder delta replaces that service's ladder and nothing else on the row`() {
@@ -105,7 +105,7 @@ class ServicesStreamRepositoryTest {
         assertEquals(stopped, result[1])
     }
 
-    /** F15-R5: the same action carries favourites, and must not empty a ladder. */
+    /** The same action carries favourites, and must not empty a ladder. */
     @Test
     fun `a delta that says nothing about the ladder leaves it exactly as stored`() {
         val withLadder = running.copy(reasoningLevels = listOf("off", "low"))
@@ -149,7 +149,7 @@ class ServicesStreamRepositoryTest {
         assertEquals("exited", emissions[1][0].status)
     }
 
-    // -- streamWithStatus (F10-R1's fifth criterion) ----------------------------
+    // -- streamWithStatus ----------------------------
 
     @Test
     fun `streamWithStatus is not stale while the connection is up`() = runTest {
@@ -171,7 +171,7 @@ class ServicesStreamRepositoryTest {
      * A dropped connection must not freeze the last-known list — it is
      * re-emitted immediately with `stale = true` carrying the last snapshot
      * forward, rather than the collector hearing nothing until the next
-     * successful reconnect (F10-R1's fifth criterion: "falls back to a
+     * successful reconnect (the rule: "falls back to a
      * snapshot fetch and shows a stale indicator rather than freezing").
      * Against a `stream()`-only design (before `streamWithStatus` existed)
      * this drop would simply never be observed at all — no emission, no

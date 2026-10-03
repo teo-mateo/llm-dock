@@ -33,7 +33,7 @@ class ServiceStreamEventParserTest {
         assertTrue(snapshot.services[0].favorite)
         assertEquals("embedding", snapshot.services[1].kind)
         // ServiceDto has no api_key property at all — there is nowhere for the
-        // value to have landed, which is exactly F07-R6's point.
+        // value to have landed, which is exactly the point.
         val fields = ServiceDto::class.java.declaredFields.map { it.name }
         assertTrue(fields.none { it.contains("api_key", ignoreCase = true) || it.equals("apiKey", ignoreCase = true) })
     }
@@ -91,7 +91,7 @@ class ServiceStreamEventParserTest {
         assertEquals(ServiceStreamEvent.Unknown("not json"), parseServiceStreamFrame("not json"))
     }
 
-    // -- F15: the reasoning ladder on the two frames that carry it -----------------
+    // -- the reasoning ladder on the two frames that carry it -----------------
 
     @Test
     fun `a metadata-changed delta from a ladder edit carries the new ladder`() {
@@ -114,7 +114,7 @@ class ServiceStreamEventParserTest {
     }
 
     /**
-     * F15-R5's anti-clear rule. The favourite route reuses the
+     * The anti-clear rule. The favourite route reuses the
      * `metadata-changed` action and sends `favorite` only, so "the frame said
      * nothing" has to stay distinguishable from "the service declares nothing"
      * — otherwise starring a model on the dashboard empties its ladder.

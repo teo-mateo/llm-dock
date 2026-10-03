@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** [parseLogStreamFrame] — pure mapping of one SSE payload to a typed frame (F12-R1). */
+/** [parseLogStreamFrame] — pure mapping of one SSE payload to a typed frame. */
 class LogStreamEventTest {
 
     @Test

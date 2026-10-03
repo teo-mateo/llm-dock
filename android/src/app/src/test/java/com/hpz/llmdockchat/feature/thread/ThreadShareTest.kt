@@ -47,9 +47,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * F14's staged-share lifecycle inside the thread: the record is read back on
+ * The staged-share lifecycle inside the thread: the record is read back on
  * load (force-stop survival), spent on send and on leave, and kept aligned on
- * remove — the "no ghost" rules of F14-R5.
+ * remove — the "no ghost" rules.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadShareTest {
@@ -92,7 +92,7 @@ class ThreadShareTest {
             .build()
         repository = ChatRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO), transport)
         servicesStreamRepository = ServicesStreamRepository(servicesTransport)
-        // F15: inert on purpose. These tests are not about the ladder, and a live one would
+        // Inert on purpose. These tests are not about the ladder, and a live one would
         // consume a queued MockWebServer response and move every takeRequest() assertion,
         // so the ladder read is pointed at a store with no URL — which fails fast, keeps
         // the last known (empty) map, and leaves the queue for the calls under test.

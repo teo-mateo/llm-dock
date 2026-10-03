@@ -37,7 +37,7 @@ import org.junit.Test
 import java.util.concurrent.Executors
 
 /**
- * F10-R3's third criterion: "closing the tab stops the stream". On device,
+ * "Closing the tab stops the stream". On device,
  * switching to the Chats tab was found to leave both SSE sockets `ESTAB` in
  * `ss -tnp` when the two live streams were launched from
  * `ModelsViewModel`'s own `viewModelScope` — Navigation Compose's tab-switch
