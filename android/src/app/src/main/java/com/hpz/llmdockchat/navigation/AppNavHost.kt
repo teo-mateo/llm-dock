@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -49,6 +50,7 @@ import com.hpz.llmdockchat.feature.thread.ThreadViewModel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -258,6 +260,7 @@ fun AppNavHost(
         }
 
         composable(Destinations.SHARE_PICKER) {
+            val pickerScope = rememberCoroutineScope()
             val viewModel: ShareTargetViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -272,9 +275,15 @@ fun AppNavHost(
             ShareTargetScreen(
                 viewModel = viewModel,
                 onPickConversation = { conversation ->
-                    container.sharedDraftStore.reassign(conversation.id, container.draftStore)
-                    navController.navigate(Destinations.thread(conversation.id)) {
-                        popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                    // Navigates after the write rather than after the call: the
+                    // thread reads the draft and the staged attachments as soon as
+                    // it loads, so a merge still in flight would land behind that
+                    // read and the thread would open without the shared content.
+                    pickerScope.launch {
+                        container.sharedDraftStore.reassign(conversation.id, container.draftStore)
+                        navController.navigate(Destinations.thread(conversation.id)) {
+                            popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
+                        }
                     }
                 },
                 onNewConversation = { navController.navigate(Destinations.newChat()) },
@@ -364,6 +373,7 @@ private fun NewChatDestination(
     preselectedServiceName: String?,
     summarizeMode: Boolean,
 ) {
+    val newChatScope = rememberCoroutineScope()
     val viewModel: NewChatViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
@@ -393,14 +403,20 @@ private fun NewChatDestination(
             // though the sheet already spent the pending share filing its
             // claim — the picker is still what sits under this sheet.
             val hadPendingShare = summarizeMode || container.sharedDraftStore.pending.value != null
-            container.sharedDraftStore.reassign(id, container.draftStore)
-            // Replaces the sheet on the back stack — Back from the new
-            // thread returns to the conversation list, not to a sheet
-            // for a chat that already exists.
-            navController.navigate(Destinations.thread(id)) {
-                popUpTo(
-                    if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
-                ) { inclusive = true }
+            // Awaited for the same reason as the picker's pick: the thread must
+            // not load before the content it is opening with has been filed. For
+            // a summarize run this returns without waiting — the sheet already
+            // spent the pending share.
+            newChatScope.launch {
+                container.sharedDraftStore.reassign(id, container.draftStore)
+                // Replaces the sheet on the back stack — Back from the new
+                // thread returns to the conversation list, not to a sheet
+                // for a chat that already exists.
+                navController.navigate(Destinations.thread(id)) {
+                    popUpTo(
+                        if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
+                    ) { inclusive = true }
+                }
             }
         },
     )

@@ -146,7 +146,7 @@ class ThreadShareTest {
     @Test
     fun `load applies staged attachments for this conversation`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
 
@@ -157,7 +157,7 @@ class ThreadShareTest {
     @Test
     fun `a re-entry within the same process does not duplicate the attachments`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         val first = viewModel.awaitLoaded()
@@ -174,7 +174,7 @@ class ThreadShareTest {
     @Test
     fun `a force-stop re-stages from disk - a fresh ViewModel applies the record again`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val first = viewModel()
         first.load()
         first.awaitLoaded()
@@ -206,7 +206,7 @@ class ThreadShareTest {
     @Test
     fun `send clears the staged record`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
@@ -219,7 +219,7 @@ class ThreadShareTest {
     @Test
     fun `leaving the thread clears the staged record - no ghost on the next visit`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, IMAGE)
+        attachmentStore.appendAttachments(CONVERSATION_ID, IMAGE)
         val viewModel = viewModel()
         viewModel.load()
         viewModel.awaitLoaded()
@@ -232,7 +232,7 @@ class ThreadShareTest {
     @Test
     fun `removing an attachment keeps the record aligned`() = threadTest {
         conversation()
-        attachmentStore.saveAttachments(CONVERSATION_ID, listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
+        attachmentStore.appendAttachments(CONVERSATION_ID, listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
         val viewModel = viewModel()
         viewModel.load()
         val loaded = viewModel.awaitLoaded()

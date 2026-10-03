@@ -22,6 +22,13 @@ interface DraftStore {
     suspend fun draft(conversationId: String): String
     fun save(conversationId: String, text: String)
     fun clear(conversationId: String)
+
+    /**
+     * Returns once every write enqueued before this call has reached disk. A
+     * caller that consumes something *because* it moved a draft elsewhere needs
+     * this, or a death between the two loses both copies.
+     */
+    suspend fun awaitWrites()
 }
 
 /**
@@ -61,6 +68,8 @@ class DataStoreDraftStore(
         if (conversationId !in existing) return
         drafts.set(existing - conversationId)
     }
+
+    override suspend fun awaitWrites() = drafts.awaitPendingWrites()
 
     /**
      * The hydrated value without blocking — [ValuePreference.get] would park

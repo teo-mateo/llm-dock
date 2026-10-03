@@ -138,6 +138,9 @@ user chooses where the content goes.
 - \[x\] Loading, empty and failed states per F00-R5; the empty state says
       what would fill it.
 - \[x\] Picking a row opens that thread with the content staged (F14-R3).
+- \[x\] Picking a row whose conversation already holds an unsent draft keeps
+      that draft: the shared text is appended after it and the staged
+      attachments after those already recorded (issue 270).
 - \[x\] Back or a dismiss action clears the pending share and returns to
       the Chats tab — nothing is left staged anywhere.
 - \[x\] A consumed share does not come back on recreation — rotation,
@@ -154,6 +157,10 @@ The shared content lands in the composer, editable and removable, and is
 
 - \[x\] Text/link: the composer is pre-filled with the shared text; the
       user can edit it before sending.
+- \[x\] Text/link into a thread that already has unsent text: both are in the
+      composer, the draft first, separated by a blank line, and both are
+      editable (issue 270). A share whose text is already the draft's tail
+      (a redelivery) is not appended twice.
 - \[x\] Image: an attachment thumbnail appears in the composer strip and
       is individually removable; the image is downscaled through the
       existing F04-R9 pipeline (≤1568 px, JPEG).
@@ -409,6 +416,21 @@ No new endpoints, no new server code (R-A).
   enough to look broken. Two consequences the UI carries rather than hides: the
   consuming actions wait for the content, and a slow provider is visible as
   "Reading shared content…".
+- **A pick merges into the destination instead of overwriting it** (issue 270).
+  `reassign` used to write the shared text straight over the conversation's draft
+  and wipe its staged attachment record, so a link shared into a thread whose
+  composer held a typed question deleted the question — silently, one tap after
+  the user chose where the content should go. Appending was chosen over asking:
+  a prompt in the middle of a share flow needs its own persisted decision state to
+  survive process death, and it makes the common case (an empty composer) pay for
+  the rare one. The draft goes first because it is what the user wrote and the
+  share is what they then aimed it at; the separator is a blank line, so a
+  sentence never fuses to a URL. Two consequences of doing the merge here rather
+  than in the thread: reading the existing draft means awaiting DataStore
+  hydration, so `reassign` suspends and the navigation is sequenced after it (a
+  thread that loaded before the merge would open without the content it was opened
+  with), and both destination writes are flushed before `pending.json` is deleted,
+  so a death mid-transfer re-offers the share rather than losing it.
 - **No mockup exists for this feature.** The 16 validated screens have
   no share-target screen; the picker is specified from the conversation
   list's visual language rather than a signed-off drawing.
@@ -495,7 +517,11 @@ No new endpoints, no new server code (R-A).
   `adb shell am start -a android.intent.action.SEND …`. Image shares
   need a real `content://` URI — push a file and reference it via the
   app's own FileProvider or MediaStore, since bare `file://` URIs are
-  restricted on modern Android.
+  restricted on modern Android. For an *image* share, drive it through the
+  system chooser (the helper's default) rather than `am start … -n` with a
+  hand-inserted MediaStore row: on the Play image that combination reports
+  "That image could not be read" for either decode path, so it tests the
+  fixture rather than the feature.
 - **Process-death criteria (F14-R5)** are the reason `dev.sh clear` /
   force-stop are part of the verification loop: stage → force-stop →
   relaunch → content still staged.

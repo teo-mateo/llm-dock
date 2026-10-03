@@ -20,11 +20,12 @@ import java.io.File
  *   the target picker. Survives navigation, the Connect round trip, and
  *   process death: the record is a JSON file in [dir] and the
  *   in-memory [pending] is hydrated from it at construction.
- * - **Per-conversation attachments** — written when the user picks a target
+ * - **Per-conversation attachments** — appended when the user picks a target
  *   ([reassign]), read back by the thread's `load()` so a force-stop between
  *   the pick and the send does not lose the staged image. One file
  *   per attachment, named `0.txt`, `1.txt`…, so removing one renumbers the
- *   rest and the record stays index-aligned with the composer's list.
+ *   rest and the record stays index-aligned with the composer's list, and so a
+ *   second share into the same thread adds to the record instead of replacing it.
  * - **The handled token** — the delivery identity of the share this task most
  *   recently claimed, in `handled.json` ([stage] with a token).
  *   [clearPending], [reassign] and [clear] deliberately do not clear it: the
@@ -145,13 +146,28 @@ class SharedDraftStore(
      * attachments move to the per-conversation record, and the pending share
      * is gone.
      */
-    fun reassign(conversationId: String, drafts: DraftStore) {
+    /**
+     * The picker's "pick a conversation" and the new-chat flow's
+     * `onConversationCreated` both land here: the staged text is **appended** to
+     * the conversation's draft ([mergedDraft]) rather than replacing it, the
+     * attachments are appended to the per-conversation record, and the pending
+     * share is gone only once both writes have reached disk.
+     *
+     * Suspending for two reasons: the existing draft cannot be read from memory
+     * before DataStore has hydrated (a share that starts the process cold would
+     * otherwise read "no draft" and overwrite one), and the destination writes
+     * have to be durable before the pending record is spent. A failure anywhere
+     * in here therefore leaves the share on the picker rather than losing it.
+     */
+    suspend fun reassign(conversationId: String, drafts: DraftStore) {
         val share = _pending.value ?: return
         // A placeholder is not content: spending it would hand the user an empty
         // composer and throw the incoming bytes away.
         if (share.importing) return
-        if (share.text.isNotBlank()) drafts.save(conversationId, share.text)
-        saveAttachments(conversationId, share.attachments)
+        if (share.text.isNotBlank()) drafts.save(conversationId, mergedDraft(drafts.draft(conversationId), share.text))
+        appendAttachments(conversationId, share.attachments)
+        awaitPendingWrites()
+        drafts.awaitWrites()
         clearPending()
     }
 
@@ -159,9 +175,9 @@ class SharedDraftStore(
      * The summarize claim: one prepared user turn owed to one
      * conversation, written before the thread opens and consumed by its first
      * `load()`. A sibling of [PENDING_FILE] rather than a child of the
-     * conversation directory, because [saveAttachments] wipes that directory —
-     * a claim filed there would be erased by the attachment write that
-     * follows it, cancelling the action the user just took.
+     * conversation directory, because [appendAttachments] writes numbered files
+     * into that directory and [attachments] reads all of them back — a claim
+     * filed there would be handed to the composer as a staged image.
      */
     fun stageForAutoSend(conversationId: String, message: String) {
         enqueue {
@@ -183,13 +199,22 @@ class SharedDraftStore(
         message?.takeIf { it.isNotBlank() }
     }
 
-    fun saveAttachments(conversationId: String, attachments: List<String>) {
+    /**
+     * Adds to the conversation's staged attachments, keeping what is already
+     * there: a second share into a thread that already holds an unsent one must
+     * not throw the first one away. Indexes continue after the highest existing
+     * one, so the record stays index-aligned with the composer's list and
+     * [removeAttachment]'s renumbering still holds.
+     */
+    fun appendAttachments(conversationId: String, attachments: List<String>) {
         if (attachments.isEmpty()) return
         enqueue {
             val convDir = conversationDir(conversationId).apply { mkdirs() }
-            convDir.listFiles().orEmpty().forEach { it.delete() }
-            attachments.forEachIndexed { index, dataUrl ->
-                File(convDir, "$index.txt").writeText(dataUrl)
+            val next = convDir.listFiles().orEmpty()
+                .mapNotNull { file -> file.nameWithoutExtension.toIntOrNull() }
+                .maxOrNull()?.plus(1) ?: 0
+            attachments.forEachIndexed { offset, dataUrl ->
+                File(convDir, "${next + offset}.txt").writeText(dataUrl)
             }
         }
     }
@@ -296,4 +321,24 @@ class SharedDraftStore(
         const val HANDLED_FILE = "handled.json"
         val json = Json
     }
+}
+
+/**
+ * The composer text a pick leaves behind: what the user had unsent, with the
+ * shared text added after it. The draft goes first because it is what the user
+ * wrote and the share is what they then aimed it at; a blank line separates them
+ * because a chat message is where these meet, and a bare concatenation would
+ * fuse a sentence to a URL.
+ *
+ * A draft already ending with the shared text is returned untouched — that is
+ * the shape of a redelivered share, and duplicating it is the failure this
+ * function exists to prevent.
+ */
+internal fun mergedDraft(existing: String, shared: String): String {
+    val incoming = shared.trimEnd()
+    if (incoming.isBlank()) return existing
+    val current = existing.trimEnd()
+    if (current.isBlank()) return incoming
+    if (current.endsWith(incoming)) return existing
+    return "$current\n\n$incoming"
 }
