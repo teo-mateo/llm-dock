@@ -154,6 +154,17 @@ class SummarizeCoordinatorTest {
         assertEquals(2, server.requestCount)
     }
 
+    /** #269 acceptance — a newly-supported engine resolves like any other. */
+    @Test
+    fun `a running exl3 remembered model is accepted for summarization`() {
+        store.stage(StagedShare(text = URL, url = URL))
+        enqueue()
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+
+        assertEquals(SummarizeOutcome.Opened(NEW_ID), launch(FakeNewChatPreferences("exl3-gemma-4-31b-it")))
+    }
+
     @Test
     fun `a failed create files no claim`() {
         store.stage(StagedShare(text = URL, url = URL))

@@ -131,6 +131,11 @@ class NewChatViewModelTest {
         assertFalse(names.contains("vllm-nomic-embed-text-v1.5"))
         assertTrue(names.contains("llamacpp-gemma-4-26b-a4b-it-q8"))
         assertTrue(names.contains("vllm-qwen3-6-27b-fp8"))
+        // #269: the three engines the baseline classified as unknown now flow
+        // through the chat-capable filter, on their template_type and prefix.
+        assertTrue(names.contains("ik-qwen3.6-27b-iq4xs"))
+        assertTrue(names.contains("exl3-gemma-4-31b-it"))
+        assertTrue(names.contains("ninfer-qwen3.8-27b-nvfp4"))
     }
 
     @Test

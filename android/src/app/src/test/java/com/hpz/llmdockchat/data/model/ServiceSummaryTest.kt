@@ -68,6 +68,50 @@ class ServiceSummaryTest {
         assertTrue(service.isChatCapable)
     }
 
+    @Test
+    fun `ik, exl3 and ninfer services are chat-capable — the #269 gap, closed`() {
+        // Each of these evaluated false on the 415c0cc baseline (unknown engine),
+        // so their Models rows omitted New chat and they were filtered out of
+        // every picker.
+        for ((name, engine) in listOf(
+            "ik-qwen3.6-27b-iq4xs" to Engine.IK_LLAMA_CPP,
+            "exl3-gemma-4-31b-it" to Engine.TABBYAPI,
+            "ninfer-qwen3.8-27b-nvfp4" to Engine.NINFER,
+        )) {
+            val service = ServiceSummary(name, "running", "chat")
+            assertEquals(engine, service.engine)
+            assertTrue("$name should be chat-capable", service.isChatCapable)
+        }
+    }
+
+    @Test
+    fun `template_type is authoritative over the name prefix, and null falls back to it`() {
+        // The engine that selected the compose template beats a display name a
+        // rename could have changed.
+        assertEquals(Engine.NINFER, ServiceSummary("vllm-misnamed", "running", "chat", templateType = "ninfer").engine)
+        // A name with no recognised prefix still classifies off template_type.
+        assertEquals(Engine.TABBYAPI, ServiceSummary("legacy-service", "running", "chat", templateType = "tabbyapi").engine)
+        assertTrue(ServiceSummary("legacy-service", "running", "chat", templateType = "tabbyapi").isChatCapable)
+        // An older snapshot with no template_type still resolves by prefix.
+        assertEquals(Engine.IK_LLAMA_CPP, ServiceSummary("ik-a", "running", "chat", templateType = null).engine)
+        // A template_type naming an unknown engine falls back to the prefix rather
+        // than masking it.
+        assertEquals(Engine.VLLM, ServiceSummary("vllm-a", "running", "chat", templateType = "mystery-engine").engine)
+    }
+
+    @Test
+    fun `engineFromTemplateType maps every engine and nulls an unknown one`() {
+        assertEquals(Engine.VLLM, engineFromTemplateType("vllm"))
+        assertEquals(Engine.LLAMA_CPP, engineFromTemplateType("llamacpp"))
+        assertEquals(Engine.IK_LLAMA_CPP, engineFromTemplateType("ik_llamacpp"))
+        assertEquals(Engine.DS4, engineFromTemplateType("ds4"))
+        assertEquals(Engine.TABBYAPI, engineFromTemplateType("tabbyapi"))
+        assertEquals(Engine.NINFER, engineFromTemplateType("ninfer"))
+        assertEquals(Engine.SGLANG, engineFromTemplateType("sglang"))
+        assertEquals(null, engineFromTemplateType("something-new"))
+        assertEquals(null, engineFromTemplateType(null))
+    }
+
     /**
      * F15-R8's proof for the 90 % of services that declare no ladder: the new
      * field defaults to empty, so a row that predates F15 is still equal to

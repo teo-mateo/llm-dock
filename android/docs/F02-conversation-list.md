@@ -30,10 +30,11 @@ threads are touched. Pick one and be explicit about the trade-off.
 ## F02-R2 · Model chip per row (Must)
 
 Each row carries a chip naming the thread's `main_service`, colour-coded
-by engine the way the dashboard badges them: vLLM, llama.cpp, ds4,
-OpenRouter. Engine is derivable from the service name prefix
-(`vllm-`, `llamacpp-`, `ds4-`) and from the `openrouter:` prefix for
-remote models.
+by engine the way the dashboard badges them: vLLM, llama.cpp,
+ik_llama.cpp, ds4, TabbyAPI/EXL3, NInfer, SGLang, OpenRouter. A thread
+stores only its service name, so engine is derived from the name prefix
+(`vllm-`, `llamacpp-`, `ik-`, `ds4-`, `exl3-`, `ninfer-`, `sglang-`) and
+from the `openrouter:` prefix for remote models.
 
 **Acceptance criteria**
 

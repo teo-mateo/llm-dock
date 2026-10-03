@@ -101,12 +101,22 @@ class ModelsViewModelTest {
         viewModel.start()
         val state = settled(viewModel) as ModelsUiState.Loaded
 
-        // Fixture: open-webui (3300) and llamacpp-gemma-4-26b-a4b-it-q8 (3301)
-        // are the only two "running" rows; everything else is exited or
-        // not-created. gemma is `favorite: true` and open-webui is not, so
-        // gemma leads despite the higher port — favourites-first wins over
-        // host-port order, and host-port order is only the tiebreak.
-        assertEquals(listOf("llamacpp-gemma-4-26b-a4b-it-q8", "open-webui"), state.running.map { it.name })
+        // Fixture: five rows are "running" — the favourite gemma (3301),
+        // open-webui (3300) and the three #269 engines ik (3330), exl3 (3331),
+        // ninfer (3332); everything else is exited or not-created. gemma is
+        // `favorite: true` and the rest are not, so gemma leads despite the
+        // higher port — favourites-first wins over host-port order, which is
+        // only the tiebreak among the unfavourited.
+        assertEquals(
+            listOf(
+                "llamacpp-gemma-4-26b-a4b-it-q8",
+                "open-webui",
+                "ik-qwen3.6-27b-iq4xs",
+                "exl3-gemma-4-31b-it",
+                "ninfer-qwen3.8-27b-nvfp4",
+            ),
+            state.running.map { it.name },
+        )
         assertEquals(19, state.stopped.size)
         assertEquals(false, state.stale)
     }

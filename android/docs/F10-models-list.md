@@ -15,8 +15,9 @@ it live. The stream sends a `snapshot` frame on connect and then `delta`
 frames as Docker events occur, so the list stays current without polling
 (F00-R12).
 
-Each row shows the service name, engine (from the name prefix:
-`llamacpp-`, `vllm-`, `ds4-`), host port, model size, and status.
+Each row shows the service name, engine (`template_type` from the
+payload, falling back to the name prefix `llamacpp-`, `ik-`, `vllm-`,
+`ds4-`, `exl3-`, `ninfer-`, `sglang-`), host port, model size, and status.
 
 Statuses seen in the payload: `running`, `exited` (with `exit_code`),
 `not-created`, and Docker's other container states.

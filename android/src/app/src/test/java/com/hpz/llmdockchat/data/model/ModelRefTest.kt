@@ -27,6 +27,21 @@ class ModelRefTest {
     }
 
     @Test
+    fun `an ik- prefix is the ik_llama-cpp engine`() {
+        assertEquals(Engine.IK_LLAMA_CPP, parseModelRef("ik-qwen3.6-27b-iq4xs").engine)
+    }
+
+    @Test
+    fun `an exl3- prefix is the tabbyapi engine`() {
+        assertEquals(Engine.TABBYAPI, parseModelRef("exl3-gemma-4-31b-it").engine)
+    }
+
+    @Test
+    fun `a ninfer- prefix is the ninfer engine`() {
+        assertEquals(Engine.NINFER, parseModelRef("ninfer-qwen3.8-27b-nvfp4").engine)
+    }
+
+    @Test
     fun `an openrouter model is the open-router engine regardless of its id`() {
         assertEquals(Engine.OPEN_ROUTER, parseModelRef("openrouter:anthropic/claude-sonnet-5").engine)
     }

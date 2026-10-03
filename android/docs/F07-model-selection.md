@@ -11,16 +11,23 @@ Which model a thread talks to, chosen at creation and changeable mid-thread.
 From `GET /api/services` (snapshot) and `/api/services/stream` (live).
 The picker shows what can actually answer right now.
 
-The web UI's filter, which the phone matches exactly (R-B):
+The web UI's filter, which the phone matches (R-B):
 
 - `status === "running"`, and
-- the name starts with `llamacpp-`, `vllm-` or `ds4-`, and
+- the engine is recognised — read from the payload's `template_type`
+  (the field that selected the service's compose template), falling back
+  to the name prefix `llamacpp-`, `ik-`, `vllm-`, `ds4-`, `exl3-`,
+  `ninfer-`, `sglang-` for rows that predate `template_type`; and
 - `kind` is `chat` — embedding services (`--runner pooling`,
   `--embedding`) cannot serve `/v1/chat/completions` and must never
   appear. Treat a missing `kind` as `chat`.
 
-Each entry shows the service name, its engine (from the name prefix) and
-its port.
+(The web additionally admits the legacy `PAIR_` prefix; those containers
+have no `services.json` entry and so no `template_type`, and stay unknown
+— and out — on the phone.)
+
+Each entry shows the service name, its engine (`template_type`, prefix as
+fallback) and its port.
 
 **Acceptance criteria**
 

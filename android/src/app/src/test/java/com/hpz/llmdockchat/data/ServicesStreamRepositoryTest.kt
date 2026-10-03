@@ -2,6 +2,7 @@ package com.hpz.llmdockchat.data
 
 import com.hpz.llmdockchat.core.net.ServiceStreamEvent
 import com.hpz.llmdockchat.data.dto.ServiceDto
+import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.ScriptedSseTransport
@@ -32,6 +33,31 @@ class ServicesStreamRepositoryTest {
         )
         val result = mergeServiceEvent(emptyList(), snapshot)
         assertEquals(listOf(running, stopped), result)
+    }
+
+    @Test
+    fun `a snapshot's template_type reaches the summary and drives its engine`() {
+        val snapshot = ServiceStreamEvent.Snapshot(
+            listOf(ServiceDto(name = "exl3-gemma", status = "running", kind = "chat", hostPort = 3331, templateType = "tabbyapi")),
+        )
+        val result = mergeServiceEvent(emptyList(), snapshot)
+        assertEquals("tabbyapi", result.single().templateType)
+        assertEquals(Engine.TABBYAPI, result.single().engine)
+    }
+
+    @Test
+    fun `a status delta keeps the template_type a snapshot established`() {
+        val seeded = mergeServiceEvent(
+            emptyList(),
+            ServiceStreamEvent.Snapshot(
+                listOf(ServiceDto(name = "svc", status = "running", kind = "chat", hostPort = 3332, templateType = "ninfer")),
+            ),
+        )
+        val delta = ServiceStreamEvent.Delta(serviceName = "svc", status = "exited", favorite = null)
+        val result = mergeServiceEvent(seeded, delta)
+        assertEquals("exited", result.single().status)
+        assertEquals("ninfer", result.single().templateType)
+        assertEquals(Engine.NINFER, result.single().engine)
     }
 
     @Test

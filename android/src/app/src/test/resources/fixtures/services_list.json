@@ -286,6 +286,51 @@
       "favorite": false
     },
     {
+      "name": "ik-qwen3.6-27b-iq4xs",
+      "status": "running",
+      "exit_code": null,
+      "container_id": "aa11bb22cc33",
+      "created": "2026-07-25T00:21:36.7856723Z",
+      "ports": {},
+      "host_port": 3330,
+      "openwebui_registered": false,
+      "model_size": 20000000000,
+      "model_size_str": "18.63 GB",
+      "kind": "chat",
+      "favorite": false,
+      "template_type": "ik_llamacpp"
+    },
+    {
+      "name": "exl3-gemma-4-31b-it",
+      "status": "running",
+      "exit_code": null,
+      "container_id": "dd44ee55ff66",
+      "created": "2026-07-25T00:21:36.7856723Z",
+      "ports": {},
+      "host_port": 3331,
+      "openwebui_registered": false,
+      "model_size": 21000000000,
+      "model_size_str": "19.56 GB",
+      "kind": "chat",
+      "favorite": false,
+      "template_type": "tabbyapi"
+    },
+    {
+      "name": "ninfer-qwen3.8-27b-nvfp4",
+      "status": "running",
+      "exit_code": null,
+      "container_id": "77889900aabb",
+      "created": "2026-07-25T00:21:36.7856723Z",
+      "ports": {},
+      "host_port": 3332,
+      "openwebui_registered": false,
+      "model_size": 22000000000,
+      "model_size_str": "20.50 GB",
+      "kind": "chat",
+      "favorite": false,
+      "template_type": "ninfer"
+    },
+    {
       "name": "vllm-bge-m3",
       "status": "not-created",
       "container_id": null,
@@ -312,7 +357,7 @@
       "favorite": false
     }
   ],
-  "total": 21,
-  "running": 2,
+  "total": 24,
+  "running": 5,
   "stopped": 19
 }
