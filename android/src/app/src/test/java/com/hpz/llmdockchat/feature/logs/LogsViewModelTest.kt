@@ -90,10 +90,68 @@ class LogsViewModelTest {
 
         vm.onStreamEvent(LogStreamEvent.Log("ERROR: could not bind port"))
         vm.onStreamEvent(LogStreamEvent.Log("Loading safetensors shards: 33%"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
 
         val lines = (vm.state.value as LogsUiState.Loaded).lines
         assertEquals(LogLevel.ERROR, lines[0].level)
         assertEquals(LogLevel.PLAIN, lines[1].level)
+    }
+
+    @Test
+    fun `live output is batched and terminal events flush pending lines`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        vm.onStreamEvent(LogStreamEvent.Log("first"))
+        vm.onStreamEvent(LogStreamEvent.Log("second"))
+        assertEquals(listOf("first"), (vm.state.value as LogsUiState.Loaded).lines.map { it.text })
+
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("first", "second"), state.lines.map { it.text })
+        assertEquals(LogsConnection.ENDED, state.connection)
+    }
+
+    @Test
+    fun `a long stream evicts oldest lines while preserving order and the current boundary`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("historical"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        repeat(15_000) { vm.onStreamEvent(LogStreamEvent.Log("live $it")) }
+        vm.onStreamEvent(LogStreamEvent.StreamEnd)
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(2_000, state.lines.size)
+        assertEquals("live 13000", state.lines.first().text)
+        assertEquals("live 14999", state.lines.last().text)
+        assertEquals(13_001L, state.evictedCount)
+        assertEquals(0, state.boundaryIndex)
+        assertTrue(state.lines.zipWithNext().all { (a, b) -> a.id < b.id })
+    }
+
+    @Test
+    fun `one oversized line is clipped and resubscription resets the eviction marker`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        repeat(40) { vm.onStreamEvent(LogStreamEvent.Log("x".repeat(100_000))) }
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        val bounded = vm.state.value as LogsUiState.Loaded
+        assertTrue(bounded.lines.sumOf { it.text.length } <= 512 * 1_024)
+        assertTrue(bounded.lines.all { it.text.length <= 16 * 1_024 })
+        assertTrue(bounded.lines.last().text.endsWith("[line truncated]"))
+        assertTrue(bounded.evictedCount > 0)
+
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("fresh tail"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        val fresh = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("fresh tail"), fresh.lines.map { it.text })
+        assertEquals(0L, fresh.evictedCount)
+        assertEquals(1, fresh.boundaryIndex)
+        assertTrue(fresh.lines.first().id > bounded.lines.last().id)
     }
 
     /**

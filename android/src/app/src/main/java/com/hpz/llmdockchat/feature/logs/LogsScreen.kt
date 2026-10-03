@@ -141,7 +141,7 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
         }
     }
 
-    LaunchedEffect(state.lines.size, following) {
+    LaunchedEffect(state.lines.lastOrNull()?.id, following) {
         if (following && listState.layoutInfo.totalItemsCount > 0) {
             listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
         }
@@ -169,7 +169,18 @@ private fun LoadedLogs(state: LogsUiState.Loaded) {
                     .testTag("logs_body"),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                itemsIndexed(state.lines) { index, line ->
+                if (state.evictedCount > 0) {
+                    item(key = "truncated") {
+                        Text(
+                            "Earlier output removed (${state.evictedCount} lines)",
+                            color = colors.subtle,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                .testTag("logs_truncated"),
+                        )
+                    }
+                }
+                itemsIndexed(state.lines, key = { _, line -> line.id }) { index, line ->
                     if (state.boundaryIndex == index && index != 0) {
                         SnapshotBoundary()
                     }
