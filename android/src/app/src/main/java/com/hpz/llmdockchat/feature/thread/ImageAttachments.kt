@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.util.Base64
 import androidx.core.content.FileProvider
@@ -37,24 +38,29 @@ fun Bitmap.toDataUrl(): String {
 }
 
 /**
- * Decodes with `inSampleSize` so a 12-megapixel original is never fully
+ * Decodes with `setTargetSampleSize` so a 12-megapixel original is never fully
  * materialised — the full-size decode is what actually OOMs on a phone, not the
  * scaling that follows it.
+ *
+ * Orientation is the property that survives nothing else in this pipeline:
+ * [toDataUrl] re-encodes and drops the metadata, so the receivers of the result —
+ * the vision model, the desktop composer, the sent-message bubble — cannot
+ * re-derive it and see exactly the pixels returned here. `ImageDecoder` therefore
+ * has to hand back upright pixels, and does: unlike `BitmapFactory` it applies the
+ * source's own orientation (a JPEG's EXIF tag, a HEIF transformation box), all eight
+ * transforms including the mirrored ones. There is no API to ask for that or to turn
+ * it off, so `ImageOrientationInstrumentedTest` is what holds it.
+ *
+ * The allocator is pinned to SOFTWARE because the bitmap is re-encoded in this
+ * process, and a HARDWARE bitmap — which `ALLOCATOR_DEFAULT` happily returns for a
+ * JPEG — supports neither pixel access nor `compress`.
  */
-fun readImage(resolver: ContentResolver, uri: Uri): Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    // A bounds-only decode returns null by design, so the stream itself is what
-    // gets null-checked here — testing the decode result would reject every
-    // image ever picked.
-    val boundsStream = resolver.openInputStream(uri) ?: return null
-    boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, MAX_ATTACHMENT_EDGE_PX)
+fun readImage(resolver: ContentResolver, uri: Uri): Bitmap? = runCatching {
+    ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, info, _ ->
+        decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE)
+        decoder.setTargetSampleSize(sampleSizeFor(info.size.width, info.size.height, MAX_ATTACHMENT_EDGE_PX))
     }
-    return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-}
+}.getOrNull()
 
 /**
  * Somewhere for the camera app to write a full-resolution capture, handed over

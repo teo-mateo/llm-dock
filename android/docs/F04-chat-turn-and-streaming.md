@@ -183,6 +183,9 @@ input there is: a photo of a screen, a whiteboard, an error message.
 - [ ] A sent image renders in the user's message in the thread and
       survives a refetch.
 - [ ] A large photo is downscaled before upload rather than failing.
+- [ ] A photo whose orientation lives in metadata rather than in its pixels
+      renders upright — in the composer, in the sent bubble, and in the bytes the
+      model is given.
 
 ## F04-R10 · Leaving does not stop the run (Must)
 
@@ -267,6 +270,19 @@ persists the reply. Reattachment is F09.
   run started elsewhere is still going (F09 has not landed, so there is no
   reattach yet), and cancel-by-conversation handles that case unchanged —
   the app passes `active_run.id` as the guard.
+- **An attached photo is oriented before it is encoded, not after** (issue
+  273). The pipeline re-encodes to JPEG and that drops the orientation tag, so a
+  source holding landscape pixels plus `Orientation: Rotate90` — what a phone
+  camera writes, and what most edited photos are — reached the model sideways while
+  the gallery showed the same file upright. `readImage` decodes with `ImageDecoder`,
+  which applies the source's own orientation on the way out, and pins the allocator
+  to `ALLOCATOR_SOFTWARE` because the bitmap is then compressed and a hardware bitmap
+  supports neither pixel access nor `compress` (`ALLOCATOR_DEFAULT` returns one for a
+  JPEG). Neither behaviour has a public API, so `ImageOrientationInstrumentedTest`
+  holds both: all eight EXIF orientations, asserted by quadrant colour *and*
+  dimension against a table transcribed from the specification rather than from the
+  platform, plus missing and undefined EXIF, a sampled decode of a 4000×3000 source,
+  and the encoded attachment encoding no transform.
 
 ## Out of scope
 
