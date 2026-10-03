@@ -139,23 +139,28 @@ private fun ModelDetailContent(
                     // the controls that earn their place.
                     action = {},
                 )
-                ModelTabRow(tab, onTabChange)
+                if (state !is ModelDetailUiState.Missing) ModelTabRow(tab, onTabChange)
             }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
+            if (state is ModelDetailUiState.Missing) {
+                MissingBox(onBack)
+            } else when (tab) {
                 ModelTab.CONFIG -> when (state) {
                     is ModelDetailUiState.Loading -> LoadingBox()
                     is ModelDetailUiState.Failed -> FailedBox(state.message, onRetry)
                     is ModelDetailUiState.Loaded -> DetailBody(state, actionState, onRequestStart, onRequestStop)
+                    is ModelDetailUiState.Missing -> Unit
                 }
                 // Composed only while selected, which is what scopes the log
                 // stream to the tab being open — see LogsPane's doc.
                 ModelTab.LOGS -> logsPane()
             }
         }
-        ServiceActionDialog(actionState, onDismiss = onDismissAction, onConfirm = onConfirmAction)
+        if (state is ModelDetailUiState.Loaded) {
+            ServiceActionDialog(actionState, onDismiss = onDismissAction, onConfirm = onConfirmAction)
+        }
     }
     }
 }
@@ -472,5 +477,19 @@ private fun FailedBox(message: String, onRetry: () -> Unit) {
         TextButton(onClick = onRetry, modifier = Modifier.testTag("model_detail_retry")) {
             Text("Retry", color = colors.accent)
         }
+    }
+}
+
+@Composable
+private fun MissingBox(onBack: () -> Unit) {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxSize().padding(32.dp).testTag("model_detail_missing"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("This service was deleted", color = colors.fg, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(16.dp))
+        TextButton(onClick = onBack) { Text("Back to models", color = colors.accent) }
     }
 }

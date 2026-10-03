@@ -182,4 +182,28 @@ class ModelDetailViewModelTest {
         } as ModelDetailUiState.Loaded
         assertEquals("exited", stopped.summary.status)
     }
+
+    @Test
+    fun `a deletion event replaces an open detail with a missing state`() {
+        server.enqueue(MockResponse.Builder().body(serviceListBody).build())
+        server.enqueue(MockResponse.Builder().body(configBody).build())
+        val transport = ScriptedSseTransport()
+        transport.script(
+            ScriptedSseTransport.Leg(
+                payloads = listOf(
+                    """{"type":"snapshot","data":{"services":[{"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301}]}}""",
+                    """{"type":"delta","service_name":"llamacpp-a","status":"deleted","action":"service-deleted"}""",
+                ),
+                park = true,
+            ),
+        )
+        val vm = viewModel(transport)
+        vm.start()
+        settled(vm)
+        vm.startStreamLikeTheScreenWould()
+
+        runBlocking { withTimeout(10_000) { vm.state.first { it is ModelDetailUiState.Missing } } }
+        vm.requestStart()
+        assertEquals(ServiceActionState.Idle, vm.actionState.value)
+    }
 }

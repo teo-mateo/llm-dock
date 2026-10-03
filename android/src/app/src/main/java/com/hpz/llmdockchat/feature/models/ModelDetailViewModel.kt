@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -28,6 +29,7 @@ sealed interface ModelDetailUiState {
     ) : ModelDetailUiState
 
     data class Failed(val message: String) : ModelDetailUiState
+    data object Missing : ModelDetailUiState
 }
 
 /**
@@ -52,12 +54,14 @@ class ModelDetailViewModel(
     val controller = ServiceControlController(servicesRepository, viewModelScope)
     val actionState: StateFlow<ServiceActionState> = controller.actionState
 
-    fun requestStart() = controller.requestStart(serviceName)
-    fun requestStop() = controller.requestStop(serviceName)
+    fun requestStart() { if (_state.value is ModelDetailUiState.Loaded) controller.requestStart(serviceName) }
+    fun requestStop() { if (_state.value is ModelDetailUiState.Loaded) controller.requestStop(serviceName) }
     fun dismissAction() = controller.dismiss()
-    fun confirmAction() = controller.confirm()
+    fun confirmAction() { if (_state.value is ModelDetailUiState.Loaded) controller.confirm() }
 
     private var started = false
+    private var hasLiveUpdate = false
+    private var latestLiveSummary: ServiceSummary? = null
 
     fun start() {
         if (started) return
@@ -81,7 +85,15 @@ class ModelDetailViewModel(
                // config could not be loaded.
                 null
             }
-            _state.value = ModelDetailUiState.Loaded(summary = summary, config = config, configMissing = config == null)
+            _state.value = if (hasLiveUpdate && latestLiveSummary == null) {
+                ModelDetailUiState.Missing
+            } else {
+                ModelDetailUiState.Loaded(
+                    summary = latestLiveSummary ?: summary,
+                    config = config,
+                    configMissing = config == null,
+                )
+            }
         }
     }
 
@@ -92,13 +104,21 @@ class ModelDetailViewModel(
 
     /** Collected by [ModelDetailScreen] from a composition-scoped `LaunchedEffect` — see the class doc. */
     fun observeServicesStream(): Flow<ServiceSummary?> =
-        servicesStreamRepository.streamWithStatus().map { live -> live.services.firstOrNull { it.name == serviceName } }
+        servicesStreamRepository.streamWithStatus()
+            .filter { !it.stale }
+            .map { live -> live.services.firstOrNull { it.name == serviceName } }
 
     fun applyLiveSummary(summary: ServiceSummary?) {
-        if (summary == null) return
+        hasLiveUpdate = true
+        latestLiveSummary = summary
         val current = _state.value
-        if (current is ModelDetailUiState.Loaded) {
+        if (summary == null && current is ModelDetailUiState.Loaded) {
+            controller.dismiss()
+            _state.value = ModelDetailUiState.Missing
+        } else if (summary != null && current is ModelDetailUiState.Loaded) {
             _state.value = current.copy(summary = summary)
+        } else if (summary != null && current is ModelDetailUiState.Missing) {
+            retry()
         }
     }
 }
