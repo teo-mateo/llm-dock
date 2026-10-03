@@ -228,7 +228,7 @@ states hard to express — e.g. a `ModelRef` sealed type of
 ### D7 · Dependencies — verified, not guessed
 
 Every version below was resolved and built against this exact toolchain
-(AGP 9.3.1 / Gradle 9.5.1 / Kotlin 2.4.10 / compileSdk 37 / minSdk 26)
+(AGP 9.3.1 / Gradle 9.5.1 / Kotlin 2.4.10 / compileSdk 37 / minSdk 28)
 before being written down. `checkDebugAarMetadata` — the gate that failed
 during project setup — passes, and a JVM test using serialization,
 coroutines-test and turbine runs green.
