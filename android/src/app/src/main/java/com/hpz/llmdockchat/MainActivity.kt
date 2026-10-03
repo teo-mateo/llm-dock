@@ -34,6 +34,9 @@ import com.hpz.llmdockchat.feature.share.SharedInlineFormatter
 import com.hpz.llmdockchat.feature.share.SharedKind
 import com.hpz.llmdockchat.feature.share.SharedKindParser
 import com.hpz.llmdockchat.feature.share.SharedUrlExtractor
+import com.hpz.llmdockchat.feature.share.ShareDeliveryToken
+import com.hpz.llmdockchat.feature.share.ShareIntake
+import com.hpz.llmdockchat.feature.share.ShareIntakeGate
 import com.hpz.llmdockchat.feature.share.StagedShare
 import com.hpz.llmdockchat.feature.thread.readImage
 import com.hpz.llmdockchat.feature.thread.toDataUrl
@@ -47,7 +50,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = (application as LlmDockApplication).container
-        stageShareIfAny(intent)
+        intakeShare(intent, viaNewIntent = false, hasSavedState = savedInstanceState != null)
         setContent {
             LLMDockChatTheme {
                 // Deliberately edge-to-edge and inset-free: window insets are
@@ -72,28 +75,62 @@ class MainActivity : ComponentActivity() {
 
     /**
      * F14 — a second share while the app is already open lands here, not in a
-     * stacked second activity (`singleTask`). The intent is re-staged and the
-     * NavHost's pending-share observer navigates to the picker.
+     * stacked second activity (`singleTask`). The intake gate stages it and
+     * the NavHost's pending-share observer navigates to the picker.
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        stageShareIfAny(intent)
+        intakeShare(intent, viaNewIntent = true, hasSavedState = false)
     }
 
     /**
-     * F14 — turns a `ACTION_SEND` intent into a staged share, reading the
-     * stream *now*: the read grant on a shared `content://` Uri lasts only as
-     * long as this activity is alive, so the content must be copied into app
-     * storage at intent time (F14-R5). Images go through the same read-and-
-     * downscale pipeline as a gallery pick (F04-R9); text files are read and
-     * inlined as fenced blocks, web parity (`ChatInput.jsx`).
+     * F14 — turns an arriving `ACTION_SEND` intent into a staged share,
+     * reading the stream *now*: the read grant on a shared `content://` Uri
+     * lasts only as long as this activity is alive, so the content must be
+     * copied into app storage at intent time (F14-R5). Images go through the
+     * same read-and-downscale pipeline as a gallery pick (F04-R9); text files
+     * are read and inlined as fenced blocks, web parity (`ChatInput.jsx`).
+     *
+     * Issue 261 — the gate decides whether this intent is a delivery to serve
+     * or a redelivery to refuse, because Android hands the same launch intent
+     * back on every recreation. The mark is stamped before the content read:
+     * a stream read can throw or fail, and a served delivery must stay served
+     * whatever the read did. `mark` + `setIntent` run on every decision,
+     * including refusals: the activity's own launch intent must stop looking
+     * unhandled to the next recreation, independent of whether the durable
+     * ledger is still on disk — the cache dir is reclaimable.
      */
-    private fun stageShareIfAny(intent: Intent) {
-        if (intent.action != Intent.ACTION_SEND) return
+    private fun intakeShare(intent: Intent, viaNewIntent: Boolean, hasSavedState: Boolean) {
         val container = (application as LlmDockApplication).container
         val store = container.sharedDraftStore
+        val marked = intent.getStringExtra(ShareDeliveryToken.EXTRA_MARK)
         val stream = parcelableStream(intent)
+        val token = marked ?: ShareDeliveryToken.of(
+            action = intent.action.orEmpty(),
+            mimeType = intent.type,
+            text = intent.getStringExtra(Intent.EXTRA_TEXT),
+            streamUri = stream?.toString(),
+            title = intent.getStringExtra(Intent.EXTRA_TITLE),
+            subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
+        )
+        val decision = ShareIntakeGate.decide(
+            action = intent.action,
+            viaNewIntent = viaNewIntent,
+            marked = marked != null,
+            launchedFromHistory =
+                intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0,
+            hasSavedState = hasSavedState,
+            token = token,
+            handledToken = store.handledToken,
+        )
+        ShareDeliveryToken.mark(intent, token)
+        setIntent(intent)
+        when (decision) {
+            ShareIntake.IgnoreRedelivery -> return
+            ShareIntake.KeepHydrated -> store.rememberHandled(token)
+            ShareIntake.Stage -> Unit
+        }
         val kind = SharedKindParser.classify(
             action = intent.action.orEmpty(),
             mimeType = intent.type,
@@ -125,7 +162,7 @@ class MainActivity : ComponentActivity() {
             }
             is SharedKind.Unsupported -> StagedShare(error = kind.reason)
         }
-        store.stage(share)
+        store.stage(share, token)
     }
 
     private fun parcelableStream(intent: Intent): Uri? {

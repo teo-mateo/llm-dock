@@ -16,6 +16,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -43,6 +44,10 @@ import com.hpz.llmdockchat.feature.share.ShareTargetScreen
 import com.hpz.llmdockchat.feature.share.ShareTargetViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
 import com.hpz.llmdockchat.feature.thread.ThreadViewModel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The app's navigation graph (Architecture D12). Connect is a destination like
@@ -73,18 +78,26 @@ fun AppNavHost(
     // is: cold start from a share (the store hydrates from disk before the
     // NavHost composes), a share arriving mid-app, or a re-login round trip
     // (Connect's onSignedIn checks the store itself). Skipped while on Connect
-    // — the user isn't signed in yet — and while already on the picker, so a
-    // second share while it's open just replaces the staged content.
+    // — the user isn't signed in yet — while already on the picker, so a
+    // second share while it's open just replaces the staged content, and while
+    // the new-chat sheet is open (issue 261): the sheet *is* the share flow's
+    // continuation screen, and navigating to the picker again while it is open
+    // is what puts a second picker on the stack. The route is read inside the
+    // effect once the graph has a current destination — during a restore the
+    // route is not settled yet at composition — and the push is single-top.
     val pendingShare by container.sharedDraftStore.pending.collectAsState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
     LaunchedEffect(pendingShare) {
-        if (pendingShare != null &&
-            currentRoute != Destinations.CONNECT &&
-            currentRoute != Destinations.SHARE_PICKER
+        if (pendingShare == null) return@LaunchedEffect
+        val route = navController.awaitReadyDestination(SHARE_NAV_READY_TIMEOUT_MS)
+            ?: return@LaunchedEffect
+        if (route == Destinations.CONNECT ||
+            route == Destinations.SHARE_PICKER ||
+            route == Destinations.NEW_CHAT ||
+            route == Destinations.NEW_CHAT_SUMMARIZE
         ) {
-            navController.navigate(Destinations.SHARE_PICKER)
+            return@LaunchedEffect
         }
+        navController.navigate(Destinations.SHARE_PICKER) { launchSingleTop = true }
     }
 
     NavHost(
@@ -422,3 +435,23 @@ private fun NavHostController.toConnect() {
         launchSingleTop = true
     }
 }
+
+/**
+ * Zero means the graph never settled. The only way to get there is sitting on
+ * Connect with no destination at all, and the sign-in handoff navigates that
+ * case itself — so timing out is a safe answer, not a lost share.
+ */
+private const val SHARE_NAV_READY_TIMEOUT_MS = 1000L
+
+/** The current route once the graph has one, or `null` — during a restore the route is not settled yet at composition. */
+private suspend fun NavHostController.awaitReadyDestination(timeoutMs: Long): String? =
+    withTimeoutOrNull(timeoutMs) {
+        callbackFlow {
+            trySend(currentDestination?.route)
+            val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+                trySend(destination.route)
+            }
+            addOnDestinationChangedListener(listener)
+            awaitClose { removeOnDestinationChangedListener(listener) }
+        }.firstOrNull { it != null }
+    }

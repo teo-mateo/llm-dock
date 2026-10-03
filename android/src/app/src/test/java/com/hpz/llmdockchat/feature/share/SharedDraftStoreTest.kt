@@ -53,6 +53,54 @@ class SharedDraftStoreTest {
         assertEquals("hello", reborn.pending.value?.text)
     }
 
+    @Test
+    fun `a staged share records its delivery token as handled`() {
+        store.stage(StagedShare(text = "hello"), token = "tok-1")
+        assertEquals("tok-1", store.handledToken)
+        // Survives process death: a fresh store over the same dir agrees.
+        assertEquals("tok-1", SharedDraftStore(dir).handledToken)
+    }
+
+    @Test
+    fun `clearPending consumes the record and keeps the claim`() {
+        store.stage(StagedShare(text = "hello"), token = "tok-1")
+        store.clearPending()
+        assertNull(store.pending.value)
+        assertEquals("tok-1", store.handledToken)
+        val reborn = SharedDraftStore(dir)
+        assertNull(reborn.pending.value)
+        assertEquals("tok-1", reborn.handledToken)
+    }
+
+    @Test
+    fun `reassign keeps the claim`() {
+        store.stage(StagedShare(text = "hello"), token = "tok-1")
+        store.reassign("conv-1", FakeDraftStore())
+        assertNull(store.pending.value)
+        assertEquals("tok-1", store.handledToken)
+        assertEquals("tok-1", SharedDraftStore(dir).handledToken)
+    }
+
+    @Test
+    fun `a corrupt handled record reads as no claim`() {
+        dir.mkdirs()
+        store.stage(StagedShare(text = "hello"), token = "tok-1")
+        java.io.File(dir, "handled.json").writeText("not json")
+        val reborn = SharedDraftStore(dir)
+        assertNull(reborn.handledToken)
+        // Pending hydration is unaffected by the sibling's corruption.
+        assertEquals("hello", reborn.pending.value?.text)
+    }
+
+    @Test
+    fun `stage with no token leaves the claim alone`() {
+        store.stage(StagedShare(text = "first"), token = "tok-1")
+        store.stage(StagedShare(text = "second"))
+        assertEquals("tok-1", store.handledToken)
+        assertEquals("second", store.pending.value?.text)
+        assertNull(SharedDraftStore(Files.createTempDirectory("shared-drafts-b").toFile()).handledToken)
+    }
+
     // -- reassign -----------------------------------------------------------
 
     @Test

@@ -6,11 +6,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
- * Where a share lives between the intent and the send (F14). Two shapes:
+ * Where a share lives between the intent and the send (F14). Three records:
  *
  * - **The pending share** — unassigned, staged at intent time and shown on
  *   the target picker. Survives navigation, the Connect round trip, and
@@ -21,6 +22,11 @@ import java.io.File
  *   the pick and the send does not lose the staged image (F14-R5). One file
  *   per attachment, named `0.txt`, `1.txt`…, so removing one renumbers the
  *   rest and the record stays index-aligned with the composer's list.
+ * - **The handled token** — the delivery identity of the share this task most
+ *   recently claimed, in `handled.json` ([stage] with a token, issue 261).
+ *   [clearPending], [reassign] and [clear] deliberately do not clear it: the
+ *   claim must outlive the record it refers to, so a redelivery of an already
+ *   served intent is refused at intake instead of re-staging a consumed share.
  *
  * [dir] is the app's `cacheDir/shared-drafts` — cache, so the OS may reclaim
  * it, and never backed up. The text half of a share goes through
@@ -32,10 +38,28 @@ class SharedDraftStore(private val dir: File) {
     private val _pending = MutableStateFlow<StagedShare?>(readPending())
     val pending: StateFlow<StagedShare?> = _pending.asStateFlow()
 
-    /** Called at intent time, on the main thread — small files, one-off. */
-    fun stage(share: StagedShare) {
+    private val _handled = MutableStateFlow(readHandledToken())
+
+    /** The last delivery claimed by intake; a redelivery with this token is refused. */
+    val handledToken: String? get() = _handled.value
+
+    /**
+     * Called at intent time, on the main thread — small files, one-off.
+     * [token] records the delivery as handled *before* the pending record is
+     * written: the crash window between the two then loses a share (the user
+     * re-shares) rather than replaying one, the safe direction for a
+     * consume-once flow.
+     */
+    fun stage(share: StagedShare, token: String? = null) {
+        if (token != null) rememberHandled(token)
         writePending(share)
         _pending.value = share
+    }
+
+    /** Claims a delivery without staging anything — the [ShareIntake.KeepHydrated] path. */
+    fun rememberHandled(token: String) {
+        writeHandled(token)
+        _handled.value = token
     }
 
     /** Dismissing the picker, or a share already consumed by a pick. */
@@ -146,10 +170,25 @@ class SharedDraftStore(private val dir: File) {
         File(dir, "$PENDING_FILE.tmp").delete()
     }
 
+    private fun readHandledToken(): String? {
+        val file = File(dir, HANDLED_FILE)
+        if (!file.exists()) return null
+        return runCatching { json.decodeFromString(String.serializer(), file.readText()) }.getOrNull()
+    }
+
+    private fun writeHandled(token: String) {
+        dir.mkdirs()
+        val file = File(dir, HANDLED_FILE)
+        val tmp = File(dir, "$HANDLED_FILE.tmp")
+        tmp.writeText(json.encodeToString(String.serializer(), token))
+        tmp.renameTo(file)
+    }
+
     private fun conversationDir(conversationId: String): File = File(dir, "conv_$conversationId")
 
     private companion object {
         const val PENDING_FILE = "pending.json"
+        const val HANDLED_FILE = "handled.json"
         val json = Json
     }
 }

@@ -140,6 +140,10 @@ user chooses where the content goes.
 - \[x\] Picking a row opens that thread with the content staged (F14-R3).
 - \[x\] Back or a dismiss action clears the pending share and returns to
       the Chats tab — nothing is left staged anywhere.
+- \[x\] A consumed share does not come back on recreation — rotation,
+      Recents re-activation, or process-death restore keep the current
+      destination and do not re-stage the delivery; a genuinely new send
+      still replaces the pending record (issue 261).
 
 ### F14-R3 · Staging by content type (Must)
 
@@ -425,6 +429,25 @@ No new endpoints, no new server code (R-A).
   from the stored row, so an existing thread would have its model and tool
   set rewritten by a tap that looked like "summarise this". The ordinary
   picker rows still stage the share into whatever thread the user picks.
+- **"Nothing is left staged anywhere" is enforced at intake, not by wiping
+  the store (issue 261).** The picker's consume-once rule used to hold only
+  because `MainActivity` re-staged the launch intent on every `onCreate` —
+  which is also how a consumed share came back on rotation. It is now held
+  by a per-delivery claim: the activity stamps each served `ACTION_SEND`
+  intent with a content identity (`ShareDeliveryToken`) and records it
+  durably in `handled.json`, and `ShareIntakeGate` refuses any redelivery of
+  an already-served intent — via the mark, or via the claim when the process
+  died in the background and the mark rides only in the task record. The
+  pending record itself is still never cleared on restore, because that is
+  F14-R5's hydration contract; the claim deliberately outlives
+  `clearPending`/`reassign`/`clear` so the next reader does not "simplify"
+  this back into a `savedInstanceState == null` check (which rotation
+  defeats, `savedInstanceState` being non-null there) or a restore that
+  wipes the store (which would break R5 and the Connect round trip, and
+  would still replay on plain rotation). One accepted cost: the
+  pending-share observer now also skips while the new-chat sheet is open, so
+  a share arriving under the sheet updates the record the sheet will consume
+  but does not navigate; the picker regains it on the sheet's exit.
 
 ---
 
