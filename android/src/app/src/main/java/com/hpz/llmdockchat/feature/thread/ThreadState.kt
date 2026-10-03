@@ -78,6 +78,13 @@ sealed interface ThreadUiState {
         val attachments: List<String> = emptyList(),
         /** A picked or captured image is still being read and encoded. */
         val attachmentImporting: Boolean = false,
+        /**
+         * A tools/prompt/model/reasoning write has not been confirmed yet. The
+         * turn is built server-side from the stored conversation, so a send that
+         * starts before the PUT lands runs with the settings the user just moved
+         * off — the UI showed the new choice, the model never saw it.
+         */
+        val settingsPending: Boolean = false,
         val sending: Boolean = false,
         val actionError: String? = null,
         val pendingDelete: ChatMessage? = null,
@@ -106,7 +113,8 @@ sealed interface ThreadUiState {
                 conversation.isGenerating
 
         val canSend: Boolean
-            get() = !runActive && !attachmentImporting && (composer.isNotBlank() || attachments.isNotEmpty())
+            get() = !runActive && !attachmentImporting && !settingsPending &&
+                (composer.isNotBlank() || attachments.isNotEmpty())
 
         val canSwitchModel: Boolean
             get() = !runActive

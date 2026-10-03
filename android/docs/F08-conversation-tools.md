@@ -152,6 +152,25 @@ is already cancellation-aware where it needed to be
 this, it should be opt-in per call site, since each needs its own answer
 to F04-R10's "navigation is not cancellation".
 
+**A settings write no longer races the turn it was meant to affect.** The
+optimism above left the sheet ahead of the server by one write, and a Send
+pressed inside that gap started a turn built from the settings the user had
+just moved off — the turn is built server-side, from the stored conversation.
+`ThreadState.canSend` now also requires `!settingsPending`: a count of
+unconfirmed writes held by `ThreadViewModel` over all four conversation
+settings (tools, prompt, model, reasoning level), incremented in the handler
+rather than in the coroutine that performs the write, so a Send evaluated on the
+same main-thread turn as the toggle already sees it. A reload does not clear it
+(`loadedFrom` recomputes it from the live count) and edit-and-resend refuses to
+confirm while it is set. `ThreadSettingsWriteGateTest` parks each write at the
+MockWebServer dispatcher; each of the four guards, removed in turn, breaks at
+least one of its tests.
+
+On device the window is not theoretical: with the dashboard frozen mid-write the
+composer reads "Saving settings…", the send arrow renders disabled, and tapping
+it starts nothing; the same tap after the write lands runs a turn that calls the
+tool just enabled.
+
 **Outstanding**
 
 | Item | Why |
