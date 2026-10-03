@@ -76,10 +76,21 @@ class LogsViewModel(
     /** Collected by [LogsScreen] — see the class doc. Never started from here. */
     fun observeLogStream(): Flow<LogStreamEvent> = logsStreamRepository.stream(serviceName)
 
+    fun onStreamAttemptStarted() {
+        sawAnyFrame = false
+        lines.clear()
+        boundaryIndex = null
+        _state.value = LogsUiState.Loading
+    }
+
     fun onStreamEvent(event: LogStreamEvent) {
         sawAnyFrame = true
         when (event) {
-            is LogStreamEvent.SnapshotStart -> publish(LogsConnection.CONNECTING)
+            is LogStreamEvent.SnapshotStart -> {
+                lines.clear()
+                boundaryIndex = null
+                publish(LogsConnection.CONNECTING)
+            }
             is LogStreamEvent.Log -> {
                 lines += LogLine(event.line, classifyLogLevel(event.line))
                 publish(LogsConnection.CONNECTING)

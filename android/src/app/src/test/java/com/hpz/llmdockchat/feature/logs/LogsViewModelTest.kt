@@ -83,6 +83,53 @@ class LogsViewModelTest {
         assertEquals(LogsConnection.LIVE, state.connection)
     }
 
+    @Test
+    fun `a new subscription replaces its historical tail and boundary`() {
+        val vm = viewModel()
+        vm.onStreamAttemptStarted()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("old tail"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        vm.onStreamEvent(LogStreamEvent.Log("old live line"))
+
+        vm.onStreamAttemptStarted()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.Log("new tail"))
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("new tail"), state.lines.map { it.text })
+        assertEquals(1, state.boundaryIndex)
+        assertEquals(LogsConnection.LIVE, state.connection)
+    }
+
+    @Test
+    fun `identical text in one snapshot remains separate but retry does not copy the prior snapshot`() {
+        val vm = viewModel()
+        repeat(2) {
+            vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.Log("same text"))
+            vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+        }
+
+        val state = vm.state.value as LogsUiState.Loaded
+        assertEquals(listOf("same text", "same text"), state.lines.map { it.text })
+        assertEquals(2, state.boundaryIndex)
+    }
+
+    @Test
+    fun `failure before a frame on a later attempt uses the initial failure path`() {
+        val vm = viewModel()
+        vm.onStreamEvent(LogStreamEvent.SnapshotStart)
+        vm.onStreamEvent(LogStreamEvent.SnapshotEnd)
+
+        vm.onStreamAttemptStarted()
+        vm.onStreamFailed(fakeHttp404("Service has not been created yet"))
+
+        assertTrue(vm.state.value is LogsUiState.NotCreated)
+    }
+
     /** F12-R4: a line with no recognisable level renders plainly, not crashing or vanishing. */
     @Test
     fun `an ERROR line is tagged, a plain line degrades to plain`() {
