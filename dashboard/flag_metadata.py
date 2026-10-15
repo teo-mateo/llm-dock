@@ -2036,8 +2036,14 @@ SGLANG_FLAGS = {
         "tip": "auto selects container CUDA 13.0 user-mode libraries for drivers older than R580. The host toolkit and kernel driver are unchanged. Forward compatibility depends on the GPU and driver.",
     },
     "online_fp8": {
-        "cli": "env:SGLANG_SM120_ONLINE_MXFP8", "type": "string", "default": "false",
-        "description": "Opt into Flash-Next online FP8 (true or false)",
+        "cli": "env:SGLANG_SM120_ONLINE_MXFP8", "type": "string",
+        "description": "Force Flash-Next online FP8 on or off (true or false)",
+        "tip": "Unset, the engine selects rowwise FP8 itself for an eligible checkpoint. The effective choice is part of the NIXL cache namespace.",
+    },
+    "nixl": {
+        "cli": "env:NIXL", "type": "string", "default": "on",
+        "description": "NIXL disk-cache tier: on or off",
+        "tip": "off keeps the GPU radix cache and RAM HiCache and drops only the disk tier. Existing disk-cache data is not deleted.",
     },
     "max_running_requests": {
         "cli": "env:MAX_RUNNING_REQUESTS", "type": "int", "default": "4",

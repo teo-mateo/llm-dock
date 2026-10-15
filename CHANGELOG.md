@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-11
+- **Pennyroyal 3.0.0** - The SGLang image adapter now pins upstream `v3.0.0` (adaptive MTP, FlashInfer 0.7.0.post1, automatic online FP8, optional NIXL disk tier via `env:NIXL`). The recipe patches apply unchanged and the container GPU check passes on the 580.178.04 driver, and the machine-local Flash-Next service starts healthy with its existing settings.
+
 ## 2026-10-01
 - **SGLang live metrics** - Token throughput uses scheduler counters that advance during generation, while cumulative request totals retain all streaming labels. Added KV active/cached/free token counts, Mamba state slots, host-cache capacity, target-weight/KV/graph allocations and mean speculative acceptance length. Missing retraction counters display as unavailable instead of zero.
 - **SGLang mixed NVFP4/FP8 checkpoints** - Flash-Next recipes select quantization from checkpoint metadata and apply context, prefill, memory and capacity settings before deriving the persistent-cache namespace. Added the stopped machine-local counterpart to the Qwen3.8 Flash-Next vLLM service on port 3304. Fixed service creation when Compose already contains inspector loopback port bindings.

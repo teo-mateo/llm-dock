@@ -1,7 +1,7 @@
 # Thin adapter for jpezzulli/sglang-rtxpro6000 (Pennyroyal).
-# Pennyroyal v2.5.3, resolved from its release tag. CUDA stays inside Docker;
+# Pennyroyal v3.0.0, resolved from its release tag. CUDA stays inside Docker;
 # the adapter never installs or upgrades a host toolkit or kernel driver.
-ARG SGLANG_BASE=ghcr.io/jpezzulli/sglang-rtxpro6000@sha256:81d4d3d19b21e30b895f57e3628a8dd82c02a52c17e6234f5f3ea7836fd31fb3
+ARG SGLANG_BASE=ghcr.io/jpezzulli/sglang-rtxpro6000@sha256:fd26ba8d3ce001bb6e4b865236e1b69f7f790b94fb7fe1c32aa81799f4fe338c
 FROM ${SGLANG_BASE}
 
 ARG SGLANG_BASE
@@ -17,7 +17,7 @@ LABEL org.llm-dock.build.date="${BUILD_DATE}" \
 # without a host ownership change or a privileged container.
 USER root
 # Match the CUDA 13.0 Torch wheels: the CUDA 13.3 compatibility package fails
-# with error 803 on this host's 575.57.08 kernel driver. NVIDIA's signed R580
+# with error 803 on a 575.57.08 kernel driver. NVIDIA's signed R580
 # user-mode package works, without changing the host toolkit/kernel driver.
 # Fedora 44 publishes only newer packages, so use NVIDIA's RHEL9 repository
 # for this one pinned library package (its glibc requirements fit Fedora).
