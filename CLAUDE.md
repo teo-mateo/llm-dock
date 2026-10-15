@@ -652,6 +652,7 @@ requires `model_name` instead.
 - `3301–33xx` — dynamic model services; pick the next free port when adding one
 - `3301` — the **public** slot: `POST /api/services/<name>/set-public-port` swaps a
   service onto it and moves whoever held it to another free port
+- `3388` — model proxy (`dashboard/model_proxy/`, host-side listener, not a container port)
 - `3399` — dashboard
 
 ### Container-internal Ports
@@ -1027,6 +1028,48 @@ points, absence sends nothing.
   `temperature` wins on a tool-bearing turn.
 - Measured matrix, the commands behind every verdict, and what was rejected:
   `docs/plans/chat-sampling-params.md`.
+
+## Model proxy by port
+
+One port (3388, all IPv4 interfaces, `0.0.0.0`) multiplexes every configured model
+service by port number: `http://<host>:3388/proxy/<port>/v1/chat/completions`
+forwards to `http://127.0.0.1:<port>/v1/chat/completions`. Owner is
+`dashboard/model_proxy/` — `proxy.py` (`PortProxy`, a stdlib `ThreadingHTTPServer`
+following the inspector's `ServiceProxy` precedent: streaming relay, hop-by-hop
+header stripping, `(10, 1800)` connect/read timeout) and `supervisor.py`
+(`model_proxy_supervisor`, started from `create_app()`, stopped via `atexit`).
+Env: `LLM_DOCK_MODEL_PROXY_PORT` (default 3388), `LLM_DOCK_MODEL_PROXY_BIND`
+(default `0.0.0.0`). `GET /proxy` lists forwarded ports and aliases. Full design
+and test plan: `docs/plans/model-proxy-308.md`.
+
+- **The whitelist is the `port` field of each `services.json` entry, nothing
+  else** — resolved per request from the file itself (mtime-checked, no
+  `SERVICES_DB_LOCK`; writers commit via temp + `os.replace`), so
+  create / delete / rename / set-public-port need no proxy restart.
+  `inspect_upstream_port` is deliberately excluded: forwarding to it would let
+  clients bypass a running inspector (silent no-capture traffic). A stopped
+  service stays whitelisted and 502s; so does the set-public-port window where
+  services.json names the new port before the container is recreated —
+  "services.json is the host-port authority" applies here too.
+- **Rejections carry `error.code`** (`model_proxy_port_not_allowed`,
+  `model_proxy_bad_port`, `model_proxy_unknown_path`,
+  `model_proxy_length_required`, `upstream_unavailable`, `upstream_timeout`) so
+  callers can tell our 404/504 from an upstream one without parsing prose.
+  Chunked request bodies are rejected with 411 — the body is read by
+  Content-Length, and forwarding an empty body silently is data loss.
+- **Auth is pass-through**, like any OpenAI endpoint: the caller sends the
+  service's API key and the engine checks it; the dashboard token is not
+  consulted. One consequence to know: **ds4 services carry no API key**, so
+  through 3388 they are anonymous inference on a well-known port.
+- **Inspected services keep capturing** through 3388: traffic flows
+  `3388 -> inspector proxy -> container`; the capture records the stripped
+  path and the forwarded request — the client's own headers minus hop-by-hop,
+  `Host` rewritten — so an Inspector row is indistinguishable from direct
+  client traffic.
+- The listener lives in the dashboard process, like the inspector's proxies:
+  a dashboard restart drops it until `create_app()` re-binds, and a bind
+  collision logs `bind_error` naming the owning service rather than failing
+  the dashboard.
 
 ## Request inspector
 

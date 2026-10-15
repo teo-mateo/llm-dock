@@ -10,6 +10,7 @@ from routes import gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, tot
 from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
 from inspector.supervisor import proxy_supervisor
+from model_proxy.supervisor import model_proxy_supervisor
 from services import event_manager
 
 _SPA_ASSET_SUFFIXES = (
@@ -70,6 +71,14 @@ def create_app(config=None):
     )
     proxy_supervisor.sync()
 
+    model_proxy_supervisor.configure(
+        services_path=os.path.join(
+            os.path.dirname(app.config.get("COMPOSE_FILE", COMPOSE_FILE)),
+            "services.json",
+        ),
+    )
+    model_proxy_supervisor.sync()
+
     @app.route("/")
     def index():
         """Serve the frontend"""
@@ -125,6 +134,7 @@ logger = logging.getLogger(__name__)
 # Register cleanup on process exit
 atexit.register(event_manager.stop)
 atexit.register(proxy_supervisor.stop_all)
+atexit.register(model_proxy_supervisor.stop_all)
 
 if __name__ == "__main__":
     app = create_app()
