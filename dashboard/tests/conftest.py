@@ -57,6 +57,7 @@ def pytest_configure(config):
     os.environ["LLM_DOCK_BENCHMARKS_DB"] = os.path.join(storage, "benchmarks.db")
     # port 0: app imports bind the model proxy to an ephemeral port, never the dev machine's 3388
     os.environ["LLM_DOCK_MODEL_PROXY_PORT"] = "0"
+    os.environ["LLM_DOCK_MODEL_PROXY_BIND"] = "127.0.0.1"
 
     atexit.register(shutil.rmtree, _hermetic_base, ignore_errors=True)
     config.option.basetemp = os.path.join(_hermetic_base, "tmp")

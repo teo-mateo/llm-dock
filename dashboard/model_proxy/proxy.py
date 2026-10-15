@@ -128,15 +128,21 @@ def _make_handler(proxy: PortProxy):
         def do_OPTIONS(self):
             self._handle()
 
-        def _send_json(self, status: int, body: bytes) -> None:
+        def _send_json(
+            self, status: int, body: bytes, close: bool = False,
+        ) -> None:
             self.send_response(status)
+            if close:
+                self.send_header("Connection", "close")
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_error_json(self, status: int, code: str, message: str) -> None:
-            self._send_json(status, _error_body(code, message))
+        def _send_error_json(
+            self, status: int, code: str, message: str, close: bool = False,
+        ) -> None:
+            self._send_json(status, _error_body(code, message), close=close)
 
         def _handle(self) -> None:
             if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
@@ -144,6 +150,7 @@ def _make_handler(proxy: PortProxy):
                 self._send_error_json(
                     411, "model_proxy_length_required",
                     "the model proxy requires Content-Length request bodies",
+                    close=True,
                 )
                 return
             request_body = self._request_body()
@@ -230,10 +237,13 @@ def _make_handler(proxy: PortProxy):
                 for name, value in upstream.headers.items()
                 if name.lower() not in HOP_BY_HOP_HEADERS
             }
+            chunked_upstream = "chunked" in upstream.headers.get(
+                "Transfer-Encoding", "",
+            ).lower()
             content_length_out = next(
                 (value for name, value in response_headers.items() if name.lower() == "content-length"),
                 None,
-            )
+            ) if not chunked_upstream else None
             try:
                 declared_length = (
                     int(content_length_out) if content_length_out is not None else None
@@ -278,7 +288,9 @@ def _make_handler(proxy: PortProxy):
             finally:
                 upstream.close()
             if client_disconnected or (
-                declared_length is not None and bytes_relayed < declared_length
+                self.command != "HEAD"
+                and declared_length is not None
+                and bytes_relayed < declared_length
             ):
                 self.close_connection = True
 

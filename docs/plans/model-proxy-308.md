@@ -64,10 +64,10 @@ helper: `json.load` + mtime check), **without** `SERVICES_DB_LOCK`: writers
 commit via temp-file + `os.replace`, so an unlocked read sees old-or-new, and
 the lock is held across compose validation that can take seconds. Do not
 construct a `ComposeManager` per request — it builds a Jinja environment and
-raises `FileNotFoundError`. The eventual TTL cache must be invalidated from
-the write paths (the routes that already call `proxy_supervisor.sync()` call
-the model-proxy hook too), not on a blind timer, so a set-public-port never
-leaves a staleness window.
+raises `FileNotFoundError`. The shipped cache keys on the file's
+`(st_mtime_ns, st_size)`, so it self-invalidates on the atomic rename and
+needs no write-path hook: a set-public-port is visible on the next request,
+with no staleness window. A parse failure serves the last-good whitelist.
 
 ## Forwarding contract
 

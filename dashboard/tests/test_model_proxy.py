@@ -327,6 +327,23 @@ def test_gzip_body_reaches_client_undecoded(upstream_port):
         assert gzip.decompress(body) == b"hello world " * 20
 
 
+def test_head_forwards_headers_and_keeps_connection_alive(upstream_port):
+    with _Proxy({upstream_port: "svc"}) as p:
+        _, buf = _raw_requests(
+            p.proxy.listen_port,
+            [
+                f"HEAD /proxy/{upstream_port}/echo HTTP/1.1\r\nHost: x\r\n\r\n".encode(),
+                f"GET /proxy/{upstream_port}/echo HTTP/1.1\r\nHost: x\r\n\r\n".encode(),
+            ],
+            lambda b: b.count(b"HTTP/1.1 ") >= 2,
+        )
+        responses = _split_responses(buf)[1:]
+        assert len(responses) == 2
+        assert responses[0].startswith(b"200")
+        assert responses[0].split(b"\r\n\r\n", 1)[1] == b""
+        assert responses[1].startswith(b"200")
+
+
 def test_upstream_dying_mid_body_closes_connection(upstream_port):
     with _Proxy({upstream_port: "svc"}) as p:
         sock = socket.create_connection(("127.0.0.1", p.proxy.listen_port), timeout=5)
@@ -403,11 +420,12 @@ def test_supervisor_lifecycle(supervisor, upstream_port):
 
 def test_supervisor_whitelist_follows_rewrite_through_requests(supervisor, upstream_port):
     sup, services = supervisor
-    services.write_text(json.dumps({"svc": {"port": upstream_port, "alias": "svc"}}))
+    alias = "svc" + "x" * (5 - len(str(upstream_port)))
+    services.write_text(json.dumps({"svc": {"port": upstream_port, "alias": alias}}))
     sup.start()
     base = _base(sup)
     assert requests.get(f"{base}/proxy/{upstream_port}/echo", timeout=10).status_code == 200
-    replacement = f'{{"svc": {{"port": 40000, "alias": "svc"}}}}'
+    replacement = '{"svc": {"port": 40000, "alias": "svc"}}'
     assert len(replacement) == len(services.read_text())
     services.write_text(replacement)
     resp = requests.get(f"{base}/proxy/{upstream_port}/echo", timeout=10)

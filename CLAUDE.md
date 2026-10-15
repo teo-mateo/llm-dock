@@ -1063,8 +1063,9 @@ and test plan: `docs/plans/model-proxy-308.md`.
   through 3388 they are anonymous inference on a well-known port.
 - **Inspected services keep capturing** through 3388: traffic flows
   `3388 -> inspector proxy -> container`; the capture records the stripped
-  path and the model proxy's own headers, so an Inspector row is
-  indistinguishable from direct client traffic.
+  path and the forwarded request — the client's own headers minus hop-by-hop,
+  `Host` rewritten — so an Inspector row is indistinguishable from direct
+  client traffic.
 - The listener lives in the dashboard process, like the inspector's proxies:
   a dashboard restart drops it until `create_app()` re-binds, and a bind
   collision logs `bind_error` naming the owning service rather than failing
