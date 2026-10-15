@@ -42,29 +42,41 @@ class ModelProxySupervisor:
         key = (stat.st_mtime_ns, stat.st_size)
         with self._lock:
             if self._cache is not None and self._cache[0] == key:
-                return self._cache[1]
+                return dict(self._cache[1])
         try:
             with open(path) as f:
                 data = json.load(f)
         except (OSError, ValueError):
+            with self._lock:
+                if self._cache is not None:
+                    return dict(self._cache[1])
             return {}
         ports: Dict[int, str] = {}
         if isinstance(data, dict):
             for name, cfg in data.items():
                 port = cfg.get("port") if isinstance(cfg, dict) else None
-                if isinstance(port, int) and 1 <= port <= 65535:
+                if isinstance(port, int) and not isinstance(port, bool) \
+                        and 1 <= port <= 65535:
                     ports[port] = str(cfg.get("alias") or name)
         with self._lock:
             self._cache = (key, ports)
-        return ports
+        return dict(ports)
 
     def start(self) -> None:
         with self._lock:
             if self._proxy is not None and self._proxy.running:
                 return
-            listen_port = int(
-                os.environ.get("LLM_DOCK_MODEL_PROXY_PORT", DEFAULT_LISTEN_PORT)
-            )
+            raw_port = os.environ.get("LLM_DOCK_MODEL_PROXY_PORT")
+            try:
+                listen_port = (
+                    int(raw_port) if raw_port is not None else DEFAULT_LISTEN_PORT
+                )
+            except ValueError:
+                listen_port = DEFAULT_LISTEN_PORT
+                logger.warning(
+                    "invalid LLM_DOCK_MODEL_PROXY_PORT '%s'; using %d",
+                    raw_port, DEFAULT_LISTEN_PORT,
+                )
             listen_bind = os.environ.get(
                 "LLM_DOCK_MODEL_PROXY_BIND", DEFAULT_LISTEN_BIND
             )

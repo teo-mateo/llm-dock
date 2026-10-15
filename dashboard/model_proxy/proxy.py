@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 # long generations legitimately take minutes; a shorter read timeout would kill a live stream
 UPSTREAM_TIMEOUT = (10, 1800)
 
+RELAY_CHUNK = 65535
+
 HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -133,24 +135,24 @@ def _make_handler(proxy: PortProxy):
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_error_json(
-            self, status: int, code: str, message: str, pending_body: bool = False
-        ) -> None:
-            if pending_body:
-                if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
-                    self.close_connection = True
-                else:
-                    self._request_body()
+        def _send_error_json(self, status: int, code: str, message: str) -> None:
             self._send_json(status, _error_body(code, message))
 
         def _handle(self) -> None:
+            if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+                self.close_connection = True
+                self._send_error_json(
+                    411, "model_proxy_length_required",
+                    "the model proxy requires Content-Length request bodies",
+                )
+                return
+            request_body = self._request_body()
             path, _, query = self.path.partition("?")
             segments = path.split("/")
             if segments[1:2] != ["proxy"]:
                 self._send_error_json(
                     404, "model_proxy_unknown_path",
                     "the model proxy only serves /proxy/<port>/<path>",
-                    pending_body=True,
                 )
                 return
             if len(segments) <= 2 or segments[2] == "":
@@ -161,24 +163,14 @@ def _make_handler(proxy: PortProxy):
                 self._send_error_json(
                     400, "model_proxy_bad_port",
                     f"'{segments[2]}' is not a port number in 1-{MAX_PORT}",
-                    pending_body=True,
                 )
                 return
             if port not in proxy.allowed_ports():
                 self._send_error_json(
                     404, "model_proxy_port_not_allowed",
                     f"port {port} is not a configured llm-dock service port",
-                    pending_body=True,
                 )
                 return
-            if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
-                self._send_error_json(
-                    411, "model_proxy_length_required",
-                    "the model proxy requires Content-Length request bodies",
-                    pending_body=True,
-                )
-                return
-            request_body = self._request_body()
             rest = "/" + "/".join(segments[3:])
             self._forward(port, rest, query, request_body)
 
@@ -242,50 +234,59 @@ def _make_handler(proxy: PortProxy):
                 (value for name, value in response_headers.items() if name.lower() == "content-length"),
                 None,
             )
-            if any(name.lower() == "content-encoding" for name in response_headers):
-                # iter_content below decompresses, so a passthrough length
-                # could disagree with the bytes we send
-                content_length_out = None
-                response_headers.pop(
-                    next((n for n in response_headers if n.lower() == "content-length"), ""),
-                    None,
+            try:
+                declared_length = (
+                    int(content_length_out) if content_length_out is not None else None
                 )
+            except ValueError:
+                declared_length = None
             self.send_response(upstream.status_code)
-            if content_length_out is not None:
-                self.send_header("Content-Length", content_length_out)
-            else:
-                # no length from upstream: the body is delimited by closing
+            if content_length_out is None:
                 self.send_header("Connection", "close")
                 self.close_connection = True
+            else:
+                self.send_header("Content-Length", content_length_out)
             for name, value in response_headers.items():
                 if name.lower() != "content-length":
                     self.send_header(name, value)
             self.end_headers()
 
             client_disconnected = False
+            bytes_relayed = 0
             try:
-                for chunk in upstream.iter_content(chunk_size=None):
+                while True:
+                    chunk = upstream.raw._fp.read1(RELAY_CHUNK)
+                    if not chunk:
+                        break
                     try:
                         self.wfile.write(chunk)
                         self.wfile.flush()
+                        bytes_relayed += len(chunk)
                     except (BrokenPipeError, ConnectionResetError):
                         client_disconnected = True
+                        logger.info(
+                            "Client disconnected mid-relay for %s %s to port %s",
+                            self.command, self.path, port,
+                        )
                         break
             except Exception:
-                logger.debug("upstream relay failed for %s", self.path, exc_info=True)
+                self.close_connection = True
+                logger.info(
+                    "Relay failed for %s %s to port %s",
+                    self.command, self.path, port, exc_info=True,
+                )
             finally:
                 upstream.close()
-            if client_disconnected:
-                logger.info(
-                    "Client disconnected mid-relay for %s %s to port %s",
-                    self.command, self.path, port,
-                )
+            if client_disconnected or (
+                declared_length is not None and bytes_relayed < declared_length
+            ):
+                self.close_connection = True
 
     return _Handler
 
 
 def _parse_port(segment: str) -> Optional[int]:
-    if not segment.isdigit():
+    if not segment.isascii() or not segment.isdigit():
         return None
     port = int(segment)
     return port if 1 <= port <= MAX_PORT else None

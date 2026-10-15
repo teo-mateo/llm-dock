@@ -85,12 +85,23 @@ leaves a staleness window.
   `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`,
   `Transfer-Encoding`, `Upgrade`), following `inspector/proxy.py`'s body
   framing exactly: forward upstream `Content-Length`/`Content-Encoding`
-  verbatim and stream with `iter_raw` (raw bytes — `iter_content` would
-  decompress a gzipped body while relabelling it), and when upstream gives no
+  verbatim and stream raw bytes — `iter_content` would decompress a gzipped
+  body while relabelling it, and there is no `iter_raw` on a streamed
+  `requests.Response`; the shipped relay loops on
+  `upstream.raw._fp.read1(65535)` — http.client's read1, the only read that
+  yields per socket-read for **both** chunked and close-delimited bodies
+  (urllib3's `stream(amt)`/`iter_content` block until a full buffer or EOF on
+  close-delimited bodies, and `iter_content` additionally decodes gzip), and
+  http.client never touches `Content-Encoding`), and when upstream gives no
   `Content-Length`, respond with `Connection: close` + `close_connection =
   True` and stream until EOF. No hand-rolled chunked framing;
   `BaseHTTPRequestHandler` never auto-chunks. SSE frames arrive as written
-  because each chunk is `wfile.write` + `flush`.
+  because each chunk is `wfile.write` + `flush` (both chunked and
+  close-delimited upstream framing forward incrementally; `iter_content`
+  buffered the latter). If the relay ends with fewer bytes than the declared
+  `Content-Length` — pinned urllib3 1.26 does not raise on that truncation —
+  the handler closes the client connection: the promised bytes are never
+  coming and the close is the only honest signal.
 - Timeouts: exactly the precedent's `(connect, read) = (10, 1800)`. Connect
   refused / DNS / other request failure -> `502`; read timeout -> `504` with
   `code: "upstream_timeout"`. `allow_redirects=False`.
@@ -98,10 +109,17 @@ leaves a staleness window.
   response.
 - Error bodies (all ours, all with `error.code`, all `application/json`,
   so clients can tell our rejection from an upstream one without parsing
-  prose): non-`/proxy/...` paths and configured-but-wrong inner paths ->
-  `404` `error.code: "model_proxy_port_not_allowed"` / upstream's own body
-  respectively; malformed port segment -> `400`
-  `error.code: "model_proxy_bad_port"`.
+  prose). The shipped set, as also recorded in CLAUDE.md:
+  `model_proxy_unknown_path` (`404`, path does not start with `/proxy`),
+  `model_proxy_bad_port` (`400`, port segment is not an integer in
+  `1-65535`), `model_proxy_port_not_allowed` (`404`, well-formed port not in
+  the whitelist; wrong inner paths on a whitelisted port are forwarded and
+  answered by upstream with its own body), `model_proxy_length_required`
+  (`411`, chunked request body), `upstream_unavailable` (`502`),
+  `upstream_timeout` (`504`). The plan's earlier draft folded the
+  non-`/proxy` case into `model_proxy_port_not_allowed`; the shipped code
+  distinguishes them, which is strictly more informative for a caller
+  choosing between "wrong URL" and "service not configured".
 - `GET /proxy` lists the forwarded ports and aliases: unauthenticated, no
   secrets, so callers can discover the surface.
 
