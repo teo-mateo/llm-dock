@@ -3,8 +3,9 @@
 LLM-Dock's `sglang` engine adapts
 [jpezzulli/sglang-rtxpro6000](https://github.com/jpezzulli/sglang-rtxpro6000),
 also called Pennyroyal. The default image base is the digest of upstream
-`v2.5.3` (source tag `pennyroyal-v2.5.3`, commit
-`d00d88efc8d6281b12be4f4073126aec95038c55`). Upstream recipes, model-specific
+`v3.0.0` (source tag `pennyroyal-v3.0.0`, commit
+`560edbdca18aedae13f71ae20b3984efa4d22633`; the published image itself was
+built four packaging commits later, at `5d33142c1f3fd3df1548b9682f728fcdd8c7a710`). Upstream recipes, model-specific
 kernels and chat template are retained. The adapter creates adapted Flash-Next recipe copies
 settings before NIXL namespace derivation, recording quantization and capacity
 in the namespace rather than overriding the final command.
@@ -84,10 +85,14 @@ dashboard token; `api_key` can be omitted to generate one):
 ```
 
 The two launcher CLI parameters above and upstream `env:` knobs are the
-configuration surface. Arbitrary `sglang serve` flags are rejected because
+configuration surface. `env:NIXL` (`on` by default, `off` drops only the disk
+tier) and the automatic online-FP8 selection arrived with v3.0.0; leave
+`env:SGLANG_SM120_ONLINE_MXFP8` unset unless forcing it. Arbitrary `sglang serve` flags are rejected because
 overriding a cache-layout flag after the recipe computes its NIXL namespace
 can reuse incompatible persisted state. Upstream defaults retain the
-524,288-token context and model-specific speculative decoding settings.
+524,288-token context and model-specific speculative decoding settings. From
+v3.0.0 the Next recipes launch adaptive MTP at eight draft tokens, switching
+between four and eight at one active request and holding four above that.
 
 Flash-Next reads the checkpoint's `quantization_config`: ModelOpt selects
 `modelopt_fp4`, while mixed NVFP4/FP8 compressed-tensors checkpoints select
@@ -103,7 +108,7 @@ uses the same immutable HF snapshot with a 200000-token context, five running
 requests, 30 Mamba state slots, 2048-token prefill chunks and a 0.925 static
 GPU memory fraction. Its shared KV pool is capped at 200000 tokens: this is a
 total across requests, not five simultaneous full-length contexts. Native
-FR-Spec/NEXTN uses four draft tokens; vLLM's six-token MTP setting is not copied.
+FR-Spec/NEXTN chooses its own draft width (four, or adaptively eight); vLLM's six-token MTP setting is not copied.
 The existing vLLM Python overlays and INT4 PLE cache are engine-specific and
 are not mounted. SGLang uses its own FP8 RAM-backed PLE table (about 48 GiB)
 and a 16 GB HiCache allocation.
@@ -193,8 +198,26 @@ initialization. The built-in structured-output and chat warmups completed;
 `/health` and authenticated `/v1/models` returned 200, unauthenticated
 `/v1/models` returned 401, and Docker reported healthy. Observed GPU usage
 was 88176 MiB. This validates startup and short warmup generation, not
-long-context quality or throughput. Startup warnings include missing FP8 KV
+long-context quality or throughput on that 2.5.3-era build. Startup warnings include missing FP8 KV
 scaling factors (defaults to 1.0), a TileLang data-race diagnostic during a
 kernel compile that completed, and default untuned draft MoE kernels.
 NIXL cleaned initial cache files because filesystem usage was 89.4%, above
 its default cleanup threshold. The host toolkit is still CUDA 12.9.
+
+### v3.0.0 (2026-10-11)
+
+The image was rebuilt on the digest-pinned upstream `v3.0.0` release, the
+first build here that uses the pin rather than a local base. The recipe
+patcher applied unchanged and `pennyroyal --check` passed. The host driver is
+now `580.178.04`, so the launcher's `auto` mode uses the native driver
+libraries and the CUDA 13.0 compatibility package is idle; upstream recorded
+its results on `610.57.04`. The GPU check (PyTorch init, Triton JIT,
+FlashInfer 0.7.0.post1 BF16 attention) passed. The machine-local mixed
+NVFP4/FP8 service then started unchanged (0.925 static fraction,
+262144-token context and pool, five running requests): healthy after about
+10 minutes, 86.9 GiB of GPU memory in use, 10.55 GB reported available after
+the pool. Online FP8 selected rowwise FP8 automatically, adaptive MTP built
+both the four- and eight-token states, and the built-in warmups completed.
+This validates startup and warmup generation only. The NIXL namespace carries
+the source revision and the new speculative fields, so 2.5.3 disk-cache
+entries are not reused.

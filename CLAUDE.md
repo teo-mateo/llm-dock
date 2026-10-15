@@ -441,7 +441,7 @@ Gotchas:
 - **Not supported:** benchmarking (`llama-bench` is llama.cpp-only), `/slots` (no per-lane generation state), and reasoning levels.
 
 ### SGLang / Pennyroyal
-- **Upstream:** `jpezzulli/sglang-rtxpro6000`, Pennyroyal v2.5.3; digest-pinned image adapter in `sglang/Dockerfile`, built by `./build-sglang.sh`.
+- **Upstream:** `jpezzulli/sglang-rtxpro6000`, Pennyroyal v3.0.0; digest-pinned image adapter in `sglang/Dockerfile`, built by `./build-sglang.sh`.
 - **Service:** `template_type: "sglang"`, `model_path` is a checkpoint directory, name prefix `sglang-`, container port 8001. Supports chat, Open WebUI, key rotation, inspection and metrics.
 - **Profiles:** `--profile next` (Flash-Next NVFP4 + FR-Spec), `next-plain` (native NEXTN), or `27b` (FP8 target + `--draft-model-path` DFlash2 checkpoint). Tuning uses upstream `env:` knobs so cache namespace derivation stays consistent. Arbitrary server CLI overrides are rejected.
 - **Host unchanged:** CUDA dependencies and compatibility libraries are container-only. Existing driver compatibility requires a GPU smoke test; see [integration guide](docs/plans/sglang-pennyroyal-integration.md) for the local gate and RAM/cache requirements.
