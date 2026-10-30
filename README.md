@@ -213,7 +213,7 @@ downloaded - including the second repo behind `auto_map` for custom-arch models.
 
 ### SGLang / Pennyroyal
 
-- **Upstream:** [jpezzulli/sglang-rtxpro6000](https://github.com/jpezzulli/sglang-rtxpro6000), Pennyroyal v3.0.0, digest-pinned in `sglang/Dockerfile`.
+- **Upstream:** [jpezzulli/sglang-rtxpro6000](https://github.com/jpezzulli/sglang-rtxpro6000), Pennyroyal v3.1.4, digest-pinned in `sglang/Dockerfile`.
 - **Profiles:** Flash-Next NVFP4 with FR-Spec (`next`), native NEXTN (`next-plain`), or Qwen3.8-27B FP8 with a DFlash2 draft (`27b`).
 - **Service:** `template_type: "sglang"`, a model directory, `sglang-` name prefix, API-key auth and port 8001. Supports chat, Open WebUI, inspection and metrics.
 - **Build:** `./build-sglang.sh`; CUDA and compatibility libraries stay inside Docker. The host toolkit and driver remain unchanged. GPU compatibility still requires verification on older drivers.

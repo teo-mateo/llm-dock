@@ -107,7 +107,8 @@ def test_next_uses_checkpoint_quantization_before_namespace(tmp_path, method, ex
     assert env["PENNY_CONTEXT_LENGTH"] == "200000"
 
 
-def test_recipe_patch_tracks_runtime_settings_in_namespace():
+@pytest.mark.parametrize("fraction", ["0.981", "0.97"])
+def test_recipe_patch_tracks_runtime_settings_in_namespace(fraction):
     recipe_spec = importlib.util.spec_from_file_location("patch_recipes", ROOT / "sglang/patch_recipes.py")
     patcher = importlib.util.module_from_spec(recipe_spec)
     recipe_spec.loader.exec_module(patcher)
@@ -119,16 +120,19 @@ PREFILL_CHUNK_SIZE=4096
   --field "cuda_arch=12.0")
   --quantization modelopt_fp4 --mem-fraction-static 0.981
   --max-running-requests 4 --max-mamba-cache-size 24 --hicache-size 32
-'''
+'''.replace("--mem-fraction-static 0.981", f"--mem-fraction-static {fraction}")
     result = patcher.patch_recipe(source)
     assert 'CONTEXT_LENGTH="${PENNY_CONTEXT_LENGTH:-524288}"' in result
     assert 'target_quantization=$LLM_DOCK_TARGET_QUANTIZATION' in result
     assert '--quantization "$LLM_DOCK_TARGET_QUANTIZATION"' in result
+    assert f'--mem-fraction-static "${{PENNY_MEM_FRACTION_STATIC:-{fraction}}}"' in result
     assert '--max-running-requests "${MAX_RUNNING_REQUESTS:-4}"' in result
     assert 'llm_dock_max_running_requests=${MAX_RUNNING_REQUESTS:-4}' in result
     assert 'max_mamba_cache_size=${MAX_MAMBA_CACHE_SIZE:-24}' in result
     with pytest.raises(ValueError, match="recipe changed"):
         patcher.patch_recipe(source.replace('CONTEXT_LENGTH=524288', 'CONTEXT_LENGTH=123'))
+    with pytest.raises(ValueError, match="recipe changed"):
+        patcher.patch_recipe(source.replace(f"--mem-fraction-static {fraction}", "--no-gpu-memory-profile"))
 
 
 def test_service_create_accepts_sglang_and_rebuilds_in_isolation(manager, monkeypatch):

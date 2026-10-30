@@ -7,7 +7,8 @@ import re
 def patch_recipe(source):
     def replace(pattern, replacement, count=1):
         nonlocal source
-        source, found = re.subn(pattern, lambda match: replacement, source, flags=re.MULTILINE)
+        substitute = replacement if callable(replacement) else (lambda match: replacement)
+        source, found = re.subn(pattern, substitute, source, flags=re.MULTILINE)
         if found != count:
             raise ValueError(f"Pennyroyal recipe changed: {pattern!r} matched {found}, expected {count}")
 
@@ -16,8 +17,9 @@ def patch_recipe(source):
     replace(r"^PREFILL_CHUNK_SIZE=4096$",
             'PREFILL_CHUNK_SIZE="${PENNY_PREFILL_CHUNK_SIZE:-4096}"', 1)
     replace(r"--quantization modelopt_fp4", '--quantization "$LLM_DOCK_TARGET_QUANTIZATION"')
-    replace(r"--mem-fraction-static 0\.981",
-            '--mem-fraction-static "${PENNY_MEM_FRACTION_STATIC:-0.981}"')
+    replace(r"--mem-fraction-static [0-9.]+",
+            lambda match: '--mem-fraction-static "${PENNY_MEM_FRACTION_STATIC:-%s}"'
+                          % match.group(0).split()[1])
     # These knobs may be absent from a given upstream build, so absence is
     # tolerated: plain str.replace no-ops here, unlike the raising replace().
     source = source.replace('--max-running-requests 4',

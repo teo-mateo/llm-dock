@@ -3,9 +3,9 @@
 LLM-Dock's `sglang` engine adapts
 [jpezzulli/sglang-rtxpro6000](https://github.com/jpezzulli/sglang-rtxpro6000),
 also called Pennyroyal. The default image base is the digest of upstream
-`v3.0.0` (source tag `pennyroyal-v3.0.0`, commit
-`560edbdca18aedae13f71ae20b3984efa4d22633`; the published image itself was
-built four packaging commits later, at `5d33142c1f3fd3df1548b9682f728fcdd8c7a710`). Upstream recipes, model-specific
+`v3.1.4` (tag `pennyroyal-v3.1.4` at `2008ba3193684d47e7ce7806713d5a76bf1b9510`,
+built from image source `d777f943062c30d3a52cf247694d6276916b3d23` and promoted
+to the versioned tag without rebuilding). Upstream recipes, model-specific
 kernels and chat template are retained. The adapter creates adapted Flash-Next recipe copies
 settings before NIXL namespace derivation, recording quantization and capacity
 in the namespace rather than overriding the final command.
@@ -91,8 +91,15 @@ tier) and the automatic online-FP8 selection arrived with v3.0.0; leave
 overriding a cache-layout flag after the recipe computes its NIXL namespace
 can reuse incompatible persisted state. Upstream defaults retain the
 524,288-token context and model-specific speculative decoding settings. From
-v3.0.0 the Next recipes launch adaptive MTP at eight draft tokens, switching
-between four and eight at one active request and holding four above that.
+v3.0.0 the Next recipes launched adaptive MTP at eight draft tokens, switching
+between four and eight at one active request and holding four above that. From
+v3.1 the verify width is fixed by active concurrency instead — block 8 at one
+running request, block 4 at every batch of two or more — and
+`env:PENNY_MTP_POLICY` selects the bundled policy file together with the launch
+width that can carry it: `tiered` (the default), `adaptive` (the v3.0.2
+acceptance-driven widths) or `fixed-w4` (block 4 at every concurrency). The
+selected policy file's hash is NIXL cache identity rather than a boot refusal,
+so switching policies re-qualifies the disk cache.
 
 Flash-Next reads the checkpoint's `quantization_config`: ModelOpt selects
 `modelopt_fp4`, while mixed NVFP4/FP8 compressed-tensors checkpoints select
@@ -221,3 +228,45 @@ both the four- and eight-token states, and the built-in warmups completed.
 This validates startup and warmup generation only. The NIXL namespace carries
 the source revision and the new speculative fields, so 2.5.3 disk-cache
 entries are not reused.
+
+### v3.1.4 (2026-10-30)
+
+Rebuilt on the digest-pinned upstream `v3.1.4` image
+(`sha256:16be2a7e41c59ce2b70dcb84bebd001a618874f7797e884671d8754e5e3619bc`, image
+source `d777f943062c30d3a52cf247694d6276916b3d23`, tag commit
+`2008ba3193684d47e7ce7806713d5a76bf1b9510`: published 2026-10-29 and promoted to
+the versioned tag without rebuilding). Seven releases and 234 commits past the
+v3.0.0 pin. The pull has to run with an anonymous `DOCKER_CONFIG` on this host:
+the stored ghcr.io credential gets `denied: denied` for a public image and Docker
+does not fall back to anonymous.
+
+The adapter needed one change. The FR-Spec recipe now launches `.97` static
+fraction (`.981` on `next-plain`), so the patcher parameterizes whatever literal
+the recipe carries and makes that the `PENNY_MEM_FRACTION_STATIC` default, instead
+of asserting `0.981` — it still raises when no literal fraction is there to read,
+because that is the change this file must notice. Build-time `bash -n` and
+`pennyroyal --check` passed. The image reports `3.1.4` and
+`sglang 0.5.19+gd777f943062c` on torch `2.13.0+cu130` with flashinfer
+`0.7.0.post1` (unchanged since 3.0.0, so the CUDA 13.0 compatibility pin still
+matches its wheels). The container GPU check - PyTorch init, Triton JIT, FlashInfer
+BF16 single-decode - passed on the `580.178.04` driver while the v3.0.0 container
+still held the GPU.
+
+What changed underneath the config surface: verify width is fixed by active
+concurrency rather than learned (3.1); `env:PENNY_MTP_POLICY` selects the policy
+file whose hash is NIXL cache identity (3.1.2); the recipes ask for no preset KV
+pool, so an unset `env:MAX_TOTAL_TOKENS` lets SGLang size it (3.1); and
+`MAX_RUNNING_REQUESTS`, `MAX_MAMBA_CACHE_SIZE` and `PENNY_HICACHE_SIZE_GB` are read
+by the upstream recipe itself now, which makes llm-dock's copies of those three
+patches no-ops retained only for tolerance. The 3.1.3 and 3.1.4 fixes sit on paths
+this service uses: hybrid-Mamba chunk page alignment, admission reopening on an
+already-empty batch, NIXL restore validation, Responses and Anthropic tool
+handling, and Qwen structured tool arguments. The machine-local service's
+`MAX_TOTAL_TOKENS=524288` and `PENNY_MEM_FRACTION_STATIC=0.925` overrides are
+honoured unchanged.
+
+Not done here: the service has not been recreated on the new image. The NIXL
+namespace carries the source revision, so that first boot will not reuse the
+existing disk cache and should be expected to take the ~10 minute qualification
+path. `next-dflash2` stays unoffered - it is alpha, and its draft cache is billed
+on top of `PENNY_HICACHE_SIZE_GB`.

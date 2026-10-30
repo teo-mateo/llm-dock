@@ -2004,8 +2004,9 @@ SGLANG_FLAGS = {
         "description": "Flash-Next maximum context (up to 524288 tokens)",
     },
     "memory_fraction": {
-        "cli": "env:PENNY_MEM_FRACTION_STATIC", "type": "float", "default": "0.981",
+        "cli": "env:PENNY_MEM_FRACTION_STATIC", "type": "float", "default": "0.97",
         "description": "Flash-Next fraction of GPU memory reserved for static allocations",
+        "tip": "Unset keeps the recipe's own value: 0.97 on `next` (FR-Spec), 0.981 on `next-plain`. The fraction bounds the static allocation the KV pool is profiled inside; it is not part of the NIXL cache namespace, so a change does not re-qualify the disk cache.",
     },
     "prefill_chunk_size": {
         "cli": "env:PENNY_PREFILL_CHUNK_SIZE", "type": "int", "default": "4096",
@@ -2059,6 +2060,7 @@ SGLANG_FLAGS = {
     "max_total_tokens": {
         "cli": "env:MAX_TOTAL_TOKENS", "type": "int",
         "description": "Flash-Next shared KV token pool (not per-request context)",
+        "tip": "From v3.1 the recipe asks for no preset and SGLang sizes the pool from the free memory it profiles at boot; an exported cap is still honoured and still validated.",
     },
     "ple_backend": {
         "cli": "env:PENNY_PLE_BACKEND", "type": "string", "default": "ram",
