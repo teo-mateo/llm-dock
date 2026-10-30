@@ -3,7 +3,7 @@
 A dashboard for running local LLM inference services out of Docker Compose: it discovers
 the models you already have on disk, generates and maintains the compose file for you, and
 gives every service a port, an API key, a live metrics panel and a captured request log.
-Seven inference engines are first-class, and a full chat UI (plus an Android client) talks to
+Eight inference engines are first-class, and a full chat UI (plus an Android client) talks to
 them through one OpenAI-compatible surface.
 
 ![LLM-Dock services dashboard](docs/images/dashboard.png)
@@ -12,7 +12,7 @@ them through one OpenAI-compatible surface.
 
 ## Features
 
-- **Seven inference engines** - llama.cpp, ik_llama.cpp, vLLM, ds4, TabbyAPI (EXL3), NInfer and SGLang / Pennyroyal, each with its own compose template, flag reference and build script
+- **Eight inference engines** - llama.cpp, ik_llama.cpp, vLLM, ds4, TabbyAPI (EXL3), NInfer, SGLang / Pennyroyal and Project Maya, each with its own compose template, flag reference and build script
 - **Model discovery** - scans the HuggingFace cache and `~/.cache/models`, translates host paths into the paths containers see, and offers each file in the create-service dialog
 - **Service management** - create, rename, start, stop, restart, delete; live status over SSE; per-service container logs with a live tail; compose YAML preview before you commit a change
 - **GPU monitoring** - live memory / utilisation / temperature / power plus a 60-second history chart
@@ -165,6 +165,7 @@ the llama.cpp family). Logs stream live and can be scrolled while the container 
 | [TabbyAPI](#tabbyapi) | EXL3 dir | 8000 | no | no | no | `./build-tabbyapi.sh` |
 | [NInfer](#ninfer) | `.ninfer` file | 8080 | yes | no | no | `./build-ninfer.sh` |
 | [SGLang / Pennyroyal](#sglang--pennyroyal) | safetensors dir | 8001 | yes | no | yes | `./build-sglang.sh` |
+| [Project Maya](#project-maya) | Maya pack dir | 8080 | no | no | yes | `./build-maya.sh` |
 
 "Reasoning levels" means the service can declare which thinking levels its model accepts and
 chat will offer exactly those; see [`AGENTS.md`](AGENTS.md).
@@ -217,6 +218,13 @@ downloaded - including the second repo behind `auto_map` for custom-arch models.
 - **Service:** `template_type: "sglang"`, a model directory, `sglang-` name prefix, API-key auth and port 8001. Supports chat, Open WebUI, inspection and metrics.
 - **Build:** `./build-sglang.sh`; CUDA and compatibility libraries stay inside Docker. The host toolkit and driver remain unchanged. GPU compatibility still requires verification on older drivers.
 - **Configuration and validation:** [integration guide](docs/plans/sglang-pennyroyal-integration.md), including cache/RAM requirements and current GPU test results.
+
+### Project Maya
+
+- **Upstream:** [mw00/project-maya](https://github.com/mw00/project-maya): expert-tiering engines for DeepSeek-V4.1-Flash (`maya-ds4`) and GLM-5.3-Flash (`maya`), with experts moving across VRAM, pinned RAM and NVMe.
+- **Build:** `./build-maya.sh` compiles both engines from a local Maya checkout at one commit (`MAYA_SRC`, `MAYA_COMMIT`), CUDA 12.9 / sm_120, no GPU needed.
+- **Service:** `template_type: "maya"`, `model_path` is a pack directory made by Maya's own setup (`~/.cache/maya/<model>/<pack>`, absolute host path), `maya-` name prefix, API-key auth, port 8080. The HF cache and `~/.cache/maya` are mounted at their host paths, so packs from a native install run unchanged.
+- **Configuration:** [integration guide](docs/plans/project-maya-integration.md).
 
 ### ds4
 

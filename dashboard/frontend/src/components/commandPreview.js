@@ -34,6 +34,11 @@ export function renderCommandPreview(config, apiKey, params) {
     if (config.model_path) parts.push(`--model-path ${config.model_path}`)
     if (config.alias) parts.push(`--served-model-name ${config.alias}`)
     parts.push(`--api-key ${apiKey || '***'}`)
+  } else if (config.template_type === 'maya') {
+    parts.push('llm-dock-maya')
+    if (config.model_path) parts.push(`--pack ${config.model_path}`)
+    if (config.alias) parts.push(`--model-name ${config.alias}`)
+    parts.push(`--api-key ${apiKey || '***'}`)
   } else if (config.template_type === 'ninfer') {
     // NInfer takes the .ninfer artifact positionally; auth is --api-key like llama.cpp.
     parts.push('ninfer-serve')
@@ -50,7 +55,7 @@ export function renderCommandPreview(config, apiKey, params) {
 
   for (const { flag, value } of params) {
     if (!flag) continue
-    if (config.template_type === 'sglang' && flag.startsWith('env:')) continue
+    if ((config.template_type === 'sglang' || config.template_type === 'maya') && flag.startsWith('env:')) continue
     if (value) {
       parts.push(`${flag} ${value}`)
     } else {
@@ -58,7 +63,7 @@ export function renderCommandPreview(config, apiKey, params) {
     }
   }
 
-  if (config.template_type === 'sglang') {
+  if (config.template_type === 'sglang' || config.template_type === 'maya') {
     const assignments = params.filter(p => p.flag?.startsWith('env:'))
       .map(p => `${p.flag.slice(4)}=${JSON.stringify(String(p.value || ''))}`)
     if (assignments.length) parts.unshift(`env ${assignments.join(' ')}`)

@@ -16,6 +16,8 @@ _CONTAINER_PATH_MAP = [
     ("/hf-cache/", os.path.expanduser("~/.cache/huggingface/")),
     ("/local-models/", os.path.expanduser("~/.cache/models/")),
     ("/exl3/", os.path.expanduser("~/.cache/exl3/")),
+    # Maya packs are mounted at their host path (maya.j2), so the prefix maps to itself.
+    (os.path.expanduser("~/.cache/maya/"), os.path.expanduser("~/.cache/maya/")),
 ]
 
 

@@ -19,6 +19,14 @@ import tabby_keys
 
 logger = logging.getLogger(__name__)
 
+
+def maya_state_dir(service_name: str) -> Path:
+    """Per-service Maya state (run config, engine log, shared chat settings)."""
+    root = os.environ.get("LLM_DOCK_MAYA_STATE_DIR")
+    # Not ~/.cache/llm-dock: Docker created that root-owned for the sglang mounts.
+    base = Path(root) if root else Path.home() / ".cache" / "maya" / "llm-dock"
+    return base / service_name
+
 # Markers for dynamic services section
 BEGIN_DYNAMIC_MARKER = "# <<<<<<< BEGIN DYNAMIC"
 END_DYNAMIC_MARKER = "# >>>>>>> END DYNAMIC"
@@ -366,6 +374,26 @@ class ComposeManager:
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+        elif template_type == "maya":
+            context["model_path"] = config["model_path"]
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
+            # The container runs as the host user because it writes into the host's
+            # ~/.cache/maya packs; a bind source Docker has to create itself would be
+            # root-owned and unwritable for that user, so it exists before compose runs.
+            context["uid"] = os.getuid()
+            context["gid"] = os.getgid()
+            state_dir = maya_state_dir(service_name)
+            try:
+                state_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logger.warning(f"Cannot create Maya state dir {state_dir}: {e}")
+            context["state_dir"] = str(state_dir)
+            context["maya_args"] = [
+                "--pack", config["model_path"],
+                "--model-name", config["alias"],
+                "--api-key", config["api_key"],
+            ]
 
         rendered_flags = []
         extra_env = {}
@@ -387,6 +415,12 @@ class ComposeManager:
                 env_var = flag_name[4:]  # strip "env:" prefix
                 context[env_var.lower()] = flag_value
                 extra_env[env_var] = flag_value
+                continue
+
+            if template_type == "maya":
+                context["maya_args"].append(flag_name)
+                if str(flag_value).strip():
+                    context["maya_args"].append(str(flag_value))
                 continue
 
             if template_type == "sglang":

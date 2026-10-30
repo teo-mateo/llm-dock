@@ -34,6 +34,7 @@ GRAMMAR_HINT = (
 ENGINE_LLAMACPP = "llamacpp"
 ENGINE_VLLM = "vllm"
 ENGINE_SGLANG = "sglang"
+ENGINE_MAYA = "maya"
 ENGINE_OPENROUTER = "openrouter"
 
 
@@ -154,8 +155,9 @@ def request_fields(level: Any, engine: Optional[str]) -> Dict[str, Any]:
                 "chat_template_kwargs": {"enable_thinking": False},
             }
         return {"reasoning_effort": level_id}
-    if engine in (ENGINE_VLLM, ENGINE_SGLANG):
-        # Both servers pass reasoning_effort to their model chat template.
+    if engine in (ENGINE_VLLM, ENGINE_SGLANG, ENGINE_MAYA):
+        # These servers pass reasoning_effort to their model chat template; Maya
+        # reads none/low/high/max (serve/frontend.py EFFORT).
         return {"reasoning_effort": "none" if level_id == OFF_LEVEL else level_id}
     if engine == ENGINE_OPENROUTER:
         # OpenRouter's own spelling rather than the flat OpenAI field: one object, one

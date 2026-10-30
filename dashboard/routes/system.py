@@ -103,6 +103,7 @@ def get_images_metadata():
             "tabbyapi": get_image_info("llm-dock-tabbyapi"),
             "ninfer": get_image_info("llm-dock-ninfer"),
             "sglang": get_image_info("llm-dock-sglang"),
+            "maya": get_image_info("llm-dock-maya"),
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )

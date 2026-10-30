@@ -1,0 +1,52 @@
+  {{ service_name }}:
+    image: llm-dock-maya
+    container_name: {{ service_name }}
+    restart: no
+    init: true
+    user: "{{ uid }}:{{ gid }}"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8080"
+
+    # The engine pins an arena of nearly all free RAM with cudaHostRegister/mlock;
+    # the host's default memlock limit (16 GB) fails it.
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 2gb
+    # server.py waits up to 150 s for the request in progress and the engine's
+    # QUIT, which is what saves kept conversations (STOP_WAIT_S in maya.py).
+    stop_grace_period: 150s
+
+    environment:
+      - HOME=/maya-state
+{% for k, v in (extra_env or {}).items() %}
+      - {{ (k ~ '=' ~ v) | tojson }}
+{% endfor %}
+
+    # Packs record absolute host paths (ds4.txt's model_dir, GLM's GGUF list) and
+    # reach the engram/draft/vision files through relative links between the HF
+    # cache and ~/.cache/maya, so both are mounted at their host paths: a pack made
+    # by the native install starts here unchanged, and the container writes slots
+    # and expert profiles back into it as the host user.
+    volumes:
+      - ${HOME}/.cache/huggingface:${HOME}/.cache/huggingface:ro
+      - ${HOME}/.cache/maya:${HOME}/.cache/maya
+      - {{ state_dir }}:/maya-state
+{% for volume in (extra_volumes or []) %}
+      - {{ volume }}
+{% endfor %}
+
+    networks:
+      - llm-network
+
+    command: {{ maya_args | tojson }}
