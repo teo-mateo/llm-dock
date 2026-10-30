@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-28
+- **Project Maya engine** - Added `mw00/project-maya` as `template_type: "maya"`: `./build-maya.sh` compiles `maya-ds4` (DeepSeek-V4.1-Flash) and `maya` (GLM-5.3-Flash) from a local Maya checkout at one commit, and `maya/launcher.py` writes the `server.py` run config `maya.py` would, choosing the engine from the pack. The HF cache and `~/.cache/maya` are mounted at their host paths and the container runs as the host user, so packs built by the native install run unchanged. Unlimited memlock, a 150 s stop grace for the engine's QUIT, engine logs in `docker logs`, API-key auth, Open WebUI, chat and reasoning-effort mapping. Added the machine-local `maya-deepseek-v41-flash-dspark` service on port 3304 with the native DSpark run's settings; the image is built and that service has been started once.
+
 ## 2026-10-11
 - **Pennyroyal 3.0.0** - The SGLang image adapter now pins upstream `v3.0.0` (adaptive MTP, FlashInfer 0.7.0.post1, automatic online FP8, optional NIXL disk tier via `env:NIXL`). The recipe patches apply unchanged and the container GPU check passes on the 580.178.04 driver, and the machine-local Flash-Next service starts healthy with its existing settings.
 

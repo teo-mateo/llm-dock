@@ -110,6 +110,8 @@
   --color-badge-exl3-fg:     #f9a8d4;
   --color-badge-sglang-bg:   rgb(2 132 199 / 0.20);
   --color-badge-sglang-fg:   #38bdf8;
+  --color-badge-maya-bg:     rgb(147 51 234 / 0.25);
+  --color-badge-maya-fg:     #d8b4fe;
   --color-badge-ninfer-bg:   rgb(13 148 136 / 0.30);
   --color-badge-ninfer-fg:   #5eead4;
   --color-badge-webui-bg:    rgb(5 150 105 / 0.30);
@@ -179,6 +181,8 @@
   --color-badge-exl3-fg:     #be185d;
   --color-badge-sglang-bg:   rgb(2 132 199 / 0.12);
   --color-badge-sglang-fg:   #0369a1;
+  --color-badge-maya-bg:     rgb(147 51 234 / 0.12);
+  --color-badge-maya-fg:     #7e22ce;
   --color-badge-ninfer-bg:   rgb(13 148 136 / 0.12);
   --color-badge-ninfer-fg:   #0f766e;
   --color-badge-webui-bg:    rgb(5 150 105 / 0.12);

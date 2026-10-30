@@ -13,10 +13,11 @@ const ENGINES = [
   { type: 'tabbyapi', label: 'TabbyAPI', hint: 'EXL3 model directory' },
   { type: 'ninfer', label: 'NInfer', hint: '.ninfer artifact' },
   { type: 'sglang', label: 'SGLang / Pennyroyal', hint: 'RTX PRO 6000 model directory' },
+  { type: 'maya', label: 'Project Maya', hint: 'Maya pack directory' },
 ]
 
 // Engines whose model is a file on disk rather than a HuggingFace repo id.
-const FILE_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4', 'tabbyapi', 'ninfer', 'sglang'])
+const FILE_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4', 'tabbyapi', 'ninfer', 'sglang', 'maya'])
 
 // Engines for which the discovered-file picker is meaningful; TabbyAPI wants a
 // model directory and NInfer wants .ninfer artifacts, neither of which
@@ -362,7 +363,9 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                       type="text"
                       value={modelPath}
                       onChange={e => setModelPath(e.target.value)}
-                      placeholder={(templateType === 'tabbyapi' || templateType === 'sglang')
+                      placeholder={templateType === 'maya'
+                        ? '~/.cache/maya/<model>/<pack> (absolute host path)'
+                        : (templateType === 'tabbyapi' || templateType === 'sglang')
                         ? '/hf-cache/… or /local-models/… (model directory)'
                         : '/hf-cache/… or /local-models/…'}
                       className={`${inputClass} font-mono text-sm`}

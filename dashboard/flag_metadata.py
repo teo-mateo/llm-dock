@@ -19,6 +19,7 @@ MANDATORY_FIELDS = {
     "tabbyapi": ["port", "model_path", "alias", "api_key"],
     "ninfer": ["port", "model_path", "alias", "api_key"],
     "sglang": ["port", "model_path", "alias", "api_key"],
+    "maya": ["port", "model_path", "alias", "api_key"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
@@ -39,6 +40,7 @@ ENGINE_INTERNAL_PORTS = {
     "tabbyapi": 8000,
     "ninfer": 8080,
     "sglang": 8001,
+    "maya": 8080,
 }
 
 
@@ -58,6 +60,7 @@ ENGINE_IMAGES = {
     "tabbyapi": "llm-dock-tabbyapi",
     "ninfer": "llm-dock-ninfer",
     "sglang": "llm-dock-sglang",
+    "maya": "llm-dock-maya",
 }
 
 
@@ -2071,6 +2074,208 @@ SGLANG_FLAGS = {
     },
 }
 
+# ============================================
+# FLAG METADATA FOR Project Maya (maya/launcher.py)
+# model_path is the pack directory; the launcher picks maya-ds4 (a ds4.txt pack)
+# or maya (GLM). Its own knobs below build server.py's run config; any other
+# --flag is passed to the engine verbatim. Defaults are the DeepSeek-V4.1 2.25 bpw
+# DSpark run that was tuned natively (maya-deepseek-2.25-dspark.json).
+# ============================================
+
+MAYA_FLAGS = {
+    # ========== SERVER (launcher) ==========
+    "sampling_temperature": {
+        "cli": "--sampling-temperature",
+        "type": "float",
+        "category": "Server",
+        "description": "Default temperature for requests that send none.",
+        "default": "1.0",
+        "impact": "Medium",
+    },
+    "sampling_top_p": {
+        "cli": "--sampling-top-p",
+        "type": "float",
+        "category": "Server",
+        "description": "Default top_p for requests that send none (DeepSeek 1.0, GLM 0.95 when unset).",
+        "default": "1.0",
+        "impact": "Medium",
+    },
+    "reasoning_effort": {
+        "cli": "--reasoning-effort",
+        "type": "string",
+        "category": "Server",
+        "description": "Default reasoning effort: none, low, high or max (DeepSeek also 1..100). A request's own reasoning_effort wins.",
+        "default": "high",
+        "impact": "Medium",
+    },
+    "thinking_budget": {
+        "cli": "--thinking-budget",
+        "type": "int",
+        "category": "Server",
+        "description": "Tokens a reasoning block may run before the server closes it (0 = no limit).",
+        "default": "32768",
+        "impact": "Low",
+    },
+    "engine_ready_s": {
+        "cli": "--engine-ready-s",
+        "type": "int",
+        "category": "Server",
+        "description": "Seconds the server waits for the engine to load before giving up.",
+        "default": "3600",
+        "impact": "Low",
+    },
+    "idle_unload": {
+        "cli": "--idle-unload",
+        "type": "float",
+        "category": "Server",
+        "description": "Seconds without a request after which the engine frees VRAM and pinned RAM; the next request reloads it (0 = never).",
+        "impact": "Medium",
+    },
+    "gpu": {
+        "cli": "--gpu",
+        "type": "string",
+        "category": "Server",
+        "description": "GPU(s) to run on as nvidia-smi numbers them, e.g. 0 or 0,1.",
+        "default": "0",
+        "impact": "Low",
+    },
+    # ========== ENGINE: DeepSeek-V4.1 (maya-ds4) ==========
+    "max_context": {
+        "cli": "--max-context",
+        "type": "int",
+        "category": "Engine",
+        "description": "Context length in tokens.",
+        "default": "524288",
+        "impact": "Critical",
+    },
+    "multi": {
+        "cli": "--multi",
+        "type": "int",
+        "category": "Engine",
+        "description": "Conversations answered at the same time (maya-ds4; --parallel is the same).",
+        "default": "2",
+        "impact": "High",
+    },
+    "tp": {
+        "cli": "--tp",
+        "type": "int",
+        "category": "Engine",
+        "description": "Tensor-parallel GPUs per expert (maya-ds4). 1 on a single GPU.",
+        "default": "1",
+        "impact": "Medium",
+    },
+    "threads": {
+        "cli": "--threads",
+        "type": "string",
+        "category": "Engine",
+        "description": "CPU expert lane threading: on or off (maya-ds4).",
+        "default": "on",
+        "impact": "Medium",
+    },
+    "cpu_threads": {
+        "cli": "--cpu-threads",
+        "type": "int",
+        "category": "Engine",
+        "description": "At most N CPU threads for the CPU expert lane (default: one per core).",
+        "impact": "Medium",
+    },
+    "mmap_experts": {
+        "cli": "--mmap-experts",
+        "type": "string",
+        "category": "Engine",
+        "description": "CPU-lane experts read from the mapped GGUF (on), copied into RAM (off), or copied when they all fit (auto).",
+        "default": "on",
+        "impact": "High",
+    },
+    "dspark": {
+        "cli": "--dspark",
+        "type": "string",
+        "category": "Engine",
+        "description": "DSpark speculative drafting: on, off or none (needs a pack built with the drafter).",
+        "default": "on",
+        "impact": "High",
+    },
+    "dspark_conf": {
+        "cli": "--dspark-conf",
+        "type": "float",
+        "category": "Engine",
+        "description": "Per-draft confidence floor for DSpark drafts.",
+        "impact": "Medium",
+    },
+    "reserve_mib": {
+        "cli": "--reserve-mib",
+        "type": "int",
+        "category": "Engine",
+        "description": "VRAM kept free on each GPU beside the expert pool, in MiB (maya-ds4).",
+        "default": "1536",
+        "impact": "High",
+    },
+    "vram_experts": {
+        "cli": "--vram-experts",
+        "type": "float",
+        "category": "Engine",
+        "description": "Fraction of experts placed in VRAM (maya-ds4; default: as many as fit).",
+        "impact": "High",
+    },
+    "prefill_chunk": {
+        "cli": "--prefill-chunk",
+        "type": "int",
+        "category": "Engine",
+        "description": "Prompt tokens per prefill chunk (maya-ds4).",
+        "impact": "Medium",
+    },
+    "vision": {
+        "cli": "--vision",
+        "type": "string",
+        "category": "Engine",
+        "description": "Pictures: on or off (maya-ds4 runs its own vision tower when the pack has one).",
+        "impact": "Medium",
+    },
+    "expert_profile": {
+        "cli": "--expert-profile",
+        "type": "path",
+        "category": "Engine",
+        "description": "Expert placement profile to start from, or none.",
+        "impact": "Low",
+    },
+    # ========== ENGINE: GLM-5.3 (maya) ==========
+    "expert_cache": {
+        "cli": "--expert-cache",
+        "type": "string",
+        "category": "Engine (GLM)",
+        "description": "GLM expert pool size: auto (free VRAM less the reserve) or N experts.",
+        "impact": "High",
+    },
+    "prefill": {
+        "cli": "--prefill",
+        "type": "string",
+        "category": "Engine (GLM)",
+        "description": "GLM prefill chunk: auto, N tokens, or 0 for token by token.",
+        "impact": "Medium",
+    },
+    "kv_streaming": {
+        "cli": "--kv-streaming",
+        "type": "string",
+        "category": "Engine (GLM)",
+        "description": "GLM KV streaming: on or off.",
+        "impact": "Medium",
+    },
+    "vram_reserve_mib": {
+        "cli": "--vram-reserve-mib",
+        "type": "int",
+        "category": "Engine (GLM)",
+        "description": "GLM: VRAM left free beside the expert pool, in MiB (default 700).",
+        "impact": "High",
+    },
+    "dflash": {
+        "cli": "--dflash",
+        "type": "path",
+        "category": "Engine (GLM)",
+        "description": "GLM DFlash drafter GGUF.",
+        "impact": "High",
+    },
+}
+
 
 def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     """Get flag metadata for template type"""
@@ -2088,6 +2293,8 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
         return NINFER_FLAGS
     elif template_type == "sglang":
         return SGLANG_FLAGS
+    elif template_type == "maya":
+        return MAYA_FLAGS
     else:
         return {}
 
@@ -2238,6 +2445,11 @@ def validate_service_config(
     # write routes.
     if "inspect" in config and not isinstance(config["inspect"], bool):
         errors.append(f"inspect must be a boolean, got {type(config['inspect']).__name__}")
+
+    if template_type == "maya":
+        for flag in ("--pack", "--glm-pack", "--serve", "--model-name", "--api-key", "--port"):
+            if flag in params:
+                errors.append(f"Maya '{flag}' is set from the service fields, not a param")
 
     if template_type == "sglang":
         profile = params.get("--profile", "next")
