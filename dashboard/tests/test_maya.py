@@ -88,6 +88,11 @@ def test_render_creates_the_state_dir_before_compose_can(manager):
     assert state.is_dir()
 
 
+def test_render_uses_the_default_image_unless_the_service_names_one(manager):
+    assert render(manager, config())["image"] == "llm-dock-maya"
+    assert render(manager, config(image="llm-dock-maya-v1.1.49"))["image"] == "llm-dock-maya-v1.1.49"
+
+
 def test_inspected_service_binds_loopback(manager):
     rendered = render(manager, config(inspect=True, inspect_upstream_port=34007))
     assert rendered["ports"] == ["127.0.0.1:34007:8080"]

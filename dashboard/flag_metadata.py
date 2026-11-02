@@ -50,7 +50,7 @@ def engine_internal_port(template_type: str) -> int:
 
 
 # Image a service runs on when services.json carries no override. llamacpp,
-# ik_llamacpp, vllm and sglang honour config["image"]; the rest hardcode this in their
+# ik_llamacpp, vllm, sglang and maya honour config["image"]; the rest hardcode this in their
 # template. A new engine adds a row here.
 ENGINE_IMAGES = {
     "llamacpp": "llm-dock-llamacpp",

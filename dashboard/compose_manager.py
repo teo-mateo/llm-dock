@@ -378,6 +378,9 @@ class ComposeManager:
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+            # A service can run its own build (another Maya commit, from
+            # MAYA_IMAGE=... ./build-maya.sh) beside the default image.
+            context["image"] = config.get("image") or default_engine_image(template_type)
             # The container runs as the host user because it writes into the host's
             # ~/.cache/maya packs; a bind source Docker has to create itself would be
             # root-owned and unwritable for that user, so it exists before compose runs.
