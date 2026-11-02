@@ -36,10 +36,25 @@ RUN cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release \
  && for t in ${MAYA_TARGETS}; do cp "build/$t" /opt/maya-bin/; done \
  && rm -rf build
 
+# maya-vision: GLM-5.3-Flash's image encoder (llama.cpp's mtmd with Maya's GLM vision patch),
+# as maya.py's compile_vision() builds it. After the engines, so its llama.cpp patch never
+# touches their ggml. MAYA_VISION=0 skips it (DeepSeek reads pictures in its own engine).
+ARG MAYA_VISION=1
+RUN mkdir -p /opt/maya-vision \
+ && if [ "${MAYA_VISION}" = "1" ]; then \
+      python3 tools/vision/glm5next_patch.py /opt/maya/third_party/llama.cpp \
+   && cmake -G Ninja -S tools/vision -B build-vision -DCMAKE_BUILD_TYPE=Release \
+        -DLLAMA_DIR=/opt/maya/third_party/llama.cpp \
+        -DSTRATA_VISION_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+   && cmake --build build-vision --target maya-vision -j "${MAYA_JOBS:-$(( $(nproc) / 2 ))}" \
+   && cp build-vision/bin/maya-vision /opt/maya-vision/ \
+   && rm -rf build-vision; \
+    fi
+
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+ && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 # The serve-time packages of Maya's setup.py list, at the versions its native
 # venv runs (cmake/ninja are build-only).
@@ -50,6 +65,7 @@ RUN python3 -m venv /opt/venv \
 
 COPY --from=build /opt/maya /opt/maya
 COPY --from=build /opt/maya-bin/ /opt/maya/build/
+COPY --from=build /opt/maya-vision/ /opt/maya/build-vision/bin/
 COPY launcher.py /opt/llm-dock/launcher.py
 
 ARG CUDA_VERSION
@@ -59,15 +75,17 @@ ARG MAYA_COMMIT=unknown
 ARG MAYA_VERSION=
 ARG CUDA_ARCH=120
 ARG MAYA_TARGETS="maya-ds4 maya"
+ARG MAYA_VISION=1
 LABEL org.llm-dock.build.date="${BUILD_DATE}" \
       org.llm-dock.build.commit="${BUILD_COMMIT}" \
       org.opencontainers.image.source="https://github.com/mw00/project-maya" \
       org.opencontainers.image.version="${MAYA_VERSION}" \
       org.llm-dock.maya.commit="${MAYA_COMMIT}" \
       org.llm-dock.maya.cuda-arch="${CUDA_ARCH}" \
-      org.llm-dock.maya.targets="${MAYA_TARGETS}"
-RUN printf 'maya commit: %s\ncuda: %s\narch: sm_%s\ntargets: %s\nllama.cpp: %s\n' \
-      "${MAYA_COMMIT}" "${CUDA_VERSION}" "${CUDA_ARCH}" "${MAYA_TARGETS}" \
+      org.llm-dock.maya.targets="${MAYA_TARGETS}" \
+      org.llm-dock.maya.vision="${MAYA_VISION}"
+RUN printf 'maya commit: %s\ncuda: %s\narch: sm_%s\ntargets: %s\nvision: %s\nllama.cpp: %s\n' \
+      "${MAYA_COMMIT}" "${CUDA_VERSION}" "${CUDA_ARCH}" "${MAYA_TARGETS}" "${MAYA_VISION}" \
       "$(sed -n 's/^LLAMA_CPP_COMMIT = "\(.*\)"/\1/p' /opt/maya/setup.py)" > /opt/llm-dock.txt
 
 ENV PATH=/opt/venv/bin:$PATH MAYA_ROOT=/opt/maya MAYA_STATE_DIR=/maya-state \

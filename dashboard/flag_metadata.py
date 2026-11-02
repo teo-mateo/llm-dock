@@ -2133,6 +2133,14 @@ MAYA_FLAGS = {
         "description": "Seconds without a request after which the engine frees VRAM and pinned RAM; the next request reloads it (0 = never).",
         "impact": "Medium",
     },
+    "vision": {
+        "cli": "--vision",
+        "type": "string",
+        "category": "Server",
+        "description": "GLM only: auto runs the image encoder (maya-vision) when the image has it and the pack's vision folder holds the mmproj and vocab GGUFs; off reads text only. DeepSeek reads pictures in its own engine.",
+        "default": "auto",
+        "impact": "Medium",
+    },
     "gpu": {
         "cli": "--gpu",
         "type": "string",
