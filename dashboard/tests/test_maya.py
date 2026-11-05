@@ -88,6 +88,11 @@ def test_render_creates_the_state_dir_before_compose_can(manager):
     assert state.is_dir()
 
 
+def test_render_uses_the_default_image_unless_the_service_names_one(manager):
+    assert render(manager, config())["image"] == "llm-dock-maya"
+    assert render(manager, config(image="llm-dock-maya-v1.1.49"))["image"] == "llm-dock-maya-v1.1.49"
+
+
 def test_inspected_service_binds_loopback(manager):
     rendered = render(manager, config(inspect=True, inspect_upstream_port=34007))
     assert rendered["ports"] == ["127.0.0.1:34007:8080"]
@@ -140,6 +145,35 @@ def test_launcher_picks_the_glm_engine_and_its_defaults(glm_pack):
     assert cfg["exe"] == "/opt/maya/build/maya"
     assert cfg["args"][:2] == ["--glm-pack", str(glm_pack)]
     assert cfg["sampling"]["top_p"] == 0.95
+
+
+def glm_vision_files(pack, root):
+    (pack.parent / "vision").mkdir()
+    (pack.parent / "vision" / "mmproj-GLM-5.3-Flash-F16.gguf").write_text("")
+    (pack.parent / "vision" / "GLM-5.3-Flash-vocab.gguf").write_text("")
+    (root / "build-vision" / "bin").mkdir(parents=True)
+    (root / "build-vision" / "bin" / "maya-vision").write_text("")
+
+
+def test_launcher_gives_glm_its_vision_encoder_when_the_files_are_there(glm_pack, tmp_path):
+    root = tmp_path / "maya"
+    glm_vision_files(glm_pack, root)
+    argv = ["--pack", str(glm_pack), "--model-name", "svc"]
+    cfg, _ = launcher.build_config(argv, maya_root=root)
+    assert cfg["vision"] == {"exe": str(root / "build-vision/bin/maya-vision"),
+                             "mmproj": str(glm_pack.parent / "vision/mmproj-GLM-5.3-Flash-F16.gguf"),
+                             "model": str(glm_pack.parent / "vision/GLM-5.3-Flash-vocab.gguf"), "gpu": True}
+    assert "--vision" not in cfg["args"]
+    cfg, _ = launcher.build_config(argv + ["--vision", "off"], maya_root=root)
+    assert "vision" not in cfg
+
+
+def test_launcher_leaves_vision_out_without_the_encoder_or_for_deepseek(glm_pack, ds4_pack, tmp_path):
+    root = tmp_path / "maya"
+    glm_vision_files(glm_pack, root)
+    (root / "build-vision" / "bin" / "maya-vision").unlink()
+    assert "vision" not in launcher.build_config(["--pack", str(glm_pack), "--model-name", "s"], maya_root=root)[0]
+    assert "vision" not in build(ds4_pack)[0]
 
 
 def test_launcher_keeps_engine_flags_that_share_a_prefix_with_its_own(ds4_pack):

@@ -1,7 +1,7 @@
 # Thin adapter for jpezzulli/sglang-rtxpro6000 (Pennyroyal).
-# Pennyroyal v3.0.0, resolved from its release tag. CUDA stays inside Docker;
+# Pennyroyal v3.1.4, resolved from its release tag. CUDA stays inside Docker;
 # the adapter never installs or upgrades a host toolkit or kernel driver.
-ARG SGLANG_BASE=ghcr.io/jpezzulli/sglang-rtxpro6000@sha256:fd26ba8d3ce001bb6e4b865236e1b69f7f790b94fb7fe1c32aa81799f4fe338c
+ARG SGLANG_BASE=ghcr.io/jpezzulli/sglang-rtxpro6000@sha256:16be2a7e41c59ce2b70dcb84bebd001a618874f7797e884671d8754e5e3619bc
 FROM ${SGLANG_BASE}
 
 ARG SGLANG_BASE

@@ -40,6 +40,22 @@ def pack_family(pack: Path) -> str:
     raise SystemExit(f"[llm-dock] {pack} is not a Maya pack (no ds4.txt or index.txt)")
 
 
+VISION_EXE = "build-vision/bin/maya-vision"
+
+
+def glm_vision(pack: Path, maya_root: Path):
+    """GLM's image encoder section, as maya.py writes it: the image's maya-vision and the
+    mmproj + vocab GGUFs Maya's setup puts in a `vision` folder beside the pack; None when
+    either is missing (the model then reads text only)."""
+    exe = maya_root / VISION_EXE
+    folder = pack.parent / "vision"
+    mmproj = sorted(folder.glob("mmproj-*.gguf"))
+    vocab = sorted(folder.glob("*-vocab.gguf"))
+    if not (exe.is_file() and mmproj and vocab):
+        return None
+    return {"exe": str(exe), "mmproj": str(mmproj[0]), "model": str(vocab[0]), "gpu": True}
+
+
 def _parser() -> argparse.ArgumentParser:
     # allow_abbrev=False: an engine flag must never prefix-match a launcher knob
     # (`--model` would otherwise be read as --model-name).
@@ -55,6 +71,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--thinking-budget", type=int)
     p.add_argument("--engine-ready-s", type=int, default=3600)
     p.add_argument("--idle-unload", type=float)
+    # GLM only (DeepSeek reads pictures in its engine): auto = the encoder when its files are there
+    p.add_argument("--vision", choices=("auto", "off"), default="auto")
     return p
 
 
@@ -71,7 +89,8 @@ def build_config(argv: List[str], state_dir: Path = STATE_DIR,
         raise SystemExit(f"[llm-dock] {', '.join(reserved)} is set by the launcher, not a param")
 
     pack = Path(args.pack)
-    family = FAMILIES[pack_family(pack)]
+    name = pack_family(pack)
+    family = FAMILIES[name]
     gpus = [int(g) for g in str(args.gpu).split(",") if g.strip()]
 
     cfg = {
@@ -97,6 +116,10 @@ def build_config(argv: List[str], state_dir: Path = STATE_DIR,
         cfg["thinking_budget"] = args.thinking_budget
     if args.idle_unload is not None:
         cfg["idle_unload_s"] = args.idle_unload
+    if name == "glm" and args.vision == "auto":
+        vision = glm_vision(pack, maya_root)
+        if vision is not None:
+            cfg["vision"] = vision
     return cfg, args.api_key
 
 

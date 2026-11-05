@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-30
+- **Pennyroyal 3.1.4** - The SGLang image adapter now pins upstream `v3.1.4` (seven releases past `v3.0.0`): fixed verify widths by concurrency with `env:PENNY_MTP_POLICY` selecting the policy whose hash is NIXL cache identity, no preset KV pool, native reading of the capacity and HiCache env knobs, and the 3.1.3/3.1.4 fixes on this service's own paths - hybrid-Mamba chunk page alignment, admission reopening on an already-empty batch, NIXL restore validation, Responses and Anthropic tool handling, Qwen structured tool arguments. The FR-Spec recipe moved to a .97 static fraction, so the recipe patcher now parameterizes the literal the recipe carries instead of asserting `0.981`, and still raises when there is no literal to read. Container checks and the GPU check pass; the machine-local Flash-Next service has not been recreated on it yet, and that first boot re-qualifies its NIXL disk cache.
+
 ## 2026-10-28
 - **Project Maya engine** - Added `mw00/project-maya` as `template_type: "maya"`: `./build-maya.sh` compiles `maya-ds4` (DeepSeek-V4.1-Flash) and `maya` (GLM-5.3-Flash) from a local Maya checkout at one commit, and `maya/launcher.py` writes the `server.py` run config `maya.py` would, choosing the engine from the pack. The HF cache and `~/.cache/maya` are mounted at their host paths and the container runs as the host user, so packs built by the native install run unchanged. Unlimited memlock, a 150 s stop grace for the engine's QUIT, engine logs in `docker logs`, API-key auth, Open WebUI, chat and reasoning-effort mapping. Added the machine-local `maya-deepseek-v41-flash-dspark` service on port 3304 with the native DSpark run's settings; the image is built and that service has been started once.
 

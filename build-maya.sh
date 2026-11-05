@@ -7,9 +7,12 @@
 #   ./build-maya.sh                         # MAYA_SRC's HEAD
 #   MAYA_COMMIT=<sha> ./build-maya.sh       # a specific commit of MAYA_SRC
 #   MAYA_TARGETS=maya-ds4 ./build-maya.sh   # DeepSeek engine only (faster)
+#   MAYA_IMAGE=llm-dock-maya-v1.1.49 ./build-maya.sh   # a separate image, beside the default one
 #
 # Env: MAYA_SRC (default /github/mw00/project-maya), MAYA_COMMIT (default its
-# HEAD), CUDA_ARCH (default 120), MAYA_TARGETS, MAYA_JOBS (default nproc/2).
+# HEAD), CUDA_ARCH (default 120), MAYA_TARGETS, MAYA_JOBS (default nproc/2),
+# MAYA_IMAGE (default llm-dock-maya; a service picks another with its "image"),
+# MAYA_VISION (default 1: also build maya-vision, GLM's image encoder; 0 skips it).
 #
 
 set -e
@@ -23,6 +26,8 @@ MAYA_VERSION="$(git -C "$MAYA_SRC" show "$MAYA_COMMIT:VERSION" 2>/dev/null | tr 
 CUDA_ARCH="${CUDA_ARCH:-120}"
 MAYA_TARGETS="${MAYA_TARGETS:-maya-ds4 maya}"
 MAYA_JOBS="${MAYA_JOBS:-}"
+MAYA_IMAGE="${MAYA_IMAGE:-llm-dock-maya}"
+MAYA_VISION="${MAYA_VISION:-1}"
 
 # One extracted tree per commit, reused by later builds of the same commit and
 # never the checkout itself: uncommitted edits and build dirs stay out.
@@ -36,6 +41,8 @@ echo "  Maya source:  ${MAYA_SRC}"
 echo "  Maya commit:  ${MAYA_COMMIT} (${MAYA_VERSION:-no VERSION})"
 echo "  CUDA arch:    sm_${CUDA_ARCH}"
 echo "  Targets:      ${MAYA_TARGETS}"
+echo "  Image:        ${MAYA_IMAGE}"
+echo "  GLM vision:   ${MAYA_VISION}"
 echo ""
 
 if [ ! -f "$CTX/.complete" ]; then
@@ -56,14 +63,15 @@ docker buildx build --load \
     --build-arg MAYA_VERSION="$MAYA_VERSION" \
     --build-arg CUDA_ARCH="$CUDA_ARCH" \
     --build-arg MAYA_TARGETS="$MAYA_TARGETS" \
+    --build-arg MAYA_VISION="$MAYA_VISION" \
     --build-arg MAYA_JOBS="$MAYA_JOBS" \
-    -t llm-dock-maya ./maya/
+    -t "$MAYA_IMAGE" ./maya/
 
 echo ""
 echo -e "${GREEN}=========================================="
 echo "  Build Complete!"
 echo "==========================================${NC}"
 echo ""
-echo "The 'llm-dock-maya' image is now ready."
-echo "  docker run --rm --entrypoint cat llm-dock-maya /opt/llm-dock.txt"
+echo "The '${MAYA_IMAGE}' image is now ready."
+echo "  docker run --rm --entrypoint cat ${MAYA_IMAGE} /opt/llm-dock.txt"
 echo ""
