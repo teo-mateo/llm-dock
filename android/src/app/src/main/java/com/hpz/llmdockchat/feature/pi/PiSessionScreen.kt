@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,9 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -24,10 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +36,14 @@ import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import kotlin.math.roundToInt
 
 @Composable
-fun PiSessionScreen(state: PiSessionUiState, onBack: () -> Unit) {
+fun PiSessionScreen(
+    state: PiSessionUiState,
+    composerState: PiComposerState,
+    onBack: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionUiState.Loaded
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
@@ -80,7 +80,7 @@ fun PiSessionScreen(state: PiSessionUiState, onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    is PiSessionUiState.Loaded -> PiSessionTranscript(state)
+                    is PiSessionUiState.Loaded -> PiSessionLoaded(state, composerState, onDraftChange, onSend, onStop)
                 }
             }
         }
@@ -143,26 +143,33 @@ private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit) {
 }
 
 @Composable
-private fun PiSessionTranscript(state: PiSessionUiState.Loaded) {
-    val items = state.transcript.items
-    if (items.isEmpty()) return
-    val listState = rememberLazyListState()
-    var itemCountBefore by remember { mutableIntStateOf(0) }
-    LaunchedEffect(items.size) {
-        if (items.size > itemCountBefore) {
-            val follow = shouldFollow(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1, itemCountBefore)
-            itemCountBefore = items.size
-            if (follow) listState.animateScrollToItem(items.lastIndex)
-        } else {
-            itemCountBefore = items.size
+private fun PiSessionLoaded(
+    state: PiSessionUiState.Loaded,
+    composerState: PiComposerState,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val summary = state.summary
+    Column(Modifier.fillMaxSize()) {
+        PiSessionTranscript(
+            state,
+            composerState.lastStopAt,
+            Modifier.weight(1f),
+        )
+        if (summary != null) {
+            PiComposer(
+                live = summary.live,
+                working = state.transcript.working,
+                draft = composerState.draft,
+                sending = composerState.sending,
+                stopping = composerState.stopping,
+                notice = composerState.notice,
+                onDraftChange = onDraftChange,
+                onSend = onSend,
+                onStop = onStop,
+            )
         }
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().testTag("pi_session_list"),
-        state = listState,
-        contentPadding = PaddingValues(vertical = 8.dp),
-    ) {
-        items(items, key = { it.id }) { item -> PiItemView(item) }
     }
 }
 

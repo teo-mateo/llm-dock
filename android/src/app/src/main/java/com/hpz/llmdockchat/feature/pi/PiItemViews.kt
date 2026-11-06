@@ -16,13 +16,13 @@ import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.thread.MarkdownBody
 import com.hpz.llmdockchat.feature.thread.ReasoningBlock
 @Composable
-fun PiItemView(item: PiItem) {
+fun PiItemView(item: PiItem, lastStopAt: Long? = null) {
     when (item) {
         is PiItem.User -> PiUserItem(item)
         is PiItem.Assistant -> PiAssistantItem(item)
         is PiItem.Tool -> PiToolItem(item)
         is PiItem.Notice -> PiNoticeItem(item)
-        is PiItem.RunEnd -> PiRunEndItem(item)
+        is PiItem.RunEnd -> PiRunEndItem(item, lastStopAt)
     }
 }
 @Composable
@@ -178,9 +178,9 @@ private fun PiNoticeItem(item: PiItem.Notice) {
     )
 }
 @Composable
-private fun PiRunEndItem(item: PiItem.RunEnd) {
+private fun PiRunEndItem(item: PiItem.RunEnd, lastStopAt: Long?) {
     val colors = LlmTheme.colors
-    val text = if (item.outcome.isBlank()) "run ended" else "run ${item.outcome}"
+    val text = runEndLabel(item.outcome, item.ts, lastStopAt)
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
