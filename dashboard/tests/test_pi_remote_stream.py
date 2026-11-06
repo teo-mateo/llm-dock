@@ -66,9 +66,17 @@ def _message(key, seq):
 
 def test_sse_format_with_and_without_id():
     assert sse("events", {"a": 1}, 2) == (
-        "id: 2\nevent: events\ndata: {\"a\":1}\n\n"
+        "id: 2\nevent: events\ndata: {\"type\":\"events\",\"a\":1}\n\n"
     )
-    assert sse("events", {"a": 1}) == "event: events\ndata: {\"a\":1}\n\n"
+    assert sse("events", {"a": 1}) == (
+        "event: events\ndata: {\"type\":\"events\",\"a\":1}\n\n"
+    )
+
+
+def test_sse_data_carries_type():
+    assert sse("session", {"session_id": "s1"}) == (
+        "event: session\ndata: {\"type\":\"session\",\"session_id\":\"s1\"}\n\n"
+    )
 
 
 def test_replay_pages_until_done_then_session_frame():
@@ -157,7 +165,7 @@ def test_lagged_ends_stream_with_cursor():
     source.bus.publish(_message(("s1", "i1"), 1))
     source.bus.publish(_message(("s1", "i1"), 2))
     lagged = next(generator)
-    assert lagged == "event: lagged\ndata: {\"after\":0}\n\n"
+    assert lagged == "event: lagged\ndata: {\"type\":\"lagged\",\"after\":0}\n\n"
     assert list(generator) == []
 
 

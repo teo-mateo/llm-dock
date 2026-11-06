@@ -23,7 +23,9 @@ def sse(event: str, data: Mapping[str, Any], event_id: Optional[int] = None) -> 
     if event_id is not None:
         parts.append(f"id: {event_id}\n")
     parts.append(f"event: {event}\n")
-    parts.append("data: " + json.dumps(data, separators=(",", ":")) + "\n\n")
+    payload = {"type": event, **data}
+    payload["type"] = event
+    parts.append("data: " + json.dumps(payload, separators=(",", ":")) + "\n\n")
     return "".join(parts)
 
 
