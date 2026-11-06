@@ -35,6 +35,26 @@ class PiFormattingTest {
     }
 
     @Test
+    fun `session meta line carries cwd model context and age`() {
+        assertEquals(
+            "/forgejo/tubevault · qwen3.8-27b · ctx 12% · 4 min ago",
+            piSessionMetaLine("/forgejo/tubevault", "qwen3.8-27b", 12.0, "4 min ago"),
+        )
+    }
+
+    @Test
+    fun `session meta line omits unknown model and context instead of faking them`() {
+        assertEquals("/repo · now", piSessionMetaLine("/repo", null, null, "now"))
+        assertEquals("/repo · now", piSessionMetaLine("/repo", "  ", null, "now"))
+        assertEquals("/repo · ctx 0% · now", piSessionMetaLine("/repo", null, 0.0, "now"))
+    }
+
+    @Test
+    fun `session meta line rounds the context percentage`() {
+        assertEquals("/repo · ctx 34% · now", piSessionMetaLine("/repo", null, 33.6, "now"))
+    }
+
+    @Test
     fun `paused reports content that changed since the pause`() {
         val paused = FollowState(following = true, seen = null).pause("a")
         assertFalse(paused.hasUnseen("a"))

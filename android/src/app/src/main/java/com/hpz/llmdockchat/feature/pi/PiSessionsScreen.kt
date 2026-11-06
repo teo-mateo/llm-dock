@@ -67,8 +67,8 @@ fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth().weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
                         ) {
                             if (state.live.isNotEmpty()) {
                                 item(key = "live_header") {
@@ -113,56 +113,24 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
     val emphasis = if (session.state == PiState.ENDED) 0.72f else 1f
     Column(
         Modifier.fillMaxWidth().heightIn(min = 48.dp).alpha(emphasis)
-            .background(colors.surface, RoundedCornerShape(16.dp))
-            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+            .background(colors.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(14.dp))
             .clickable { onOpen(session.key) }
-            .padding(16.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
             .testTag("pi_session_${session.key.sessionId}_${session.key.instanceId}"),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
-                Text(
-                    name,
-                    color = colors.fg,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Text(
-                status,
-                color = statusColor,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.background(statusColor.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-        Text(
-            session.cwd,
-            color = colors.muted,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = MonoFontFamily,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (session.model != null) {
-                Text(
-                    session.model,
-                    color = colors.muted,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
+            Box(Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+            Text(
+                name,
+                color = colors.fg,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             if (session.needsAnswer) {
                 Text(
                     "Needs answer",
@@ -172,30 +140,26 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
                     maxLines = 1,
                     modifier = Modifier
                         .background(colors.purple.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                         .testTag("pi_needs_answer_${session.key.sessionId}_${session.key.instanceId}"),
                 )
             }
             Text(
-                formatAgo(nowMs, session.lastSeen),
-                color = colors.subtle,
+                status,
+                color = statusColor,
                 style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.background(statusColor.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
-        if (session.contextPercent != null) {
-            val fraction = session.contextPercent.coerceIn(0.0, 100.0) / 100.0
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(colors.line),
-                ) {
-                    Box(Modifier.fillMaxWidth(fraction.toFloat()).fillMaxHeight().background(colors.accent))
-                }
-                Text(
-                    "ctx ${Math.round(session.contextPercent)}%",
-                    color = colors.muted,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
+        Text(
+            piSessionMetaLine(session.cwd, session.model, session.contextPercent, formatAgo(nowMs, session.lastSeen)),
+            color = colors.muted,
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = MonoFontFamily,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
