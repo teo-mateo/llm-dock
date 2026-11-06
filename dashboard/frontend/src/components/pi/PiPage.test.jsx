@@ -189,3 +189,42 @@ describe('pi prompt cards', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'red' })).not.toBeInTheDocument())
   })
 })
+
+  it('keeps a bounded stack of many questions above the composer', () => {
+    const many = ['a', 'b', 'c'].map((id) => ({
+      prompt_id: `p-${id}`,
+      kind: 'select',
+      title: `Question ${id}`,
+      message: 'x'.repeat(600),
+      options: ['one', 'two', 'three', 'four', 'five', 'six'],
+      allow_free_text: false,
+      timeout_ms: null,
+    }))
+    usePiSessionEvents.mockReturnValue({
+      events: [],
+      summary: session({ prompts: many }),
+      connected: true,
+      error: null,
+    })
+    renderPage('/pi/s1/i1')
+    const stack = screen.getByTestId('pi-prompt-stack')
+    expect(stack).toHaveClass('overflow-y-auto')
+    expect(stack).toHaveClass('shrink-0')
+    expect(stack).toHaveTextContent('3 questions need an answer')
+    expect(screen.getByText('Question a')).toBeInTheDocument()
+    expect(screen.getByText('Question c')).toBeInTheDocument()
+    expect(screen.getByLabelText('Message to pi')).toBeInTheDocument()
+    expect(stack.compareDocumentPosition(screen.getByLabelText('Message to pi')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows no header line and no stack when nothing is open', () => {
+    usePiSessionEvents.mockReturnValue({
+      events: [],
+      summary: session({ prompts: [] }),
+      connected: true,
+      error: null,
+    })
+    renderPage('/pi/s1/i1')
+    expect(screen.queryByTestId('pi-prompt-stack')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Message to pi')).toBeInTheDocument()
+  })

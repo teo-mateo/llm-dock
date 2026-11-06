@@ -69,14 +69,27 @@ export default function PiPage() {
         ) : (
           <>
             {summary && <PiSessionHeader summary={summary} onBack={() => navigate('/pi')} />}
-            {prompts.map((prompt) => (
-              <PiPromptCard
-                key={prompt.prompt_id}
-                prompt={prompt}
-                live={summary?.live}
-                onAnswer={(value) => handleAnswer(prompt.prompt_id, value)}
-              />
-            ))}
+            {prompts.length > 0 && (
+              <div
+                data-testid="pi-prompt-stack"
+                aria-label={`${prompts.length} open question${prompts.length === 1 ? '' : 's'}`}
+                className="max-h-[45dvh] shrink-0 overflow-y-auto border-b border-border bg-app"
+              >
+                {prompts.length > 1 && (
+                  <p className="sticky top-0 z-10 border-b border-border bg-app px-4 py-1.5 text-xs font-semibold text-fg-muted md:px-6">
+                    {prompts.length} questions need an answer
+                  </p>
+                )}
+                {prompts.map((prompt) => (
+                  <PiPromptCard
+                    key={prompt.prompt_id}
+                    prompt={prompt}
+                    live={summary?.live}
+                    onAnswer={(value) => handleAnswer(prompt.prompt_id, value)}
+                  />
+                ))}
+              </div>
+            )}
             <PiTranscript
               items={items}
               working={working}
