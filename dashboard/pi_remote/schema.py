@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS pi_prompts (
     opened_ts       INTEGER NOT NULL,
     closed_seq      INTEGER,
     closed_ts       INTEGER,
+    applied_seq     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_id, instance_id, prompt_id)
 );
 
@@ -83,8 +84,8 @@ UPSERT_PROMPT_SQL = """
 INSERT INTO pi_prompts (
     session_id, instance_id, prompt_id, kind, title, message,
     options_json, allow_free_text, timeout_ms, status,
-    opened_seq, opened_ts
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+    opened_seq, opened_ts, applied_seq
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
 ON CONFLICT(session_id, instance_id, prompt_id) DO UPDATE SET
     kind = excluded.kind,
     title = excluded.title,
@@ -98,14 +99,16 @@ ON CONFLICT(session_id, instance_id, prompt_id) DO UPDATE SET
     opened_seq = excluded.opened_seq,
     opened_ts = excluded.opened_ts,
     closed_seq = NULL,
-    closed_ts = NULL
- WHERE pi_prompts.opened_seq < excluded.opened_seq
+    closed_ts = NULL,
+    applied_seq = excluded.applied_seq
+ WHERE pi_prompts.applied_seq < excluded.applied_seq
 """
 
 CLOSE_PROMPT_SQL = """
-UPDATE pi_prompts SET status = ?, value_json = ?, answered_by = ?, closed_seq = ?, closed_ts = ?
+UPDATE pi_prompts SET status = ?, value_json = ?, answered_by = ?, closed_seq = ?, closed_ts = ?,
+    applied_seq = ?
  WHERE session_id = ? AND instance_id = ? AND prompt_id = ?
-   AND (closed_seq IS NULL OR closed_seq < ?)
+   AND applied_seq < ?
 """
 
 

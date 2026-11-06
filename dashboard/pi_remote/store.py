@@ -57,6 +57,7 @@ class PiRemoteDB:
                 ("pi_sessions", "acked_seq", "INTEGER NOT NULL DEFAULT 0"),
                 ("pi_events", "gap_from", "INTEGER"),
                 ("pi_events", "gap_to", "INTEGER"),
+                ("pi_prompts", "applied_seq", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:

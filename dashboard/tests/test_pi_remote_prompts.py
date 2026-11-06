@@ -235,6 +235,31 @@ def test_a_cancelled_winner_is_not_replaced_by_an_older_answer(env):
     assert (row.status, row.value, row.answered_by) == ("cancelled", None, None)
 
 
+def test_a_late_open_between_an_older_open_and_a_newer_close_keeps_the_decision(env):
+    ingest(env, opened())
+    assert reingest(env, 10, closed(value="green", answered_by="remote")).status == 200
+    assert reingest(env, 5, opened()).status == 200
+    assert env["client"].session(("s1", "i1")).prompts == []
+    row = env["store"].prompts.get("s1", "i1", "call-1")
+    assert (row.status, row.value, row.answered_by) == ("answered", "green", "remote")
+
+
+def test_a_late_close_older_than_the_current_open_is_ignored(env):
+    assert reingest(env, 5, opened()).status == 200
+    assert reingest(env, 10, closed(value="green")).status == 200
+    assert reingest(env, 3, closed(value="red", answered_by="terminal")).status == 200
+    row = env["store"].prompts.get("s1", "i1", "call-1")
+    assert (row.status, row.value, row.answered_by) == ("answered", "green", "remote")
+    assert env["client"].session(("s1", "i1")).prompts == []
+
+
+def test_a_reannounced_open_after_a_decision_still_reopens(env):
+    ingest(env, opened(), closed(value="green"))
+    assert env["client"].session(("s1", "i1")).prompts == []
+    ingest(env, opened())
+    assert env["client"].session(("s1", "i1")).prompts == [dict(QUESTION)]
+
+
 def test_closed_prompts_are_purged_after_retention(env):
     ingest(env, opened(), closed())
     assert env["store"].events.purge_old(1500 + 31 * 24 * 60 * 60 * 1000) >= 1

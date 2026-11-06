@@ -60,6 +60,7 @@ def open_values(session_id: str, instance_id: str, event: StoredEvent) -> Option
         body.get("timeout_ms"),
         event.seq,
         event.ts,
+        event.seq,
     )
 
 
@@ -75,6 +76,7 @@ def close_values(session_id: str, instance_id: str, event: StoredEvent) -> Optio
         body.get("answered_by"),
         event.seq,
         event.ts,
+        event.seq,
         session_id,
         instance_id,
         body.get("prompt_id"),
