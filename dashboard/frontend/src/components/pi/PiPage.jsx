@@ -1,3 +1,4 @@
+import './PiPage.css'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { buildTranscript } from '../../utils/piTranscript'
@@ -56,12 +57,15 @@ export default function PiPage() {
       </aside>
 
       <section
-        className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface h-[calc(100dvh-5.5rem)] md:h-[calc(100vh-160px)] ${
+        className={`pi-canvas min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface h-[calc(100dvh-5.5rem)] md:h-[calc(100vh-160px)] ${
           selectedKey ? 'flex' : 'hidden md:flex'
         }`}
       >
         {!selectedKey ? (
-          <p className="m-auto text-sm text-fg-muted">Pick a session to watch it here.</p>
+          <div className="pi-empty m-auto flex max-w-[calc(100%_-_2rem)] flex-col items-center gap-4 rounded-2xl border border-border px-8 py-7 text-center">
+            <span aria-hidden="true" className="pi-empty-mark flex h-12 w-12 items-center justify-center rounded-2xl font-mono text-2xl">✳</span>
+            <p className="text-sm text-fg-muted">Pick a session to watch it here.</p>
+          </div>
         ) : error === 'unknown_session' ? (
           <p className="m-auto px-6 text-center text-sm text-fg-muted">
             This session is no longer known to the dashboard.
