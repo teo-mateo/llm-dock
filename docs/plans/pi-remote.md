@@ -26,7 +26,7 @@ checkout `~/.nvm/.../bin/pi` symlinks to), in
 | Streaming text | `message_update {message, assistantMessageEvent}` (token-level), `message_start/message_end` | `types.ts:1045-1062` |
 | Tools | `tool_execution_start/update/end` (args, partialResult, result, isError, durationMs) | `types.ts:1064-1099` |
 | Model / thinking changes | `model_select`, `thinking_level_select` events; `pi.setModel(model)`, `pi.setThinkingLevel(level)`, `ctx.modelRegistry`, `ctx.scopedModels` | `types.ts:1104-1120`, ExtensionAPI |
-| Send input | `pi.sendUserMessage(text \| (TextContent\|ImageContent)[], {deliverAs: "steer"\|"followUp", expandPromptTemplates})` — images supported | ExtensionAPI |
+| Send input | `pi.sendUserMessage(text \| (TextContent\|ImageContent)[], {deliverAs: "steer"\|"followUp", expandPromptTemplates})` — images supported; pi accepts both modes, llm-dock fixes `steer` (A2) | ExtensionAPI |
 | Stop | `ctx.abort()`, `ctx.isIdle()`, `ctx.signal` | `types.ts:325-366` |
 | Terminal dialogs | `ctx.ui.select/confirm/input/editor(…, {signal, timeout})` — **an AbortSignal dismisses the dialog** | `types.ts:114-160` |
 | Prompt observation | `ui_prompt_start/ui_prompt_end {kind, title}` — **title only, no options, no way to answer it** | `types.ts:1009-1026`, `runner.ts:570-616` |
@@ -50,178 +50,50 @@ Consequences that shape the design:
   queue. `pi.sendUserMessage(..., {deliverAs: "steer"})` was consumed in every one
   of 28 measured runs, and queueing it at `turn_end` / `agent_before_settle` /
   `agent_end` starts a continuation run immediately. So phone messages need no
-  boundary-delivery machinery, only the `hasPendingMessages()` re-send check —
-  see **A2 measurements** below.
+  boundary-delivery machinery, only the identity + settle check in §2 (§0 A2 and
+  [P0 evidence §A2](pi-remote-p0-evidence.md#a2-busy-time-delivery-326) for the numbers).
 
 Assumptions, marked where Phase 0 has verified them:
 
 - A1 **verified 2026-11-06 (issue #322):** a pi extension reaches a Unix-domain
-  socket with `node:http` `request({socketPath})` — a plain POST and a long-lived
-  `GET` SSE stream both work, with **no new npm dependency**. Global `fetch` is
-  not the route: it cannot take a socket path without the `undici` package, while
-  `node:http` is available because pi loads extensions through `jiti` inside the
-  Node process (pi's own code already imports `node:net`). Killing the server
-  mid-stream neither hangs nor crashes pi: the extension reports `ECONNREFUSED`,
-  backs off 1→2→4→8→15 s and reconnects when the server returns; quitting pi
-  closes the stream and the server logs the client disconnect.
-  Gotchas: `~/.cache/llm-dock` is **root-owned** on this host (`drwxr-xr-x root`),
-  so the socket lives in `~/.cache/pi-remote/` — directory `0700`, socket `0600`,
-  both created by the binder; `BaseHTTPRequestHandler.address_string()` raises
-  `IndexError` on `AF_UNIX` because `client_address` is a string; `ctx.ui.notify`
-  info messages are a single replaceable status line, so consecutive
-  notifications overwrite each other; a killed stream fires both `error` and
-  `end`, so reconnect scheduling must be idempotent.
-  Probe (issue #322): `python3 pi-extension/spike/uds-probe/server.py` and
-  `pi --model mistral/mistral-small-latest --no-extensions -e pi-extension/spike/uds-probe/probe.ts`.
-  The loopback-TCP fallback is not needed.
+  socket with `node:http` `request({socketPath})` — POST and a long-lived SSE stream
+  both work with **no new npm dependency** (global `fetch` cannot take a socket path
+  without `undici`). Server kill mid-stream → `ECONNREFUSED`, backoff 1→2→4→8→15 s,
+  reconnect; quitting pi closes the stream. Evidence, gotchas and commands:
+  [P0 evidence §A1](pi-remote-p0-evidence.md#a1-uds-transport-from-a-pi-extension-322).
 - A2 **verified 2026-11-06 (issue #326):** `pi.sendUserMessage` behaves as documented
-  and **nothing was lost in 28 runs** — idle, mid-text-stream, mid-tool, at the final
-  `turn_end`, at `agent_before_settle`, at `agent_end`. A busy send is consumed at the
-  next turn boundary of the same run; a boundary send is consumed in a continuation
-  run. The chatterbox race did not reproduce for `sendUserMessage` (it is about
-  `pi.sendMessage` with `deliverAs: "steer"` plus chatterbox's own queue), and the
-  `agent_end` → `agent_settled` window measured 0–2 ms. Measurements, the detector for
-  "queued but never consumed", and the recommended delivery rule: **A2 measurements**
-  below.
-- A3 **verified 2026-11-06 (issue #326):** `ctx.modelRegistry` is the catalogue.
-  `getAvailable()` returned 544 models with credentials present; `getAll()` 1580,
-  including providers with no key. `hasConfiguredAuth(model)` is the per-model
-  usability bit, `find(provider, id)` → `Model | undefined`, `getError()` → the reason
-  when the catalogue failed. A model is passed straight to
-  `await pi.setModel(model)` → `true` (verified switching to
-  `mistral/ministral-3b-latest` and back). `ctx.scopedModels` is empty unless
-  `--models` / `enabledModels` scoping is configured. Sample below.
+  and **nothing was lost in 28 runs** (idle, mid-stream, mid-tool, final `turn_end`,
+  `agent_before_settle`, `agent_end`). A busy send is consumed at the next turn
+  boundary of the same run (0.3–6.7 s); a boundary send starts a continuation run
+  (0–1 ms). `deliver_as` is therefore a dead contract: the mode is always `steer`.
+  Table, log excerpts and the settle-window measurement:
+  [P0 evidence §A2](pi-remote-p0-evidence.md#a2-busy-time-delivery-326).
+- A3 **verified 2026-11-06 (issue #326):** `ctx.modelRegistry` is the catalogue —
+  `getAvailable()` (key present) vs `getAll()`, `hasConfiguredAuth(model)`,
+  `find(provider, id)`, `getError()`; `await pi.setModel(model)` takes the object
+  whole and returns `true`; `ctx.scopedModels` is empty without `--models` scoping.
+  Sample: [P0 evidence §A3](pi-remote-p0-evidence.md#a3-model-catalogue-326).
 - A4 **verified 2026-11-06 (issue #326):** aborting through the `AbortSignal` resolves
-  the dialog promise instead of throwing — `select` → `undefined`, `input` →
-  `undefined`, `confirm` → `false` (confirm is `result === "Yes"`) — after
-  2502–2503 ms on a 2500 ms timer. `timeout` takes the same cancel path
-  (`undefined` / `false` at 3001 ms) and renders a live countdown. The TUI is left
-  clean: the next `/` command runs normally. Evidence and source citations below.
+  the dialog promise instead of throwing (`select`/`input` → `undefined`, `confirm` →
+  `false`), `timeout` takes the same cancel path, and the TUI stays clean — what §4's
+  `ask_user` depends on. Evidence and source citations:
+  [P0 evidence §A4](pi-remote-p0-evidence.md#a4-dialog-abort-and-timeout-326).
 - A5 The `llm-dock` systemd unit runs as `teodor` (relevant only if the dashboard
   ever reads pi JSONL files directly — the plan does not require it).
 - A6 How 3399 reaches the internet — **answered 2026-11-06:** `https://models.ai.heapzilla.eu`, nginx 1.24 terminating TLS in front of :3399 (`/api/health` answers 200 over HTTP/2).
 
-### A2 measurements (issue #326)
+**Delivery rule (A2 decision).**
 
-Probe: `pi-extension/spike/api-probe/` (wiring in `index.ts`, pure helpers in
-`transcript.ts` + `scenarios.ts`, dialogs in `dialogs.ts`). One log per pi session in
-`/tmp/pi-api-probe/<session-id>.log`; the excerpts below come from sessions
-`01a1b09a`, `01a1b09d` and `01a1b09e`.
-
-```
-pi --model mistral/mistral-small-latest --no-extensions [-nt] -e pi-extension/spike/api-probe/index.ts
-/probe-scenario <idle|stream|tool|turnend|settle|agentend>-<steer|followup>
-/probe-dialog select|confirm|input [abortMs|none] [timeoutMs]
-/probe-models
-/probe-set-model provider/model-id
-```
-
-Every injected message carries a unique token, so "delivered" means the token appeared
-in a `message_start` event rather than "the model seemed to notice". `run` is pi's
-agent-run counter at the moment of delivery (`agent_start` increments it), which is how
-"same run" and "new run" are decided. Text-only runs used `--no-tools` so a tool call
-could not swallow the stream; the tool rows used a normal session.
-
-| Situation | deliverAs | Runs | Delivered | Where | Delay after inject |
-|---|---|---|---|---|---|
-| idle (send starts a turn) | steer | 3 | 3/3 | new run | 1–5 ms |
-| idle | followUp | 2 | 2/2 | new run | 1 ms |
-| mid-stream, text answer | steer | 3 | 3/3 | same run, next turn | 1.6–1.7 s |
-| mid-stream, text answer | followUp | 2 | 2/2 | same run, next turn | 0.3–1.1 s |
-| while a tool call runs | steer | 2 | 2/2 | same run, after the tool turn | 4.3–6.7 s |
-| while a tool call runs | followUp | 2 | 2/2 | same run, after the tool turn | 5.0–5.1 s |
-| at the final `turn_end` | steer | 2 | 2/2 | same run (continuation) | 0–1 ms |
-| at the final `turn_end` | followUp | 2 | 2/2 | same run (continuation) | 0–1 ms |
-| at `agent_before_settle` | steer | 2 | 2/2 | continuation run, no settle in between | 0–1 ms |
-| at `agent_before_settle` | followUp | 2 | 2/2 | continuation run, no settle in between | 0–1 ms |
-| at `agent_end` | steer | 2 | 2/2 | continuation run | 1 ms |
-| at `agent_end` | followUp | 2 | 2/2 | continuation run | 1 ms |
-
-What the log showed, per row:
-
-- **idle** — `sendUserMessage` starts a turn whatever `deliverAs` says; `idle=true` at
-  the injection, `agent_start` within the same millisecond.
-- **mid-stream** — `idle=false`, `pendingBefore=false`; the following `turn_end` logs
-  `pending=true`, i.e. the message is queued and not yet consumed, and delivery lands
-  in the next turn of the same run. A steer does **not** interrupt the in-flight
-  assistant message; it is appended after it.
-- **tool running** — injection inside `tool_execution_start`…`tool_execution_end`;
-  consumed at the turn boundary that follows the tool result.
-- **final `turn_end`** — `ctx.isIdle()` is `false` in that handler, so "final" is
-  identified structurally: the turn's assistant message contains no `toolCall` part.
-  The injected message is consumed immediately and the run continues.
-- **`agent_before_settle` / `agent_end`** — the message is consumed immediately and a
-  **new agent run starts without the previous one settling** (no `agent_settled` for
-  the injecting run). This is the safest place to inject.
-- **nothing was lost or delayed past the run**: no row ended with
-  `hasPendingMessages() === true` at `agent_settled`.
-- Early runs with a short answer settled before the 1.5 s timer fired; the probe logs
-  those as `inject_skipped … settled_before_timer` and they are excluded from the
-  table. `ctx.isIdle()` is `true` only at `agent_settled` (and when idle), never in
-  `turn_end`, `agent_end` or `agent_before_settle`.
-
-**Recommended delivery rule for P3 (A2 decision).**
-
-1. `ctx.isIdle()` → send with `pi.sendUserMessage(text)`; `deliverAs` is irrelevant,
-   the call starts a turn.
-2. Busy → `pi.sendUserMessage(text, {deliverAs: "steer"})`. pi consumes it at the next
-   turn boundary of the same run, measured 0.3–6.7 s depending on what is in flight.
-3. **Detecting a steer that was not consumed**: `ctx.hasPendingMessages()` is the
-   field — it is `true` at the `turn_end` / `agent_before_settle` where the message is
-   still queued and `false` once consumed. A run that settles with it still `true` lost
-   the message; the transcript check the probe used (`token` in
-   `ctx.sessionManager.getBranch()`) is the belt-and-braces version and also catches a
-   message that never reached the queue. If either says "not consumed", re-send once as
-   a user message from `agent_settled` (the agent is idle there, so it starts a turn);
-   key the re-send on the command id so a duplicate cannot be sent twice.
-4. Chatterbox's dedicated boundary delivery (`{entries, continue: true}` at `turn_end`
-   and `agent_before_settle`) is **not required** for `sendUserMessage`. Keep it as the
-   fallback for any command that has to use `pi.sendMessage` custom messages — the
-   steering-queue loss in chatterbox's README is about that path, not about
-   `sendUserMessage`, which always triggers a turn.
-
-### A3 sample (trimmed)
-
-```
-models available=544 all=1580 current=mistral/mistral-small-latest scoped=0 error=none
-model available mistral/mistral-small-latest name="Mistral Small (latest)" api=mistral-conversations contextWindow=262144 maxTokens=256000 reasoning=true input=text+image hasAuth=true
-model available mistral/ministral-3b-latest name="Ministral 3B (latest)" api=mistral-conversations contextWindow=131072 maxTokens=128000 reasoning=false input=text+image hasAuth=true
-model unavailable zai/glm-5.3 name="GLM-5.3" hasAuth=false
-find mistral/mistral-small-latest -> mistral/mistral-small-latest
-set_model request=mistral/ministral-3b-latest found=mistral/ministral-3b-latest before=mistral/mistral-small-latest
-set_model result=true requested=mistral/ministral-3b-latest
-set_model request=mistral/does-not-exist found=none before=mistral/mistral-small-latest
-```
-
-`ctx.modelRegistry.getAll()` includes models whose provider has no key
-(`hasAuth=false`) — the picker must use `getAvailable()` or filter on
-`hasConfiguredAuth(model)`, otherwise it offers models that fail at request time. The
-`Model` object carries `id`, `name`, `api`, `provider`, `input`, `contextWindow`,
-`maxTokens`, `reasoning`, `cost`; `pi.setModel(model)` takes that object whole and
-returns a boolean (no throwing on a bad reference — a missing model is simply absent
-from `find`).
-
-### A4 evidence (issue #326)
-
-```
-dialog_start kind=select abortMs=2500 timeoutMs=none
-dialog_end kind=select mode=abort result=undefined elapsedMs=2502
-dialog_start kind=confirm abortMs=2500 timeoutMs=none
-dialog_end kind=confirm mode=abort result=false elapsedMs=2502
-dialog_start kind=input abortMs=2500 timeoutMs=none
-dialog_end kind=input mode=abort result=undefined elapsedMs=2503
-dialog_start kind=select abortMs=none timeoutMs=3000
-dialog_end kind=select mode=timeout result=undefined elapsedMs=3001
-```
-
-`capture-pane` during the abort shows the dialog (`↑↓ navigate  enter select
-escape/ctrl+c cancel`), after it the normal composer, and the next `/probe-log` command
-runs — no stray prompt, editor still live. Source: `interactive-mode.ts:2681-2710`
-(select resolves `undefined` on abort), `:2738-2745` (confirm → `result === "Yes"`),
-`:2758-2792` (input → `undefined`), and the countdown/timeout path in
-`components/extension-selector.ts:56-63` (timeout calls the same cancel callback). This
-is what §4 needs for `ask_user`: aborting a remote-answered prompt is a normal cancel,
-not an error, and no cleanup beyond resolving the promise is required.
+1. Idle (`ctx.isIdle()`): `pi.sendUserMessage(text)` — it starts a turn, `deliverAs`
+   is irrelevant.
+2. Busy: `pi.sendUserMessage(text, {deliverAs: "steer"})` — consumed at the next turn
+   boundary of the same run.
+3. Unconfirmed at `agent_settled`: re-send once as a plain user message; "unconfirmed"
+   is defined in §2 *Delivery identity and the settle check*.
+4. Chatterbox's boundary delivery (`{entries, continue: true}` at `turn_end` /
+   `agent_before_settle`) is **not** needed on this path — the loss documented in
+   `chatterbox/README.md` is about the `pi.sendMessage` steering queue, not
+   `sendUserMessage`. Keep it as the fallback for custom messages.
 
 ---
 
@@ -295,11 +167,43 @@ returned as `command_result {command_id, ok, error}`; ids are idempotent):
 
 | Command | Executes |
 |---|---|
-| `send_message {text, images, deliver_as}` | idle → `pi.sendUserMessage` (starts a turn); busy → `deliverAs: "steer"`; at `agent_settled`, re-send once if `hasPendingMessages()` or the transcript lacks the token (A2 measurements above) |
+| `send_message {text, images}` | idle → `pi.sendUserMessage` (starts a turn); busy → `deliverAs: "steer"`, fixed; unconfirmed commands re-sent once at `agent_settled` (see *Delivery identity* below) |
 | `abort` | `ctx.abort()` |
 | `answer_prompt {prompt_id, value}` | resolves a pending prompt (§4) |
 | `set_model {provider, id}` / `set_thinking {level}` | `pi.setModel` / `pi.setThinkingLevel`; result reports clamping/auth failure |
 | `list_models` | from `ctx.modelRegistry` / `ctx.scopedModels` (A3) |
+
+**Delivery identity and the settle check.** The rule in §0 needs to know *which* phone
+message landed, and no in-band marker is allowed — text added for tracking reaches the
+model, and matching on text alone breaks on duplicates and images. So:
+
+- **Identity.** `delivery.ts` keeps an ordered FIFO of what it sent while busy:
+  `{command_id, content_hash, sent_at}`, where `content_hash` is computed over the
+  normalized payload — the text plus the number of image parts — because the delivered
+  message carries image blocks while our record holds attachment ids. A
+  `role: "user"` `message_start` whose normalized content matches the head consumes
+  that command and removes it from the FIFO. FIFO order disambiguates duplicates
+  (identical text + image count is consumed one message at a time), and a message
+  typed at the terminal does not match the head, so it never consumes a slot.
+- **Predicate.** At `agent_settled`: `unconfirmed` = commands sent during the run that
+  no matching `message_start` consumed. `ctx.hasPendingMessages()` is logged next to it
+  as corroboration but is not the predicate — it cannot say *which* command is queued,
+  and it was `true` at the tool-bearing `turn_end` in every measured run even though the
+  message was consumed at that boundary.
+- **Still pending at settle → re-send.** The command is re-sent once, as a plain
+  `pi.sendUserMessage` from `agent_settled` (the agent is idle there, so it starts a
+  turn) and marked `resent`, so a later settle cannot send it again. A bare "wake the
+  agent and let the queue drain" is rejected: the queue is only consumed at turn
+  boundaries *inside* a run, which is exactly the drain the chatterbox README documents
+  as unreliable, while the idle send was reliable in every measured row. The residual
+  risk is a duplicate: if the queued copy is delivered later anyway, the model sees it
+  twice; the FIFO head is already `resent`, so the duplicate is recorded, not re-sent.
+
+**Module shape.** All of that is one pure module, `delivery.ts`, with
+`track(command_id, content, now)`, `observe(message, now)` and
+`settle(branch, hasPending)`, owning every timer it starts and covered by `node --test`;
+the lifecycle wiring in `index.ts` only forwards events. Same shape as the
+`ReconnectingStream` note from the #324 review.
 
 `expandPromptTemplates` is always **false**: phone text never dispatches slash
 commands. Phone messages are echoed into the terminal via `ctx.ui.notify("📱 …")`
@@ -374,7 +278,7 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 | GET | `/sessions/<id>` | meta + current state + open prompts |
 | GET | `/sessions/<id>/events?before_seq&limit` | history paging |
 | GET | `/sessions/<id>/stream?after_seq=N` | SSE: replay from N, then live tail, heartbeats (pattern of `run_manager.observe()` + `event_bus` replay) |
-| POST | `/sessions/<id>/messages` | `{text, attachment_ids, deliver_as}` → 202 + command_id |
+| POST | `/sessions/<id>/messages` | `{text, attachment_ids}` → 202 + command_id |
 | POST | `/sessions/<id>/abort` | stop the current run |
 | POST | `/sessions/<id>/prompts/<pid>/answer` | `{value}` → 200, or 409 if already answered |
 | GET / PUT | `/sessions/<id>/model`, `/sessions/<id>/thinking` | list / set |
@@ -451,7 +355,7 @@ via implementer + reviewer agents; `Plan_TOC.md` §6 index). Numbers are proposa
 |---|---|---|
 | F17 | Sessions tab — list | third bottom tab "Pi"; live first (state chip, cwd, name, model, ⚠ pending prompt), ended below; `/sessions/stream` |
 | F18 | Session view — live transcript | reuse F05 rendering for markdown and tool calls (collapsed tool output), replay from `after_seq`, history paging; read-only |
-| F19 | Composer + Stop | send text; Stop button while `working`; follow-up vs steer toggle; "terminal: control off" disabled state |
+| F19 | Composer + Stop | send text (always steer); Stop button while `working`; "terminal: control off" disabled state |
 | F20 | Prompt cards | inline buttons for confirm/select/approval, text for input, closed state showing who answered |
 | F21 | Attachments | images from gallery/camera/share sheet (F14 reuse) → `/attachments` → message |
 | F22 | Voice in | record → `/transcribe` → text **into the composer for review**, never auto-sent; Android `SpeechRecognizer` as an offline-free fallback is an open question |
@@ -570,7 +474,12 @@ P4 is where the "away from keyboard" story pays off.
    JSONL history.
 6. **Busy-send semantics**: phone message while pi works — default follow-up
    (after the run) or steer (into the current run)?
-   **Answered 2026-11-06: steer.** The lost-steer case above must be handled: a steer that the run never consumed is re-delivered as a follow-up.
+   **Answered 2026-11-06: steer, and only steer** — `deliver_as` is dropped from the
+   command and the API. #326 measured that `sendUserMessage` with either mode is
+   consumed at the next turn boundary of the same run and that nothing was lost in 28
+   runs, so "re-delivered as a follow-up" is not a second path but the settle-time
+   re-send defined once in §2 (*Delivery identity and the settle check*) and in §0's
+   delivery rule.
 7. **rm-gate**: OK to modify it to use the `pi.events` ask contract, so its
    approvals become answerable from the phone?
    **Answered 2026-11-06: yes, modify rm-gate.**
