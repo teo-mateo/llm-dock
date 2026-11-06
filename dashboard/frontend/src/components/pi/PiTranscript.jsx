@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { runEndLabel } from '../../utils/piCommands'
 import PiMessage from './PiMessage'
+import PiNotice from './PiNotice'
 import PiToolGroup from './PiToolGroup'
 import { groupToolRuns } from '../../utils/piToolRuns'
 
@@ -50,11 +51,7 @@ export default function PiTranscript({ items, working, lastStopAt }) {
             return <PiToolGroup key={item.id} group={item} />
           }
           if (item.kind === 'notice') {
-            return (
-              <p key={item.id} className="text-center text-xs text-fg-muted">
-                {item.text}
-              </p>
-            )
+            return <PiNotice key={item.id} text={item.text} />
           }
           if (item.kind === 'run_end') {
             return (
