@@ -143,7 +143,8 @@ with `node --test` units, a transport module.
 specified once in §3 *Extension endpoint*; this is the behaviour (P1 today:
 hello/heartbeat/bye plus `POST /v1/events`).
 - On `session_start` (any reason): `hello` with the session identity and runtime
-  metadata. `instance_id` is random per runtime, so one session resumed in two
+  metadata. `instance_id` is random per `SessionRuntime` (a new one on every
+  `session_start`), so every seq stream has its own key; one session resumed in two
   terminals is two instances, not one.
 - Snapshot on hello: the active branch (`getBranch()`), rendered to wire events, so a
   session that started before the dashboard (or before the extension connected) still
@@ -164,15 +165,15 @@ at 64 KB UTF-8 bytes with `truncated: true`. `message-content.ts`, `coalesce.ts`
 rules.
 
 **Outbox & reconnect** — pure `outbox.ts`, bounded to 1000 data events (gap markers are
-extra and merge adjacent dropped seqs). Events stay until the dashboard acks their
-`seq`. Overflow drops the oldest deltas first, then tool updates, and never
+extra and are never merged; each dropped range gets a new gap event). Events stay
+until the dashboard acks their `seq`. Overflow drops the oldest deltas first, then tool updates, and never
 `state`/`run_end`/`user_message`/`assistant_message`; it records a `gap` event at the
 dropped seq's slot. `discard(seqs)` removes a rejected batch and records its gap.
 `sender.ts` flushes batches (≤ 50 events, ≤ 1 MiB body) while `Presence` is online,
 using the shared `backoff.ts`. On `onOnline(ackedSeq)` it acks the hello's stream
 position and resends the rest; a 404 on `/v1/events` calls `Presence.rejoin()`, the same
-re-hello path as a heartbeat; `400 bad_frame` discards the batch with a gap instead of
-retrying. `Presence` owns no events and `rejoin()` is idempotent while registering.
+re-hello path as a heartbeat; `400 bad_frame` discards the batch with a gap and schedules
+the usual backoff instead of re-flushing immediately. `Presence` owns no events and `rejoin()` is idempotent while registering.
 
 **Off / on / stop** — one `SessionRuntime` owns Presence, Sender and Mirror.
 `pause()` (from `/remote off`) stops the sender (awaiting an in-flight batch), sends
@@ -326,7 +327,7 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 | `protocol` | int | no | `1` |
 | `type` | string | no | `"hello"` |
 | `session_id` | string | no | pi session id |
-| `instance_id` | string | no | random per pi runtime |
+| `instance_id` | string | no | random per `SessionRuntime` (new on every `session_start`) |
 | `session_file` | string | yes | pi's JSONL path |
 | `cwd` | string | no | |
 | `name` | string | yes | session name |
@@ -379,7 +380,7 @@ nothing is stored); the extension acks its outbox to it and then resends the res
 | `events` | array | no | max **50** per batch; body max **1 MiB**; each event ≤ that body limit |
 
 200: `{ok: true, protocol: 1, acked_seq: N}`. **Stream rule:** let `first` be the
-smallest seq stored for the key after the current hello (0 if none). `N` starts at
+smallest seq stored for the key (0 if none). `N` starts at
 `first - 1` and advances while every seq from `first` to `N` is stored or covered by a
 `gap` range. Thus a key whose first stored batch is `5..6` acks `6` even though `1..4`
 are absent; a fresh/empty key acks `0`. Duplicate seqs are accepted and ignored (first
@@ -404,7 +405,7 @@ epoch ms):
 | `model_changed` | `model`: `{provider, id}` \| null; `previous`: `{provider, id}` \| null |
 | `thinking_changed` | `level` string \| null; `previous` string \| null |
 | `compaction` | `summary` string; `tokens_before` int \| null; `reason` string |
-| `gap` | `from_seq` int; `to_seq` int (inclusive); replaces/merges dropped seqs |
+| `gap` | `from_seq` int; `to_seq` int (inclusive); marks dropped seqs; gaps are immutable and never merged |
 
 Status codes:
 
@@ -441,8 +442,8 @@ Status codes:
 - **Client handling**: transport error/timeout, `400 unsupported_protocol`, or another
   non-ok status → offline + backoff (1 s → 30 s cap); `404 unknown_session` on heartbeat
   or `/v1/events` → immediate re-`hello`; `404` on `bye` is ignored (best-effort).
-  `400 bad_frame` on `/v1/events` discards that batch with a `gap` marker instead of
-  retrying it forever. `server_time`/`sent_at` are epoch ms; unknown event types are
+  `400 bad_frame` on `/v1/events` discards that batch with a `gap` marker and schedules
+  the usual backoff instead of retrying it forever. `server_time`/`sent_at` are epoch ms; unknown event types are
   accepted and count as acked, so one rejected future event cannot block the stream.
 
 **Version rule**: both directions carry `protocol: 1`; a mismatch is a 400
@@ -456,9 +457,10 @@ the presence contract (hello response now includes `acked_seq`, second instance,
 heartbeat ok, unknown session, stale instance, bye, instance mismatch, bad_frame,
 unsupported_protocol, type/path mismatch, not_found, ignored extra field).
 `pi-extension/test/contract/events.json` is the executable events contract (ok batch,
-duplicate resend, gap, unknown accepted type, malformed known event, unknown session,
-oversize batch, empty batch, and a hello with nothing below seq 5 followed by `5..6` →
-acked `6`). Both are ordered `{path, now, request, status, response}` cases; the
+duplicate resend, re-hello on a key holding `1..3` → acked `3`, gap, unknown accepted
+type, malformed known event, unknown session, oversize batch, empty batch, a hello with
+nothing below seq 5 followed by `5..6` → acked `6`, immutable gaps `10..10` then
+`11..11` → acked `11`, and an unknown path with `protocol: 2` → `404 not_found`). Both are ordered `{path, now, request, status, response}` cases; the
 extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`, and the
 dashboard issue runs `frames.json` and `events.json` against its handler
 (`dashboard/tests/test_pi_remote_fixtures.py` for frames; a new events fixture test).

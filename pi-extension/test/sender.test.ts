@@ -176,16 +176,12 @@ test("missing acked_seq is a retryable failure", async () => {
 });
 
 
-test("bad_frame discards the batch and records a gap", async () => {
+test("bad_frame discards and backs off instead of spinning", async () => {
   const clock = fakeClock();
-  let calls = 0;
-  const transport = scripted((payload) => {
-    calls += 1;
-    if (calls === 1) {
-      return { status: 400, body: { ok: false, protocol: 1, error: "bad_frame" } };
-    }
-    return ackFor(payload);
-  });
+  const transport = scripted(() => ({
+    status: 400,
+    body: { ok: false, protocol: 1, error: "bad_frame" },
+  }));
   const presenceState = presence();
   const outbox = new Outbox(100, () => clock.now());
   const events = makeStates(2);
@@ -201,6 +197,18 @@ test("bad_frame discards the batch and records a gap", async () => {
 
   sender.onOnline(0);
   await flush();
+  assert.equal(transport.calls.length, 1);
+  assert.deepEqual(clock.pending(), [1000]);
+  assert.equal(outbox.size, 1);
+  assert.equal(outbox.unacked()[0].type, "gap");
+
+  await clock.advance(1000);
+  await flush();
   assert.equal(transport.calls.length, 2);
-  assert.equal(outbox.size, 0);
+  assert.deepEqual(clock.pending(), [2000]);
+
+  await clock.advance(2000);
+  await flush();
+  assert.equal(transport.calls.length, 3);
+  assert.deepEqual(clock.pending(), [4000]);
 });

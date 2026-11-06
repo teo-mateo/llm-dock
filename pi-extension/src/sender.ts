@@ -96,7 +96,7 @@ export class EventSender {
         }
         if (kind === "bad_frame") {
           this.outbox.discard(batch.map((event) => event.seq));
-          this.backoff.reset();
+          this.scheduleRetry();
           return;
         }
         if (kind !== "ok") {

@@ -72,12 +72,12 @@ export function handleFrame(
   now = Date.now(),
   eventsByKey: EventStore = new Map(),
 ): { status: number; payload: unknown } {
-  if (frame.protocol !== 1) {
-    return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
-  }
   const type = expectedType(path);
   if (!type) {
     return { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+  }
+  if (frame.protocol !== 1) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
   }
   if (frame.type !== type) {
     return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
@@ -146,6 +146,8 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
 
       let result: { status: number; payload: unknown };
       if (req.method !== "POST") {
+        result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+      } else if (!expectedType(path)) {
         result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
       } else if (path === PATHS.events && Buffer.byteLength(raw) > MAX_EVENTS_BODY_BYTES) {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };

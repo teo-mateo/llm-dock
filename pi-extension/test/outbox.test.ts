@@ -73,3 +73,13 @@ test("ack removes everything up to the acknowledged seq", () => {
   outbox.ack(3);
   assert.equal(outbox.size, 0);
 });
+
+test("separate discarded ranges create separate immutable gaps", () => {
+  const outbox = new Outbox(10, () => 1000);
+  const stamper = makeStamper();
+  for (let i = 0; i < 4; i += 1) outbox.enqueue(stamper.stamp(stateBody("idle")));
+  outbox.discard([2, 4]);
+  const gaps = outbox.unacked().filter((event) => event.type === "gap");
+  assert.deepEqual(gaps.map((event) => event.seq), [2, 4]);
+  assert.deepEqual(gaps.map((event) => (event.type === "gap" ? event.from_seq : null)), [2, 4]);
+});

@@ -106,6 +106,35 @@
     "request": {
       "protocol": 1,
       "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "reload",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 2000,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
       "session_id": "s2",
       "instance_id": "i2",
       "session_file": null,
@@ -694,6 +723,102 @@
       "ok": true,
       "protocol": 1,
       "acked_seq": 7
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s4",
+      "instance_id": "i4",
+      "server_time": 4000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "events": [
+        {
+          "type": "gap",
+          "seq": 10,
+          "ts": 4000,
+          "from_seq": 10,
+          "to_seq": 10
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 10
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "events": [
+        {
+          "type": "gap",
+          "seq": 11,
+          "ts": 4000,
+          "from_seq": 11,
+          "to_seq": 11
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 11
+    }
+  },
+  {
+    "path": "/v1/nope",
+    "now": 4000,
+    "request": {
+      "protocol": 2,
+      "type": "events",
+      "session_id": "s5",
+      "instance_id": "i5",
+      "events": []
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "not_found"
     }
   }
 ]

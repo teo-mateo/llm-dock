@@ -1,4 +1,4 @@
-import { gapEvent, type EventType, type GapEvent, type WireEvent } from "./events.ts";
+import { gapEvent, type EventType, type WireEvent } from "./events.ts";
 
 export const DEFAULT_CAPACITY = 1000;
 
@@ -80,17 +80,6 @@ export class Outbox {
   }
 
   private recordGapRange(fromSeq: number, toSeq: number): void {
-    const gaps = this.items.filter((event): event is GapEvent => event.type === "gap");
-    const target = gaps.find(
-      (gap) => !(toSeq < gap.from_seq - 1 || fromSeq > gap.to_seq + 1),
-    );
-    if (target) {
-      const from = Math.min(target.from_seq, fromSeq);
-      const to = Math.max(target.to_seq, toSeq);
-      const replacement = gapEvent(target.seq, this.now(), from, to);
-      this.items[this.items.indexOf(target)] = replacement;
-      return;
-    }
     this.items.push(gapEvent(fromSeq, this.now(), fromSeq, toSeq));
   }
 }

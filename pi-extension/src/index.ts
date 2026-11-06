@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { ExtensionAPI, ExtensionEvent } from "@earendil-works/pi-coding-agent";
 
 import { createActivity } from "./activity.ts";
@@ -11,7 +9,6 @@ import { registerEventSubscriptions } from "./subscriptions.ts";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
-  const instanceId = randomUUID();
   const extVersion = readExtVersion(new URL("../package.json", import.meta.url));
   const piVersion = detectPiVersion();
   const activity = createActivity();
@@ -29,7 +26,6 @@ export default function (pi: ExtensionAPI) {
       config,
       ctx,
       event,
-      instanceId,
       extVersion,
       piVersion,
       previousSessionId,

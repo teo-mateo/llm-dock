@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionContext, ExtensionEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 
 import type { Activity } from "./activity.ts";
@@ -22,7 +23,6 @@ export type SessionRuntimeOptions = {
   config: RemoteConfig;
   ctx: ExtensionContext;
   event: SessionStartEvent;
-  instanceId: string;
   extVersion: string;
   piVersion: string | null;
   previousSessionId: string | null;
@@ -30,6 +30,7 @@ export type SessionRuntimeOptions = {
 };
 
 export function createSessionRuntime(options: SessionRuntimeOptions): SessionRuntime {
+  const instanceId = randomUUID();
   const clock = {
     now: () => Date.now(),
     setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms),
@@ -41,7 +42,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     enabled: options.config.enabled,
     clock,
     helloFields: () => helloFieldsFrom(options.ctx, {
-      instanceId: options.instanceId,
+      instanceId,
       extVersion: options.extVersion,
       piVersion: options.piVersion,
       previousSessionId: options.previousSessionId,
