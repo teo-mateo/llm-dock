@@ -315,7 +315,7 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 
 Built in #339: `GET /api/pi/sessions` → `{"sessions": [summary_json…]}`; `GET /api/pi/sessions/<session_id>/<instance_id>/events?after=&limit=` → `page_json`, with `invalid_paging` 400 and `unknown_session` 404.
 
-Built in #344: `GET /api/pi/sessions/stream` → `snapshot` then session `session` deltas; `GET /api/pi/sessions/<session_id>/<instance_id>/stream?after=<int>` → replay `events`, then live. Frames are `events` / `session` / `snapshot` / `lagged`; `id` is the last seq sent; reconnect uses `after` or `Last-Event-ID`; a lagged stream sends `lagged` with `after` and ends.
+Built in #344: `GET /api/pi/sessions/stream` → `snapshot` then session `session` deltas; `GET /api/pi/sessions/<session_id>/<instance_id>/stream?after=<int>` → replay `events`, then live. Frames are `events` / `session` / `snapshot` / `lagged`; `id` is the last seq sent; reconnect uses `after` or `Last-Event-ID`; a lagged stream sends `lagged` with `after` and ends. Every frame's `data` also carries `type` equal to its `event:` name, so data-only SSE clients (Android) work; resume for them is `?after=`, since they cannot read `id:`, with `after` set to the last event seq they hold (if `data` ever contains `type`, the frame type wins).
 
 Command flow: client POST → broker records audit row → queues to the live
 instance's command stream → waits briefly for `command_result` (e.g. 5 s) → returns
