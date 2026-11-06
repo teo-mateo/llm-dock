@@ -55,6 +55,8 @@ object Endpoints {
     /** Read-only from the phone — editing the curated list is desktop Tools-page work. */
     const val OPENROUTER_MODELS_SETTINGS = "/api/chat/settings/openrouter-models"
 
+    const val PROVIDER_MODELS = "/api/chat/providers/models"
+
     /**
      * Requests that establish a session, and so cannot depend on one.
      *

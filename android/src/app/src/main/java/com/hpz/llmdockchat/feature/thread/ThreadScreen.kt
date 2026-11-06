@@ -356,6 +356,7 @@ private fun ThreadContent(
             services = picker.services,
             remoteModels = picker.remoteModels,
             remoteModelsConfigured = picker.remoteModelsConfigured,
+            providerGroups = picker.providerGroups,
             selectedRef = loaded.conversation.modelRef,
             onSelect = onSwitchModel,
             onDismiss = onCloseModelPicker,

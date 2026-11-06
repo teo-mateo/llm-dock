@@ -17,6 +17,7 @@ import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -69,6 +70,7 @@ class ThreadViewModelTest {
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var promptsRepository: PromptsRepository
@@ -98,6 +100,7 @@ class ThreadViewModelTest {
         // the last known (empty) map, and leaves the queue for the calls under test.
         servicesRepository = ServicesRepository(ApiClient(client, FakeServerUrlStore(), ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        providerModelsRepository = ProviderModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         promptsRepository = PromptsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
@@ -130,6 +133,7 @@ class ThreadViewModelTest {
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    providerModelsRepository = providerModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
@@ -653,6 +657,7 @@ class ThreadViewModelTest {
                     servicesStreamRepository,
                     servicesRepository,
                     openRouterModelsRepository,
+                    providerModelsRepository,
                     conversationsRepository,
                     mcpServersRepository,
                     promptsRepository,
@@ -702,6 +707,7 @@ class ThreadViewModelTest {
         viewModel.awaitLoaded()
 
         server.enqueue(MockResponse.Builder().body("""{"configured": false, "current": []}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"providers": []}""").build())
         servicesTransport.payloads = listOf(SNAPSHOT_ONE_SERVICE)
         // A real `/api/services/stream` connection never completes on its own —
         // `stayOpen` matches that, so the only way this test's `cancelled`
@@ -772,8 +778,9 @@ class ThreadViewModelTest {
         viewModel.awaitLoaded()
 
         server.enqueue(MockResponse.Builder().body("""{"configured": false, "current": []}""").build())
+        server.enqueue(MockResponse.Builder().body(readFixture("provider_models.json")).build())
         viewModel.openModelPicker()
-        viewModel.awaitState { it.modelPicker != null }
+        viewModel.awaitState { it.modelPicker?.providerGroups?.isNotEmpty() == true }
 
         server.enqueue(
             MockResponse.Builder().code(409).body("""{"error": "A run is already active for this conversation"}""").build(),

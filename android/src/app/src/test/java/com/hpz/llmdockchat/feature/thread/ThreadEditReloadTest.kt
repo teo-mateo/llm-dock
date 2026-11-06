@@ -15,6 +15,7 @@ import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
@@ -71,6 +72,7 @@ class ThreadEditReloadTest {
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var promptsRepository: PromptsRepository
@@ -95,6 +97,7 @@ class ThreadEditReloadTest {
         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport())
         servicesRepository = ServicesRepository(ApiClient(client, FakeServerUrlStore(), ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        providerModelsRepository = ProviderModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         promptsRepository = PromptsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
@@ -134,6 +137,7 @@ class ThreadEditReloadTest {
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    providerModelsRepository = providerModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,

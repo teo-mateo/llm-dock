@@ -6,6 +6,7 @@ import com.hpz.llmdockchat.core.prefs.NewChatPreferences
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.UrlRetrieval
@@ -47,6 +48,7 @@ interface SummarizeLauncher {
 class SummarizeCoordinator(
     private val servicesRepository: ServicesRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
+    private val providerModelsRepository: ProviderModelsRepository,
     private val mcpServersRepository: McpServersRepository,
     private val conversationsRepository: ConversationsRepository,
     private val preferences: NewChatPreferences,
@@ -59,12 +61,14 @@ class SummarizeCoordinator(
         val services = servicesRepository.list()
             .getOrElse { return SummarizeOutcome.Failed(it.appError.displayMessage) }
         val remote = openRouterModelsRepository.list().getOrNull()
+        val providerGroups = providerModelsRepository.list().getOrNull().orEmpty()
 
         return when (
             val model = RememberedModelResolver.resolve(
                 rememberedRaw = preferences.lastModel(),
                 localServices = services.filter { it.isChatCapable }.map { ModelOption.LocalService(it.name, it.status) },
                 remoteModels = remote?.models.orEmpty(),
+                providerModels = providerGroups.flatMap { it.models },
             )
         ) {
             is RememberedModel.Resolved -> createAndClaim(model.option.ref.wireValue, url, serverIds)

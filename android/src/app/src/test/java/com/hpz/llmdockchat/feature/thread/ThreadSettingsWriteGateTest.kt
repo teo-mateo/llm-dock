@@ -15,6 +15,7 @@ import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -76,6 +77,7 @@ class ThreadSettingsWriteGateTest {
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var promptsRepository: PromptsRepository
@@ -103,6 +105,7 @@ class ThreadSettingsWriteGateTest {
         // move every assertion about what the server was asked for.
         servicesRepository = ServicesRepository(ApiClient(client, FakeServerUrlStore(), ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        providerModelsRepository = ProviderModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         val api = ApiClient(client, urlStore, ApiJson, Dispatchers.IO)
         conversationsRepository = ConversationsRepository(api)
         mcpServersRepository = McpServersRepository(api)
@@ -134,6 +137,7 @@ class ThreadSettingsWriteGateTest {
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    providerModelsRepository = providerModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,

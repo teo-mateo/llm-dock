@@ -148,6 +148,7 @@ require `Authorization: Bearer <token>`.
 | GET | `/api/chat/mcp-servers` | Available MCP tool servers |
 | GET | `/api/chat/mcp-servers?probe=url-fetch` | Which enabled servers can fetch a URL (F14-R7) |
 | GET | `/api/chat/settings/openrouter-models` | Curated OpenRouter picker list |
+| GET | `/api/chat/providers/models` | Configured providers and every chat model they serve (F16) |
 
 Read-only use of `/api/chat/prompts` and the settings endpoints: the app
 never POSTs, PUTs or DELETEs against them. `/api/chat/projects` is **not**
@@ -191,6 +192,7 @@ Mark completed features `[DONE]` in the Status column.
 | F13 | Settings | [F13-settings.md](F13-settings.md) | 09 | [ ] |
 | F14 | Share into app | [F14-share-into-app.md](F14-share-into-app.md) | — | [DONE] — R6 (Should) verified on device; R7 (issue 255) implemented and JVM-verified, its three device criteria unchecked |
 | F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
+| F16 | Models from configured providers | [F16-model-providers.md](F16-model-providers.md) | — | [DONE] — client-only, backend in PR #315/#317; R3 device-verified on a never-configured provider id, not a removed one, see the feature file |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 
 ---

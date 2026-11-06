@@ -76,7 +76,7 @@ import com.hpz.llmdockchat.data.model.ActiveRun
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelRef
-import com.hpz.llmdockchat.data.model.displayName
+import com.hpz.llmdockchat.data.model.chipLabel
 import com.hpz.llmdockchat.feature.account.AccountEntry
 import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
 import java.time.Instant
@@ -588,7 +588,7 @@ private fun EngineChip(modelRef: ModelRef, engine: Engine, modifier: Modifier = 
             .testTag("engine_chip_${engine.name}"),
     ) {
         Text(
-            modelRef.displayName,
+            modelRef.chipLabel(),
             color = chip.foreground,
             style = MaterialTheme.typography.labelSmall,
             fontFamily = FontFamily.Monospace,
@@ -614,6 +614,7 @@ private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
     Engine.TABBYAPI -> engineTabbyapi
     Engine.NINFER -> engineNinfer
     Engine.OPEN_ROUTER -> engineOpenRouter
+    Engine.PROVIDER -> engineProvider
     Engine.UNKNOWN -> engineUnknown
 }
 

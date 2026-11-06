@@ -32,8 +32,10 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
+import com.hpz.llmdockchat.data.model.ProviderGroup
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.engine
+import com.hpz.llmdockchat.data.model.wireValue
 
 /**
  * The model picker, shared by [com.hpz.llmdockchat.feature.newchat.NewChatScreen]
@@ -67,6 +69,7 @@ fun ModelPickerSheet(
     onSelect: (ModelOption) -> Unit,
     onDismiss: () -> Unit,
     selectedRef: ModelRef? = null,
+    providerGroups: List<ProviderGroup> = emptyList(),
 ) {
     val colors = LlmTheme.colors
     // Favourites first; sortedByDescending is stable, so the server's own
@@ -106,9 +109,26 @@ fun ModelPickerSheet(
             if (remoteModelsConfigured && remoteModels.isNotEmpty()) {
                 item { ModelPickerSectionHeader("OpenRouter") }
                 items(remoteModels, key = { "remote:${it.modelId}" }) { option ->
-                    RemoteModelRow(
-                        option = option,
+                    HostedModelRow(
+                        label = option.label,
+                        modelId = option.modelId,
+                        dot = colors.engineOpenRouter.foreground,
+                        testTag = "model_option_${option.modelId}",
                         selected = selectedRef == ModelRef.OpenRouter(option.modelId),
+                        onClick = { onSelect(option) },
+                    )
+                }
+            }
+
+            providerGroups.forEach { group ->
+                item(key = "provider-header:${group.id}") { ModelPickerSectionHeader(group.name) }
+                items(group.models, key = { "provider:${it.ref.wireValue}" }) { option ->
+                    HostedModelRow(
+                        label = option.label,
+                        modelId = option.modelId,
+                        dot = colors.engineProvider.foreground,
+                        testTag = "model_option_${option.ref.wireValue}",
+                        selected = selectedRef == option.ref,
                         onClick = { onSelect(option) },
                     )
                 }
@@ -154,7 +174,14 @@ private fun LocalServiceRow(service: ServiceSummary, selected: Boolean, onClick:
 }
 
 @Composable
-private fun RemoteModelRow(option: ModelOption.Remote, selected: Boolean, onClick: () -> Unit) {
+private fun HostedModelRow(
+    label: String,
+    modelId: String,
+    dot: androidx.compose.ui.graphics.Color,
+    testTag: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = LlmTheme.colors
     Row(
         modifier = Modifier
@@ -162,15 +189,15 @@ private fun RemoteModelRow(option: ModelOption.Remote, selected: Boolean, onClic
             .background(if (selected) colors.accentDeep.copy(alpha = 0.25f) else colors.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp)
-            .testTag("model_option_${option.modelId}"),
+            .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(colors.engineOpenRouter.foreground))
+        Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
         Column(Modifier.weight(1f)) {
-            Text(option.label, color = colors.fg, style = MaterialTheme.typography.bodyMedium)
+            Text(label, color = colors.fg, style = MaterialTheme.typography.bodyMedium)
             Text(
-                option.modelId,
+                modelId,
                 color = colors.subtle,
                 fontFamily = FontFamily.Monospace,
                 style = MaterialTheme.typography.bodySmall,
@@ -213,5 +240,6 @@ private fun Engine.label(): String = when (this) {
     Engine.SGLANG -> "SGLang"
     Engine.MAYA -> "Maya"
     Engine.OPEN_ROUTER -> "OpenRouter"
+    Engine.PROVIDER -> "Provider"
     Engine.UNKNOWN -> "Unknown"
 }

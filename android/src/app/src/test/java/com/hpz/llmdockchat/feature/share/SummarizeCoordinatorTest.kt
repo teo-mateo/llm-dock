@@ -9,6 +9,7 @@ import com.hpz.llmdockchat.core.net.BaseUrlResult
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.testing.FakeNewChatPreferences
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
@@ -65,15 +66,19 @@ class SummarizeCoordinatorTest {
     private fun enqueue(
         services: String = readFixture("services_list.json"),
         openRouter: String = readFixture("openrouter_models.json"),
+        providers: String = readFixture("provider_models.json"),
+        providersCode: Int = 200,
     ) {
         server.enqueue(MockResponse.Builder().body(services).build())
         server.enqueue(MockResponse.Builder().body(openRouter).build())
+        server.enqueue(MockResponse.Builder().code(providersCode).body(providers).build())
     }
 
     /** A coordinator with its own preferences — the ladder under test starts from them. */
     private fun coordinatorWith(prefs: FakeNewChatPreferences) = SummarizeCoordinator(
         servicesRepository = ServicesRepository(api),
         openRouterModelsRepository = OpenRouterModelsRepository(api),
+        providerModelsRepository = ProviderModelsRepository(api),
         mcpServersRepository = McpServersRepository(api),
         conversationsRepository = ConversationsRepository(api),
         preferences = prefs,
@@ -114,10 +119,10 @@ class SummarizeCoordinatorTest {
         launch()
 
         val calls = requests()
-        assertEquals(4, calls.size)
-        assertTrue(calls[2].url.encodedPath.endsWith("/api/chat/conversations"))
-        assertTrue(calls[2].body!!.utf8().contains(""""main_service":"$RUNNING""""))
-        assertTrue(calls[3].body!!.utf8().contains("webfetch"))
+        assertEquals(5, calls.size)
+        assertTrue(calls[3].url.encodedPath.endsWith("/api/chat/conversations"))
+        assertTrue(calls[3].body!!.utf8().contains(""""main_service":"$RUNNING""""))
+        assertTrue(calls[4].body!!.utf8().contains("webfetch"))
     }
 
     /** Summarizing a page must not decide what the next ordinary chat opens with. */
@@ -140,7 +145,7 @@ class SummarizeCoordinatorTest {
 
         assertEquals(SummarizeOutcome.ChooseModel, launch(FakeNewChatPreferences()))
 
-        assertEquals(2, server.requestCount)
+        assertEquals(3, server.requestCount)
         assertNull(claim())
     }
 
@@ -151,7 +156,7 @@ class SummarizeCoordinatorTest {
 
         assertEquals(SummarizeOutcome.ChooseModel, launch(FakeNewChatPreferences("vllm-qwen3-6-27b-fp8")))
 
-        assertEquals(2, server.requestCount)
+        assertEquals(3, server.requestCount)
     }
 
     /** A newly-supported engine resolves like any other. */
@@ -174,7 +179,7 @@ class SummarizeCoordinatorTest {
         assertTrue(launch() is SummarizeOutcome.Failed)
 
         assertNull(claim())
-        assertEquals(3, server.requestCount)
+        assertEquals(4, server.requestCount)
     }
 
     /** Tools are the precondition, so a failed tools write sends nothing. */
@@ -207,7 +212,33 @@ class SummarizeCoordinatorTest {
         assertTrue(server.takeRequest().url.toString().contains("probe=url-fetch"))
     }
 
+    @Test
+    fun `a remembered provider model summarizes on that provider model`() {
+        store.stage(StagedShare(text = URL, url = URL))
+        enqueue()
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+
+        assertEquals(SummarizeOutcome.Opened(NEW_ID), launch(FakeNewChatPreferences(PROVIDER_MODEL)))
+
+        val calls = requests()
+        assertTrue(calls[2].url.encodedPath.endsWith("/api/chat/providers/models"))
+        assertTrue(calls[3].body!!.utf8().contains(""""main_service":"$PROVIDER_MODEL""""))
+    }
+
+    @Test
+    fun `a failing provider endpoint still summarizes on a remembered local model`() {
+        store.stage(StagedShare(text = URL, url = URL))
+        enqueue(providers = """{"error":"down"}""", providersCode = 503)
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"id":"$NEW_ID"}""").build())
+
+        assertEquals(SummarizeOutcome.Opened(NEW_ID), launch())
+        assertTrue(requests()[3].body!!.utf8().contains(""""main_service":"$RUNNING""""))
+    }
+
     private companion object {
+        const val PROVIDER_MODEL = "mistral:mistral-large-latest"
         const val URL = "https://example.com/a"
         const val RUNNING = "llamacpp-gemma-4-26b-a4b-it-q8"
         const val NEW_ID = "new-conv-1"

@@ -2,13 +2,13 @@ package com.hpz.llmdockchat.data.model
 
 /**
  * The eight engines the dashboard colour-codes its badges by, plus
- * [Engine.OPEN_ROUTER] for a hosted model and [Engine.UNKNOWN] for a service it
+ * [Engine.OPEN_ROUTER] / [Engine.PROVIDER] for a hosted model and [Engine.UNKNOWN] for a service it
  * cannot classify — a thread pointing at a deleted or renamed service must still
  * render, unstyled, not crash the row. The eight are every engine the dashboard
  * renders a compose template for (`dashboard/flag_metadata.py`); a service on any
  * of them is chat-capable once its `kind` is chat.
  */
-enum class Engine { LLAMA_CPP, IK_LLAMA_CPP, VLLM, DS4, TABBYAPI, NINFER, SGLANG, MAYA, OPEN_ROUTER, UNKNOWN }
+enum class Engine { LLAMA_CPP, IK_LLAMA_CPP, VLLM, DS4, TABBYAPI, NINFER, SGLANG, MAYA, OPEN_ROUTER, PROVIDER, UNKNOWN }
 
 /**
  * Maps the dashboard's `template_type` — the authoritative engine id carried on
@@ -38,6 +38,7 @@ fun engineFromTemplateType(templateType: String?): Engine? = when (templateType)
 val ModelRef.engine: Engine
     get() = when (this) {
         is ModelRef.OpenRouter -> Engine.OPEN_ROUTER
+        is ModelRef.Provider -> Engine.PROVIDER
         is ModelRef.Local -> when {
             serviceName.startsWith("vllm-") -> Engine.VLLM
             serviceName.startsWith("llamacpp-") -> Engine.LLAMA_CPP

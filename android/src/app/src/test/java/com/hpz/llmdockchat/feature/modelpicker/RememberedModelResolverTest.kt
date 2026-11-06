@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.modelpicker
 
 import com.hpz.llmdockchat.data.model.ModelOption
+import com.hpz.llmdockchat.data.model.ModelRef
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,5 +75,21 @@ class RememberedModelResolverTest {
     fun `a stopped preselect with an unavailable memory is unavailable`() {
         val resolved = RememberedModelResolver.resolve("vllm-stopped", listOf(running, stopped), emptyList(), "nothing")
         assertTrue(resolved is RememberedModel.Unavailable)
+    }
+
+    @Test
+    fun `a remembered provider model resolves to its listed option`() {
+        val listed = ModelOption.ProviderModel("mistral", "Mistral", "mistral-large-latest", "Mistral Large")
+        val result = RememberedModelResolver.resolve(
+            "mistral:mistral-large-latest", listOf(running), emptyList(), providerModels = listOf(listed),
+        )
+        assertEquals(RememberedModel.Resolved(listed), result)
+    }
+
+    @Test
+    fun `a remembered provider model no longer listed keeps its own ref instead of being replaced`() {
+        val result = RememberedModelResolver.resolve("mistral:gone", listOf(running), listOf(remote))
+        val option = (result as RememberedModel.Resolved).option
+        assertEquals(ModelRef.Provider("mistral", "gone"), option.ref)
     }
 }

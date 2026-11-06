@@ -24,14 +24,16 @@ sealed interface RememberedModel {
 object RememberedModelResolver {
     /**
      * [preselectedServiceName] wins outright when it is running;
-     * otherwise the remembered model decides. A remote model dropped from the
-     * curated list is still valid — the list is a picker, not an allowlist.
+     * otherwise the remembered model decides. A remote or provider model no
+     * longer listed is still resolved to its own ref, never replaced — the
+     * lists are pickers, not allowlists, and the server reports a dead provider.
      */
     fun resolve(
         rememberedRaw: String?,
         localServices: List<ModelOption.LocalService>,
         remoteModels: List<ModelOption.Remote>,
         preselectedServiceName: String? = null,
+        providerModels: List<ModelOption.ProviderModel> = emptyList(),
     ): RememberedModel {
         preselectedServiceName
             ?.let { name -> localServices.find { it.serviceName == name } }
@@ -50,6 +52,10 @@ object RememberedModelResolver {
             }
             is ModelRef.OpenRouter -> RememberedModel.Resolved(
                 remoteModels.find { it.modelId == ref.modelId } ?: ModelOption.Remote(ref.modelId, ref.modelId),
+            )
+            is ModelRef.Provider -> RememberedModel.Resolved(
+                providerModels.find { it.ref == ref }
+                    ?: ModelOption.ProviderModel(ref.providerId, ref.providerId, ref.modelId, ref.modelId),
             )
         }
     }
