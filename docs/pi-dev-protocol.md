@@ -92,6 +92,19 @@ Both agents use `/github/teo-mateo/llm-dock`. Turn-taking:
 - Known-flaky tests (`android/CLAUDE.md`, `multi-agent-work-protocol.md`) are re-run
   before being called a regression.
 
+## Test pi sessions
+
+Features are tested against **separate, throwaway pi sessions**, never the developer's
+own session:
+
+- Start them in their own tmux window, on a cheap Mistral model:
+  `pi --model mistral/mistral-small-latest` (plus `-e <extension>` while the extension is
+  not installed). `MISTRAL_API_KEY` is in the shell environment.
+- Keep prompts short; a test session never needs more than a few turns.
+- From P2 on, the end-to-end check is controlling those sessions from the **mobile app**
+  (emulator or the phone), not only from the web view or curl.
+- Kill only the test sessions you started; say in the PR which ones ran and on what model.
+
 ## Gates
 
 | Stack | Command |
