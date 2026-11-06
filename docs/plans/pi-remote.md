@@ -291,8 +291,41 @@ instance's command stream → waits briefly for `command_result` (e.g. 5 s) → 
 it, or `202 pending` and the result arrives as an SSE frame. Session offline → 409
 `code: "pi_session_offline"`. Error codes are typed like the model proxy's.
 
-**Extension API** (UDS only): `POST /v1/hello`, `POST /v1/events` (batch, returns
-acked seq), `GET /v1/commands` (SSE), `POST /v1/command-results`.
+### Extension endpoint
+
+The extension dials a stdlib server inside the dashboard process over the Unix socket
+(§1). JSON only, `POST` only for presence, every frame carries `protocol: 1`. The
+field names are owned by `pi-extension/src/protocol.ts`; the server must use exactly
+the same names.
+
+| Method | Path | Request body | 200 response |
+|---|---|---|---|
+| POST | `/v1/hello` | `{protocol: 1, type: "hello", session_id, instance_id, session_file, cwd, name, pid, model: {provider, id} \| null, thinking_level, reason, previous_session_id, pi_version, ext_version}` | `{ok: true, protocol: 1, session_id, instance_id, server_time}` |
+| POST | `/v1/heartbeat` | `{protocol: 1, type: "heartbeat", session_id, instance_id, state: "idle" \| "working", context: {tokens, window, percent} \| null, sent_at}` | `{ok: true, protocol: 1, server_time}` |
+| POST | `/v1/bye` | `{protocol: 1, type: "bye", session_id, instance_id, reason}` | `{ok: true, protocol: 1}` |
+
+Status codes:
+
+| Code | Body | Meaning |
+|---|---|---|
+| 200 | `{ok: true, protocol: 1, ...}` | accepted |
+| 400 | `{ok: false, protocol: 1, error: "bad_frame"}` | missing or ill-typed field (`session_id`, `instance_id` required; `type` must match the path) |
+| 400 | `{ok: false, protocol: 1, error: "unsupported_protocol"}` | `protocol` is absent or not `1` |
+| 404 | `{ok: false, protocol: 1, error: "unknown_session"}` | heartbeat/bye for a session the server does not know (e.g. after a dashboard restart) |
+
+Version rule: both directions carry `protocol: 1`; a mismatch is a 400
+`unsupported_protocol`, and a version bump is shipped in the extension and the
+dashboard together. **Unknown session handling**: a heartbeat answered 404 makes the
+extension re-send `hello` immediately (no backoff); a 404 on `bye` is ignored because
+it is best-effort. Any other non-200, a transport error or a timeout is treated as
+"dashboard absent" — offline state plus backoff (1 s → 30 s cap).
+
+Timeouts: the extension allows 3 s for `hello`, 2 s for `heartbeat`, 1 s for `bye`
+(the last two are bounded so a dashboard restart cannot stall pi). Server-side read
+timeout: 5 s per request.
+
+The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`
+are not part of this contract — they are the next issues.
 
 **Relation to chat conversations** — separate entity. A pi session is not a
 `conversations` row: the model runs inside pi, not through `llm_proxy`, and the

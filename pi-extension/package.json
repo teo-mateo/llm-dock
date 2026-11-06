@@ -1,0 +1,10 @@
+{
+  "name": "pi-remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "pi extension that registers a pi session with the llm-dock dashboard over a Unix socket",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/config.test.ts test/session.test.ts test/protocol.test.ts test/presence.test.ts test/integration.test.ts"
+  }
+}
