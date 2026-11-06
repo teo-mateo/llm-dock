@@ -156,14 +156,36 @@ class PiRemoteDB:
             conn = self._get_conn()
             try:
                 rows = conn.execute(
-                    """SELECT seq, type, payload_json FROM pi_events
+                    """SELECT seq, type, ts, payload_json FROM pi_events
                        WHERE session_id = ? AND instance_id = ? AND seq > ?
                        ORDER BY seq""",
                     (session_id, instance_id, after_seq),
                 ).fetchall()
             finally:
                 self._close_conn(conn)
-        return [StoredEvent(row["seq"], row["type"], json.loads(row["payload_json"])) for row in rows]
+        return [
+            StoredEvent(row["seq"], row["type"], row["ts"], json.loads(row["payload_json"]))
+            for row in rows
+        ]
+
+    def events_page(
+        self, session_id: str, instance_id: str, after_seq: int, limit: int
+    ) -> List[StoredEvent]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    """SELECT seq, type, ts, payload_json FROM pi_events
+                       WHERE session_id = ? AND instance_id = ? AND seq > ?
+                       ORDER BY seq LIMIT ?""",
+                    (session_id, instance_id, after_seq, limit + 1),
+                ).fetchall()
+            finally:
+                self._close_conn(conn)
+        return [
+            StoredEvent(row["seq"], row["type"], row["ts"], json.loads(row["payload_json"]))
+            for row in rows
+        ]
 
     def acked_seq(self, session_id: str, instance_id: str) -> int:
         row = self.get_session(session_id, instance_id)

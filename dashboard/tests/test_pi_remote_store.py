@@ -155,3 +155,39 @@ def test_old_session_schema_is_migrated(tmp_path):
     connection.close()
     assert "acked_seq" in session_columns
     assert {"gap_from", "gap_to"} <= event_columns
+
+
+def test_events_page_returns_after_seq_in_order_with_ts(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.upsert_session(hello(), 1000)
+    store.ingest(
+        events_frame([
+            Event(1, 1000, "state", {"state": "idle"}),
+            Event(2, 2000, "state", {"state": "working"}),
+            Event(3, 3000, "state", {"state": "idle"}),
+        ]),
+        3000,
+    )
+    rows = store.events_page("s1", "i1", after_seq=1, limit=10)
+    assert [row.seq for row in rows] == [2, 3]
+    assert [row.ts for row in rows] == [2000, 3000]
+    assert rows[0].type == "state"
+    assert rows[0].payload == {"state": "working"}
+    store.close()
+
+
+def test_events_page_fetches_limit_plus_one(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.upsert_session(hello(), 1000)
+    store.ingest(
+        events_frame([
+            Event(1, 1000, "state", {"state": "idle"}),
+            Event(2, 2000, "state", {"state": "idle"}),
+            Event(3, 3000, "state", {"state": "idle"}),
+            Event(4, 4000, "state", {"state": "idle"}),
+        ]),
+        4000,
+    )
+    rows = store.events_page("s1", "i1", after_seq=0, limit=2)
+    assert [row.seq for row in rows] == [1, 2, 3]
+    store.close()
