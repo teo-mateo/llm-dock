@@ -84,6 +84,17 @@ class FixtureTests(unittest.TestCase):
             if line.startswith(b"data: "):
                 return json.loads(line[6:])
 
+    def test_stress_scenario_is_a_long_short_and_ended_mix(self):
+        rows = sessions("stress")
+        self.assertEqual([row["session_id"] for row in rows],
+                         ["fixture-long-name", "fixture-short-name", "fixture-ended-long"])
+        self.assertTrue(rows[0]["live"] and rows[0]["prompts"])
+        self.assertGreater(len(rows[0]["name"]), 60)
+        self.assertEqual(len(rows[1]["prompts"]), 0)
+        self.assertFalse(rows[2]["live"])
+        self.assertTrue(rows[2]["prompts"])
+        self.assertTrue(all("prompts" in row for row in rows))
+
     def test_compatibility_and_invalid_scenarios(self):
         self.assertNotIn("prompts", sessions("absent")[0])
         self.assertTrue(all(not row["live"] for row in sessions("offline")))

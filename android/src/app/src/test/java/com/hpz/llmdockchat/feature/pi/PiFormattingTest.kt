@@ -2,6 +2,7 @@ package com.hpz.llmdockchat.feature.pi
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,6 +33,28 @@ class PiFormattingTest {
     @Test
     fun `following never reports unseen content`() {
         assertFalse(FollowState(following = true, seen = "a").hasUnseen("b"))
+    }
+
+    @Test
+    fun `session meta head joins cwd and model`() {
+        assertEquals(
+            "/forgejo/tubevault · llm-dock/pennyroyal-qwen3-8-flash-next",
+            piSessionMetaHead("/forgejo/tubevault", "llm-dock/pennyroyal-qwen3-8-flash-next"),
+        )
+    }
+
+    @Test
+    fun `session meta head omits an unknown model instead of faking one`() {
+        assertEquals("/repo", piSessionMetaHead("/repo", null))
+        assertEquals("/repo", piSessionMetaHead("/repo", "  "))
+        assertEquals("", piSessionMetaHead("", null))
+    }
+
+    @Test
+    fun `context label is absent rather than zero when unknown`() {
+        assertNull(piContextLabel(null))
+        assertEquals("ctx 0%", piContextLabel(0.0))
+        assertEquals("ctx 34%", piContextLabel(33.6))
     }
 
     @Test
