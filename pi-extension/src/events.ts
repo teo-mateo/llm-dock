@@ -1,3 +1,4 @@
+import type { PromptClosedBody, PromptClosedEvent, PromptOpenBody, PromptOpenEvent } from "./prompt-events.ts";
 import type { ModelRef } from "./protocol.ts";
 
 export type EventOutcome = "completed" | "aborted" | "error";
@@ -17,6 +18,8 @@ export const EVENT_TYPES = [
   "thinking_changed",
   "compaction",
   "gap",
+  "prompt_open",
+  "prompt_closed",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -73,7 +76,9 @@ export type WireEvent =
   | ModelChangedEvent
   | ThinkingChangedEvent
   | CompactionEvent
-  | GapEvent;
+  | GapEvent
+  | PromptOpenEvent
+  | PromptClosedEvent;
 
 export type StateBody = Omit<StateEvent, "seq" | "ts">;
 export type UserMessageBody = Omit<UserMessageEvent, "seq" | "ts">;
@@ -100,7 +105,9 @@ export type EventBody =
   | RunEndBody
   | ModelChangedBody
   | ThinkingChangedBody
-  | CompactionBody;
+  | CompactionBody
+  | PromptOpenBody
+  | PromptClosedBody;
 
 export type StamperClock = { now: () => number };
 

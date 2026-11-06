@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
 import { commandKey, FakeCommands, handleCommandResults, handleCommandsPoll, STALE_AFTER_MS } from "./fake-commands.ts";
-import { ackedSeq, handleEvents, type EventStore } from "./fake-events.ts";
+import { ackedSeq, answerForPrompt, handleEvents, openPrompts, type EventStore } from "./fake-events.ts";
 
 export type RegistryEntry = { sessionId: string; instanceId: string; lastSeen: number };
 export type Registry = Map<string, RegistryEntry>;
@@ -245,6 +245,23 @@ async function main(): Promise<void> {
       fake.commands.enqueue(key, fake.commands.sendCommand(text));
     }
     console.log(`[${timestamp()}] SIGHUP enqueued send_message for ${fake.registry.size} session(s)`);
+  });
+  const logPrompts = (label: string, prompts: ReturnType<typeof openPrompts>): void => {
+    const listed = prompts.map((prompt) => `${prompt.promptId}(${prompt.kind})`).join(",") || "none";
+    console.log(`[${timestamp()}] SIGQUIT ${label}: ${listed}`);
+  };
+  process.on("SIGQUIT", () => {
+    const open = openPrompts(fake.events);
+    logPrompts("open prompts before", open);
+    const oldest = open.find((prompt) => fake.registry.has(prompt.key));
+    if (!oldest) {
+      console.log(`[${timestamp()}] SIGQUIT no registered session has an open prompt`);
+      return;
+    }
+    const value = answerForPrompt(oldest);
+    fake.commands.enqueue(oldest.key, fake.commands.answerPromptCommand(oldest.promptId, value));
+    console.log(`[${timestamp()}] SIGQUIT enqueued answer_prompt ${oldest.promptId} value=${JSON.stringify(value)}`);
+    setTimeout(() => logPrompts("open prompts after", openPrompts(fake.events)), 400);
   });
   const shutdown = async () => {
     await fake.close();

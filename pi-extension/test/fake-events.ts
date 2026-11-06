@@ -142,3 +142,46 @@ export function handleEvents(
   };
 }
 
+
+export type OpenPrompt = {
+  key: string;
+  seq: number;
+  promptId: string;
+  kind: string;
+  options: string[];
+};
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+
+export function openPrompts(events: EventStore): OpenPrompt[] {
+  const open = new Map<string, OpenPrompt>();
+  for (const [key, stored] of events) {
+    for (const seq of [...stored.keys()].sort((a, b) => a - b)) {
+      const event = stored.get(seq);
+      if (!event || (event.type !== "prompt_open" && event.type !== "prompt_closed")) continue;
+      const promptId = String(event.prompt_id ?? "");
+      if (!promptId) continue;
+      const id = `${key}|${promptId}`;
+      if (event.type === "prompt_closed") {
+        open.delete(id);
+        continue;
+      }
+      open.set(id, {
+        key,
+        seq,
+        promptId,
+        kind: String(event.kind ?? "input"),
+        options: strings(event.options),
+      });
+    }
+  }
+  return [...open.values()].sort((a, b) => a.seq - b.seq);
+}
+
+export function answerForPrompt(prompt: OpenPrompt): unknown {
+  if (prompt.kind === "confirm") return true;
+  if (prompt.kind === "select") return prompt.options[0] ?? null;
+  return "from phone";
+}

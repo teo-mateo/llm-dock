@@ -1,5 +1,8 @@
 import type { ExtensionAPI, ExtensionEvent } from "@earendil-works/pi-coding-agent";
 
+import { Type } from "typebox";
+
+import { registerAskUser } from "./ask-user.ts";
 import { createActivity } from "./activity.ts";
 import { detectPiVersion, loadConfig, readExtVersion } from "./config.ts";
 import { handleRemoteCommand } from "./remote-command-handler.ts";
@@ -18,6 +21,7 @@ export default function (pi: ExtensionAPI) {
     runtime?.handle(event);
   };
   registerEventSubscriptions(pi, forward);
+  registerAskUser(pi, () => runtime, Type);
 
   pi.on("session_start", async (event, ctx) => {
     const previousSessionId = sessionIdFromFile(event.previousSessionFile);
