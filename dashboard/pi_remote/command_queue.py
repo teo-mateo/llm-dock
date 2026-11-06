@@ -1,7 +1,8 @@
 import threading
 import time
+import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
 from .bus import SessionKey
 from .commands import CommandResult
@@ -15,8 +16,20 @@ class QueuedCommand:
     issued_at: int
 
 
+# Ids must stay unique across dashboard restarts: pi_commands keeps every id, and a
+# long-running pi dedupes by id, so a per-process counter would collide with stored
+# rows and make pi skip a new command as one it already ran.
+def new_command_id() -> str:
+    return f"cmd-{uuid.uuid4().hex}"
+
+
 class CommandQueue:
-    def __init__(self, redeliver_after_ms: int = 30000, max_per_key: int = 50) -> None:
+    def __init__(
+        self,
+        redeliver_after_ms: int = 30000,
+        max_per_key: int = 50,
+        new_id: Callable[[], str] = new_command_id,
+    ) -> None:
         self.redeliver_after_ms = redeliver_after_ms
         self.max_per_key = max_per_key
         self._lock = threading.RLock()
@@ -25,7 +38,7 @@ class CommandQueue:
         self._handed_at: Dict[str, int] = {}
         self._results: Dict[str, CommandResult] = {}
         self._closed = False
-        self._next_id = 0
+        self._new_id = new_id
 
     def enqueue(
         self,
@@ -40,9 +53,8 @@ class CommandQueue:
             queue = self._queues.setdefault(key, [])
             if len(queue) >= self.max_per_key:
                 return None
-            self._next_id += 1
             command = QueuedCommand(
-                command_id=f"cmd-{self._next_id}",
+                command_id=self._new_id(),
                 kind=kind,
                 args=dict(args),
                 issued_at=now,
