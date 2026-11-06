@@ -15,6 +15,7 @@ object Destinations {
     const val TABS = "tabs"
     const val CHATS = "chats"
     const val MODELS = "models"
+    const val PI = "pi"
 
     /** Design-lab gallery (experiment, not a shipped feature) — cycles the
      * `feature/designlab` mock screens the owner asked for. */

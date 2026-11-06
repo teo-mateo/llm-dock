@@ -24,15 +24,15 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val TABS = listOf(
     Tab(Destinations.CHATS, "Chats", DesignLabIcons.ChatBubble),
     Tab(Destinations.MODELS, "Models", DesignLabIcons.Chip),
+    Tab(Destinations.PI, "Pi", DesignLabIcons.Terminal),
     Tab(Destinations.DESIGN, "Design", DesignLabIcons.Sparkle),
 )
 
 /**
- * The bottom bar: present on the conversation
- * list and the models list, and on those screens only — pushed destinations
- * (thread, new chat, model detail, logs) render without it. The third
- * "Design" tab is the design-lab gallery (`feature/designlab`), a visual
- * proposal to compare against these screens — not a shipped feature.
+ * The bottom bar: present on the tab screens only — pushed destinations
+ * (thread, new chat, model detail, logs) render without it. The "Design"
+ * tab is the design-lab gallery (`feature/designlab`), a visual proposal to
+ * compare against these screens — not a shipped feature.
  */
 @Composable
 fun AppBottomBar(currentRoute: String, onSelect: (String) -> Unit) {
