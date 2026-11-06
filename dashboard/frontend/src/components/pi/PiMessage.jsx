@@ -13,6 +13,8 @@ export default function PiMessage({ item }) {
     'max-w-none',
     '[&>*:first-child]:mt-0',
     '[&>*:last-child]:mb-0',
+    '[&_td]:[overflow-wrap:anywhere]',
+    '[&_th]:[overflow-wrap:anywhere]',
   )
 
   if (item.kind === 'user') {
@@ -59,10 +61,6 @@ export default function PiMessage({ item }) {
         <span aria-label="streaming" className="animate-pulse text-accent">
           ▍
         </span>
-      )}
-
-      {item.usage && (
-        <output className="text-xs text-fg-muted">{item.usage.output ?? 0} tokens</output>
       )}
     </div>
   )

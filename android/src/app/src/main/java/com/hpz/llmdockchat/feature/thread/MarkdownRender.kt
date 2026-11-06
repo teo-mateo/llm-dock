@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +53,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hpz.llmdockchat.core.markdown.MdBlock
 import com.hpz.llmdockchat.core.markdown.TableAlign
+import com.hpz.llmdockchat.core.markdown.MAX_FITTED_TABLE_COLUMNS
+import com.hpz.llmdockchat.core.markdown.fittedColumnWeights
 import com.hpz.llmdockchat.core.markdown.parseMdBlock
 import com.hpz.llmdockchat.core.markdown.splitMdBlocks
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
@@ -275,28 +278,24 @@ private fun QuoteView(block: MdBlock.Quote, colors: LlmColors) {
     }
 }
 
-/** Scrolls sideways in its own box; the message column does not. */
+/** Up to [MAX_FITTED_TABLE_COLUMNS] columns fit the message width and wrap; wider tables scroll sideways in their own box, never the message column. */
 @Composable
 private fun TableView(block: MdBlock.Table, colors: LlmColors) {
+    val weights = fittedColumnWeights(block)
+    val box = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(8.dp))
+        .background(colors.sunken)
     Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.sunken)
-            .horizontalScroll(rememberScrollState())
-            .testTag("md_table"),
+        (if (weights == null) box.horizontalScroll(rememberScrollState()) else box).testTag("md_table"),
     ) {
         Column {
-            Row(Modifier.background(colors.surfaceElevated)) {
-                block.header.forEachIndexed { i, cell ->
-                    TableCell(cell, colors, colors.fg, bold = true, align = block.alignments.getOrElse(i) { TableAlign.LEFT })
-                }
+            TableRow(block.header, weights, Modifier.background(colors.surfaceElevated)) { i, cell, cellModifier ->
+                TableCell(cell, colors.fg, bold = true, align = block.alignments.getOrElse(i) { TableAlign.LEFT }, modifier = cellModifier)
             }
             block.rows.forEach { row ->
-                Row {
-                    row.forEachIndexed { i, cell ->
-                        TableCell(cell, colors, colors.muted, bold = false, align = block.alignments.getOrElse(i) { TableAlign.LEFT })
-                    }
+                TableRow(row, weights, Modifier) { i, cell, cellModifier ->
+                    TableCell(cell, colors.muted, bold = false, align = block.alignments.getOrElse(i) { TableAlign.LEFT }, modifier = cellModifier)
                 }
             }
         }
@@ -304,7 +303,22 @@ private fun TableView(block: MdBlock.Table, colors: LlmColors) {
 }
 
 @Composable
-private fun TableCell(text: AnnotatedString, colors: LlmColors, color: androidx.compose.ui.graphics.Color, bold: Boolean, align: TableAlign) {
+private fun TableRow(
+    cells: List<AnnotatedString>,
+    weights: List<Float>?,
+    modifier: Modifier,
+    cell: @Composable RowScope.(Int, AnnotatedString, Modifier) -> Unit,
+) {
+    Row(if (weights == null) modifier else modifier.fillMaxWidth()) {
+        cells.forEachIndexed { i, text ->
+            val sizing = weights?.getOrNull(i)?.let { Modifier.weight(it) } ?: Modifier.width(140.dp)
+            cell(i, text, sizing)
+        }
+    }
+}
+
+@Composable
+private fun TableCell(text: AnnotatedString, color: androidx.compose.ui.graphics.Color, bold: Boolean, align: TableAlign, modifier: Modifier) {
     Text(
         text,
         color = color,
@@ -315,7 +329,7 @@ private fun TableCell(text: AnnotatedString, colors: LlmColors, color: androidx.
             TableAlign.CENTER -> androidx.compose.ui.text.style.TextAlign.Center
             TableAlign.RIGHT -> androidx.compose.ui.text.style.TextAlign.End
         },
-        modifier = Modifier.width(140.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 8.dp),
     )
 }
 

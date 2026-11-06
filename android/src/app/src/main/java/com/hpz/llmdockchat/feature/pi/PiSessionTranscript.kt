@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
+import com.hpz.llmdockchat.feature.pi.transcript.groupToolRuns
 
 @Composable
 fun PiSessionTranscript(
@@ -22,15 +24,16 @@ fun PiSessionTranscript(
     modifier: Modifier = Modifier,
 ) {
     val items = state.transcript.items
+    val display = remember(items) { groupToolRuns(items) }
     val listState = rememberLazyListState()
     var itemCountBefore by remember { mutableIntStateOf(0) }
-    LaunchedEffect(items.size) {
-        if (items.size > itemCountBefore) {
+    LaunchedEffect(display.size) {
+        if (display.size > itemCountBefore) {
             val follow = shouldFollow(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1, itemCountBefore)
-            itemCountBefore = items.size
-            if (follow) listState.animateScrollToItem(items.lastIndex)
+            itemCountBefore = display.size
+            if (follow) listState.animateScrollToItem(display.lastIndex)
         } else {
-            itemCountBefore = items.size
+            itemCountBefore = display.size
         }
     }
     LazyColumn(
@@ -38,6 +41,11 @@ fun PiSessionTranscript(
         state = listState,
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
-        items(items, key = { it.id }) { item -> PiItemView(item, lastStopAt) }
+        items(display, key = { it.id }) { entry ->
+            when (entry) {
+                is PiDisplayItem.Single -> PiItemView(entry.item, lastStopAt)
+                is PiDisplayItem.ToolGroup -> PiToolGroupView(entry)
+            }
+        }
     }
 }

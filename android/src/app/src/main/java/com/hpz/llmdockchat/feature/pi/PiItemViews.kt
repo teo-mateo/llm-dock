@@ -11,8 +11,8 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
-import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.thread.MarkdownBody
 import com.hpz.llmdockchat.feature.thread.ReasoningBlock
 @Composable
@@ -20,7 +20,7 @@ fun PiItemView(item: PiItem, lastStopAt: Long? = null) {
     when (item) {
         is PiItem.User -> PiUserItem(item)
         is PiItem.Assistant -> PiAssistantItem(item)
-        is PiItem.Tool -> PiToolItem(item)
+        is PiItem.Tool -> PiToolGroupView(PiDisplayItem.ToolGroup("g${item.id}", listOf(item)))
         is PiItem.Notice -> PiNoticeItem(item)
         is PiItem.RunEnd -> PiRunEndItem(item, lastStopAt)
     }
@@ -78,92 +78,6 @@ private fun PiAssistantItem(item: PiItem.Assistant) {
                     modifier = Modifier.testTag("pi_streaming_caret"),
                 )
             }
-            if (item.outputTokens != null) {
-                Text(
-                    "${item.outputTokens} tokens",
-                    color = colors.subtle,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
-    }
-}
-@Composable
-private fun PiToolItem(item: PiItem.Tool) {
-    val colors = LlmTheme.colors
-    var argsExpanded by remember { mutableStateOf(false) }
-    var showAll by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
-            .border(1.dp, colors.line, RoundedCornerShape(12.dp))
-            .padding(12.dp)
-            .testTag("pi_tool_${item.callId}"),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                item.name,
-                color = colors.fg,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                statusLabel(item),
-                color = when (item.status) {
-                    ToolStatus.RUNNING -> colors.amber
-                    ToolStatus.DONE -> colors.green
-                    ToolStatus.ERROR -> colors.red
-                },
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-        if (item.args != null) {
-            Text(
-                if (argsExpanded) "▾ Arguments" else "▸ Arguments",
-                color = colors.muted,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.clickable { argsExpanded = !argsExpanded }.testTag("pi_tool_args_toggle"),
-            )
-            if (argsExpanded) {
-                Text(
-                    item.args,
-                    color = colors.muted,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        if (item.output != null) {
-            val lines = item.output.lines()
-            Text(
-                if (showAll) item.output else lines.take(20).joinToString("\n"),
-                color = colors.muted,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.sunken).padding(10.dp),
-            )
-            if (lines.size > 20) {
-                Text(
-                    if (showAll) "Show less" else "Show all",
-                    color = colors.accent,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.clickable { showAll = !showAll }.testTag("pi_tool_output_toggle"),
-                )
-            }
-        }
-        if (item.truncated) {
-            Text(
-                "output truncated by pi-remote",
-                color = colors.amber,
-                style = MaterialTheme.typography.labelSmall,
-            )
         }
     }
 }
@@ -190,9 +104,4 @@ private fun PiRunEndItem(item: PiItem.RunEnd, lastStopAt: Long?) {
         Text(text, color = colors.subtle, style = MaterialTheme.typography.labelSmall)
         Box(Modifier.weight(1f).height(1.dp).background(colors.line))
     }
-}
-private fun statusLabel(item: PiItem.Tool): String = when (item.status) {
-    ToolStatus.RUNNING -> "running…"
-    ToolStatus.DONE -> item.durationMs?.let { "done · ${String.format("%.1f", it / 1000.0)} s" } ?: "done"
-    ToolStatus.ERROR -> "error"
 }

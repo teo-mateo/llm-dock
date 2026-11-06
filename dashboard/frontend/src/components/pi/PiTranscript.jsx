@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { runEndLabel } from '../../utils/piCommands'
 import PiMessage from './PiMessage'
-import PiToolCard from './PiToolCard'
+import PiToolGroup from './PiToolGroup'
+import { groupToolRuns } from '../../utils/piToolRuns'
 
 const NEAR_BOTTOM_PX = 80
 
@@ -9,6 +10,7 @@ export default function PiTranscript({ items, working, lastStopAt }) {
   const containerRef = useRef(null)
   const nearBottomRef = useRef(true)
   const itemCountRef = useRef(items.length)
+  const shown = useMemo(() => groupToolRuns(items), [items])
 
   useEffect(() => {
     const container = containerRef.current
@@ -34,12 +36,12 @@ export default function PiTranscript({ items, working, lastStopAt }) {
       className="flex-1 overflow-y-auto"
     >
       <div className="flex flex-col gap-4 py-4">
-        {items.map((item) => {
+        {shown.map((item) => {
           if (item.kind === 'user' || item.kind === 'assistant') {
             return <PiMessage key={item.id} item={item} />
           }
-          if (item.kind === 'tool') {
-            return <PiToolCard key={item.id} item={item} />
+          if (item.kind === 'tool_group') {
+            return <PiToolGroup key={item.id} group={item} />
           }
           if (item.kind === 'notice') {
             return (
