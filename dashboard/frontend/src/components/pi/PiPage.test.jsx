@@ -228,3 +228,16 @@ describe('pi prompt cards', () => {
     expect(screen.queryByTestId('pi-prompt-stack')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Message to pi')).toBeInTheDocument()
   })
+
+describe('list column layout', () => {
+  it('keeps the card column narrow and lets the page use the full width', () => {
+    renderPage('/pi')
+    const aside = document.querySelector('aside')
+    expect(aside.className).toContain('md:w-60')
+    expect(aside.className).not.toContain('md:w-72')
+    const page = aside.parentElement
+    expect(page.className).toContain('w-full')
+    expect(page.className).not.toContain('max-w-6xl')
+    expect(page.className).toContain('min-w-0')
+  })
+})
