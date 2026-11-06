@@ -40,6 +40,7 @@ import com.hpz.llmdockchat.data.LogsStreamRepository
 import com.hpz.llmdockchat.data.HealthRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.PiSessionEventsRepository
 import com.hpz.llmdockchat.data.PiSessionsRepository
 import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
@@ -129,6 +130,7 @@ class AppContainer(
     val servicesRepository = ServicesRepository(apiClient)
     val servicesStreamRepository = ServicesStreamRepository(sseTransport)
     val piSessionsRepository = PiSessionsRepository(sseTransport)
+    val piSessionEventsRepository = PiSessionEventsRepository(sseTransport)
     val gpuStreamRepository = GpuStreamRepository(sseTransport)
     val logsStreamRepository = LogsStreamRepository(sseTransport)
     val promptsRepository = PromptsRepository(apiClient)
