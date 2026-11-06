@@ -62,10 +62,7 @@ export default function PiPage() {
         }`}
       >
         {!selectedKey ? (
-          <div className="pi-empty m-auto flex max-w-[calc(100%_-_2rem)] flex-col items-center gap-4 rounded-2xl border border-border px-8 py-7 text-center">
-            <span aria-hidden="true" className="pi-empty-mark flex h-12 w-12 items-center justify-center rounded-2xl font-mono text-2xl">✳</span>
-            <p className="text-sm text-fg-muted">Pick a session to watch it here.</p>
-          </div>
+          <p className="m-auto px-6 text-center text-sm text-fg-muted">Pick a session to watch it here.</p>
         ) : error === 'unknown_session' ? (
           <p className="m-auto px-6 text-center text-sm text-fg-muted">
             This session is no longer known to the dashboard.

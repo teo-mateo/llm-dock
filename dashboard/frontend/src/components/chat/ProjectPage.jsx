@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   getProjectFilesTree, uploadProjectFile, mkdirProjectPath,
@@ -479,7 +480,7 @@ export default function ProjectPage({ project, onEditorDirtyChange }) {
       <div className="px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
           <i className="fa-solid fa-folder-open text-amber-500/80"></i>
-          <h1 className="text-lg font-semibold text-fg truncate">{project.name}</h1>
+          <PageTitle className="truncate">{project.name}</PageTitle>
         </div>
         {project.description && (
           <p className="mt-1 text-sm text-fg-muted">{project.description}</p>

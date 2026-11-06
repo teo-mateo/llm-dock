@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 import { useMemo, useState } from 'react'
 import useRegistry from '../../hooks/useRegistry'
 import RegistryEditor from './RegistryEditor'
@@ -150,7 +151,7 @@ export default function ToolsPage() {
   return (
     <div className="space-y-4 max-w-6xl">
       <div>
-        <h1 className="text-xl text-fg">Tools</h1>
+        <PageTitle>Tools</PageTitle>
         <p className="text-sm text-fg-muted">
           MCP servers available to the chat. Built-in servers ship with the dashboard; external servers are
           declared in a JSON file on disk.

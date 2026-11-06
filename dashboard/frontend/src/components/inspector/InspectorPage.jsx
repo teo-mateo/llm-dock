@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useInspectorCaptures from '../../hooks/useInspectorCaptures'
@@ -106,7 +107,7 @@ export default function InspectorPage() {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
-        <h1 className="text-xl font-semibold text-fg">Inspector</h1>
+        <PageTitle>Inspector</PageTitle>
         <div className="flex items-center gap-3 flex-wrap">
           <select
             value={service || ''}

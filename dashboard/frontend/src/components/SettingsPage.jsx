@@ -1,3 +1,4 @@
+import PageTitle from './PageTitle'
 import { useTheme } from '../contexts/ThemeContext'
 import PromptsEditor from './settings/PromptsEditor'
 import OpenRouterModelsPicker from './settings/OpenRouterModelsPicker'
@@ -40,7 +41,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
-        <h1 className="text-xl text-fg">Settings</h1>
+        <PageTitle>Settings</PageTitle>
         <p className="text-sm text-fg-muted">
           Manage dashboard configuration and security.
         </p>

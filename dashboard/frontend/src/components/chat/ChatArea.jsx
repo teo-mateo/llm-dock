@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 import { useState, useCallback, useRef } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
@@ -135,7 +136,7 @@ export default function ChatArea({
       <div className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-2xl flex flex-col items-center">
           <i className="fa-solid fa-comments text-6xl mb-5 text-accent-fg/40"></i>
-          <h2 className="text-2xl font-semibold text-fg mb-2">Start a new conversation</h2>
+          <PageTitle className="mb-2 text-center">Start a new conversation</PageTitle>
           <p className="text-sm text-fg-subtle mb-4 text-center">
             {defaultModelName
               ? 'Choose a model, then type a message below.'

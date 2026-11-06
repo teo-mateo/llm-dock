@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 import { needsAnswer } from '../../utils/piPrompts'
 
 function sessionName(session) {
@@ -40,7 +41,7 @@ export default function PiSessionList({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-fg">Sessions</h2>
+        <PageTitle as="h2">Sessions</PageTitle>
         <label className="flex items-center gap-2 text-xs text-fg-muted">
           <input
             type="checkbox"
