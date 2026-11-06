@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import logging.handlers
 from dotenv import load_dotenv, set_key
 
 # Resolve .env next to this file so it works regardless of CWD.
@@ -20,6 +21,29 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Optional. When set, TOTP (time-based one-time password) authentication is
 # enabled alongside the bearer-token method. Read via ``config.TOTP_SECRET``.
 TOTP_SECRET = os.getenv("TOTP_SECRET")
+
+DEFAULT_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.log")
+DEFAULT_LOG_MAX_BYTES = 20 * 1024 * 1024
+DEFAULT_LOG_BACKUPS = 5
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except ValueError:
+        return default
+
+
+class QuietAccessFilter(logging.Filter):
+    """Drops werkzeug access lines for successful requests; 4xx/5xx still pass."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not (isinstance(record.msg, str) and record.msg.rstrip().endswith('"%s" %s %s')):
+            return True
+        if not (isinstance(args, tuple) and len(args) == 3):
+            return True
+        return str(args[1])[:1] not in ("1", "2", "3")
 
 
 def set_global_api_key(new_key: str, dotenv_path: str = DOTENV_PATH):
@@ -64,8 +88,11 @@ def init_config():
     log_level = getattr(logging, LOG_LEVEL)
     log_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    # File handler
-    file_handler = logging.FileHandler("dashboard.log")
+    file_handler = logging.handlers.RotatingFileHandler(
+        os.getenv("DASHBOARD_LOG_FILE", DEFAULT_LOG_FILE),
+        maxBytes=_env_int("DASHBOARD_LOG_MAX_BYTES", DEFAULT_LOG_MAX_BYTES),
+        backupCount=_env_int("DASHBOARD_LOG_BACKUPS", DEFAULT_LOG_BACKUPS),
+    )
     file_handler.setLevel(log_level)
     file_handler.setFormatter(log_format)
 
@@ -81,6 +108,10 @@ def init_config():
     root_logger.setLevel(log_level)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+
+    werkzeug_logger = logging.getLogger("werkzeug")
+    if not any(isinstance(f, QuietAccessFilter) for f in werkzeug_logger.filters):
+        werkzeug_logger.addFilter(QuietAccessFilter())
 
     # Set only after validation and handler setup have both succeeded, so a
     # failed first call can't disable re-validation (and logging setup) for

@@ -250,6 +250,12 @@ cd dashboard && pytest tests/ -n auto
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `LLM_DOCK_API_KEY` | (required) | Global API key for model services |
 | `OPENROUTER_API_KEY` | (unset) | Enables OpenRouter models in chat; commented out in the example file |
+| `DASHBOARD_LOG_FILE` | `dashboard/dashboard.log` | Log file, anchored next to `config.py` (not the CWD); not in the example file |
+| `DASHBOARD_LOG_MAX_BYTES` / `DASHBOARD_LOG_BACKUPS` | `20971520` / `5` | Rotation: disk use is capped at about max × (backups + 1); not in the example file |
+
+Successful requests are not logged at `INFO`: auth success is `DEBUG`, and
+`config.QuietAccessFilter` drops werkzeug's 1xx/2xx/3xx access lines (4xx/5xx and
+auth failures still log). The tests point `DASHBOARD_LOG_FILE` at their scratch dir.
 
 Those are the `.env.example` values, not the code defaults: `config.py` falls
 back to port `3305` and host `127.0.0.1` when `.env` is absent, so the
