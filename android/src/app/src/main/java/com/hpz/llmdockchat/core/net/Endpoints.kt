@@ -35,6 +35,8 @@ object Endpoints {
     /** A snapshot, then deltas as containers start/stop. */
     const val SERVICES_STREAM = "/api/services/stream"
 
+    const val PI_SESSIONS_STREAM = "/api/pi/sessions/stream"
+
     /** The stored config for one service. 404 when Docker knows the
      * container but `services.json` does not. */
     fun serviceDetail(name: String): String = "/api/services/$name"
