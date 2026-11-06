@@ -79,8 +79,9 @@ export async function fetchAPI(endpoint, options = {}) {
     let msg = `HTTP ${response.status}`
     let code = null
     let details = null
+    let data = null
     try {
-      const data = JSON.parse(text)
+      data = JSON.parse(text)
       msg = typeof data.error === 'string' ? data.error : msg
       // Stable machine-readable identifier for errors the UI branches on
       // (e.g. 'revision_conflict', 'already_exists') — match on err.code,
@@ -92,6 +93,8 @@ export async function fetchAPI(endpoint, options = {}) {
     const err = new Error(msg)
     if (code) err.code = code
     if (details) err.details = details
+    err.status = response.status
+    err.body = data
     throw err
   }
 

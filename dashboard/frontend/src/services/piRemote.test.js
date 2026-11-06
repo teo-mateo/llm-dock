@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { readPiStream, piSessionKey } from './piRemote'
+import { abortPiRun, piSessionKey, readPiStream, sendPiMessage } from './piRemote'
 
-const { authFailureMock, tokenMock } = vi.hoisted(() => ({
+const { authFailureMock, tokenMock, fetchAPIMock } = vi.hoisted(() => ({
   authFailureMock: vi.fn(),
   tokenMock: vi.fn(() => 'test-token'),
+  fetchAPIMock: vi.fn(),
 }))
 
 vi.mock('../api', () => ({
   API_BASE: 'http://api.test/api',
   getToken: tokenMock,
   handleAuthFailure: authFailureMock,
+  fetchAPI: fetchAPIMock,
 }))
 
 const fetchMock = vi.fn()
@@ -27,6 +29,7 @@ function streamResponse(text, status = 200) {
 beforeEach(() => {
   fetchMock.mockReset()
   authFailureMock.mockReset()
+  fetchAPIMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -86,5 +89,53 @@ describe('readPiStream', () => {
 describe('piSessionKey', () => {
   it('is session_id plus instance_id', () => {
     expect(piSessionKey({ session_id: 's1', instance_id: 'i1' })).toBe('s1/i1')
+  })
+})
+
+
+describe('sendPiMessage', () => {
+  it('posts text', async () => {
+    fetchAPIMock.mockResolvedValue({ command_id: 'cmd-1', ok: true, error: null })
+    const result = await sendPiMessage('s1', 'i1', 'hello')
+    expect(fetchAPIMock).toHaveBeenCalledWith(
+      '/pi/sessions/s1/i1/messages',
+      { method: 'POST', body: JSON.stringify({ text: 'hello' }) },
+    )
+    expect(result).toEqual({
+      status: 200,
+      body: { command_id: 'cmd-1', ok: true, error: null },
+    })
+  })
+
+  it('202 and 409 do not throw', async () => {
+    fetchAPIMock.mockResolvedValue({ command_id: 'cmd-1', pending: true })
+    await expect(sendPiMessage('s1', 'i1', 'hello')).resolves.toEqual({
+      status: 202,
+      body: { command_id: 'cmd-1', pending: true },
+    })
+
+    const error = new Error('pi is offline')
+    error.status = 409
+    error.body = { error: 'pi_session_offline' }
+    fetchAPIMock.mockRejectedValue(error)
+    await expect(abortPiRun('s1', 'i1')).resolves.toEqual({
+      status: 409,
+      body: { error: 'pi_session_offline' },
+    })
+  })
+})
+
+describe('abortPiRun', () => {
+  it('posts', async () => {
+    fetchAPIMock.mockResolvedValue({ command_id: 'cmd-1', ok: true, error: null })
+    const result = await abortPiRun('s1', 'i1')
+    expect(fetchAPIMock).toHaveBeenCalledWith(
+      '/pi/sessions/s1/i1/abort',
+      { method: 'POST', body: '{}' },
+    )
+    expect(result).toEqual({
+      status: 200,
+      body: { command_id: 'cmd-1', ok: true, error: null },
+    })
   })
 })

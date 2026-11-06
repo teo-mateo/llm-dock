@@ -1,4 +1,4 @@
-import { API_BASE, getToken, handleAuthFailure } from '../api'
+import { API_BASE, fetchAPI, getToken, handleAuthFailure } from '../api'
 import { createSseParser } from '../utils/sseFrames'
 
 export async function readPiStream(path, { signal, lastEventId, onFrame } = {}) {
@@ -46,3 +46,33 @@ export async function readPiStream(path, { signal, lastEventId, onFrame } = {}) 
 }
 
 export const piSessionKey = (s) => `${s.session_id}/${s.instance_id}`
+
+
+async function postPiCommand(path, body) {
+  try {
+    const data = await fetchAPI(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+    return { status: data?.pending ? 202 : 200, body: data }
+  } catch (err) {
+    if (typeof err.status === 'number') {
+      return { status: err.status, body: err.body ?? null }
+    }
+    throw err
+  }
+}
+
+export async function sendPiMessage(sessionId, instanceId, text) {
+  return postPiCommand(
+    `/pi/sessions/${sessionId}/${instanceId}/messages`,
+    { text },
+  )
+}
+
+export async function abortPiRun(sessionId, instanceId) {
+  return postPiCommand(
+    `/pi/sessions/${sessionId}/${instanceId}/abort`,
+    {},
+  )
+}

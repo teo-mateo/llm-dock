@@ -66,6 +66,17 @@ describe('fetchAPI error-code transport', () => {
     expect(err.details).toBeUndefined()
   })
 
+  it('attaches status and parsed body for command status mapping', async () => {
+    stubFetch({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ error: 'pi_session_offline' }),
+    })
+    const err = await fetchAPI('/x').catch(e => e)
+    expect(err.status).toBe(409)
+    expect(err.body).toEqual({ error: 'pi_session_offline' })
+  })
+
   it('survives a non-JSON error body', async () => {
     stubFetch({ ok: false, status: 502, text: async () => 'gateway exploded' })
     const err = await fetchAPI('/x').catch(e => e)

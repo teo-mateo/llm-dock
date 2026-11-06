@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
+import { runEndLabel } from '../../utils/piCommands'
 import PiMessage from './PiMessage'
 import PiToolCard from './PiToolCard'
 
 const NEAR_BOTTOM_PX = 80
 
-export default function PiTranscript({ items, working }) {
+export default function PiTranscript({ items, working, lastStopAt }) {
   const containerRef = useRef(null)
   const nearBottomRef = useRef(true)
   const itemCountRef = useRef(items.length)
@@ -51,7 +52,7 @@ export default function PiTranscript({ items, working }) {
             return (
               <div key={item.id} className="flex items-center gap-2 text-xs text-fg-muted">
                 <span className="h-px flex-1 bg-border"></span>
-                <span>run {item.outcome}</span>
+                <span>{runEndLabel(item.outcome, item.ts, lastStopAt)}</span>
                 <span className="h-px flex-1 bg-border"></span>
               </div>
             )
