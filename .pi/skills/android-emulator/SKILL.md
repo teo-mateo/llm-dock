@@ -34,6 +34,26 @@ $HOME/Android/Sdk/platform-tools/adb -s emulator-5554 shell am start -n com.hpz.
 DEVICE=emulator-5554 <checkout>/android/scripts/dev.sh shot issue-N-state
 ```
 
-Use `../android-fixtures/SKILL.md` for deterministic session-list states. Capture each state after
-an observable UI condition, not a chain of arbitrary sleeps. Restore the prior connection/configuration
-and remove only your own adb reverse mapping when done. Do not print real credentials.
+## Example: navigate without guessed delays
+
+Good — the helper waits for the actual tagged control before tapping:
+
+```bash
+python3 scripts/ui.py --device emulator-5554 tap nav_tab_pi
+python3 scripts/ui.py --device emulator-5554 wait pi_session_fixture-live_fixture-instance
+```
+
+Bad — the delay is unrelated to readiness, and guessed coordinates may hit another control:
+
+```bash
+sleep 5
+adb shell input tap 680 2200
+```
+
+If `wait` times out, inspect the screen/hierarchy and report why the expected tag was missing.
+Do not simply increase a sleep. Use `bounds <actual-row-tag>` for row measurements rather than
+writing another regex/XML parser.
+
+Use `../android-fixtures/SKILL.md` for deterministic session-list states. Restore the prior
+connection/configuration and remove only your own adb reverse mapping when done. Do not print
+real credentials.
