@@ -99,11 +99,13 @@ ON CONFLICT(session_id, instance_id, prompt_id) DO UPDATE SET
     opened_ts = excluded.opened_ts,
     closed_seq = NULL,
     closed_ts = NULL
+ WHERE pi_prompts.opened_seq < excluded.opened_seq
 """
 
 CLOSE_PROMPT_SQL = """
 UPDATE pi_prompts SET status = ?, value_json = ?, answered_by = ?, closed_seq = ?, closed_ts = ?
  WHERE session_id = ? AND instance_id = ? AND prompt_id = ?
+   AND (closed_seq IS NULL OR closed_seq < ?)
 """
 
 

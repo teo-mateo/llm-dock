@@ -54,7 +54,7 @@ class EventStore:
                 (frame.session_id, frame.instance_id, mark),
             ).fetchall()
             apply_prompt_events(
-                conn, frame.session_id, frame.instance_id, tuple(frame.events)
+                conn, frame.session_id, frame.instance_id, tuple(inserted)
             )
             new_mark = compute_acked_seq(
                 (AckedEvent(row["seq"], row["type"], row["gap_from"], row["gap_to"])

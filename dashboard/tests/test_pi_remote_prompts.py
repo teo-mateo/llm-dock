@@ -201,6 +201,40 @@ def test_a_malformed_prompt_open_is_a_bad_frame(env):
     assert env["store"].prompts.open_for("s1", "i1") == []
 
 
+def reingest(env, first_seq, *payloads):
+    return env["handler"].handle("POST", "/v1/events", frame(payloads, first_seq), 2500)
+
+
+def test_a_replayed_open_frame_does_not_resurrect_an_answered_prompt(env):
+    ingest(env, opened(), closed(value="green", answered_by="terminal"))
+    assert reingest(env, 1, opened()).status == 200
+    assert env["client"].session(("s1", "i1")).prompts == []
+    row = env["store"].prompts.get("s1", "i1", "call-1")
+    assert (row.status, row.value, row.answered_by) == ("answered", "green", "terminal")
+
+
+def test_an_out_of_order_open_cannot_reopen_a_prompt_closed_after_it(env):
+    assert reingest(env, 5, opened()).status == 200
+    assert reingest(env, 6, closed()).status == 200
+    assert reingest(env, 1, opened()).status == 200
+    assert env["client"].session(("s1", "i1")).prompts == []
+    assert env["store"].prompts.get("s1", "i1", "call-1").status == "answered"
+
+
+def test_a_reannounced_open_with_a_newer_seq_does_reopen(env):
+    ingest(env, opened(), closed())
+    assert env["client"].session(("s1", "i1")).prompts == []
+    ingest(env, opened())
+    assert env["client"].session(("s1", "i1")).prompts == [dict(QUESTION)]
+
+
+def test_a_cancelled_winner_is_not_replaced_by_an_older_answer(env):
+    ingest(env, opened(), closed(reason="cancelled", value=None, answered_by=None))
+    assert reingest(env, 1, opened()).status == 200
+    row = env["store"].prompts.get("s1", "i1", "call-1")
+    assert (row.status, row.value, row.answered_by) == ("cancelled", None, None)
+
+
 def test_closed_prompts_are_purged_after_retention(env):
     ingest(env, opened(), closed())
     assert env["store"].events.purge_old(1500 + 31 * 24 * 60 * 60 * 1000) >= 1

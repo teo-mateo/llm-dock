@@ -78,6 +78,7 @@ def close_values(session_id: str, instance_id: str, event: StoredEvent) -> Optio
         session_id,
         instance_id,
         body.get("prompt_id"),
+        event.seq,
     )
 
 
