@@ -58,6 +58,11 @@ through `SseTransport`, sending `after=<lastSeq>` on every connection. It parses
 greater than the last held seq, reconnects immediately on `lagged`, marks failures stale and
 retries, and stops with `unknown = true` on `404 unknown_session`.
 
+The transcript rules are shared with the web client: `dashboard/frontend/src/utils/piTranscript.js`
+and Android `feature/pi/transcript/PiTranscript.kt` implement the same rules, item kinds and ids.
+Android `PiTranscriptTest` ports the web suite's 14 cases one to one and adds malformed-payload
+coverage.
+
 **Acceptance criteria**
 
 - [x] `PiSessionStreamEventTest` covers events order, session, lagged after, unknown type and
@@ -75,5 +80,5 @@ retries, and stops with `unknown = true` on `404 unknown_session`.
 
 ## Verification notes
 
-JVM tests `PiSessionStreamEventTest` and `PiSessionEventsRepositoryTest` pass; `assembleDebug`
-builds. No UI is implemented in #358, so F18-R1–R3 UI criteria remain unchecked.
+JVM tests `PiSessionStreamEventTest`, `PiSessionEventsRepositoryTest` and `PiTranscriptTest` pass;
+`assembleDebug` builds. No UI is implemented, so F18-R1–R3 UI criteria remain unchecked.
