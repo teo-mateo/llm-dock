@@ -2,6 +2,7 @@ import logging
 import threading
 from typing import Callable, List, Optional, Tuple
 
+from .command_queue import CommandQueue
 from .contract import END_REASON_STALE
 from .handler import PublishCallback
 from .read_model import session_summary
@@ -22,12 +23,14 @@ class StaleSweeper:
         clock: Callable[[], int],
         interval_ms: int = DEFAULT_INTERVAL_MS,
         publish: Optional[PublishCallback] = None,
+        queue: Optional[CommandQueue] = None,
     ) -> None:
         self.registry = registry
         self.store = store
         self.clock = clock
         self.interval_ms = interval_ms
         self.publish = publish or (lambda *args: None)
+        self.queue = queue
         self._lock = threading.RLock()
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
@@ -37,6 +40,11 @@ class StaleSweeper:
         keys = self.registry.expire(now)
         for session_id, instance_id in keys:
             try:
+                if self.queue is not None:
+                    pending = self.queue.drop_key((session_id, instance_id))
+                    self.store.drop_commands(
+                        [command.command_id for command in pending], now
+                    )
                 self.store.end_session(
                     session_id, instance_id, END_REASON_STALE, now
                 )
