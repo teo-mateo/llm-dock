@@ -1,3 +1,4 @@
+import PageTitle from './PageTitle'
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchAPI } from '../api'
@@ -344,7 +345,7 @@ export default function ServicesTable() {
     <div className="mt-6">
       <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-fg">Services</h2>
+          <PageTitle>Services</PageTitle>
           <ConnectionDot connected={connected} error={error} />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">

@@ -1,3 +1,4 @@
+import PageTitle from './PageTitle'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -657,7 +658,7 @@ export default function ServiceDetailsHeader({ serviceName, config, runtime, tra
           />
         ) : (
           <>
-            <h1 className="text-2xl font-bold text-fg">{serviceName}</h1>
+            <PageTitle>{serviceName}</PageTitle>
             <CopyButton text={serviceName} label="Copy service name" />
             <button
               onClick={() => setEditing(true)}

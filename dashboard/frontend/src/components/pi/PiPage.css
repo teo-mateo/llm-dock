@@ -1,27 +1,3 @@
 .pi-canvas {
-  background-color: var(--color-surface);
-  background-image:
-    radial-gradient(ellipse at 8% 0%, color-mix(in srgb, var(--color-spinoff) 18%, transparent), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--color-info) 13%, transparent), transparent 55%),
-    radial-gradient(circle, color-mix(in srgb, var(--color-fg) 12%, transparent) 0.8px, transparent 1px);
-  background-size: auto, auto, 24px 24px;
-}
-
-.pi-empty {
-  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
-  box-shadow: 0 12px 60px color-mix(in srgb, var(--color-spinoff) 10%, transparent);
-}
-
-.pi-empty-mark {
-  color: var(--color-accent-fg);
-  background: color-mix(in srgb, var(--color-spinoff) 12%, var(--color-surface));
-  border: 1px solid color-mix(in srgb, var(--color-spinoff) 30%, var(--color-border));
-}
-
-[data-theme="light"] .pi-canvas {
-  background-color: #fbfcff;
-  background-image:
-    radial-gradient(ellipse at 8% 0%, rgb(168 85 247 / 0.12), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgb(14 165 233 / 0.12), transparent 55%),
-    radial-gradient(circle, rgb(99 102 160 / 0.18) 0.8px, transparent 1px);
+  background-color: color-mix(in srgb, var(--color-app) 70%, var(--color-surface));
 }

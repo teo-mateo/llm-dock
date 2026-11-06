@@ -1,3 +1,4 @@
+import PageTitle from '../PageTitle'
 function sessionName(summary) {
   if (summary.name) return summary.name
   const segments = summary.cwd.split('/').filter(Boolean)
@@ -38,7 +39,7 @@ export default function PiSessionHeader({ summary, onBack }) {
             ‹ Sessions
           </button>
         )}
-        <h1 className="min-w-0 truncate text-lg font-semibold text-fg">{sessionName(summary)}</h1>
+        <PageTitle className="min-w-0 truncate">{sessionName(summary)}</PageTitle>
         <span
           className={`inline-flex flex-none items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeClass(status)}`}
         >
