@@ -4,9 +4,14 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import PiPage from './PiPage'
 import { usePiSessions } from '../../hooks/usePiSessions'
 import { usePiSessionEvents } from '../../hooks/usePiSessionEvents'
+import { abortPiRun } from '../../services/piRemote'
 
 vi.mock('../../hooks/usePiSessions', () => ({ usePiSessions: vi.fn() }))
 vi.mock('../../hooks/usePiSessionEvents', () => ({ usePiSessionEvents: vi.fn() }))
+vi.mock('../../services/piRemote', () => ({
+  sendPiMessage: vi.fn(),
+  abortPiRun: vi.fn(),
+}))
 
 function session(overrides = {}) {
   return {
@@ -47,9 +52,17 @@ beforeEach(() => {
     connected: true,
     error: null,
   })
+  abortPiRun.mockReset()
+  abortPiRun.mockResolvedValue({
+    status: 200,
+    body: { command_id: 'cmd-1', ok: true, error: null },
+  })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('PiPage', () => {
   it('no selection prompt', () => {
@@ -96,5 +109,32 @@ describe('PiPage', () => {
     renderPage('/pi')
     fireEvent.click(screen.getByRole('button', { name: /llm-dock/ }))
     expect(screen.getByTestId('location')).toHaveTextContent('/pi/s1/i1')
+  })
+
+  it('stop then run_end error renders stopped', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000)
+    usePiSessionEvents.mockReturnValue({
+      events: [
+        {
+          seq: 1,
+          type: 'state',
+          ts: 1000,
+          payload: { state: 'working' },
+        },
+        {
+          seq: 2,
+          type: 'run_end',
+          ts: 2000,
+          payload: { outcome: 'error' },
+        },
+      ],
+      summary: session({ state: 'working', live: true }),
+      connected: true,
+      error: null,
+    })
+    renderPage('/pi/s1/i1')
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await screen.findByText('stopped')
+    expect(abortPiRun).toHaveBeenCalledWith('s1', 'i1')
   })
 })

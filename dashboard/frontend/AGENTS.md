@@ -178,7 +178,7 @@ Key mechanics:
 | `/chat/project/:projectId` | `ChatPage` | Project file explorer |
 | `/tools` | `ToolsPage` | MCP registry, default prompt |
 | `/inspector` | `InspectorPage` | Request-capture viewer (issue #234) |
-| `/pi/:sessionId?/:instanceId?` | `PiPage` | Live pi session list + read-only transcript |
+| `/pi/:sessionId?/:instanceId?` | `PiPage` | Live pi session list, transcript, and composer |
 | `/services/:serviceName/*` | `ServiceDetailsPage` | Config / logs / metrics |
 | `/settings` | `SettingsPage` | Theme, prompts, OpenRouter models, TOTP |
 
@@ -202,6 +202,7 @@ Key mechanics:
 | `src/utils/openrouterModels.js` | Curated-list helpers shared by the picker and its JSON panel: `validateModelsJson`/`validateModels` (mirror of the server rules), `modelsToJson`, `deriveLabel`, `formatPricePerMtok`, `formatContext`, `CONTEXT_PRESETS` |
 | `src/utils/sseFrames.js` | Pure incremental SSE parser: chunks split anywhere, CRLF, comments, multi-line data, event defaults to `message` |
 | `src/utils/piTranscript.js` | Pure event-to-transcript builder: user/assistant/tool/notice/run_end items, streaming assistant coalescing, tool call state, gap/compaction notices, stable ids |
+| `src/utils/piCommands.js` | Pure command result mapping (`commandOutcome`) and run-end labels (`runEndLabel`) |
 
 ### Services (per-domain API clients under `src/services/`)
 
@@ -217,7 +218,7 @@ Key mechanics:
 | `openrouterProviders.js` | Per-provider detail for a batch of model ids (`…/openrouter-catalog/endpoints`, POST); `MAX_PROVIDER_BATCH` mirrors the server cap |
 | `mcpRegistry.js` | Registry get/json/put/reload/test; surfaces structured `err.body` validation errors |
 | `inspector.js` | Capture list/detail/delete + `inspectorServices()` for the filter (`/inspector/*`) |
-| `piRemote.js` | Fetch/read pi SSE streams: bearer and `Last-Event-ID`, parser frames with JSON data, auth/status errors |
+| `piRemote.js` | Fetch/read pi SSE streams: bearer and `Last-Event-ID`, parser frames with JSON data, auth/status errors; `sendPiMessage` and `abortPiRun` return `{status, body}` |
 
 ### Hooks (`src/hooks/`)
 
@@ -262,10 +263,11 @@ Key mechanics:
 | `ParameterReference.jsx` | Flag metadata reference + add-flag |
 | `SettingsPage.jsx` / `settings/PromptsEditor.jsx` / `TOTPSetup.jsx` | Settings: theme, chat prompts editor, TOTP enrollment |
 | `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges, read-only ladder chips with a per-row re-read) + collapsed JSON panel. Rows carry a provider line (count, names, quantizations, price spread, expandable per-provider uptime/status) once it lands; which rows want one comes from an `IntersectionObserver` on the pane, not from list position |
-| `pi/PiPage.jsx` | Route owner: session list + selected session header/transcript; selecting navigates to `/pi/:sessionId/:instanceId` |
+| `pi/PiPage.jsx` | Route owner: session list + selected session header/transcript/composer; selecting navigates to `/pi/:sessionId/:instanceId`; Stop records `lastStopAt` before aborting |
 | `pi/PiSessionList.jsx` | Session rows with text status, name/cwd, live-only filter, empty state |
 | `pi/PiSessionHeader.jsx` | Selected session name, state badge, cwd/model/thinking line, context bar, ended reason |
-| `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notices/run-end dividers; auto-scrolls only when near the bottom |
+| `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notices/run-end dividers, labels run ends via `runEndLabel`; auto-scrolls only when near the bottom |
+| `pi/PiComposer.jsx` | Send/Stop composer: Enter sends, Shift+Enter newlines, idle vs working placeholder, clear on done/pending, inline rejection status, read-only when ended |
 | `pi/PiMessage.jsx` | User bubbles + assistant markdown, collapsed thinking, streaming caret, usage |
 | `pi/PiToolCard.jsx` | Tool name/status, collapsed args, output capped at 20 lines, truncation note |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
