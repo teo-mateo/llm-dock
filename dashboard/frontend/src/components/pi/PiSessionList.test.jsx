@@ -64,3 +64,25 @@ describe('PiSessionList', () => {
     expect(onSelect).toHaveBeenCalledWith(s)
   })
 })
+
+describe('needs-answer indicator', () => {
+  it('marks a live session with an open question', () => {
+    setup({ sessions: [session({ prompts: [{ prompt_id: 'a' }] })] })
+    expect(screen.getByText('1 question waiting')).toBeInTheDocument()
+  })
+
+  it('counts several open questions', () => {
+    setup({ sessions: [session({ prompts: [{ prompt_id: 'a' }, { prompt_id: 'b' }] })] })
+    expect(screen.getByText('2 questions waiting')).toBeInTheDocument()
+  })
+
+  it('says nothing for a session with no questions', () => {
+    setup({ sessions: [session()] })
+    expect(screen.queryByText(/question waiting/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing for an ended session that still has a stored question', () => {
+    setup({ sessions: [session({ live: false, prompts: [{ prompt_id: 'a' }] })] })
+    expect(screen.queryByText(/question waiting/i)).not.toBeInTheDocument()
+  })
+})

@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { buildTranscript } from '../../utils/piTranscript'
 import { commandOutcome } from '../../utils/piCommands'
+import { promptOutcome } from '../../utils/piPrompts'
 import { usePiSessionEvents } from '../../hooks/usePiSessionEvents'
 import { usePiSessions } from '../../hooks/usePiSessions'
-import { abortPiRun, sendPiMessage } from '../../services/piRemote'
+import { abortPiRun, answerPiPrompt, sendPiMessage } from '../../services/piRemote'
 import PiComposer from './PiComposer'
+import PiPromptCard from './PiPromptCard'
 import PiSessionHeader from './PiSessionHeader'
 import PiSessionList from './PiSessionList'
 import PiTranscript from './PiTranscript'
@@ -18,6 +20,7 @@ export default function PiPage() {
   const { sessions } = usePiSessions()
   const { events, summary, error } = usePiSessionEvents(sessionId, instanceId)
   const { items, working } = useMemo(() => buildTranscript(events), [events])
+  const prompts = summary?.prompts ?? []
   const selectedKey = sessionId && instanceId ? `${sessionId}/${instanceId}` : null
   const lastStopAt = lastStop.key === selectedKey ? lastStop.at : null
 
@@ -33,6 +36,11 @@ export default function PiPage() {
   async function handleStop() {
     setLastStop({ key: selectedKey, at: Date.now() })
     await abortPiRun(sessionId, instanceId)
+  }
+
+  async function handleAnswer(promptId, value) {
+    const { status, body } = await answerPiPrompt(sessionId, instanceId, promptId, value)
+    return promptOutcome(status, body)
   }
 
   return (
@@ -61,6 +69,14 @@ export default function PiPage() {
         ) : (
           <>
             {summary && <PiSessionHeader summary={summary} onBack={() => navigate('/pi')} />}
+            {prompts.map((prompt) => (
+              <PiPromptCard
+                key={prompt.prompt_id}
+                prompt={prompt}
+                live={summary?.live}
+                onAnswer={(value) => handleAnswer(prompt.prompt_id, value)}
+              />
+            ))}
             <PiTranscript
               items={items}
               working={working}

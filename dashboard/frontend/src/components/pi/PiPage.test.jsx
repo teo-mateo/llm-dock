@@ -1,16 +1,17 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import PiPage from './PiPage'
 import { usePiSessions } from '../../hooks/usePiSessions'
 import { usePiSessionEvents } from '../../hooks/usePiSessionEvents'
-import { abortPiRun } from '../../services/piRemote'
+import { abortPiRun, answerPiPrompt } from '../../services/piRemote'
 
 vi.mock('../../hooks/usePiSessions', () => ({ usePiSessions: vi.fn() }))
 vi.mock('../../hooks/usePiSessionEvents', () => ({ usePiSessionEvents: vi.fn() }))
 vi.mock('../../services/piRemote', () => ({
   sendPiMessage: vi.fn(),
   abortPiRun: vi.fn(),
+  answerPiPrompt: vi.fn(),
 }))
 
 function session(overrides = {}) {
@@ -136,5 +137,55 @@ describe('PiPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     await screen.findByText('stopped')
     expect(abortPiRun).toHaveBeenCalledWith('s1', 'i1')
+  })
+})
+
+describe('pi prompt cards', () => {
+  beforeEach(() => {
+    answerPiPrompt.mockReset()
+    answerPiPrompt.mockResolvedValue({ status: 200, body: { ok: true, prompt_id: 'call-1' } })
+  })
+
+  it('shows an open question above the transcript and answers it', async () => {
+    usePiSessionEvents.mockReturnValue({
+      events: [],
+      summary: session({ prompts: [{ prompt_id: 'call-1', kind: 'confirm', title: 'Deploy?', message: '', options: [], allow_free_text: false, timeout_ms: null }] }),
+      connected: true,
+      error: null,
+    })
+    renderPage('/pi/s1/i1')
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes' }))
+    await waitFor(() => expect(answerPiPrompt).toHaveBeenCalledWith('s1', 'i1', 'call-1', true))
+  })
+
+  it('disappears when the session frame closes the question', async () => {
+    usePiSessionEvents.mockReturnValue({
+      events: [],
+      summary: session({ prompts: [{ prompt_id: 'call-1', kind: 'select', title: 'Which colour', message: '', options: ['red'], allow_free_text: false, timeout_ms: null }] }),
+      connected: true,
+      error: null,
+    })
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/pi/s1/i1']}>
+        <Routes>
+          <Route path="/pi/:sessionId?/:instanceId?" element={<PiPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('button', { name: 'red' })).toBeInTheDocument()
+    usePiSessionEvents.mockReturnValue({
+      events: [],
+      summary: session({ prompts: [] }),
+      connected: true,
+      error: null,
+    })
+    rerender(
+      <MemoryRouter initialEntries={['/pi/s1/i1']}>
+        <Routes>
+          <Route path="/pi/:sessionId?/:instanceId?" element={<PiPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'red' })).not.toBeInTheDocument())
   })
 })
