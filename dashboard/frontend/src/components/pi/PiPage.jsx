@@ -44,8 +44,8 @@ export default function PiPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 md:flex-row md:items-stretch">
-      <aside className={`md:w-72 md:flex-none ${selectedKey ? 'hidden md:block' : ''}`}>
+    <div className="flex w-full min-w-0 flex-col gap-3 md:flex-row md:items-start">
+      <aside className={`md:w-60 md:flex-none ${selectedKey ? 'hidden md:block' : ''}`}>
         <PiSessionList
           sessions={sessions}
           selectedKey={selectedKey}

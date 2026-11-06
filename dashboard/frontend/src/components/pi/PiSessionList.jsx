@@ -6,6 +6,11 @@ function sessionName(session) {
   return segments.length > 0 ? segments[segments.length - 1] : session.cwd
 }
 
+function pathTail(cwd) {
+  const segments = cwd.split('/').filter(Boolean)
+  return segments.length > 1 ? segments.slice(-2).join('/') : cwd
+}
+
 function sessionStatus(session) {
   if (!session.live) return 'ended'
   return session.state || 'idle'
@@ -33,7 +38,7 @@ export default function PiSessionList({
   const visible = liveOnly ? sessions.filter((session) => session.live) : sessions
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-fg">Sessions</h2>
         <label className="flex items-center gap-2 text-xs text-fg-muted">
@@ -51,46 +56,45 @@ export default function PiSessionList({
           No pi sessions yet — start pi with the pi-remote extension.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-1">
           {visible.map((session) => {
             const key = `${session.session_id}/${session.instance_id}`
             const status = sessionStatus(session)
             const selected = key === selectedKey
+            const pending = needsAnswer(session) ? session.prompts.length : 0
             return (
               <li key={key}>
                 <button
                   type="button"
                   aria-current={selected ? 'true' : undefined}
+                  title={`${sessionName(session)} — ${session.cwd}`}
                   onClick={() => onSelect(session)}
-                  className={`w-full rounded-lg border p-3 text-left ${
+                  className={`flex w-full min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left max-sm:min-h-11 focus-visible:ring-2 focus-visible:ring-accent ${
                     selected
                       ? 'bg-surface border-accent'
                       : 'bg-app border-border hover:bg-surface'
                   }`}
                 >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span
-                      aria-hidden="true"
-                      className={`h-2 w-2 flex-none rounded-full ${statusDotClass(status)}`}
-                    ></span>
-                    <span className="flex-1 min-w-0 truncate text-sm font-semibold text-fg">
-                      {sessionName(session)}
-                    </span>
-                    <span className={`flex-none text-xs ${statusTextClass(status)}`}>
-                      {status}
-                    </span>
+                  <span
+                    aria-hidden="true"
+                    className={`h-2 w-2 flex-none rounded-full ${statusDotClass(status)}`}
+                  ></span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">
+                    {sessionName(session)}
                   </span>
-                  {needsAnswer(session) && (
-                    <span className="mt-1 flex items-center gap-2">
-                      <span className="rounded-full border border-accent bg-accent-subtle px-2 py-0.5 text-xs font-semibold text-accent-strong">
-                        {session.prompts.length === 1
-                          ? '1 question waiting'
-                          : `${session.prompts.length} questions waiting`}
-                      </span>
+                  <span className="min-w-0 shrink-[3] truncate font-mono text-xs text-fg-muted block sm:hidden">
+                    {pathTail(session.cwd)}
+                  </span>
+                  {pending > 0 && (
+                    <span
+                      aria-label={`${pending} question${pending === 1 ? '' : 's'} waiting`}
+                      className="flex-none rounded-full border border-accent bg-accent-subtle px-1.5 py-px text-[11px] font-semibold leading-tight text-accent-strong"
+                    >
+                      {pending} waiting
                     </span>
                   )}
-                  <span className="mt-1 block truncate font-mono text-xs text-fg-muted">
-                    {session.cwd}
+                  <span className={`flex-none text-xs ${statusTextClass(status)}`}>
+                    {status}
                   </span>
                 </button>
               </li>
