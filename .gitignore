@@ -89,6 +89,8 @@ Thumbs.db
 
 # Databases
 *.db
+*.db-wal
+*.db-shm
 
 # Testing
 .pytest_cache/

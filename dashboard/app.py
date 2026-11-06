@@ -11,6 +11,7 @@ from benchmarking.routes import benchmarks_bp, init_benchmarking
 from chat.routes import chat_bp, init_chat
 from inspector.supervisor import proxy_supervisor
 from model_proxy.supervisor import model_proxy_supervisor
+from pi_remote.supervisor import pi_remote_supervisor
 from services import event_manager
 
 _SPA_ASSET_SUFFIXES = (
@@ -79,6 +80,12 @@ def create_app(config=None):
     )
     model_proxy_supervisor.sync()
 
+    pi_remote_supervisor.configure(
+        socket_path=app.config.get("PI_REMOTE_SOCKET"),
+        db_path=app.config.get("PI_REMOTE_DB_PATH"),
+    )
+    pi_remote_supervisor.start()
+
     @app.route("/")
     def index():
         """Serve the frontend"""
@@ -135,6 +142,7 @@ logger = logging.getLogger(__name__)
 atexit.register(event_manager.stop)
 atexit.register(proxy_supervisor.stop_all)
 atexit.register(model_proxy_supervisor.stop_all)
+atexit.register(pi_remote_supervisor.stop_all)
 
 if __name__ == "__main__":
     app = create_app()

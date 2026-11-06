@@ -45,6 +45,7 @@ def pytest_configure(config):
     _hermetic_base = _hermetic_base_dir()
     storage = os.path.join(_hermetic_base, "storage")
     os.makedirs(storage, exist_ok=True)
+    os.chmod(storage, 0o700)
     with open(os.path.join(storage, "docker-compose.yml"), "w") as f:
         f.write(HERMETIC_COMPOSE)
     with open(os.path.join(storage, "services.json"), "w") as f:
@@ -57,6 +58,8 @@ def pytest_configure(config):
     os.environ["LLM_DOCK_BENCHMARKS_DB"] = os.path.join(storage, "benchmarks.db")
     os.environ["LLM_DOCK_MAYA_STATE_DIR"] = os.path.join(storage, "maya")
     os.environ["LLM_DOCK_PROVIDERS_FILE"] = os.path.join(storage, "providers.json")
+    os.environ["LLM_DOCK_PI_REMOTE_SOCKET"] = os.path.join(storage, "pi-remote.sock")
+    os.environ["LLM_DOCK_PI_REMOTE_DB"] = os.path.join(storage, "pi_remote.db")
     os.environ["DASHBOARD_LOG_FILE"] = os.path.join(storage, "dashboard.log")
     # port 0: app imports bind the model proxy to an ephemeral port, never the dev machine's 3388
     os.environ["LLM_DOCK_MODEL_PROXY_PORT"] = "0"

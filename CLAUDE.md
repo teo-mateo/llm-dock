@@ -94,6 +94,8 @@ llm-dock/
 │   │   ├── ports.py             # 34000–34999 upstream-port allocator
 │   │   └── supervisor.py        # ProxySupervisor singleton reconciling proxies with services.json
 │   │
+│   ├── pi_remote/               # pi-remote ingest over a Unix socket (contract, registry, store, listener, supervisor)
+│   │
 │   ├── services/                # Docker event subsystem
 │   │   ├── __init__.py          # `event_manager` singleton, started by app.py
 │   │   ├── event_manager.py     # Daemon thread, reconnect, dispatch to callbacks
@@ -261,13 +263,18 @@ Those are the `.env.example` values, not the code defaults: `config.py` falls
 back to port `3305` and host `127.0.0.1` when `.env` is absent, so the
 Quick-Start URL only holds after `setup.sh` has written the file.
 
-Machine-local storage paths, none of them in `.env.example`, each defaulting
-under `dashboard/`: `LLM_DOCK_CHAT_SETTINGS_FILE`, `LLM_DOCK_MCP_SERVERS_FILE`,
+Machine-local storage paths, none of them in `.env.example`; the DB and file
+paths default under `dashboard/`: `LLM_DOCK_CHAT_SETTINGS_FILE`, `LLM_DOCK_MCP_SERVERS_FILE`,
 `LLM_DOCK_PROMPTS_DIR`, `LLM_DOCK_PROJECT_FILES_DIR`, `LLM_DOCK_TABBY_KEYS_DIR`,
 `LLM_DOCK_CHAT_DB` (the chat SQLite DB, default `dashboard/chat.db`),
-`LLM_DOCK_BENCHMARKS_DB` (default `dashboard/benchmarks.db`), and
+`LLM_DOCK_BENCHMARKS_DB` (default `dashboard/benchmarks.db`),
 `LLM_DOCK_INSPECTOR_DB` (default `dashboard/inspector.db`, the capture
-store; the app config key `INSPECTOR_DB_PATH` overrides it at boot).
+store; the app config key `INSPECTOR_DB_PATH` overrides it at boot), and
+`LLM_DOCK_PI_REMOTE_DB` (default `dashboard/pi_remote.db`, the pi presence
+store; `PI_REMOTE_DB_PATH` overrides it at boot). `LLM_DOCK_PI_REMOTE_SOCKET`
+(default `~/.cache/pi-remote/pi-remote.sock`, not under `dashboard/`;
+`PI_REMOTE_SOCKET` overrides it) must equal the extension's default in
+`pi-extension/src/config.ts`.
 
 ### Model Discovery Paths
 - `~/.cache/huggingface/hub/` - HuggingFace cache

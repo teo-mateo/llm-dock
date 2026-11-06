@@ -387,7 +387,32 @@ this contract — ordered `{path, now, request, status, response}` cases (hello,
 instance, heartbeat ok, unknown session, stale instance, bye, instance mismatch,
 bad_frame, unsupported_protocol, type/path mismatch, not_found, ignored extra field).
 The extension's TS test runs them through `test/fake-server.ts`'s `handleFrame`; the
-dashboard's pytest must run the same file against its handler.
+dashboard's pytest runs the same file against its handler
+(`dashboard/tests/test_pi_remote_fixtures.py`).
+
+**Ingest package** — `dashboard/pi_remote/`, built in #331:
+
+| Module | Owns |
+|---|---|
+| `contract.py` | `PATHS`, protocol version, error codes, stale threshold, frame validation and the check order — pure |
+| `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, coexisting instances, 45 s liveness; thread-safe, time passed in |
+| `store.py` | `pi_remote.db` (`pi_sessions`), schema, upsert/touch/end; the only module writing SQL |
+| `handler.py` | `handle(method, path, body, now) -> (status, payload)`; routes registry then store, no sockets |
+| `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads` |
+| `supervisor.py` | singleton owning listener + registry + store; configured and started from `create_app()`, stopped by `atexit` |
+| `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |
+
+- **Env**: `LLM_DOCK_PI_REMOTE_SOCKET` (default `~/.cache/pi-remote/pi-remote.sock` — the
+  same path as `pi-extension/src/config.ts`; the two defaults must change together) and
+  `LLM_DOCK_PI_REMOTE_DB` (default `dashboard/pi_remote.db`). App config keys
+  `PI_REMOTE_SOCKET` / `PI_REMOTE_DB_PATH` override them at boot.
+- **Directory rule**: the socket's parent is created `0700` if absent; an existing parent
+  with group or other permission bits is refused with a logged error and `bind_error`, and
+  the dashboard still boots. The socket is `0600`. A stale socket file is replaced; a live
+  one (another dashboard) sets `bind_error`. `stop()` removes the socket file it created.
+- **Storage**: `pi_sessions` is one row per `(session_id, instance_id)`; hello upserts and
+  preserves `first_seen`, heartbeat updates `last_seen`, bye sets `ended_at`/`end_reason`,
+  and an instance the registry finds stale is ended with `end_reason = "stale"`.
 
 The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`,
 plus the additive presence fields (`waiting_prompt`, queued-message flag,
