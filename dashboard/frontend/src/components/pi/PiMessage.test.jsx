@@ -63,4 +63,9 @@ describe('PiMessage', () => {
     renderMessage(assistantItem({ streaming: true }))
     expect(screen.getByLabelText('streaming')).toBeInTheDocument()
   })
+
+  it('per-turn token usage is not shown', () => {
+    renderMessage(assistantItem({ usage: { input: 10, output: 42 } }))
+    expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
+  })
 })

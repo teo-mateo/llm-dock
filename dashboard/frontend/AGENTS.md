@@ -268,8 +268,10 @@ Key mechanics:
 | `pi/PiSessionHeader.jsx` | Selected session name, state badge, cwd/model/thinking line, context bar, ended reason |
 | `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notices/run-end dividers, labels run ends via `runEndLabel`; auto-scrolls only when near the bottom |
 | `pi/PiComposer.jsx` | Send/Stop composer: Enter sends, Shift+Enter newlines, idle vs working placeholder, clear on done/pending, inline rejection status, read-only when ended |
-| `pi/PiMessage.jsx` | User bubbles + assistant markdown, collapsed thinking, streaming caret, usage |
-| `pi/PiToolCard.jsx` | Tool name/status, collapsed args, output capped at 20 lines, truncation note |
+| `pi/PiMessage.jsx` | User bubbles + assistant markdown (table cells wrap), collapsed thinking, streaming caret; no per-turn token count |
+| `pi/PiToolGroup.jsx` | Consecutive tool calls as one compact block: status dot, name, one-line args, Details toggle |
+| `pi/PiToolDetails.jsx` | A tool's expanded panel: status, full args, output capped at 20 lines, truncation note |
+| `utils/piToolRuns.js` | Pure: `groupToolRuns` (empty assistant turns between tools join the group), `argsSummary`, `toolStatusText` |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
 | `tools/RegistryEditor.jsx` | JSON editor for `mcp_servers.json` |
 | `tools/DefaultPromptEditor.jsx` | Default system prompt editor |
