@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionContext, ExtensionEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 
+import { CommandPoller } from "./command-poller.ts";
+
 import type { Activity } from "./activity.ts";
 import type { RemoteConfig } from "./config.ts";
 import { EventStamper } from "./events.ts";
@@ -37,6 +39,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     clearTimeout: (handle: unknown) => clearTimeout(handle as NodeJS.Timeout),
   };
   let sender: EventSender | undefined;
+  let poller: CommandPoller | undefined;
   const presence = new Presence({
     socketPath: options.config.socketPath,
     enabled: options.config.enabled,
@@ -50,12 +53,21 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     }),
     heartbeatSample: () => heartbeatSampleFrom(options.ctx, options.activity),
     onNotice: (message, level) => options.ctx.ui.notify(message, level),
-    onOnline: (ackedSeq) => sender?.onOnline(ackedSeq),
+    onOnline: (ackedSeq) => {
+      sender?.onOnline(ackedSeq);
+      poller?.start();
+    },
   });
   sender = new EventSender({
     socketPath: options.config.socketPath,
     presence,
     clock,
+  });
+  poller = new CommandPoller({
+    socketPath: options.config.socketPath,
+    presence,
+    clock,
+    handlers: { abort: () => options.ctx.abort() },
   });
   options.activity.working = false;
   const stamper = new EventStamper(clock);
@@ -65,6 +77,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     emit: (event) => sender?.enqueue(event),
   });
   presence.start();
+  poller.start();
   let paused = false;
   return {
     presence,
@@ -75,16 +88,19 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     },
     pause: async () => {
       paused = true;
+      poller?.pause();
       await sender.stop();
       await presence.stop("remote_off");
     },
     resume: () => {
       paused = false;
+      poller?.start();
       sender.start();
       presence.start();
     },
     stop: async (reason) => {
       paused = true;
+      poller?.stop();
       await sender.stop();
       await presence.stop(reason);
     },

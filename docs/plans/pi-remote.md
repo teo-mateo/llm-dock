@@ -104,8 +104,8 @@ Assumptions, marked where Phase 0 has verified them:
  ┌───────────────────────┐   UDS 0600   ┌─────────────────────────────────┐  HTTPS 3399  ┌──────────┐
  │ pi-remote extension   │ ───────────▶ │ pi_remote/ listener (local only)│              │ Android  │
  │  • event mirror       │  POST events │  • session registry             │ ◀─ bearer ── │ Sessions │
- │  • command executor   │ ◀─────────── │  • event log  (pi_remote.db)    │   REST + SSE │ tab      │
- │  • ask_user tool      │  SSE cmds    │  • command queue + audit        │              ├──────────┤
+ │  • command executor   │ ───────────▶ │  • event log  (pi_remote.db)    │   REST + SSE │ tab      │
+ │  • ask_user tool      │ long-poll    │  • command queue + audit        │              ├──────────┤
  │  • pi.events ask API  │              │  • prompt broker                │ ───────────▶ │ /v2/pi   │
  └───────────────────────┘              │ Flask pi_bp on :3399 (existing  │              │ web view │
    × N sessions, each dials out         │   auth, TOTP sessions)          │              └──────────┘
@@ -183,8 +183,18 @@ sessions or shutdown calls `stop(reason)`, which also awaits the in-flight send 
 `bye`; the switching runtime's outbox is dropped. The command handler talks to the
 runtime, not to Presence alone.
 
-**Inbound commands** (SSE stream from the dashboard, each with `command_id`, result
-returned as `command_result {command_id, ok, error}`; ids are idempotent):
+**Inbound commands** use a **long poll on the existing Unix socket**, not an SSE
+stream. The listener stays request/response (`JsonResponse`) and the extension reuses
+`node:http` POST. Rejected: `GET /v1/commands` SSE (needs a streaming response type in
+the listener and an SSE reader in the extension, with no latency gain at this scale).
+The extension polls while presence is online; the dashboard hands out queued commands
+and records results. Delivery is **at-least-once**: a command with no result is
+re-delivered 30 s after it was handed out. The extension dedupes by `command_id`
+(last 200 results) and answers a repeat with the stored result, never executing twice.
+Each command carries `command_id`, `kind`, `args` and `issued_at`; results are
+`{command_id, ok, error}`. Unknown kinds answer `unsupported_command`; a throwing
+handler answers `failed`. In v1 the kinds are `abort {}` and `send_message {text}`
+(next issue).
 
 | Command | Executes |
 |---|---|
@@ -317,10 +327,12 @@ Built in #339: `GET /api/pi/sessions` → `{"sessions": [summary_json…]}`; `GE
 
 Built in #344: `GET /api/pi/sessions/stream` → `snapshot` then session `session` deltas; `GET /api/pi/sessions/<session_id>/<instance_id>/stream?after=<int>` → replay `events`, then live. Frames are `events` / `session` / `snapshot` / `lagged`; `id` is the last seq sent; reconnect uses `after` or `Last-Event-ID`; a lagged stream sends `lagged` with `after` and ends. Every frame's `data` also carries `type` equal to its `event:` name, so data-only SSE clients (Android) work; resume for them is `?after=`, since they cannot read `id:`, with `after` set to the last event seq they hold (if `data` ever contains `type`, the frame type wins).
 
-Command flow: client POST → broker records audit row → queues to the live
-instance's command stream → waits briefly for `command_result` (e.g. 5 s) → returns
-it, or `202 pending` and the result arrives as an SSE frame. Session offline → 409
-`code: "pi_session_offline"`. Error codes are typed like the model proxy's.
+Command flow: client POST → broker records audit row → queues for the live
+instance's long-poll channel → waits briefly for `command_result` (e.g. 5 s) → returns
+it, or `202 pending` and the result arrives as an SSE frame. A command without a result
+is re-delivered 30 s after it was handed out; extension dedupe makes that idempotent.
+Session offline → 409 `code: "pi_session_offline"`. Error codes are typed like the
+model proxy's.
 
 ### Extension endpoint
 
@@ -424,6 +436,39 @@ epoch ms):
 | `compaction` | `summary` string; `tokens_before` int \| null; `reason` string |
 | `gap` | `from_seq` int; `to_seq` int (inclusive); marks dropped seqs; gaps are immutable and never merged |
 
+**`commands_poll`** — `POST /v1/commands/poll`
+
+| Field | Type | Null | Notes |
+|---|---|---|---|
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"commands_poll"` |
+| `session_id` | string | no | |
+| `instance_id` | string | no | |
+| `wait_ms` | int | no | `0..25000`, milliseconds |
+
+200 `{ok: true, protocol: 1, commands: [{command_id, kind, args, issued_at}]}` — the
+array may be empty after waiting up to `wait_ms`. `command_id`/`kind` are strings,
+`args` is an object, `issued_at` is epoch ms. 404 `unknown_session`; 400 `bad_frame`.
+The server marks a command handed out on delivery and re-delivers it 30 s later if no
+result arrived.
+
+**`command_results`** — `POST /v1/command-results`
+
+| Field | Type | Null | Notes |
+|---|---|---|---|
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"command_results"` |
+| `session_id` | string | no | |
+| `instance_id` | string | no | |
+| `results` | array | no | each `{command_id: string, ok: bool, error: string\|null}`; error is a short code |
+
+200 `{ok: true, protocol: 1}`; 404 `unknown_session`; 400 `bad_frame`.
+
+**Command check order** — path exists; `protocol == 1`; `type` matches; both ids are
+non-empty strings; `wait_ms`/`results` fields valid; then the identity is live.
+Unknown paths are 404 `not_found`; a protocol mismatch is 400 `unsupported_protocol`;
+everything else malformed is 400 `bad_frame`.
+
 Status codes:
 
 | Code | Body | Meaning |
@@ -522,10 +567,11 @@ declared `Content-Length > 1 MiB` is rejected without reading.
   and the sweeper ends a stale instance with `end_reason = "stale"`. At supervisor start,
   leftover open rows are ended `dashboard_restart` before the listener accepts traffic.
 
-The later `GET /v1/commands` (SSE) and `POST /v1/command-results`, plus the additive
-presence fields (`waiting_prompt`, queued-message flag, `target_session_file` on bye),
-are not part of this contract — they arrive with the commands/prompt issues and are
-ignored by a server that does not know them.
+`POST /v1/commands/poll` and `POST /v1/command-results` are part of this contract. The
+rejected `GET /v1/commands` SSE shape is not. The additive presence fields
+(`waiting_prompt`, queued-message flag, `target_session_file` on bye) and the prompt
+commands still arrive with later issues and are ignored by a server that does not know
+them.
 
 **Relation to chat conversations** — separate entity. A pi session is not a
 `conversations` row: the model runs inside pi, not through `llm_proxy`, and the

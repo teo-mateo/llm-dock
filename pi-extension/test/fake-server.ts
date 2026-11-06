@@ -3,9 +3,8 @@ import { createServer, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 
 import { MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
+import { commandKey, FakeCommands, handleCommandResults, handleCommandsPoll, STALE_AFTER_MS } from "./fake-commands.ts";
 import { ackedSeq, handleEvents, type EventStore } from "./fake-events.ts";
-
-export const STALE_AFTER_MS = 45000;
 
 export type RegistryEntry = { sessionId: string; instanceId: string; lastSeen: number };
 export type Registry = Map<string, RegistryEntry>;
@@ -24,6 +23,7 @@ export type FakeServer = {
   records: FakeRecord[];
   registry: Registry;
   events: EventStore;
+  commands: FakeCommands;
   close: () => Promise<void>;
   clearSessions: (dropEvents?: boolean) => void;
 };
@@ -48,16 +48,33 @@ function bodySummary(body: Record<string, unknown>): string {
   const model = body.model as { provider?: string; id?: string } | undefined;
   if (model?.provider && model?.id) parts.push(`model=${model.provider}/${model.id}`);
   if (Array.isArray(body.events)) {
-    parts.push(`events=${body.events.map((event) => `${(event as { type?: string }).type}:${(event as { seq?: number }).seq}`).join(",")}`);
+    parts.push(`events=${body.events.map((event) => {
+      const typed = event as { type?: string; seq?: number; outcome?: string };
+      return `${typed.type}:${typed.seq}${typed.outcome ? `/${typed.outcome}` : ""}`;
+    }).join(",")}`);
+  }
+  if (Array.isArray(body.commands)) {
+    parts.push(`commands=${body.commands.map((command) => {
+      const typed = command as { command_id?: string; kind?: string };
+      return `${typed.command_id}:${typed.kind}`;
+    }).join(",")}`);
+  }
+  if (Array.isArray(body.results)) {
+    parts.push(`results=${body.results.map((result) => {
+      const typed = result as { command_id?: string; ok?: boolean; error?: string | null };
+      return `${typed.command_id}:${typed.ok}:${typed.error ?? "-"}`;
+    }).join(",")}`);
   }
   return parts.join(" ");
 }
 
-function expectedType(path: string): "hello" | "heartbeat" | "bye" | "events" | null {
+function expectedType(path: string): "hello" | "heartbeat" | "bye" | "events" | "commands_poll" | "command_results" | null {
   if (path === PATHS.hello) return "hello";
   if (path === PATHS.heartbeat) return "heartbeat";
   if (path === PATHS.bye) return "bye";
   if (path === PATHS.events) return "events";
+  if (path === PATHS.commandsPoll) return "commands_poll";
+  if (path === PATHS.commandResults) return "command_results";
   return null;
 }
 
@@ -121,6 +138,9 @@ export function handleFrame(
     return { status: 200, payload: { ok: true, protocol: 1 } };
   }
 
+  if (path === PATHS.commandsPoll || path === PATHS.commandResults) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
+  }
   const result = handleEvents(frame, stored);
   if (result.status === 200) eventsByKey.set(key, stored);
   return result;
@@ -130,6 +150,7 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
   if (existsSync(socketPath)) unlinkSync(socketPath);
   const registry: Registry = new Map();
   const events: EventStore = new Map();
+  const commands = new FakeCommands();
   const records: FakeRecord[] = [];
 
   const server = createServer((req, res: ServerResponse) => {
@@ -138,7 +159,7 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
     req.on("data", (chunk: string) => {
       raw += chunk;
     });
-    req.on("end", () => {
+    req.on("end", async () => {
       const path = req.url ?? "";
       const body = parseJson(raw);
       const record: FakeRecord = { at: Date.now(), path, body, status: 0 };
@@ -153,8 +174,16 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else if (!body || typeof body !== "object" || Array.isArray(body)) {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
+      } else if (path === PATHS.commandsPoll) {
+        result = await handleCommandsPoll(body as Frame, registry, commands);
+      } else if (path === PATHS.commandResults) {
+        result = handleCommandResults(body as Frame, registry, commands);
       } else {
         result = handleFrame(path, body as Frame, registry, Date.now(), events);
+        if (path === PATHS.bye) {
+          const frame = body as Record<string, unknown>;
+          commands.wake(commandKey(String(frame.session_id), String(frame.instance_id)));
+        }
       }
 
       record.status = result.status;
@@ -178,6 +207,7 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
         records,
         registry,
         events,
+        commands,
         close: () =>
           new Promise<void>((done) => {
             server.close(() => done());
@@ -203,6 +233,12 @@ async function main(): Promise<void> {
   }
   const fake = await startFakeServer(socketPath);
   process.on("SIGUSR1", () => fake.clearSessions(true));
+  process.on("SIGUSR2", () => {
+    for (const key of fake.registry.keys()) {
+      fake.commands.enqueue(key, fake.commands.abortCommand());
+    }
+    console.log(`[${timestamp()}] SIGUSR2 enqueued abort for ${fake.registry.size} session(s)`);
+  });
   const shutdown = async () => {
     await fake.close();
     process.exit(0);
