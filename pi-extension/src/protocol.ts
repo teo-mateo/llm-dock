@@ -1,0 +1,103 @@
+export const PROTOCOL_VERSION = 1;
+
+export const PATHS = {
+  hello: "/v1/hello",
+  heartbeat: "/v1/heartbeat",
+  bye: "/v1/bye",
+} as const;
+
+export type WirePath = (typeof PATHS)[keyof typeof PATHS];
+
+export type SessionReason = "startup" | "reload" | "new" | "resume" | "fork";
+
+export type ModelRef = {
+  provider: string;
+  id: string;
+};
+
+export type ContextUsage = {
+  tokens: number | null;
+  window: number | null;
+  percent: number | null;
+};
+
+export type HelloFields = {
+  session_id: string;
+  instance_id: string;
+  session_file: string | null;
+  cwd: string;
+  name: string | null;
+  pid: number;
+  model: ModelRef | null;
+  thinking_level: string | null;
+  reason: SessionReason;
+  previous_session_id: string | null;
+  pi_version: string | null;
+  ext_version: string;
+};
+
+export type HeartbeatFields = {
+  session_id: string;
+  instance_id: string;
+  state: "idle" | "working";
+  context: ContextUsage | null;
+  sent_at: number;
+};
+
+export type ByeFields = {
+  session_id: string;
+  instance_id: string;
+  reason: string | null;
+};
+
+export type HelloFrame = HelloFields & { protocol: number; type: "hello" };
+export type HeartbeatFrame = HeartbeatFields & { protocol: number; type: "heartbeat" };
+export type ByeFrame = ByeFields & { protocol: number; type: "bye" };
+
+export type ServerResponse = {
+  ok: boolean;
+  protocol: number;
+  error?: string;
+  session_id?: string;
+  instance_id?: string;
+  server_time?: number;
+};
+
+export function buildHello(fields: HelloFields): HelloFrame {
+  return { protocol: PROTOCOL_VERSION, type: "hello", ...fields };
+}
+
+export function buildHeartbeat(fields: HeartbeatFields): HeartbeatFrame {
+  return { protocol: PROTOCOL_VERSION, type: "heartbeat", ...fields };
+}
+
+export function buildBye(fields: ByeFields): ByeFrame {
+  return { protocol: PROTOCOL_VERSION, type: "bye", ...fields };
+}
+
+export function parseResponse(text: string): ServerResponse | null {
+  try {
+    const value = JSON.parse(text) as unknown;
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      typeof (value as ServerResponse).ok === "boolean" &&
+      typeof (value as ServerResponse).protocol === "number"
+    ) {
+      return value as ServerResponse;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export type ResponseKind = "ok" | "unknown_session" | "rejected" | "unparseable";
+
+export function classifyResponse(status: number, body: string): ResponseKind {
+  const response = parseResponse(body);
+  if (!response) return "unparseable";
+  if (status === 404 && response.error === "unknown_session") return "unknown_session";
+  if (status === 200 && response.ok) return "ok";
+  return "rejected";
+}
