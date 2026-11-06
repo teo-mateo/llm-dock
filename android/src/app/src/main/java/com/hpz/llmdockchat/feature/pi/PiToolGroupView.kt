@@ -36,6 +36,8 @@ import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.argsSummary
+import com.hpz.llmdockchat.feature.pi.transcript.moreLabel
+import com.hpz.llmdockchat.feature.pi.transcript.visibleTools
 
 private const val MAX_OUTPUT_LINES = 20
 
@@ -49,9 +51,21 @@ fun PiToolGroupView(group: PiDisplayItem.ToolGroup) {
             .border(1.dp, colors.line, RoundedCornerShape(12.dp))
             .testTag("pi_tool_group"),
     ) {
-        group.tools.forEachIndexed { index, tool ->
+        var expanded by rememberSaveable(group.id) { mutableStateOf(false) }
+        val visible = visibleTools(group.tools, expanded)
+        visible.shown.forEachIndexed { index, tool ->
             if (index > 0) HorizontalDivider(color = colors.line)
             PiToolRow(tool)
+        }
+        if (visible.hidden > 0) {
+            HorizontalDivider(color = colors.line)
+            Text(
+                moreLabel(visible.hidden),
+                color = colors.muted,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().clickable { expanded = true }
+                    .padding(horizontal = 12.dp, vertical = 8.dp).testTag("pi_tool_group_more"),
+            )
         }
     }
 }
@@ -61,7 +75,7 @@ private fun PiToolRow(item: PiItem.Tool) {
     val colors = LlmTheme.colors
     var open by rememberSaveable(item.id) { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open = !open }
+        Modifier.fillMaxWidth().heightIn(min = 34.dp).clickable { open = !open }
             .padding(horizontal = 12.dp).testTag("pi_tool_${item.callId}"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -75,14 +89,14 @@ private fun PiToolRow(item: PiItem.Tool) {
             color = colors.fg,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
         )
         Text(
             argsSummary(item.args),
             color = colors.muted,
             fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -91,7 +105,7 @@ private fun PiToolRow(item: PiItem.Tool) {
             "Details",
             color = colors.accent,
             fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
         )
     }
     if (open) PiToolDetails(item)

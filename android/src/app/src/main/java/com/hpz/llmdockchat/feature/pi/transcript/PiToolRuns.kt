@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 private const val MAX_SUMMARY_CHARS = 160
+const val VISIBLE_TOOL_ROWS = 3
 
 sealed interface PiDisplayItem {
     val id: String
@@ -53,3 +54,11 @@ private fun objectSummary(args: String): String {
         "$key=$text"
     }
 }
+
+data class VisibleTools(val shown: List<PiItem.Tool>, val hidden: Int)
+
+fun visibleTools(tools: List<PiItem.Tool>, expanded: Boolean): VisibleTools =
+    if (expanded || tools.size <= VISIBLE_TOOL_ROWS) VisibleTools(tools, 0)
+    else VisibleTools(tools.take(VISIBLE_TOOL_ROWS), tools.size - VISIBLE_TOOL_ROWS)
+
+fun moreLabel(hidden: Int): String = "$hidden more…"

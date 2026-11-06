@@ -58,4 +58,23 @@ class PiToolRunsTest {
         assertEquals("", argsSummary(null))
         assertEquals(161, argsSummary("x".repeat(200)).length)
     }
+
+    @Test
+    fun `three or fewer tools are all shown`() {
+        val tools = listOf(tool("1"), tool("2"), tool("3"))
+        assertEquals(VisibleTools(tools, 0), visibleTools(tools, expanded = false))
+    }
+
+    @Test
+    fun `more than three shows the first three and counts the rest`() {
+        val tools = (1..5).map { tool("$it") }
+        assertEquals(VisibleTools(tools.take(3), 2), visibleTools(tools, expanded = false))
+        assertEquals("2 more…", moreLabel(2))
+    }
+
+    @Test
+    fun `expanded shows every tool`() {
+        val tools = (1..5).map { tool("$it") }
+        assertEquals(VisibleTools(tools, 0), visibleTools(tools, expanded = true))
+    }
 }
