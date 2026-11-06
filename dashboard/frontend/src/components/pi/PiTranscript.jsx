@@ -39,9 +39,9 @@ export default function PiTranscript({ items, working, lastStopAt }) {
         onScroll={handleScroll}
         aria-busy={working}
         data-testid="pi-transcript"
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto px-4 md:px-6"
       >
-      <div className="flex flex-col gap-4 py-4">
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 py-6">
         {shown.map((item) => {
           if (item.kind === 'user' || item.kind === 'assistant') {
             return <PiMessage key={item.id} item={item} />
@@ -58,7 +58,7 @@ export default function PiTranscript({ items, working, lastStopAt }) {
           }
           if (item.kind === 'run_end') {
             return (
-              <div key={item.id} className="flex items-center gap-2 text-xs text-fg-muted">
+              <div key={item.id} className="flex items-center gap-3 text-xs text-fg-subtle">
                 <span className="h-px flex-1 bg-border"></span>
                 <span>{runEndLabel(item.outcome, item.ts, lastStopAt)}</span>
                 <span className="h-px flex-1 bg-border"></span>

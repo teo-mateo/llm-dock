@@ -19,7 +19,7 @@ export default function PiToolDetails({ item }) {
     : output
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border bg-app px-3 py-2">
+    <div className="flex flex-col gap-2 border-t border-border bg-surface px-3 py-2">
       <span className={`text-xs ${statusClass(item.status)}`}>{toolStatusText(item)}</span>
 
       {item.args != null && (
@@ -29,7 +29,7 @@ export default function PiToolDetails({ item }) {
       )}
 
       {item.output != null && (
-        <pre className="max-h-80 overflow-auto rounded border border-border bg-surface px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words text-fg-muted">
+        <pre className="max-h-80 overflow-auto rounded border border-border bg-app px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words text-fg-muted">
           {shown}
         </pre>
       )}

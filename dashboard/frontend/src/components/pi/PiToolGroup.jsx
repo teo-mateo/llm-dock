@@ -42,7 +42,7 @@ export default function PiToolGroup({ group }) {
   return (
     <ul
       aria-label="Tool calls"
-      className="overflow-hidden rounded-lg border border-border bg-surface"
+      className="overflow-hidden rounded-lg border border-border-strong bg-app"
     >
       {shown.map((item) => (
         <PiToolRow key={item.id} item={item} />

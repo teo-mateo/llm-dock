@@ -46,6 +46,6 @@ describe('PiSessionHeader', () => {
       />,
     )
     expect(screen.getByText('ended')).toBeInTheDocument()
-    expect(screen.getByText('ended · dashboard_restart')).toBeInTheDocument()
+    expect(screen.getByText('dashboard_restart')).toBeInTheDocument()
   })
 })
