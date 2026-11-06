@@ -47,6 +47,26 @@ existing credential workflow without printing secrets.
 Stop the fixture via its process ID, remove only your tcp:3999 reverse mapping, and release the
 emulator reservation. Port busy means stop and identify the owner; never kill an unknown process.
 
+## Example: prove a stream-driven badge transition
+
+With the fixture app already on its Pi list, run these from the repository root. The badge tag
+below is the real #392 tag, not a guessed coordinate:
+
+```bash
+python3 .pi/skills/android-fixtures/scripts/scenario.py empty
+python3 .pi/skills/android-emulator/scripts/ui.py --device emulator-5554 wait pi_session_fixture-live_fixture-instance
+python3 .pi/skills/android-emulator/scripts/ui.py --device emulator-5554 absent pi_needs_answer_fixture-live_fixture-instance
+python3 .pi/skills/android-fixtures/scripts/scenario.py waiting
+python3 .pi/skills/android-emulator/scripts/ui.py --device emulator-5554 wait pi_needs_answer_fixture-live_fixture-instance
+DEVICE=emulator-5554 android/scripts/dev.sh shot issue-394-fixture-waiting
+```
+
+Stay on the same screen throughout: re-opening it would not prove the existing SSE connection
+updated. For the close transition select `empty`, then verify badge disappearance after the UI
+has consumed the update; a single immediate `absent` assertion can race the SSE delivery.
+Label the screenshot **fixture-driven**. Do not describe it as a real pi prompt reaching the phone.
+Do not write another timed fixture server to reproduce these existing scenarios.
+
 ## Coverage boundary
 
 The synthetic token is not a dashboard credential. The fixture does not contact real services,
