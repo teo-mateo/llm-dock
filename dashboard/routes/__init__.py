@@ -5,5 +5,15 @@ from .openwebui import openwebui_bp
 from .metrics import metrics_bp
 from .totp import totp_bp
 from .inspector import inspector_bp
+from .pi_remote import pi_remote_bp
 
-__all__ = ["gpu_bp", "services_bp", "system_bp", "openwebui_bp", "metrics_bp", "totp_bp", "inspector_bp"]
+__all__ = [
+    "gpu_bp",
+    "services_bp",
+    "system_bp",
+    "openwebui_bp",
+    "metrics_bp",
+    "totp_bp",
+    "inspector_bp",
+    "pi_remote_bp",
+]
