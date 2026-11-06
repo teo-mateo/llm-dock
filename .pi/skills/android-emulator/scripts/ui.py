@@ -47,8 +47,13 @@ def main():
     deadline = time.monotonic() + args.timeout
     while True:
         remaining = max(0.1, deadline - time.monotonic())
-        result = subprocess.run(command + ["exec-out", "uiautomator", "dump", "/dev/tty"],
-                                capture_output=True, text=True, check=True, timeout=remaining)
+        try:
+            result = subprocess.run(command + ["exec-out", "uiautomator", "dump", "/dev/tty"],
+                                    capture_output=True, text=True, check=True, timeout=min(5, remaining))
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= deadline:
+                raise ValueError(f"UI dump timed out waiting for tag: {args.tag}") from None
+            continue
         xml = hierarchy(result.stdout)
         bounds = find_bounds(xml, args.tag)
         if args.action == "absent":

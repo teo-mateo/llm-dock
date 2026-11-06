@@ -1,4 +1,7 @@
 import importlib.util
+import io
+from contextlib import redirect_stdout
+from unittest.mock import patch
 import json
 from pathlib import Path
 import subprocess
@@ -97,6 +100,22 @@ class UiTests(unittest.TestCase):
     def test_dump_trailing_diagnostic_is_not_xml(self):
         raw = 'noise\n<?xml version="1.0"?><hierarchy></hierarchy>\nUI dumped to /dev/tty'
         self.assertEqual(ui.hierarchy(raw), '<?xml version="1.0"?><hierarchy></hierarchy>')
+
+    def test_slow_dump_retries_within_budget(self):
+        result = subprocess.CompletedProcess([], 0, '<hierarchy><node resource-id="ready" bounds="[0,0][20,20]"/></hierarchy>')
+        with patch.object(sys, "argv", ["ui.py", "--device", "emulator-5554", "wait", "ready"]), \
+             patch.object(ui.subprocess, "run", side_effect=[subprocess.TimeoutExpired("adb", 5), result]) as run, \
+             patch.object(ui.time, "monotonic", side_effect=[0, 0.1, 5.1, 5.2]), redirect_stdout(io.StringIO()):
+            ui.main()
+        self.assertEqual(run.call_count, 2)
+        self.assertLessEqual(run.call_args.kwargs["timeout"], 5)
+
+    def test_slow_dump_stops_at_deadline(self):
+        with patch.object(sys, "argv", ["ui.py", "--device", "emulator-5554", "wait", "ready"]), \
+             patch.object(ui.subprocess, "run", side_effect=subprocess.TimeoutExpired("adb", 5)), \
+             patch.object(ui.time, "monotonic", side_effect=[0, 0.1, 15.1]):
+            with self.assertRaisesRegex(ValueError, "UI dump timed out waiting for tag: ready"):
+                ui.main()
 
     def test_physical_device_is_rejected_before_adb(self):
         result = subprocess.run([sys.executable, str(UI_PATH), "--device", "physical-phone",
