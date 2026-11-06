@@ -48,6 +48,46 @@ class PiSessionsStreamEventTest {
     }
 
     @Test
+    fun `prompts parse from a session frame`() {
+        val payload = """
+            {"type":"session","session_id":"s1","instance_id":"i1","name":"llm-dock",
+             "cwd":"/repo","model":null,"thinking_level":null,
+             "first_seen":1000,"last_seen":2000,"ended_at":null,"end_reason":null,
+             "live":true,"state":"working","context_percent":null,
+             "prompts":[{"prompt_id":"p1","kind":"confirm","title":"Run command?",
+                         "message":"rm -r build","options":["Allow","Deny"],
+                         "allow_free_text":false,"timeout_ms":30000}]}
+        """.trimIndent()
+
+        val event = parsePiSessionsStreamFrame(payload) as PiSessionsStreamEvent.Session
+        assertEquals(1, event.session.prompts.size)
+        assertEquals("p1", event.session.prompts[0].promptId)
+        assertEquals("confirm", event.session.prompts[0].kind)
+        assertEquals("Run command?", event.session.prompts[0].title)
+    }
+
+    @Test
+    fun `a summary without a prompts key and an empty prompts list both mean no open prompts`() {
+        val absent = """
+            {"type":"session","session_id":"s1","instance_id":"i1","cwd":"/repo",
+             "first_seen":1000,"last_seen":2000,"live":true,"state":"idle"}
+        """.trimIndent()
+        val empty = """
+            {"type":"session","session_id":"s1","instance_id":"i1","cwd":"/repo",
+             "first_seen":1000,"last_seen":2000,"live":true,"state":"idle","prompts":[]}
+        """.trimIndent()
+
+        assertEquals(
+            emptyList<Any>(),
+            (parsePiSessionsStreamFrame(absent) as PiSessionsStreamEvent.Session).session.prompts,
+        )
+        assertEquals(
+            emptyList<Any>(),
+            (parsePiSessionsStreamFrame(empty) as PiSessionsStreamEvent.Session).session.prompts,
+        )
+    }
+
+    @Test
     fun `lagged parses`() {
         assertEquals(
             PiSessionsStreamEvent.Lagged,

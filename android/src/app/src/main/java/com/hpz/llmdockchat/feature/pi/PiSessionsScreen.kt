@@ -163,6 +163,19 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
             } else {
                 Spacer(Modifier.weight(1f))
             }
+            if (session.needsAnswer) {
+                Text(
+                    "Needs answer",
+                    color = colors.purple,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .background(colors.purple.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .testTag("pi_needs_answer_${session.key.sessionId}_${session.key.instanceId}"),
+                )
+            }
             Text(
                 formatAgo(nowMs, session.lastSeen),
                 color = colors.subtle,

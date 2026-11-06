@@ -25,10 +25,12 @@ class PiSessionsRepositoryTest {
         name: String = "llm-dock",
         lastSeen: Long = 1000,
         live: Boolean = true,
+        prompts: String? = null,
     ): String = """
         "session_id":"$id","instance_id":"i1","name":"$name","cwd":"/repo",
         "model":null,"thinking_level":null,"first_seen":0,"last_seen":$lastSeen,
         "ended_at":null,"end_reason":null,"live":$live,"state":"idle","context_percent":null
+        ${prompts?.let { ",\"prompts\":$it" } ?: ""}
     """.trimIndent()
 
     private fun snapshotJson(id: String, name: String = "llm-dock", lastSeen: Long = 1000) =
@@ -36,6 +38,9 @@ class PiSessionsRepositoryTest {
 
     private fun sessionJson(id: String, name: String = "llm-dock", lastSeen: Long = 1000) =
         """{"type":"session",${sessionFields(id, name, lastSeen)}}"""
+
+    private fun sessionJsonWithPrompts(id: String, prompts: String) =
+        """{"type":"session",${sessionFields(id, prompts = prompts)}}"""
 
     private fun session(id: String, live: Boolean = true, lastSeen: Long = 1000) = PiSession(
         key = PiSessionKey(id, "i1"),
@@ -70,6 +75,26 @@ class PiSessionsRepositoryTest {
         assertFalse(emissions[1].stale)
         assertEquals("renamed", emissions[1].sessions.single().name)
         assertEquals(3000L, emissions[1].sessions.single().lastSeen)
+    }
+
+    @Test
+    fun `prompt open and closed frames drive needs answer`() = runTest {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            snapshotJson("s1"),
+            sessionJsonWithPrompts("s1", """[{"prompt_id":"p1","kind":"confirm","title":"Run it?"}]"""),
+            sessionJsonWithPrompts("s1", "[]"),
+        )
+        val repository = PiSessionsRepository(transport)
+
+        val emissions = withTimeout(5_000) {
+            repository.streamWithStatus(reconnectDelayMs = 1L).take(3).toList()
+        }
+
+        assertFalse(emissions[0].sessions.single().needsAnswer)
+        assertTrue(emissions[1].sessions.single().needsAnswer)
+        assertEquals("p1", emissions[1].sessions.single().prompts.single().promptId)
+        assertFalse(emissions[2].sessions.single().needsAnswer)
     }
 
     @Test

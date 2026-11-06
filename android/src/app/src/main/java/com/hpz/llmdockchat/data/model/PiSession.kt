@@ -13,6 +13,16 @@ data class PiSession(
     val live: Boolean,
     val state: PiState,
     val contextPercent: Double?,
+    val prompts: List<PiPrompt> = emptyList(),
+) {
+    val needsAnswer: Boolean
+        get() = live && prompts.isNotEmpty()
+}
+
+data class PiPrompt(
+    val promptId: String,
+    val kind: String,
+    val title: String?,
 )
 
 data class PiSessionKey(
