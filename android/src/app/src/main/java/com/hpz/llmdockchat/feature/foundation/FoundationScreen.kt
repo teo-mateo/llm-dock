@@ -78,6 +78,7 @@ fun FoundationScreen(serverUrl: Stored<BaseUrl>, modifier: Modifier = Modifier) 
                 Chip("ik_llama.cpp", colors.engineIkLlamaCpp)
                 Chip("TabbyAPI", colors.engineTabbyapi)
                 Chip("NInfer", colors.engineNinfer)
+                Chip("Maya", colors.engineMaya)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("OpenRouter", colors.engineOpenRouter)

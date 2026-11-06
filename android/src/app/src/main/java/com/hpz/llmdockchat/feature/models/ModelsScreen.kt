@@ -672,6 +672,7 @@ private fun EngineChip(engine: Engine, isRunning: Boolean, modifier: Modifier = 
         Engine.VLLM -> colors.engineVllm
         Engine.DS4 -> colors.engineDs4
         Engine.SGLANG -> colors.engineSglang
+        Engine.MAYA -> colors.engineMaya
         Engine.IK_LLAMA_CPP -> colors.engineIkLlamaCpp
         Engine.TABBYAPI -> colors.engineTabbyapi
         Engine.NINFER -> colors.engineNinfer
@@ -725,6 +726,7 @@ internal fun engineLabel(engine: Engine): String = when (engine) {
     Engine.TABBYAPI -> "exl3"
     Engine.NINFER -> "ninfer"
     Engine.SGLANG -> "SGLang"
+    Engine.MAYA -> "Maya"
     Engine.OPEN_ROUTER -> "open router"
     Engine.UNKNOWN -> "?"
 }

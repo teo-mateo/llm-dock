@@ -1,27 +1,20 @@
 import { useMemo } from 'react'
 import useServicesSSE from './useServicesSSE'
 
-/**
- * Hook for getting running inference services (llama.cpp and vLLM only).
- * Derives state from the SSE stream via useServicesSSE.
- *
- * Returns only chat-capable services — embedding pooling services
- * (vLLM `--runner pooling` / `--convert embed`, llama.cpp `--embedding`)
- * can't serve `/v1/chat/completions` and shouldn't appear in the chat
- * composer's default-model slot.
- */
+const CHAT_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'vllm', 'ds4', 'tabbyapi', 'ninfer', 'sglang', 'maya'])
+const CHAT_PREFIXES = ['llamacpp-', 'ik-', 'vllm-', 'ds4-', 'exl3-', 'sglang-', 'ninfer-', 'maya-', 'PAIR_']
+
+export function isChatService(s) {
+  const known = CHAT_ENGINES.has(s.template_type) || CHAT_PREFIXES.some(p => s.name.startsWith(p))
+  return known && (s.kind || 'chat') === 'chat'
+}
+
 export default function useRunningServices() {
   const { services, loading } = useServicesSSE()
 
   const runningServices = useMemo(() => {
     if (!services) return []
-    return services.filter(s => {
-      if (s.status !== 'running') return false
-      if (!s.name.startsWith('llamacpp-') && !s.name.startsWith('ik-') && !s.name.startsWith('vllm-') && !s.name.startsWith('ds4-') && !s.name.startsWith('exl3-') && !s.name.startsWith('sglang-') && !s.name.startsWith('ninfer-') && !s.name.startsWith('maya-') && !s.name.startsWith('PAIR_')) return false
-      // Payloads may omit kind; treat missing as 'chat' so a filter on
-      // kind doesn't drop everything.
-      return (s.kind || 'chat') === 'chat'
-    })
+    return services.filter(s => s.status === 'running' && isChatService(s))
   }, [services])
 
   return { services: runningServices, loading }

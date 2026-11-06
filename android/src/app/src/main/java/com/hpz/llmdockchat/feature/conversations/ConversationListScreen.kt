@@ -609,6 +609,7 @@ private fun LlmColors.chipColors(engine: Engine): ChipColors = when (engine) {
     Engine.VLLM -> engineVllm
     Engine.DS4 -> engineDs4
     Engine.SGLANG -> engineSglang
+    Engine.MAYA -> engineMaya
     Engine.IK_LLAMA_CPP -> engineIkLlamaCpp
     Engine.TABBYAPI -> engineTabbyapi
     Engine.NINFER -> engineNinfer
