@@ -1,0 +1,333 @@
+[
+  {
+    "path": "/v1/hello",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "session_file": "/tmp/s1.jsonl",
+      "cwd": "/tmp",
+      "name": "probe",
+      "pid": 4242,
+      "model": {
+        "provider": "mistral",
+        "id": "mistral-small-latest"
+      },
+      "thinking_level": "high",
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": "1.0.4",
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 1000
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i2",
+      "session_file": "/tmp/s1.jsonl",
+      "cwd": "/tmp",
+      "name": "probe",
+      "pid": 4243,
+      "model": {
+        "provider": "mistral",
+        "id": "mistral-small-latest"
+      },
+      "thinking_level": "high",
+      "reason": "resume",
+      "previous_session_id": "s1",
+      "pi_version": "1.0.4",
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i2",
+      "server_time": 1000
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 16000,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "state": "idle",
+      "context": {
+        "tokens": 5,
+        "window": 100,
+        "percent": 5
+      },
+      "sent_at": 16000
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "server_time": 16000
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 16000,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i2",
+      "state": "working",
+      "context": null,
+      "sent_at": 16000
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "server_time": 16000
+    }
+  },
+  {
+    "path": "/v1/bye",
+    "now": 16000,
+    "request": {
+      "protocol": 1,
+      "type": "bye",
+      "session_id": "s1",
+      "instance_id": "i2",
+      "reason": "shutdown"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 16000,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i2",
+      "state": "idle",
+      "context": null,
+      "sent_at": 16000
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 16000,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s9",
+      "instance_id": "i9",
+      "state": "idle",
+      "context": null,
+      "sent_at": 16000
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 61000,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "state": "idle",
+      "context": null,
+      "sent_at": 61000
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "server_time": 61000
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 106001,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "state": "idle",
+      "context": null,
+      "sent_at": 106001
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/bye",
+    "now": 106001,
+    "request": {
+      "protocol": 1,
+      "type": "bye",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "reason": "shutdown"
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 106002,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "session_file": "/tmp/s1.jsonl",
+      "cwd": "/tmp",
+      "name": "probe",
+      "pid": 4242,
+      "model": {
+        "provider": "mistral",
+        "id": "mistral-small-latest"
+      },
+      "thinking_level": "high",
+      "reason": "resume",
+      "previous_session_id": "s1",
+      "pi_version": "1.0.4",
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 106002
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 106002,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "state": "idle",
+      "context": null,
+      "sent_at": 106002
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 106002,
+    "request": {
+      "protocol": 2,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1"
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unsupported_protocol"
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 106002,
+    "request": {
+      "protocol": 1,
+      "type": "bye",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "reason": "shutdown"
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/nope",
+    "now": 106002,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1"
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "not_found"
+    }
+  },
+  {
+    "path": "/v1/heartbeat",
+    "now": 106002,
+    "request": {
+      "protocol": 1,
+      "type": "heartbeat",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "state": "idle",
+      "context": null,
+      "sent_at": 106002,
+      "unknown_field": "ignored"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "server_time": 106002
+    }
+  }
+]

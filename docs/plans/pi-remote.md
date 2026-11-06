@@ -139,19 +139,20 @@ Lives in this repo under `pi-extension/` (decided, §10 Q12), symlinked into
 Split like chatterbox: `index.ts` (wiring), pure modules for outbox/protocol/prompts
 with `node --test` units, a transport module.
 
-**Registration & heartbeat**
-- On `session_start`: connect, send `hello {session_id, instance_id, session_file,
-  cwd, name, pid, model, thinking, reason, previous_session_file, pi_version,
-  ext_version}`. `instance_id` = random per runtime, so the same session resumed in
-  two terminals is two instances, not one.
-- Snapshot on hello: the active branch (`getBranch()`), rendered to wire events,
-  so a session that started before the dashboard (or before the extension
-  connected) still shows its history. Capped (last N turns + "earlier history in
-  session file").
-- Heartbeat every ~15 s with `state` (`idle | working | waiting_prompt`), context
-  usage (`ctx.getContextUsage()`), queued-message flag.
-- On `session_shutdown`: `bye {reason, target_session_file}`; on `new/resume/fork`
-  the next `session_start` registers the new id and links `previous_session`.
+**Registration & heartbeat** — the wire fields, paths, status codes and timeouts are
+specified once in §3 *Extension endpoint*; this is the behaviour (P1 skeleton today:
+hello/heartbeat/bye only).
+- On `session_start` (any reason): `hello` with the session identity and runtime
+  metadata. `instance_id` is random per runtime, so one session resumed in two
+  terminals is two instances, not one.
+- Snapshot on hello: the active branch (`getBranch()`), rendered to wire events, so a
+  session that started before the dashboard (or before the extension connected) still
+  shows its history. Capped (last N turns + "earlier history in session file").
+- Heartbeat every 15 s with `state` (`idle | working`; `waiting_prompt` and the
+  queued-message flag are additive fields that arrive with prompts) and context
+  usage (`ctx.getContextUsage()`).
+- On `session_shutdown`: best-effort `bye {reason}`; on `new/resume/fork` the next
+  `session_start` links `previous_session_id`.
 
 **Event mirror** — subscribes to the events in §0 and emits the vocabulary in §3.
 Each event gets a per-instance monotonic `seq`. Token deltas are coalesced (~100 ms
@@ -160,7 +161,10 @@ or ~2 KB batches) before leaving the process; tool updates throttled and truncat
 
 **Outbox & reconnect** — bounded in-memory outbox; events stay until the dashboard
 acks their `seq`. On reconnect: re-`hello`, resend unacked. Overflow drops the oldest
-deltas first, never prompts/state events, and records a `gap` event.
+deltas first, never prompts/state events, and records a `gap` event. The outbox will
+be a separate pure `outbox.ts`, driven by a registered callback from `Presence`
+(whose state machine already owns reconnect/backoff); `Presence` itself never holds
+events.
 
 **Inbound commands** (SSE stream from the dashboard, each with `command_id`, result
 returned as `command_result {command_id, ok, error}`; ids are idempotent):
@@ -209,11 +213,12 @@ the lifecycle wiring in `index.ts` only forwards events. Same shape as the
 commands. Phone messages are echoed into the terminal via `ctx.ui.notify("📱 …")`
 so the person at the keyboard sees remote input.
 
-**Opt-in switch** — the requirement is "every session reachable", so mirroring is on
-by default; *control* is gated separately:
-- `~/.pi/agent/pi-remote.json`: `{mirror: true, control: "on"|"off"|"ask"}`.
-- `/remote on|off|status` per session, `--no-remote` flag, `PI_REMOTE=0` env.
-- Status line item: `remote: mirror` / `remote: armed` / `remote: offline`.
+**Opt-in switch** — presence is on by default (there is no watch-only mode);
+*control* gating arrives with the control issue.
+- `~/.pi/agent/pi-remote.json`: `{enabled: true, socket: "/path/to.sock"}` — the shape
+  `config.ts` reads today (env > file > default: `PI_REMOTE=0`, `PI_REMOTE_SOCKET`).
+- `/remote status|on|off` per session; a config-level disable is authoritative.
+- `--no-remote` and `control: "off"|"ask"` are later additions with the control issue.
 - The dashboard can only *narrow* this (global kill switch, §8), never widen it:
   a session whose extension says control=off rejects commands locally.
 
@@ -294,15 +299,56 @@ it, or `202 pending` and the result arrives as an SSE frame. Session offline →
 ### Extension endpoint
 
 The extension dials a stdlib server inside the dashboard process over the Unix socket
-(§1). JSON only, `POST` only for presence, every frame carries `protocol: 1`. The
-field names are owned by `pi-extension/src/protocol.ts`; the server must use exactly
-the same names.
+(§1). JSON only, `POST` only, every frame carries `protocol: 1`. The field names and
+path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
+`classifyResponse`); the server must use exactly the same names.
 
-| Method | Path | Request body | 200 response |
+**`hello`** — `POST /v1/hello`
+
+| Field | Type | Null | Notes |
 |---|---|---|---|
-| POST | `/v1/hello` | `{protocol: 1, type: "hello", session_id, instance_id, session_file, cwd, name, pid, model: {provider, id} \| null, thinking_level, reason, previous_session_id, pi_version, ext_version}` | `{ok: true, protocol: 1, session_id, instance_id, server_time}` |
-| POST | `/v1/heartbeat` | `{protocol: 1, type: "heartbeat", session_id, instance_id, state: "idle" \| "working", context: {tokens, window, percent} \| null, sent_at}` | `{ok: true, protocol: 1, server_time}` |
-| POST | `/v1/bye` | `{protocol: 1, type: "bye", session_id, instance_id, reason}` | `{ok: true, protocol: 1}` |
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"hello"` |
+| `session_id` | string | no | pi session id |
+| `instance_id` | string | no | random per pi runtime |
+| `session_file` | string | yes | pi's JSONL path |
+| `cwd` | string | no | |
+| `name` | string | yes | session name |
+| `pid` | int | no | process id |
+| `model` | `{provider, id}` | yes | current model, null when none |
+| `thinking_level` | string | yes | pi thinking level |
+| `reason` | enum | no | `startup` \| `reload` \| `new` \| `resume` \| `fork` |
+| `previous_session_id` | string | yes | set for new/resume/fork |
+| `pi_version` | string | yes | null when not obtainable |
+| `ext_version` | string | no | extension package version |
+
+200: `{ok: true, protocol: 1, session_id, instance_id, server_time}`.
+
+**`heartbeat`** — `POST /v1/heartbeat`
+
+| Field | Type | Null | Notes |
+|---|---|---|---|
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"heartbeat"` |
+| `session_id` | string | no | |
+| `instance_id` | string | no | |
+| `state` | enum | no | `idle` \| `working` |
+| `context` | `{tokens, window, percent}` | yes | `tokens` is pi's estimate, `window` the context window, `percent` as pi reports it (0–100) |
+| `sent_at` | int | no | epoch ms |
+
+200: `{ok: true, protocol: 1, server_time}`.
+
+**`bye`** — `POST /v1/bye`
+
+| Field | Type | Null | Notes |
+|---|---|---|---|
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"bye"` |
+| `session_id` | string | no | |
+| `instance_id` | string | no | |
+| `reason` | string | yes | in use: `shutdown`, `switch`, `remote_off`; stored verbatim, not validated |
+
+200: `{ok: true, protocol: 1}`.
 
 Status codes:
 
@@ -311,21 +357,42 @@ Status codes:
 | 200 | `{ok: true, protocol: 1, ...}` | accepted |
 | 400 | `{ok: false, protocol: 1, error: "bad_frame"}` | missing or ill-typed field (`session_id`, `instance_id` required; `type` must match the path) |
 | 400 | `{ok: false, protocol: 1, error: "unsupported_protocol"}` | `protocol` is absent or not `1` |
-| 404 | `{ok: false, protocol: 1, error: "unknown_session"}` | heartbeat/bye for a session the server does not know (e.g. after a dashboard restart) |
+| 404 | `{ok: false, protocol: 1, error: "unknown_session"}` | heartbeat/bye for a stale or unknown `(session_id, instance_id)` |
+| 404 | `{ok: false, protocol: 1, error: "not_found"}` | unknown path or non-`POST` method |
 
-Version rule: both directions carry `protocol: 1`; a mismatch is a 400
-`unsupported_protocol`, and a version bump is shipped in the extension and the
-dashboard together. **Unknown session handling**: a heartbeat answered 404 makes the
-extension re-send `hello` immediately (no backoff); a 404 on `bye` is ignored because
-it is best-effort. Any other non-200, a transport error or a timeout is treated as
-"dashboard absent" — offline state plus backoff (1 s → 30 s cap).
+**Server semantics**
 
-Timeouts: the extension allows 3 s for `hello`, 2 s for `heartbeat`, 1 s for `bye`
-(the last two are bounded so a dashboard restart cannot stall pi). Server-side read
-timeout: 5 s per request.
+- **Registry key is `(session_id, instance_id)`.** A second `hello` for the same session
+  from another instance **coexists** — two terminals on one session are two instances.
+  A heartbeat or bye for a known session with an unknown instance is
+  `404 unknown_session`.
+- **Liveness: 45 s.** An instance is stale after 45 s without a heartbeat (3 missed at
+  the 15 s cadence); the next heartbeat from it gets `404 unknown_session` and the
+  extension re-registers. A `bye` from a stale instance is also 404.
+- **Check order**: `protocol` → path/type match → required fields. Unknown extra fields
+  are **ignored**, so later additions are additive and a server that has not learned a
+  new field still accepts the frame.
+- **Client handling**: `400` or a transport error/timeout → offline + backoff
+  (1 s → 30 s cap); `404 unknown_session` on heartbeat → immediate re-`hello`; `404` on
+  `bye` is ignored (best-effort). `server_time`/`sent_at` are epoch ms.
 
-The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`
-are not part of this contract — they are the next issues.
+**Version rule**: both directions carry `protocol: 1`; a mismatch is a 400
+`unsupported_protocol`, and a version bump ships in the extension and the dashboard
+together. **Timeouts**: the extension allows 3 s for `hello`, 2 s for `heartbeat`, 1 s
+for `bye` (the last two bounded so a dashboard restart cannot stall pi); server-side
+read timeout 5 s per request.
+
+**Golden fixtures**: `pi-extension/test/contract/frames.json` is the executable form of
+this contract — ordered `{path, now, request, status, response}` cases (hello, second
+instance, heartbeat ok, unknown session, stale instance, bye, instance mismatch,
+bad_frame, unsupported_protocol, type/path mismatch, not_found, ignored extra field).
+The extension's TS test runs them through `test/fake-server.ts`'s `handleFrame`; the
+dashboard's pytest must run the same file against its handler.
+
+The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`,
+plus the additive presence fields (`waiting_prompt`, queued-message flag,
+`target_session_file` on bye), are not part of this contract — they arrive with the
+mirror/prompt issues and are ignored by a server that does not know them.
 
 **Relation to chat conversations** — separate entity. A pi session is not a
 `conversations` row: the model runs inside pi, not through `llm_proxy`, and the

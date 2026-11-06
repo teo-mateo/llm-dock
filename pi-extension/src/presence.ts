@@ -1,8 +1,10 @@
+import { Backoff } from "./backoff.ts";
 import {
   buildBye,
   buildHeartbeat,
   buildHello,
-  parseResponse,
+  classifyResponse,
+  PATHS,
   type ByeFields,
   type HeartbeatFields,
   type HelloFields,
@@ -14,11 +16,12 @@ import {
   type PresenceStatus,
   type ResolvedPresenceOptions,
 } from "./presence-types.ts";
-import { postJson, type TransportResult } from "./transport.ts";
+import { postJson, type RequestFn } from "./transport.ts";
 
 export class Presence {
   private readonly opts: ResolvedPresenceOptions;
-  private readonly requestFn: (socketPath: string, path: string, payload: unknown, timeoutMs: number) => Promise<TransportResult>;
+  private readonly request: RequestFn;
+  private readonly backoff: Backoff;
   private enabled: boolean;
   private stopped = true;
   private state: PresenceState;
@@ -26,14 +29,14 @@ export class Presence {
   private instanceId: string | null = null;
   private lastHeartbeatAt: number | null = null;
   private nextAttemptAt: number | null = null;
-  private attempts = 0;
   private offlineNotified = false;
   private retryTimer: unknown;
   private heartbeatTimer: unknown;
 
   constructor(options: PresenceOptions) {
     this.opts = resolvePresenceOptions(options);
-    this.requestFn = options.request ?? postJson;
+    this.request = options.request ?? postJson;
+    this.backoff = new Backoff(this.opts.initialBackoffMs, this.opts.maxBackoffMs);
     this.enabled = options.enabled;
     this.state = this.enabled ? "offline" : "disabled";
   }
@@ -46,7 +49,7 @@ export class Presence {
       instanceId: this.instanceId,
       lastHeartbeatAt: this.lastHeartbeatAt,
       nextAttemptAt: this.nextAttemptAt,
-      attempts: this.attempts,
+      attempts: this.backoff.attempts,
     };
   }
 
@@ -72,9 +75,8 @@ export class Presence {
         reason,
       };
       try {
-        await this.requestFn(this.opts.socketPath, "/v1/bye", buildBye(fields), this.opts.byeTimeoutMs);
+        await this.request(this.opts.socketPath, PATHS.bye, buildBye(fields), this.opts.byeTimeoutMs);
       } catch {
-        // best effort: an absent dashboard must not block shutdown
       }
     }
     this.offlineNotified = false;
@@ -95,12 +97,11 @@ export class Presence {
     }
     this.sessionId = fields.session_id;
     this.instanceId = fields.instance_id;
-    this.requestFn(this.opts.socketPath, "/v1/hello", buildHello(fields), this.opts.helloTimeoutMs)
+    this.request(this.opts.socketPath, PATHS.hello, buildHello(fields), this.opts.helloTimeoutMs)
       .then((result) => {
         if (this.stopped) return;
-        const response = parseResponse(result.body);
-        if (result.status === 200 && response?.ok) {
-          this.attempts = 0;
+        if (classifyResponse(result.status, result.body) === "ok") {
+          this.backoff.reset();
           this.nextAttemptAt = null;
           if (this.offlineNotified) {
             this.opts.notices("pi-remote: dashboard reachable again", "info");
@@ -137,19 +138,19 @@ export class Presence {
       sent_at: this.opts.clock.now(),
     };
     try {
-      const result = await this.requestFn(
+      const result = await this.request(
         this.opts.socketPath,
-        "/v1/heartbeat",
+        PATHS.heartbeat,
         buildHeartbeat(fields),
         this.opts.heartbeatTimeoutMs,
       );
       if (this.stopped) return;
-      const response = parseResponse(result.body);
-      if (result.status === 404 && response?.error === "unknown_session") {
+      const kind = classifyResponse(result.status, result.body);
+      if (kind === "unknown_session") {
         this.register();
         return;
       }
-      if (result.status !== 200) {
+      if (kind !== "ok") {
         this.fail(`heartbeat status ${result.status}`);
         return;
       }
@@ -162,8 +163,7 @@ export class Presence {
 
   private fail(reason: string): void {
     this.clearHeartbeat();
-    this.attempts += 1;
-    const delay = Math.min(this.opts.initialBackoffMs * 2 ** (this.attempts - 1), this.opts.maxBackoffMs);
+    const delay = this.backoff.next();
     this.nextAttemptAt = this.opts.clock.now() + delay;
     this.setState("offline");
     if (!this.offlineNotified) {

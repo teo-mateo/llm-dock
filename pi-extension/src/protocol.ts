@@ -1,5 +1,13 @@
 export const PROTOCOL_VERSION = 1;
 
+export const PATHS = {
+  hello: "/v1/hello",
+  heartbeat: "/v1/heartbeat",
+  bye: "/v1/bye",
+} as const;
+
+export type WirePath = (typeof PATHS)[keyof typeof PATHS];
+
 export type SessionReason = "startup" | "reload" | "new" | "resume" | "fork";
 
 export type ModelRef = {
@@ -82,4 +90,14 @@ export function parseResponse(text: string): ServerResponse | null {
   } catch {
     return null;
   }
+}
+
+export type ResponseKind = "ok" | "unknown_session" | "rejected" | "unparseable";
+
+export function classifyResponse(status: number, body: string): ResponseKind {
+  const response = parseResponse(body);
+  if (!response) return "unparseable";
+  if (status === 404 && response.error === "unknown_session") return "unknown_session";
+  if (status === 200 && response.ok) return "ok";
+  return "rejected";
 }

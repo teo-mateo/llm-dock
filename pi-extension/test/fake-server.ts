@@ -2,6 +2,15 @@ import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 
+import { PATHS } from "../src/protocol.ts";
+
+export const STALE_AFTER_MS = 45000;
+
+export type RegistryEntry = { sessionId: string; instanceId: string; lastSeen: number };
+export type Registry = Map<string, RegistryEntry>;
+
+export type Frame = Record<string, unknown>;
+
 export type FakeRecord = {
   at: number;
   path: string;
@@ -12,7 +21,7 @@ export type FakeRecord = {
 export type FakeServer = {
   socketPath: string;
   records: FakeRecord[];
-  sessions: Map<string, string>;
+  registry: Registry;
   close: () => Promise<void>;
   clearSessions: () => void;
 };
@@ -39,44 +48,70 @@ function bodySummary(body: Record<string, unknown>): string {
   return parts.join(" ");
 }
 
-function handleFrame(
+function expectedType(path: string): "hello" | "heartbeat" | "bye" | null {
+  if (path === PATHS.hello) return "hello";
+  if (path === PATHS.heartbeat) return "heartbeat";
+  if (path === PATHS.bye) return "bye";
+  return null;
+}
+
+function keyOf(sessionId: string, instanceId: string): string {
+  return `${sessionId}|${instanceId}`;
+}
+
+export function handleFrame(
   path: string,
-  frame: Record<string, unknown>,
-  sessions: Map<string, string>,
+  frame: Frame,
+  registry: Registry,
+  now = Date.now(),
 ): { status: number; payload: unknown } {
   if (frame.protocol !== 1) {
     return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
+  }
+  const type = expectedType(path);
+  if (!type) {
+    return { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+  }
+  if (frame.type !== type) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
   }
   const sessionId = typeof frame.session_id === "string" ? frame.session_id : "";
   const instanceId = typeof frame.instance_id === "string" ? frame.instance_id : "";
   if (!sessionId || !instanceId) {
     return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
   }
-  if (path === "/v1/hello") {
-    sessions.set(sessionId, instanceId);
+
+  const key = keyOf(sessionId, instanceId);
+  if (path === PATHS.hello) {
+    registry.set(key, { sessionId, instanceId, lastSeen: now });
     return {
       status: 200,
-      payload: { ok: true, protocol: 1, session_id: sessionId, instance_id: instanceId, server_time: Date.now() },
+      payload: {
+        ok: true,
+        protocol: 1,
+        session_id: sessionId,
+        instance_id: instanceId,
+        server_time: now,
+      },
     };
   }
-  if (path === "/v1/heartbeat") {
-    if (!sessions.has(sessionId)) {
-      return { status: 404, payload: { ok: false, protocol: 1, error: "unknown_session" } };
-    }
-    return { status: 200, payload: { ok: true, protocol: 1, server_time: Date.now() } };
+
+  const entry = registry.get(key);
+  if (!entry || now - entry.lastSeen > STALE_AFTER_MS) {
+    registry.delete(key);
+    return { status: 404, payload: { ok: false, protocol: 1, error: "unknown_session" } };
   }
-  if (path === "/v1/bye") {
-    if (!sessions.delete(sessionId)) {
-      return { status: 404, payload: { ok: false, protocol: 1, error: "unknown_session" } };
-    }
-    return { status: 200, payload: { ok: true, protocol: 1 } };
+  if (path === PATHS.heartbeat) {
+    entry.lastSeen = now;
+    return { status: 200, payload: { ok: true, protocol: 1, server_time: now } };
   }
-  return { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+  registry.delete(key);
+  return { status: 200, payload: { ok: true, protocol: 1 } };
 }
 
 export function startFakeServer(socketPath: string): Promise<FakeServer> {
   if (existsSync(socketPath)) unlinkSync(socketPath);
-  const sessions = new Map<string, string>();
+  const registry: Registry = new Map();
   const records: FakeRecord[] = [];
 
   const server = createServer((req, res: ServerResponse) => {
@@ -92,10 +127,12 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
       records.push(record);
 
       let result: { status: number; payload: unknown };
-      if (!body || typeof body !== "object" || Array.isArray(body)) {
+      if (req.method !== "POST") {
+        result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+      } else if (!body || typeof body !== "object" || Array.isArray(body)) {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else {
-        result = handleFrame(path, body as Record<string, unknown>, sessions);
+        result = handleFrame(path, body as Frame, registry, Date.now());
       }
 
       record.status = result.status;
@@ -117,13 +154,13 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
       resolve({
         socketPath,
         records,
-        sessions,
+        registry,
         close: () =>
           new Promise<void>((done) => {
             server.close(() => done());
           }),
         clearSessions: () => {
-          sessions.clear();
+          registry.clear();
           console.log(`[${timestamp()}] sessions cleared (simulated dashboard restart)`);
         },
       });

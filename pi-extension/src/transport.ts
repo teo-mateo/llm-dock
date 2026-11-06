@@ -2,6 +2,13 @@ import { request } from "node:http";
 
 export type TransportResult = { status: number; body: string };
 
+export type RequestFn = (
+  socketPath: string,
+  path: string,
+  payload: unknown,
+  timeoutMs: number,
+) => Promise<TransportResult>;
+
 export class TransportError extends Error {
   readonly code: string;
 
@@ -12,12 +19,7 @@ export class TransportError extends Error {
   }
 }
 
-export function postJson(
-  socketPath: string,
-  path: string,
-  payload: unknown,
-  timeoutMs: number,
-): Promise<TransportResult> {
+export const postJson: RequestFn = (socketPath, path, payload, timeoutMs) => {
   const data = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
     const req = request(
@@ -52,4 +54,4 @@ export function postJson(
     });
     req.end(data);
   });
-}
+};

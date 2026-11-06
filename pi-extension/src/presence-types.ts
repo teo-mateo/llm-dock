@@ -1,5 +1,5 @@
-import type { HelloFields } from "./protocol.ts";
-import type { TransportResult } from "./transport.ts";
+import type { HeartbeatFields, HelloFields } from "./protocol.ts";
+import type { RequestFn } from "./transport.ts";
 
 export type PresenceState = "disabled" | "offline" | "registering" | "online";
 
@@ -9,10 +9,7 @@ export type Clock = {
   clearTimeout: (handle: unknown) => void;
 };
 
-export type HeartbeatSample = {
-  state: "idle" | "working";
-  context: { tokens: number | null; window: number | null; percent: number | null } | null;
-};
+export type HeartbeatSample = Pick<HeartbeatFields, "state" | "context">;
 
 export type PresenceOptions = {
   socketPath: string;
@@ -20,7 +17,7 @@ export type PresenceOptions = {
   clock: Clock;
   helloFields: () => HelloFields;
   heartbeatSample: () => HeartbeatSample;
-  request?: (socketPath: string, path: string, payload: unknown, timeoutMs: number) => Promise<TransportResult>;
+  request?: RequestFn;
   heartbeatMs?: number;
   helloTimeoutMs?: number;
   heartbeatTimeoutMs?: number;

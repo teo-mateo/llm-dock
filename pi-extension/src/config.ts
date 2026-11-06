@@ -63,6 +63,15 @@ export function resolveConfig(input: ConfigInput = {}): RemoteConfig {
   };
 }
 
+export function readExtVersion(packageUrl: URL | string): string {
+  try {
+    const parsed = JSON.parse(readFileSync(packageUrl, "utf8"));
+    return typeof parsed.version === "string" ? parsed.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 export function loadConfig(): RemoteConfig {
   return resolveConfig();
 }

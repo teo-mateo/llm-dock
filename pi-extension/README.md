@@ -17,8 +17,13 @@ side does not exist yet; the wire contract it must implement is in
 | `src/transport.ts` | the only `node:http` module; `POST` over the socket with a timeout |
 | `src/presence.ts` + `src/presence-types.ts` | presence state machine: offline → registering → online, heartbeat timer, backoff, idempotent `start()` / `stop()`, injected clock and request |
 | `src/session.ts` | derive a session id from pi's session file name — pure |
-| `src/index.ts` | pi lifecycle wiring and the `/remote` command only |
-| `test/` | `node --test` suites and the fake server |
+| `src/backoff.ts` | the 1 s → 30 s retry policy — pure, reused by later reconnects |
+| `src/activity.ts` | the idle/working flag fed to heartbeats |
+| `src/pi-adapter.ts` | `ExtensionContext` → protocol frames (the `contextWindow` → `window` rename lives here) |
+| `src/remote-command.ts` | `/remote` argument parsing and the status formatter — pure |
+| `src/index.ts` | pi lifecycle subscriptions plus a short `/remote` handler |
+| `test/` | `node --test` suites, the fake clock and the fake server |
+| `test/contract/frames.json` | golden wire-contract fixtures shared with the dashboard's pytest |
 
 ## Load it
 
