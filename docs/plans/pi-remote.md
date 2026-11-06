@@ -100,8 +100,8 @@ Why pi dials out:
 
 ## 2. pi-side extension (`pi-remote`)
 
-Lives outside this repo like `ding.ts` (e.g. `ai-toolbox/pi/extensions/pi-remote/`,
-symlinked into `~/.pi/agent/extensions/`), imports `@earendil-works/pi-coding-agent`.
+Lives in this repo under `pi-extension/` (decided, §10 Q12), symlinked into
+`~/.pi/agent/extensions/`, imports `@earendil-works/pi-coding-agent`.
 Split like chatterbox: `index.ts` (wiring), pure modules for outbox/protocol/prompts
 with `node --test` units, a transport module.
 
@@ -423,3 +423,27 @@ P4 is where the "away from keyboard" story pays off.
 12. **Where the extension lives**: this repo (e.g. `pi-extension/`) so protocol and
     server change in one PR, or `ai-toolbox` beside `ding.ts`?
     **Answered 2026-11-06: this repo.**
+
+---
+
+## 11. Work breakdown (issues)
+
+Issues are created one at a time and worked through `docs/pi-dev-protocol.md`. This
+list is the order; each line becomes an issue with its own acceptance criteria when it
+is next. Later phases stay coarse until P1 lands.
+
+| # | Phase | Chunk |
+|---|---|---|
+| 1 | P0 | Transport probe: Node `fetch`/undici over a Unix socket from pi's runtime, request + long-lived SSE (A1) |
+| 2 | P0 | pi API probe: steer/follow-up timing incl. the end-of-run race (A2), model list (A3), dialog abort (A4) |
+| 3 | P1 | Extension skeleton in `pi-extension/`: wire types, `hello`/heartbeat/`bye`, `/remote` status, `node --test` |
+| 4 | P1 | Dashboard ingest: `dashboard/pi_remote/` socket server, `pi_remote.db` schema, session registry |
+| 5 | P1 | Event mirror + outbox/ack/reconnect (extension) and event storage (dashboard) |
+| 6 | P1 | Client API: `GET /api/pi/sessions`, session detail, events SSE with replay from `seq` |
+| 7 | P1 | Web `/v2/pi`: session list + read-only live view |
+| 8 | P2 | Android: Pi tab, session list (F17) |
+| 9 | P2 | Android: read-only live session view (F18) |
+| 10 | P3 | Control: `send_message` (steer + fallback) and `abort`, end to end, web first |
+| 11 | P3 | Android composer + Stop (F19) |
+| 12+ | P4–P7 | Prompts + rm-gate, Telegram ping, attachments, model switch, voice |
+
