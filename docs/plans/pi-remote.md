@@ -577,6 +577,9 @@ else. No cross-linking in v1.
 
 ## 5. Android app
 
+**Mockups:** `docs/pi-remote/mockups/` (Android sessions, live session, approval sheet; web `/v2/pi`) — the visual reference for every UI issue.
+
+
 New feature files, in the existing process (one feature, one commit, one PR, merged,
 via implementer + reviewer agents; `Plan_TOC.md` §6 index). Numbers are proposals:
 

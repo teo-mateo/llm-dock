@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pi sessions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8DBBFF}a:hover{color:#B5D3FF}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0F1115; color: #E8EAEE; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 12px 20px">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em">pi sessions</h1>
+      <span style="font-size: 13px; color: #A0A8B6">3 live · 2 ended today</span>
+    </div>
+    <button aria-label="Refresh" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #2A2F39; background: #181B22; color: #E8EAEE; display: flex; align-items: center; justify-content: center">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+    </button>
+  </header>
+
+  <div style="display: flex; gap: 8px; padding: 4px 20px 16px 20px">
+    <button style="height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid {{accent}}; background: #1B2635; color: #E8EAEE; font: 500 14px Inter, sans-serif">Live 3</button>
+    <button style="height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #2A2F39; background: #181B22; color: #A0A8B6; font: 500 14px Inter, sans-serif">All 5</button>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 0 16px; overflow: hidden">
+    <sc-for list="{{sessions}}" as="s" hint-placeholder-count="4">
+      <a href="PhoneSession.dc.html" style="text-decoration: none; color: inherit">
+        <article style="background: #181B22; border: 1px solid #262A33; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; opacity: {{s.opacity}}">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0">
+              <span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: {{s.dot}}; flex: none"></span>
+              <span style="font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 10px; background: {{s.badgeBg}}; color: {{s.badgeFg}}; flex: none">{{s.state}}</span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A0A8B6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.cwd}}</span>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #C3C9D4">
+            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.model}}</span>
+            <span style="color: #A0A8B6; flex: none">{{s.when}}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <div style="flex: 1; height: 6px; border-radius: 3px; background: #262A33; overflow: hidden">
+              <div style="height: 6px; width: {{s.ctx}}%; background: {{accent}}"></div>
+            </div>
+            <span style="font-size: 12px; color: #A0A8B6; width: 64px; text-align: right">ctx {{s.ctx}}%</span>
+          </div>
+        </article>
+      </a>
+    </sc-for>
+  </div>
+
+  <nav aria-label="Main" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid #262A33; background: #13161C; padding: 8px 0 20px 0">
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; color: #A0A8B6; text-decoration: none; font-size: 12px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Chat
+    </a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; color: #A0A8B6; text-decoration: none; font-size: 12px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/></svg>
+      Models
+    </a>
+    <a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; color: {{accent}}; text-decoration: none; font-size: 12px; font-weight: 600">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+      pi
+    </a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#6AA8FF","options":["#6AA8FF","#F2A54A","#9B8CFF"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const working = { dot: '#F2A54A', badgeBg: '#3A2A14', badgeFg: '#F7C27E', opacity: 1 };
+    const idle = { dot: '#5CC48A', badgeBg: '#14301F', badgeFg: '#8EDDB0', opacity: 1 };
+    const ended = { dot: '#5A6170', badgeBg: '#22262E', badgeFg: '#A0A8B6', opacity: 0.7 };
+    return {
+      accent: this.props.accent ?? '#6AA8FF',
+      sessions: [
+        { ...working, name: 'llm-dock', state: 'working', cwd: '/github/teo-mateo/llm-dock', model: 'maya-v149-deepseek-v41-flash', when: 'now', ctx: 22 },
+        { ...idle, name: 'android client', state: 'idle', cwd: '/github/teo-mateo/llm-dock/android', model: 'mistral/mistral-small-latest', when: '2 min ago', ctx: 41 },
+        { ...idle, name: 'chatterbox', state: 'idle', cwd: '/github/teo-mateo/chatterbox', model: 'neuralwatt/deepseek-v4-flash', when: '18 min ago', ctx: 7 },
+        { ...ended, name: 'ai-toolbox', state: 'ended', cwd: '/github/teo-mateo/ai-toolbox', model: 'mistral/mistral-small-latest', when: '1 h ago', ctx: 63 }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
