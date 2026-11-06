@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { argsSummary, groupToolRuns, toolStatusText } from './piToolRuns'
+import { argsSummary, groupToolRuns, moreLabel, toolStatusText, visibleTools } from './piToolRuns'
 
 const tool = (id) => ({ kind: 'tool', id: `t${id}`, status: 'done' })
 const assistant = (id, text, streaming = false) => ({ kind: 'assistant', id: `a${id}`, text, streaming })
@@ -57,5 +57,22 @@ describe('toolStatusText', () => {
     expect(toolStatusText({ status: 'error' })).toBe('error')
     expect(toolStatusText({ status: 'done', durationMs: 1400 })).toBe('done · 1.4 s')
     expect(toolStatusText({ status: 'done', durationMs: null })).toBe('done')
+  })
+})
+
+describe('visibleTools', () => {
+  const tools = [tool(1), tool(2), tool(3), tool(4), tool(5)]
+
+  it('three or fewer are all shown', () => {
+    expect(visibleTools(tools.slice(0, 3), false)).toEqual({ shown: tools.slice(0, 3), hidden: 0 })
+  })
+
+  it('more than three shows the first three and counts the rest', () => {
+    expect(visibleTools(tools, false)).toEqual({ shown: tools.slice(0, 3), hidden: 2 })
+    expect(moreLabel(2)).toBe('2 more…')
+  })
+
+  it('expanded shows all', () => {
+    expect(visibleTools(tools, true)).toEqual({ shown: tools, hidden: 0 })
   })
 })

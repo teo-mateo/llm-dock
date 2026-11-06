@@ -1,4 +1,5 @@
 const MAX_SUMMARY_CHARS = 160
+export const VISIBLE_TOOL_ROWS = 3
 
 function isQuietAssistant(item) {
   return item.kind === 'assistant' && !item.streaming && item.text.trim() === ''
@@ -51,4 +52,13 @@ export function toolStatusText(item) {
   if (item.status === 'error') return 'error'
   if (item.durationMs == null) return 'done'
   return `done · ${(item.durationMs / 1000).toFixed(1)} s`
+}
+
+export function visibleTools(tools, expanded) {
+  if (expanded || tools.length <= VISIBLE_TOOL_ROWS) return { shown: tools, hidden: 0 }
+  return { shown: tools.slice(0, VISIBLE_TOOL_ROWS), hidden: tools.length - VISIBLE_TOOL_ROWS }
+}
+
+export function moreLabel(hidden) {
+  return `${hidden} more…`
 }

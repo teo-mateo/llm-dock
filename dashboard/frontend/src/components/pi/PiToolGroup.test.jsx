@@ -42,4 +42,12 @@ describe('PiToolGroup', () => {
     render(<PiToolGroup group={group([tool(1, { status: 'error' })])} />)
     expect(screen.getByRole('img', { name: 'error' })).toBeInTheDocument()
   })
+
+  it('long runs collapse after three rows until more is tapped', () => {
+    render(<PiToolGroup group={group([1, 2, 3, 4, 5].map((id) => tool(id)))} />)
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: '2 more…' }))
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(5)
+    expect(screen.queryByText('2 more…')).not.toBeInTheDocument()
+  })
 })
