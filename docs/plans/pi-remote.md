@@ -49,10 +49,27 @@ Consequences that shape the design:
   boundary delivery chatterbox uses (`turn_end` / `agent_before_settle` continue,
   start a turn on `agent_settled`), or be proven safe with `deliverAs`.
 
-Assumed, to verify in Phase 0:
+Assumptions, marked where Phase 0 has verified them:
 
-- A1 Node's `fetch` in pi's runtime can dial a Unix socket (undici `Agent({connect:
-  {socketPath}})`), or we fall back to loopback TCP + secret.
+- A1 **verified 2026-11-06 (issue #322):** a pi extension reaches a Unix-domain
+  socket with `node:http` `request({socketPath})` — a plain POST and a long-lived
+  `GET` SSE stream both work, with **no new npm dependency**. Global `fetch` is
+  not the route: it cannot take a socket path without the `undici` package, while
+  `node:http` is available because pi loads extensions through `jiti` inside the
+  Node process (pi's own code already imports `node:net`). Killing the server
+  mid-stream neither hangs nor crashes pi: the extension reports `ECONNREFUSED`,
+  backs off 1→2→4→8→15 s and reconnects when the server returns; quitting pi
+  closes the stream and the server logs the client disconnect.
+  Gotchas: `~/.cache/llm-dock` is **root-owned** on this host (`drwxr-xr-x root`),
+  so the socket lives in `~/.cache/pi-remote/` — directory `0700`, socket `0600`,
+  both created by the binder; `BaseHTTPRequestHandler.address_string()` raises
+  `IndexError` on `AF_UNIX` because `client_address` is a string; `ctx.ui.notify`
+  info messages are a single replaceable status line, so consecutive
+  notifications overwrite each other; a killed stream fires both `error` and
+  `end`, so reconnect scheduling must be idempotent.
+  Probe (issue #322): `python3 pi-extension/spike/uds-probe/server.py` and
+  `pi --model mistral/mistral-small-latest --no-extensions -e pi-extension/spike/uds-probe/probe.ts`.
+  The loopback-TCP fallback is not needed.
 - A2 `pi.sendUserMessage(..., {deliverAs: "followUp"})` while streaming, and the
   idle case, behave as documented; the chatterbox race reproduces or not.
 - A3 `ctx.modelRegistry` exposes a list of available models we can offer.
@@ -85,11 +102,11 @@ Why pi dials out:
   one a server would mean N ports, discovery and per-process auth. Dialing a
   single local endpoint inverts that: the dashboard is the only rendezvous.
 - **The local endpoint is not on 3399.** It is a Unix socket
-  (`~/.cache/llm-dock/pi-remote.sock`, mode 0600) served by a stdlib server
-  inside the dashboard process — same in-process pattern as `inspector/proxy.py`
-  and `model_proxy/proxy.py`. Filesystem permissions are the extension's
-  authentication; a reverse proxy in front of 3399 cannot route to it by
-  construction. Fallback if A1 fails: `127.0.0.1:<port>` + a 0600 secret file.
+  (`~/.cache/pi-remote/pi-remote.sock`, socket mode 0600 inside a 0700 directory
+  created by the binder) served by a stdlib server inside the dashboard process —
+  same in-process pattern as `inspector/proxy.py` and `model_proxy/proxy.py`.
+  Filesystem permissions are the extension's authentication; a reverse proxy in
+  front of 3399 cannot route to it by construction (A1 verified in #322).
 - **The dashboard is the one trust boundary toward the internet**, and already
   owns login (password / TOTP → 8 h sliding token). Clients only ever talk to it.
 - Dashboard restart drops the socket; extensions reconnect with backoff and
@@ -434,7 +451,7 @@ is next. Later phases stay coarse until P1 lands.
 
 | # | Phase | Chunk |
 |---|---|---|
-| 1 | P0 | Transport probe: Node `fetch`/undici over a Unix socket from pi's runtime, request + long-lived SSE (A1) |
+| 1 | P0 | Transport probe: `node:http` over a Unix socket from pi's runtime, request + long-lived SSE (A1, **verified** in #322) |
 | 2 | P0 | pi API probe: steer/follow-up timing incl. the end-of-run race (A2), model list (A3), dialog abort (A4) |
 | 3 | P1 | Extension skeleton in `pi-extension/`: wire types, `hello`/heartbeat/`bye`, `/remote` status, `node --test` |
 | 4 | P1 | Dashboard ingest: `dashboard/pi_remote/` socket server, `pi_remote.db` schema, session registry |
