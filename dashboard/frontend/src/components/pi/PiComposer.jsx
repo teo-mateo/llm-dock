@@ -7,7 +7,11 @@ export default function PiComposer({ live, working, onSend, onStop }) {
   const [notice, setNotice] = useState(null)
 
   if (!live) {
-    return <p className="text-sm text-fg-muted">Session ended — read only</p>
+    return (
+      <p className="border-t border-border bg-app px-4 py-3 text-center text-sm text-fg-muted">
+        Session ended — read only
+      </p>
+    )
   }
 
   async function handleSend() {
@@ -56,8 +60,8 @@ export default function PiComposer({ live, working, onSend, onStop }) {
   const canSend = text.trim().length > 0 && !sending
 
   return (
-    <div className="border-t border-border pt-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="border-t border-border bg-app px-4 py-3 md:px-6">
+      <div className="mx-auto flex max-w-3xl flex-wrap items-end gap-2">
         <label htmlFor="pi-message" className="sr-only">Message to pi</label>
         <textarea
           id="pi-message"
@@ -66,14 +70,14 @@ export default function PiComposer({ live, working, onSend, onStop }) {
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder={working ? 'Steer pi… (it is working)' : 'Message pi…'}
-          className="min-h-[44px] min-w-[160px] flex-1 resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+          className="min-h-[44px] min-w-[160px] flex-1 resize-none rounded-xl border border-border-strong bg-surface px-3 py-2.5 text-[15px] text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-subtle"
         />
         {working && (
           <button
             type="button"
             onClick={handleStop}
             disabled={stopping}
-            className="h-11 rounded-lg border border-danger bg-danger-subtle px-4 text-sm font-semibold text-danger-fg disabled:opacity-60"
+            className="h-11 rounded-xl border border-danger bg-danger-subtle px-4 text-sm font-semibold text-danger-fg disabled:opacity-60"
           >
             Stop
           </button>
@@ -82,13 +86,13 @@ export default function PiComposer({ live, working, onSend, onStop }) {
           type="button"
           onClick={handleSend}
           disabled={!canSend}
-          className="h-11 rounded-lg bg-accent-strong px-4 text-sm font-semibold text-fg-inverse hover:bg-accent-hover disabled:bg-surface-strong disabled:text-fg-subtle"
+          className="h-11 rounded-xl bg-accent-strong px-4 text-sm font-semibold text-fg-inverse hover:bg-accent-hover disabled:bg-surface-strong disabled:text-fg-subtle"
         >
           Send
         </button>
       </div>
       {notice && (
-        <p role="status" className="mt-2 text-xs text-danger-fg">{notice}</p>
+        <p role="status" className="mx-auto mt-2 max-w-3xl text-xs text-danger-fg">{notice}</p>
       )}
     </div>
   )

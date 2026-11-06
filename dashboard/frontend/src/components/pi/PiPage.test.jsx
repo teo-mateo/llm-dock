@@ -68,7 +68,7 @@ describe('PiPage', () => {
   it('no selection prompt', () => {
     usePiSessions.mockReturnValue({ sessions: [session()], connected: true, error: null })
     renderPage('/pi')
-    expect(screen.getByText('Select a session')).toBeInTheDocument()
+    expect(screen.getByText('Pick a session to watch it here.')).toBeInTheDocument()
   })
 
   it('selected session renders transcript items', () => {

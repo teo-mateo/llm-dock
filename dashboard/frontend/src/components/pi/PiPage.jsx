@@ -36,8 +36,8 @@ export default function PiPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-stretch min-w-0">
-      <aside className="md:w-72 md:flex-none">
+    <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 md:flex-row md:items-stretch">
+      <aside className={`md:w-72 md:flex-none ${selectedKey ? 'hidden md:block' : ''}`}>
         <PiSessionList
           sessions={sessions}
           selectedKey={selectedKey}
@@ -47,16 +47,20 @@ export default function PiPage() {
         />
       </aside>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col md:h-[calc(100vh-160px)]">
+      <section
+        className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface h-[calc(100dvh-5.5rem)] md:h-[calc(100vh-160px)] ${
+          selectedKey ? 'flex' : 'hidden md:flex'
+        }`}
+      >
         {!selectedKey ? (
-          <p className="text-sm text-fg-muted">Select a session</p>
+          <p className="m-auto text-sm text-fg-muted">Pick a session to watch it here.</p>
         ) : error === 'unknown_session' ? (
-          <p className="text-sm text-fg-muted">
+          <p className="m-auto px-6 text-center text-sm text-fg-muted">
             This session is no longer known to the dashboard.
           </p>
         ) : (
           <>
-            {summary && <PiSessionHeader summary={summary} />}
+            {summary && <PiSessionHeader summary={summary} onBack={() => navigate('/pi')} />}
             <PiTranscript
               items={items}
               working={working}
