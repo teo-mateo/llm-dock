@@ -8,6 +8,7 @@ export function registerEventSubscriptions(
   pi.on("agent_start", forward);
   pi.on("agent_before_settle", forward);
   pi.on("agent_settled", forward);
+  pi.on("message_start", forward);
   pi.on("message_update", forward);
   pi.on("message_end", forward);
   pi.on("tool_execution_start", forward);

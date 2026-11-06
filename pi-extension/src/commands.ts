@@ -2,7 +2,10 @@ import type { Command, CommandResult } from "./protocol.ts";
 
 export type { Command, CommandResult };
 
-export type CommandHandler = (args: unknown) => void | Promise<void>;
+export type CommandHandler = (
+  args: unknown,
+  commandId?: string,
+) => CommandResult | void | Promise<CommandResult | void>;
 export type CommandHandlers = Readonly<Record<string, CommandHandler>>;
 
 export const COMMAND_RESULT_CAPACITY = 200;
@@ -18,7 +21,10 @@ export async function dispatch(
   const handler = handlers[command.kind];
   if (!handler) return result(command, false, "unsupported_command");
   try {
-    await handler(command.args);
+    const outcome = await handler(command.args, command.command_id);
+    if (outcome && typeof outcome.ok === "boolean") {
+      return result(command, outcome.ok, outcome.error ?? null);
+    }
     return result(command, true, null);
   } catch {
     return result(command, false, "failed");

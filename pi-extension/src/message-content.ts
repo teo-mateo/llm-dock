@@ -25,6 +25,21 @@ export function isAssistant(message: unknown): boolean {
   return (message as { role?: string })?.role === "assistant";
 }
 
+export function userMessageContent(message: unknown): { text: string; imageCount: number } | null {
+  if ((message as { role?: string })?.role !== "user") return null;
+  const content = (message as { content?: unknown })?.content;
+  if (typeof content === "string") return { text: content, imageCount: 0 };
+  if (!Array.isArray(content)) return null;
+  let text = "";
+  let imageCount = 0;
+  for (const part of content) {
+    const typed = part as { type?: string; text?: string };
+    if (typed.type === "text") text += typed.text ?? "";
+    else if (typed.type === "image") imageCount += 1;
+  }
+  return { text, imageCount };
+}
+
 export function modelRef(model: unknown): ModelRef | null {
   if (!model || typeof model !== "object") return null;
   const typed = model as { provider?: unknown; id?: unknown };
