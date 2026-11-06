@@ -191,3 +191,30 @@ def test_events_page_fetches_limit_plus_one(tmp_path):
     rows = store.events_page("s1", "i1", after_seq=0, limit=2)
     assert [row.seq for row in rows] == [1, 2, 3]
     store.close()
+
+
+def test_ingest_reports_only_inserted_rows(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.upsert_session(hello(), 1000)
+    result = store.ingest(
+        events_frame([
+            Event(1, 1000, "state", {"state": "idle"}),
+            Event(2, 1000, "state", {"state": "working"}),
+            Event(2, 1000, "state", {"state": "idle"}),
+        ]),
+        1000,
+    )
+    assert result.acked_seq == 2
+    assert [event.seq for event in result.inserted] == [1, 2]
+    assert result.inserted[1].payload == {"state": "working"}
+
+    duplicate = store.ingest(
+        events_frame([
+            Event(1, 1000, "state", {"state": "idle"}),
+            Event(2, 1000, "state", {"state": "working"}),
+        ]),
+        1000,
+    )
+    assert duplicate.acked_seq == 2
+    assert duplicate.inserted == ()
+    store.close()
