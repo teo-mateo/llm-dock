@@ -1,6 +1,8 @@
 package com.hpz.llmdockchat.core.net
 
 import okhttp3.Request
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
  * Paths, never URLs — the host comes from [BaseUrl] at call time.
@@ -36,6 +38,9 @@ object Endpoints {
     const val SERVICES_STREAM = "/api/services/stream"
 
     const val PI_SESSIONS_STREAM = "/api/pi/sessions/stream"
+
+    fun piSessionStream(sessionId: String, instanceId: String): String =
+        "/api/pi/sessions/${encodePathSegment(sessionId)}/${encodePathSegment(instanceId)}/stream"
 
     /** The stored config for one service. 404 when Docker knows the
      * container but `services.json` does not. */
@@ -79,3 +84,6 @@ object Endpoints {
         }
     }
 }
+
+private fun encodePathSegment(value: String): String =
+    URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
