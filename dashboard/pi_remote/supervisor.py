@@ -1,12 +1,20 @@
 import logging
 import threading
 import time
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
+from .bus import BusMessage, EventBus, SessionKey, Subscription
 from .contract import END_REASON_DASHBOARD_RESTART
 from .handler import PiRemoteHandler
 from .listener import UdsListener
-from .read_model import EventPage, SessionSummary, clamp_limit, event_page, session_summary
+from .read_model import (
+    EventPage,
+    EventView,
+    SessionSummary,
+    clamp_limit,
+    event_page,
+    session_summary,
+)
 from .registry import PresenceRegistry
 from .settings import resolve_db_path, resolve_socket_path
 from .store import PiRemoteDB
@@ -35,6 +43,7 @@ class PiRemoteSupervisor:
         self._store: Optional[PiRemoteDB] = None
         self._handler: Optional[PiRemoteHandler] = None
         self._sweeper: Optional[StaleSweeper] = None
+        self._bus: Optional[EventBus] = None
         self._startup_error: Optional[str] = None
 
     def configure(self, socket_path: Optional[str] = None, db_path: Optional[str] = None) -> None:
@@ -42,17 +51,25 @@ class PiRemoteSupervisor:
             resolved_socket = resolve_socket_path(socket_path)
             resolved_db = resolve_db_path(db_path)
             if resolved_socket != self._socket_path or resolved_db != self._db_path:
-                listener, sweeper, store = self._listener, self._sweeper, self._store
+                listener, sweeper, store, bus = (
+                    self._listener,
+                    self._sweeper,
+                    self._store,
+                    self._bus,
+                )
                 self._listener = None
                 self._registry = None
                 self._store = None
                 self._handler = None
                 self._sweeper = None
+                self._bus = None
                 self._startup_error = None
                 if listener is not None:
                     listener.stop()
                 if sweeper is not None:
                     sweeper.stop()
+                if bus is not None:
+                    bus.close()
                 if store is not None:
                     store.close()
             self._socket_path = resolved_socket
@@ -72,10 +89,16 @@ class PiRemoteSupervisor:
             self._store.end_open_sessions(END_REASON_DASHBOARD_RESTART, self._clock())
             if self._registry is None:
                 self._registry = PresenceRegistry()
+            if self._bus is None:
+                self._bus = EventBus()
             if self._handler is None:
-                self._handler = PiRemoteHandler(self._registry, self._store)
+                self._handler = PiRemoteHandler(
+                    self._registry, self._store, self._publish
+                )
             if self._sweeper is None:
-                self._sweeper = StaleSweeper(self._registry, self._store, self._clock)
+                self._sweeper = StaleSweeper(
+                    self._registry, self._store, self._clock, publish=self._publish
+                )
             if self._listener is None:
                 handler = self._handler
                 clock = self._clock
@@ -98,19 +121,47 @@ class PiRemoteSupervisor:
 
     def stop_all(self) -> None:
         with self._lock:
-            listener, sweeper, store = self._listener, self._sweeper, self._store
+            listener, sweeper, store, bus = (
+                self._listener,
+                self._sweeper,
+                self._store,
+                self._bus,
+            )
             self._listener = None
             self._registry = None
             self._store = None
             self._handler = None
             self._sweeper = None
+            self._bus = None
             self._startup_error = None
         if listener is not None:
             listener.stop()
         if sweeper is not None:
             sweeper.stop()
+        if bus is not None:
+            bus.close()
         if store is not None:
             store.close()
+
+    def subscribe(self, key: Optional[SessionKey] = None) -> Subscription:
+        with self._lock:
+            bus = self._bus
+        if bus is None:
+            raise RuntimeError("pi remote bus is not running")
+        return bus.subscribe(key)
+
+    def _publish(
+        self,
+        kind: str,
+        key: SessionKey,
+        events: Tuple[EventView, ...],
+        summary: Optional[SessionSummary],
+    ) -> None:
+        with self._lock:
+            bus = self._bus
+        if bus is None:
+            return
+        bus.publish(BusMessage(kind, key, events, summary))
 
     def sessions(self) -> List[SessionSummary]:
         with self._lock:

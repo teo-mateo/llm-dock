@@ -3,7 +3,13 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
-from .events import AckedEvent, EventsFrame, StoredEvent, acked_seq as compute_acked_seq
+from .events import (
+    AckedEvent,
+    EventsFrame,
+    IngestResult,
+    StoredEvent,
+    acked_seq as compute_acked_seq,
+)
 from .frames import HelloFrame
 from .schema import INSERT_EVENT_SQL, SCHEMA_SQL, UPSERT_SQL
 
@@ -111,14 +117,7 @@ class PiRemoteDB:
             finally:
                 self._close_conn(conn)
 
-    def ingest(self, frame: EventsFrame, now: int) -> int:
-        rows = [
-            (frame.session_id, frame.instance_id, event.seq, event.type, event.ts,
-             json.dumps(event.payload),
-             event.payload.get("from_seq") if event.type == "gap" else None,
-             event.payload.get("to_seq") if event.type == "gap" else None, now)
-            for event in frame.events
-        ]
+    def ingest(self, frame: EventsFrame, now: int) -> IngestResult:
         with self._lock:
             conn = self._get_conn()
             try:
@@ -128,7 +127,26 @@ class PiRemoteDB:
                         (frame.session_id, frame.instance_id),
                     ).fetchone()
                     mark = row["acked_seq"] if row is not None else 0
-                    conn.executemany(INSERT_EVENT_SQL, rows)
+                    inserted = []
+                    for event in frame.events:
+                        cursor = conn.execute(
+                            INSERT_EVENT_SQL,
+                            (
+                                frame.session_id,
+                                frame.instance_id,
+                                event.seq,
+                                event.type,
+                                event.ts,
+                                json.dumps(event.payload),
+                                event.payload.get("from_seq") if event.type == "gap" else None,
+                                event.payload.get("to_seq") if event.type == "gap" else None,
+                                now,
+                            ),
+                        )
+                        if cursor.rowcount == 1:
+                            inserted.append(
+                                StoredEvent(event.seq, event.type, event.ts, event.payload)
+                            )
                     covered = conn.execute(
                         """SELECT seq, type, gap_from, gap_to FROM pi_events
                            WHERE session_id = ? AND instance_id = ? AND seq > ?
@@ -145,7 +163,8 @@ class PiRemoteDB:
                            WHERE session_id = ? AND instance_id = ?""",
                         (now, new_mark, frame.session_id, frame.instance_id),
                     )
-                    return new_mark
+                    inserted.sort(key=lambda event: event.seq)
+                    return IngestResult(new_mark, tuple(inserted))
             finally:
                 self._close_conn(conn)
 

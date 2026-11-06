@@ -47,6 +47,12 @@ class StoredEvent:
 
 
 @dataclass(frozen=True)
+class IngestResult:
+    acked_seq: int
+    inserted: Tuple[StoredEvent, ...]
+
+
+@dataclass(frozen=True)
 class AckedEvent:
     seq: int
     type: str

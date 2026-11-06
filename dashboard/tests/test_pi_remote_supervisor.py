@@ -1,6 +1,9 @@
 import os
 from dataclasses import replace
 
+import pytest
+
+from pi_remote.contract import STALE_AFTER_MS
 from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
 from pi_remote.store import PiRemoteDB
@@ -154,3 +157,147 @@ def test_events_pages_through_all_stored_events(tmp_path):
     assert third.next_after == 450
     assert third.has_more is False
     supervisor.stop_all()
+
+
+@pytest.fixture
+def supervisor(tmp_path):
+    directory = _socket_dir(tmp_path)
+    instance = PiRemoteSupervisor(
+        socket_path=str(directory / "pi.sock"),
+        db_path=str(tmp_path / "pi_remote.db"),
+        clock=lambda: 1000,
+    )
+    instance.start()
+    try:
+        yield instance
+    finally:
+        instance.stop_all()
+
+
+def _hello_body():
+    return {
+        "protocol": 1,
+        "type": "hello",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "session_file": None,
+        "cwd": "/tmp",
+        "name": "probe",
+        "pid": 1,
+        "model": {"provider": "mistral", "id": "mistral-small-latest"},
+        "thinking_level": "high",
+        "reason": "startup",
+        "previous_session_id": None,
+        "pi_version": None,
+        "ext_version": "0.1.0",
+    }
+
+
+def _heartbeat_body(state):
+    return {
+        "protocol": 1,
+        "type": "heartbeat",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "state": state,
+        "context": None,
+        "sent_at": 1000,
+    }
+
+
+def _bye_body(reason="shutdown"):
+    return {
+        "protocol": 1,
+        "type": "bye",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "reason": reason,
+    }
+
+
+def _events_body(events):
+    return {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": events,
+    }
+
+
+def test_events_batch_publishes_inserted_events(supervisor):
+    assert supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000).status == 200
+    subscription = supervisor.subscribe(("s1", "i1"))
+    body = _events_body([
+        {"type": "state", "seq": 1, "ts": 1000, "state": "idle"},
+    ])
+    assert supervisor._handler.handle("POST", "/v1/events", body, 1000).status == 200
+    message = subscription.get(1)
+    assert message.kind == "events"
+    assert message.key == ("s1", "i1")
+    assert [event.seq for event in message.events] == [1]
+    assert message.summary is None
+
+
+def test_duplicate_batch_publishes_nothing(supervisor):
+    assert supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000).status == 200
+    subscription = supervisor.subscribe(("s1", "i1"))
+    body = _events_body([
+        {"type": "state", "seq": 1, "ts": 1000, "state": "idle"},
+    ])
+    supervisor._handler.handle("POST", "/v1/events", body, 1000)
+    assert subscription.get(1) is not None
+    supervisor._handler.handle("POST", "/v1/events", body, 1000)
+    assert subscription.get(0.2) is None
+
+
+def test_hello_and_bye_publish_session_messages(supervisor):
+    subscription = supervisor.subscribe(("s1", "i1"))
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    hello_message = subscription.get(1)
+    assert hello_message.kind == "session"
+    assert hello_message.summary.live is True
+    assert hello_message.summary.name == "probe"
+
+    supervisor._handler.handle("POST", "/v1/bye", _bye_body(), 1000)
+    bye_message = subscription.get(1)
+    assert bye_message.kind == "session"
+    assert bye_message.summary.live is False
+    assert bye_message.summary.end_reason == "shutdown"
+
+
+def test_state_change_heartbeat_publishes_once(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    subscription = supervisor.subscribe(("s1", "i1"))
+
+    supervisor._handler.handle("POST", "/v1/heartbeat", _heartbeat_body("idle"), 1000)
+    first = subscription.get(1)
+    assert first.kind == "session"
+    assert first.summary.state == "idle"
+
+    supervisor._handler.handle("POST", "/v1/heartbeat", _heartbeat_body("idle"), 1000)
+    assert subscription.get(0.2) is None
+
+    supervisor._handler.handle("POST", "/v1/heartbeat", _heartbeat_body("working"), 1000)
+    second = subscription.get(1)
+    assert second.kind == "session"
+    assert second.summary.state == "working"
+
+
+def test_stale_expiry_publishes_session_message(supervisor):
+    supervisor._store.upsert_session(_hello(), 1000)
+    supervisor._registry.register(_hello(), 1000)
+    subscription = supervisor.subscribe(("s1", "i1"))
+    supervisor._sweeper.sweep(1000 + STALE_AFTER_MS + 1)
+    message = subscription.get(1)
+    assert message.kind == "session"
+    assert message.key == ("s1", "i1")
+    assert message.summary.live is False
+    assert message.summary.end_reason == "stale"
+
+
+def test_stop_all_closes_subscriptions(supervisor):
+    subscription = supervisor.subscribe()
+    supervisor.stop_all()
+    assert subscription.closed is True
+    assert subscription.get(0.2) is None

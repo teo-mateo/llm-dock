@@ -3,6 +3,8 @@ import threading
 from typing import Callable, List, Optional, Tuple
 
 from .contract import END_REASON_STALE
+from .handler import PublishCallback
+from .read_model import session_summary
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
@@ -19,11 +21,13 @@ class StaleSweeper:
         store: PiRemoteDB,
         clock: Callable[[], int],
         interval_ms: int = DEFAULT_INTERVAL_MS,
+        publish: Optional[PublishCallback] = None,
     ) -> None:
         self.registry = registry
         self.store = store
         self.clock = clock
         self.interval_ms = interval_ms
+        self.publish = publish or (lambda *args: None)
         self._lock = threading.RLock()
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
@@ -42,6 +46,7 @@ class StaleSweeper:
                     session_id,
                     instance_id,
                 )
+            self._publish_session(session_id, instance_id)
         if self._last_purge_ms is None or now - self._last_purge_ms >= PURGE_INTERVAL_MS:
             try:
                 self.store.purge_old_events(now)
@@ -49,6 +54,13 @@ class StaleSweeper:
                 logger.exception("pi remote: event retention purge failed")
             self._last_purge_ms = now
         return keys
+
+    def _publish_session(self, session_id: str, instance_id: str) -> None:
+        row = self.store.get_session(session_id, instance_id)
+        if row is None:
+            return
+        summary = session_summary(row, None)
+        self.publish("session", (session_id, instance_id), (), summary)
 
     def start(self) -> None:
         with self._lock:
