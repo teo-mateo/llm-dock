@@ -16,7 +16,7 @@ first; ended sessions are shown below them.
 
 **Acceptance criteria**
 
-- [ ] The Pi tab is reachable from the app's bottom navigation.
+- [x] The Pi tab is reachable from the app's bottom navigation.
 - [ ] The list matches the dashboard's pi sessions and updates without user action.
 - [ ] Live sessions are ordered above ended sessions.
 
@@ -53,7 +53,7 @@ new snapshot.
 
 **Acceptance criteria**
 
-- [ ] Dropping the connection shows `reconnecting`.
+- [x] Dropping the connection shows `reconnecting`.
 - [ ] The last-known sessions stay on screen while reconnecting.
 - [ ] The indicator clears when the reconnect succeeds.
 
@@ -85,5 +85,10 @@ after the configured delay.
 ## Verification notes
 
 Data layer: JVM tests `PiSessionsStreamEventTest`, `PiSessionMapperTest`, and
-`PiSessionsRepositoryTest` pass; `assembleDebug` builds. UI Must criteria are unchecked — no UI
-exists yet in #354.
+`PiSessionsRepositoryTest` pass; `assembleDebug` builds.
+
+UI (#356): `PiSessionsViewModelTest` and `PiFormattingTest` pass; `assembleDebug` builds. Emulator
+screenshot `../../docs/pi-remote/screenshots/f17-pi-tab.png` shows the Pi tab in the bottom bar,
+title `pi sessions`, `0 live · 0 ended`, the `Reconnecting…` banner, and the empty state. The
+dashboard endpoint was still 404 without a restart, so no live rows were available to verify;
+the row content, split sections and ended-section criteria remain unchecked.

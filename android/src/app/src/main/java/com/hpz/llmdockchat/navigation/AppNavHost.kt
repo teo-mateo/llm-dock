@@ -43,6 +43,8 @@ import com.hpz.llmdockchat.feature.models.ModelsScreen
 import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
+import com.hpz.llmdockchat.feature.pi.PiSessionsScreen
+import com.hpz.llmdockchat.feature.pi.PiSessionsViewModel
 import com.hpz.llmdockchat.feature.share.ShareTargetScreen
 import com.hpz.llmdockchat.feature.share.ShareTargetViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
@@ -59,9 +61,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * the back stack — a back press from Connect leaves the app instead of walking
  * into a screen the session can no longer load.
  *
- * [Destinations.CHATS] and [Destinations.MODELS] live in the nested
- * [Destinations.TABS] graph and share [AppBottomBar]; [Destinations.THREAD]
- * and [Destinations.NEW_CHAT] are pushed on top of it without one.
+ * [Destinations.CHATS], [Destinations.MODELS] and [Destinations.PI] live in
+ * the nested [Destinations.TABS] graph and share [AppBottomBar];
+ * [Destinations.THREAD] and [Destinations.NEW_CHAT] are pushed on top of it
+ * without one.
  */
 @Composable
 fun AppNavHost(
@@ -185,6 +188,19 @@ fun AppNavHost(
                         },
                         onOpenAccount = { navController.navigate(Destinations.ACCOUNT) },
                     )
+                }
+            }
+
+            composable(Destinations.PI) {
+                TabScaffold(navController) {
+                    val viewModel: PiSessionsViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { PiSessionsViewModel(container.piSessionsRepository) }
+                        },
+                    )
+                    val state by viewModel.state.collectAsState()
+                    LaunchedEffect(Unit) { viewModel.start() }
+                    PiSessionsScreen(state = state)
                 }
             }
 
