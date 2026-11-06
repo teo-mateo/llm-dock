@@ -322,8 +322,8 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 | GET | `/sessions/<id>` | meta + current state + open prompts |
 | GET | `/sessions/<id>/events?before_seq&limit` | history paging |
 | GET | `/sessions/<id>/stream?after_seq=N` | SSE: replay from N, then live tail, heartbeats (pattern of `run_manager.observe()` + `event_bus` replay) |
-| POST | `/sessions/<id>/messages` | `{text, attachment_ids}` → 202 + command_id |
-| POST | `/sessions/<id>/abort` | stop the current run |
+| POST | `/sessions/<id>/messages` | `{text}` → 200 `{command_id, ok, error}` when the result arrives, or 202 `{command_id, pending: true}` after 5 s; `invalid_body`/`invalid_text` 400 |
+| POST | `/sessions/<id>/abort` | none/`{}` → 200 result or 202 pending, same shape; `pi_session_offline` 409, `rate_limited` 429, `queue_full` 503, `unsupported_command` 400 |
 | POST | `/sessions/<id>/prompts/<pid>/answer` | `{value}` → 200, or 409 if already answered |
 | GET / PUT | `/sessions/<id>/model`, `/sessions/<id>/thinking` | list / set |
 | POST | `/attachments` | image/audio upload → id |
@@ -331,6 +331,8 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 | DELETE | `/sessions/<id>` | delete stored history (ended sessions only) |
 
 Built in #339: `GET /api/pi/sessions` → `{"sessions": [summary_json…]}`; `GET /api/pi/sessions/<session_id>/<instance_id>/events?after=&limit=` → `page_json`, with `invalid_paging` 400 and `unknown_session` 404.
+
+Built in #372: `POST /api/pi/sessions/<session_id>/<instance_id>/messages` takes `{"text"}` (string, non-empty after trim, ≤ 32 000 chars) and returns the command result in 5 s or `202 pending`; `POST …/abort` takes none/`{}` and returns the same result/pending shape. `invalid_body` / `invalid_text` are 400; `pi_session_offline` 409, `rate_limited` 429, `queue_full` 503 and `unsupported_command` 400. The wait runs in the request thread.
 
 Built in #344: `GET /api/pi/sessions/stream` → `snapshot` then session `session` deltas; `GET /api/pi/sessions/<session_id>/<instance_id>/stream?after=<int>` → replay `events`, then live. Frames are `events` / `session` / `snapshot` / `lagged`; `id` is the last seq sent; reconnect uses `after` or `Last-Event-ID`; a lagged stream sends `lagged` with `after` and ends. Every frame's `data` also carries `type` equal to its `event:` name, so data-only SSE clients (Android) work; resume for them is `?after=`, since they cannot read `id:`, with `after` set to the last event seq they hold (if `data` ever contains `type`, the frame type wins).
 
