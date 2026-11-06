@@ -226,13 +226,22 @@ fun AppNavHost(
                         PiSessionViewModel(
                             key = key,
                             repository = container.piSessionEventsRepository,
+                            commandsRepository = container.piCommandsRepository,
                         )
                     }
                 },
             )
             val state by viewModel.state.collectAsState()
+            val composerState by viewModel.composerState.collectAsState()
             LaunchedEffect(Unit) { viewModel.start() }
-            PiSessionScreen(state = state, onBack = { navController.popBackStack() })
+            PiSessionScreen(
+                state = state,
+                composerState = composerState,
+                onBack = { navController.popBackStack() },
+                onDraftChange = viewModel::onDraftChange,
+                onSend = viewModel::send,
+                onStop = viewModel::stop,
+            )
         }
 
         composable(Destinations.ACCOUNT) {

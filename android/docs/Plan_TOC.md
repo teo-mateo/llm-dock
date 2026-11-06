@@ -23,7 +23,7 @@ second tab for looking at the rig.
   `:3399/v2`.
 - Models: read the service list, start/stop a container, watch its logs,
   see GPU load.
-- Pi sessions: read-only session list.
+- Pi sessions: session list and session view, with sending and stopping a run.
 
 **Out of scope, permanently**
 
@@ -175,6 +175,8 @@ called at all — the phone has no project concept (decision 3).
 |---|---|---|
 | GET | `/api/pi/sessions/stream` | SSE: snapshot, then session deltas |
 | GET | `/api/pi/sessions/<session_id>/<instance_id>/stream?after=<seq>` | SSE: replay events after `seq`, then live events/session/lagged |
+| POST | `/api/pi/sessions/<session_id>/<instance_id>/messages` | Send or steer — body `{text}`; 200/202 and 409/429/503/400 outcomes |
+| POST | `/api/pi/sessions/<session_id>/<instance_id>/abort` | Stop the current run |
 
 ---
 
@@ -202,7 +204,8 @@ Mark completed features `[DONE]` in the Status column.
 | F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
 | F16 | Models from configured providers | [F16-model-providers.md](F16-model-providers.md) | — | [DONE] — client-only, backend in PR #315/#317; R3 device-verified on a never-configured provider id, not a removed one, see the feature file |
 | F17 | Pi sessions list | [F17-pi-sessions-list.md](F17-pi-sessions-list.md) | Main | UI, read-only list |
-| F18 | Pi session view | [F18-pi-session-view.md](F18-pi-session-view.md) | PhoneSession | UI, read-only |
+| F18 | Pi session view | [F18-pi-session-view.md](F18-pi-session-view.md) | PhoneSession | UI; composer and Stop added by F19 |
+| F19 | Pi composer and Stop | [F19-pi-composer-and-stop.md](F19-pi-composer-and-stop.md) | PhoneSession footer | [WIP] — JVM/gates verified; AC5 session-screen screenshot outstanding because the dashboard still 404s `/api/pi/...` |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 
 ---
