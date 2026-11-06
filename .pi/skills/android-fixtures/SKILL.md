@@ -34,14 +34,16 @@ python3 scripts/scenario.py waiting
 python3 scripts/scenario.py empty
 python3 scripts/scenario.py absent
 python3 scripts/scenario.py offline
+python3 scripts/scenario.py stress
 ```
 
 Every change updates both GET and already-connected sessions SSE clients. `waiting` has one live
 question and one ended session with a retained question (a live-only indicator must ignore the latter).
-`offline` marks all sessions ended; `stress` is the same live/ended pair plus a working session whose
-name, `cwd` and model are all long, carrying an open question, for layout stress at a narrow width.
 `empty` closes the live question; `absent` omits the prompts key for older-server compatibility;
-`offline` marks all sessions ended. Start with `empty`, switch to `waiting`, then `empty` to prove
+`offline` marks all sessions ended; `stress` keeps that live/ended pair and adds a working session
+whose name, `cwd` and model are all long with an open question, plus a short-named live session and a
+long-path ended one, for layout checks at a narrow width.
+Start with `empty`, switch to `waiting`, then `empty` to prove
 stream-driven indicator appearance/disappearance without navigating away. Wait for UI conditions,
 not fixed delays. Restore the app's prior real-dashboard connection before hand-back, using the
 existing credential workflow without printing secrets.
