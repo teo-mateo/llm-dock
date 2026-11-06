@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Live pi session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8DBBFF}a:hover{color:#B5D3FF}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0F1115; color: #E8EAEE; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="display: flex; align-items: center; gap: 8px; padding: 14px 12px 12px 8px; border-bottom: 1px solid #262A33">
+    <a href="Main.dc.html" aria-label="Back to sessions" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #E8EAEE; border-radius: 12px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span style="font-size: 17px; font-weight: 600">llm-dock</span>
+        <span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #3A2A14; color: #F7C27E">working</span>
+      </div>
+      <span style="font-size: 12px; color: #A0A8B6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">maya-v149-deepseek-v41-flash · xhigh · ctx 22%</span>
+    </div>
+  </header>
+
+  <main style="flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 14px; padding: 16px">
+    <div style="align-self: flex-end; max-width: 300px; background: #1B2635; border: 1px solid #2B3B52; border-radius: 16px 16px 4px 16px; padding: 12px 14px; font-size: 15px; line-height: 1.45">
+      Run the pi_remote tests and tell me if anything fails.
+      <div style="font-size: 11px; color: #A0A8B6; margin-top: 6px">from phone · 16:21</div>
+    </div>
+
+    <details style="background: #15181E; border: 1px solid #23272F; border-radius: 12px; padding: 10px 12px">
+      <summary style="font-size: 13px; color: #A0A8B6; cursor: pointer">Thinking · 2.1 s</summary>
+      <p style="margin: 8px 0 0 0; font-size: 13px; line-height: 1.5; color: #C3C9D4">The tests live under dashboard/tests with the test_pi_remote_ prefix; run them with the venv's pytest so the hermetic conftest applies.</p>
+    </details>
+
+    <section aria-label="Tool call" style="background: #181B22; border: 1px solid #262A33; border-radius: 12px; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #262A33">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+          bash
+        </div>
+        <span style="font-size: 12px; color: #8EDDB0">done · 1.4 s</span>
+      </div>
+      <pre style="margin: 0; padding: 10px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: #C3C9D4; white-space: pre-wrap">$ venv/bin/python -m pytest tests/ -k pi_remote -q
+...........................................
+43 passed in 0.92s</pre>
+    </section>
+
+    <div style="max-width: 330px; font-size: 15px; line-height: 1.5">
+      All 43 pi_remote tests pass. Nothing failed; the run took under a second. Want me to run the full suite too?<span aria-hidden="true" style="display: inline-block; width: 8px; height: 16px; margin-left: 3px; background: {{accent}}; vertical-align: -2px"></span>
+    </div>
+  </main>
+
+  <footer style="border-top: 1px solid #262A33; background: #13161C; padding: 10px 12px 20px 12px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #F7C27E">
+      <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #F2A54A"></span>
+      pi is working — a message now steers the current run
+    </div>
+    <div style="display: flex; align-items: flex-end; gap: 8px">
+      <label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message to pi</label>
+      <textarea id="msg" rows="1" placeholder="Steer pi…" style="flex: 1; min-height: 44px; box-sizing: border-box; resize: none; border-radius: 22px; border: 1px solid #2A2F39; background: #181B22; color: #E8EAEE; padding: 12px 16px; font: 15px Inter, sans-serif"></textarea>
+      <button aria-label="Stop the run" style="width: 44px; height: 44px; border-radius: 22px; border: 1px solid #5A2A2A; background: #2A1717; color: #FF9C9C; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      </button>
+      <button aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: {{accent}}; color: #0F1115; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+      </button>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#6AA8FF","options":["#6AA8FF","#F2A54A","#9B8CFF"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#6AA8FF' };
+  }
+}
+</script>
+</body>
+</html>

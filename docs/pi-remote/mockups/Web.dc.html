@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pi sessions — llm-dock</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8DBBFF}a:hover{color:#B5D3FF}
+</style>
+</helmet>
+<div style="min-height: 800px; box-sizing: border-box; background: #0F1115; color: #E8EAEE; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-bottom: 1px solid #262A33; background: #13161C">
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+      <span style="font-weight: 700; font-size: 16px">llm-dock</span>
+      <nav aria-label="Sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+        <a href="#" style="padding: 8px 12px; border-radius: 8px; color: #A0A8B6; text-decoration: none; font-size: 14px">Services</a>
+        <a href="#" style="padding: 8px 12px; border-radius: 8px; color: #A0A8B6; text-decoration: none; font-size: 14px">Chat</a>
+        <a href="#" style="padding: 8px 12px; border-radius: 8px; color: #A0A8B6; text-decoration: none; font-size: 14px">Inspector</a>
+        <a href="#" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1B2635; color: #E8EAEE; text-decoration: none; font-size: 14px; font-weight: 600">pi</a>
+      </nav>
+    </div>
+    <span style="font-size: 13px; color: #A0A8B6">listener on ~/.cache/pi-remote · 3 live</span>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+    <aside aria-label="pi sessions" style="flex: 1 1 280px; max-width: 100%; border-right: 1px solid #262A33; padding: 16px; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px 4px">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Sessions</h2>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #A0A8B6"><input type="checkbox" checked> live only</label>
+      </div>
+      <sc-for list="{{sessions}}" as="s" hint-placeholder-count="4">
+        <a href="#" style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; text-decoration: none; color: inherit; background: {{s.bg}}; border: 1px solid {{s.border}}">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: {{s.dot}}; flex: none"></span>
+            <span style="font-size: 14px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span>
+            <span style="font-size: 12px; color: #A0A8B6">{{s.state}}</span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #A0A8B6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.cwd}}</span>
+        </a>
+      </sc-for>
+    </aside>
+
+    <section aria-label="Session llm-dock" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #262A33">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700">llm-dock</h1>
+            <span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #3A2A14; color: #F7C27E">working</span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A0A8B6">/github/teo-mateo/llm-dock · maya-v149-deepseek-v41-flash · xhigh</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; width: 220px">
+          <div style="flex: 1; height: 6px; border-radius: 3px; background: #262A33; overflow: hidden"><div style="height: 6px; width: 22%; background: {{accent}}"></div></div>
+          <span style="font-size: 12px; color: #A0A8B6">ctx 22% of 524k</span>
+        </div>
+      </div>
+
+      <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; max-width: 880px; box-sizing: border-box">
+        <div style="align-self: flex-end; max-width: 560px; background: #1B2635; border: 1px solid #2B3B52; border-radius: 14px 14px 4px 14px; padding: 12px 16px; font-size: 15px; line-height: 1.5">
+          Run the pi_remote tests and tell me if anything fails.
+          <div style="font-size: 11px; color: #A0A8B6; margin-top: 6px">from phone · 16:21</div>
+        </div>
+        <details style="background: #15181E; border: 1px solid #23272F; border-radius: 10px; padding: 10px 14px">
+          <summary style="font-size: 13px; color: #A0A8B6; cursor: pointer">Thinking · 2.1 s</summary>
+          <p style="margin: 8px 0 0 0; font-size: 13px; line-height: 1.5; color: #C3C9D4">The tests live under dashboard/tests with the test_pi_remote_ prefix; run them with the venv's pytest so the hermetic conftest applies.</p>
+        </details>
+        <div style="background: #181B22; border: 1px solid #262A33; border-radius: 10px; overflow: hidden">
+          <div style="display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid #262A33; font-size: 13px">
+            <span style="font-weight: 600">bash</span><span style="color: #8EDDB0">done · 1.4 s</span>
+          </div>
+          <pre style="margin: 0; padding: 10px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: #C3C9D4; white-space: pre-wrap; overflow-x: auto">$ venv/bin/python -m pytest tests/ -k pi_remote -q
+43 passed in 0.92s</pre>
+        </div>
+        <p style="margin: 0; max-width: 640px; font-size: 15px; line-height: 1.55">All 43 pi_remote tests pass. Nothing failed; the run took under a second. Want me to run the full suite too?</p>
+      </div>
+
+      <div style="border-top: 1px solid #262A33; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #13161C">
+        <label for="wmsg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message to pi</label>
+        <input id="wmsg" type="text" placeholder="Steer pi… (it is working)" style="flex: 1 1 320px; min-width: 0; height: 44px; box-sizing: border-box; border-radius: 10px; border: 1px solid #2A2F39; background: #181B22; color: #E8EAEE; padding: 0 14px; font: 15px Inter, sans-serif">
+        <button style="height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #5A2A2A; background: #2A1717; color: #FF9C9C; font: 600 14px Inter, sans-serif">Stop</button>
+        <button style="height: 44px; padding: 0 18px; border-radius: 10px; border: none; background: {{accent}}; color: #0F1115; font: 600 14px Inter, sans-serif">Send</button>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#6AA8FF","options":["#6AA8FF","#F2A54A","#9B8CFF"]},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const sel = { bg: '#1B2635', border: '#2B3B52' };
+    const plain = { bg: 'transparent', border: 'transparent' };
+    return {
+      accent: this.props.accent ?? '#6AA8FF',
+      sessions: [
+        { ...sel, dot: '#F2A54A', name: 'llm-dock', state: 'working', cwd: '/github/teo-mateo/llm-dock' },
+        { ...plain, dot: '#CDBBFF', name: 'android client', state: 'waiting', cwd: '/github/teo-mateo/llm-dock/android' },
+        { ...plain, dot: '#5CC48A', name: 'chatterbox', state: 'idle', cwd: '/github/teo-mateo/chatterbox' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
