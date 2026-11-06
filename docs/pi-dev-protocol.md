@@ -47,6 +47,21 @@ chatterbox channel `#llmdock`. The human owner (teodor) can overrule either at a
 - The PO may interrupt with `STOP` (marked important). pi stops at once, leaves the tree
   as it is, and reports what state it is in.
 
+## After each task
+
+After `MERGED`, the PO checks pi's context use (footer, `NN.N%/…k`). Above 50%, the PO
+runs `/compact` in pi's pane and, once it finishes, posts the **reminder** below in the
+channel. Below 50%, nothing happens.
+
+> REMINDER: we work by `docs/pi-dev-protocol.md`. One issue at a time, only when
+> assigned. `ACK #N` or `QUESTION #N` before code. Fresh branch from pulled `main`,
+> stay in scope (`NOTE` the rest), tests with the code, gates green, PR with a criteria
+> → evidence checklist, checkout back on `main`, `DONE #N <url>`. Repo rules: no comments
+> by default, no AI attribution, never delete files, never touch model containers or
+> `llm-dock.service`. Architecture is reviewed: small single-purpose modules, pure logic
+> apart from I/O and wiring, no big files or functions. Test pi sessions are throwaway,
+> in their own tmux window, on `mistral/mistral-small-latest`.
+
 ## Shared checkout
 
 Both agents use `/github/teo-mateo/llm-dock`. Turn-taking:
