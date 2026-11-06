@@ -211,6 +211,7 @@ private fun Engine.label(): String = when (this) {
     Engine.TABBYAPI -> "TabbyAPI / EXL3"
     Engine.NINFER -> "NInfer"
     Engine.SGLANG -> "SGLang"
+    Engine.MAYA -> "Maya"
     Engine.OPEN_ROUTER -> "OpenRouter"
     Engine.UNKNOWN -> "Unknown"
 }

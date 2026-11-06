@@ -85,6 +85,14 @@ class ServiceSummaryTest {
     }
 
     @Test
+    fun `a maya service is chat-capable by template_type and by prefix`() {
+        val byType = ServiceSummary("maya-deepseek-v41-flash-dspark", "running", "chat", templateType = "maya")
+        assertEquals(Engine.MAYA, byType.engine)
+        assertTrue(byType.isChatCapable)
+        assertEquals(Engine.MAYA, ServiceSummary("maya-glm53-flash-maya-l", "running", "chat").engine)
+    }
+
+    @Test
     fun `template_type is authoritative over the name prefix, and null falls back to it`() {
         // The engine that selected the compose template beats a display name a
         // rename could have changed.
@@ -108,6 +116,7 @@ class ServiceSummaryTest {
         assertEquals(Engine.TABBYAPI, engineFromTemplateType("tabbyapi"))
         assertEquals(Engine.NINFER, engineFromTemplateType("ninfer"))
         assertEquals(Engine.SGLANG, engineFromTemplateType("sglang"))
+        assertEquals(Engine.MAYA, engineFromTemplateType("maya"))
         assertEquals(null, engineFromTemplateType("something-new"))
         assertEquals(null, engineFromTemplateType(null))
     }
