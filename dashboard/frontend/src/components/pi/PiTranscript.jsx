@@ -51,7 +51,7 @@ export default function PiTranscript({ items, working, lastStopAt }) {
             return <PiToolGroup key={item.id} group={item} />
           }
           if (item.kind === 'notice') {
-            return <PiNotice key={item.id} text={item.text} />
+            return <PiNotice key={item.id} change={item.change} text={item.text} />
           }
           if (item.kind === 'run_end') {
             return (
