@@ -1,6 +1,8 @@
 package com.hpz.llmdockchat.feature.pi
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PiFormattingTest {
@@ -25,5 +27,15 @@ class PiFormattingTest {
     fun `days`() {
         assertEquals("1 d ago", formatAgo(100_000_000L, 13_600_000L))
         assertEquals("2 d ago", formatAgo(100_000_000L, -72_800_000L))
+    }
+
+    @Test
+    fun `follows when at bottom`() {
+        assertTrue(shouldFollow(2, 3))
+    }
+
+    @Test
+    fun `does not follow when scrolled up`() {
+        assertFalse(shouldFollow(1, 3))
     }
 }

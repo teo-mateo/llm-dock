@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.pi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -15,7 +16,7 @@ import androidx.compose.ui.unit.*
 import com.hpz.llmdockchat.core.ui.theme.*
 import com.hpz.llmdockchat.data.model.*
 @Composable
-fun PiSessionsScreen(state: PiSessionsUiState) {
+fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionsUiState.Loaded
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
@@ -74,7 +75,7 @@ fun PiSessionsScreen(state: PiSessionsUiState) {
                                     Text("Live", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
                                 items(state.live, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionRow(it)
+                                    PiSessionRow(it, onOpen)
                                 }
                             }
                             if (state.ended.isNotEmpty()) {
@@ -82,7 +83,7 @@ fun PiSessionsScreen(state: PiSessionsUiState) {
                                     Text("Ended", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
                                 items(state.ended, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionRow(it)
+                                    PiSessionRow(it, onOpen)
                                 }
                             }
                         }
@@ -93,7 +94,7 @@ fun PiSessionsScreen(state: PiSessionsUiState) {
     }
 }
 @Composable
-fun PiSessionRow(session: PiSession) {
+fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
     val colors = LlmTheme.colors
     val status = when (session.state) {
         PiState.WORKING -> "working"
@@ -111,9 +112,10 @@ fun PiSessionRow(session: PiSession) {
     val nowMs = remember { System.currentTimeMillis() }
     val emphasis = if (session.state == PiState.ENDED) 0.72f else 1f
     Column(
-        Modifier.fillMaxWidth().alpha(emphasis)
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).alpha(emphasis)
             .background(colors.surface, RoundedCornerShape(16.dp))
             .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+            .clickable { onOpen(session.key) }
             .padding(16.dp)
             .testTag("pi_session_${session.key.sessionId}_${session.key.instanceId}"),
         verticalArrangement = Arrangement.spacedBy(8.dp),

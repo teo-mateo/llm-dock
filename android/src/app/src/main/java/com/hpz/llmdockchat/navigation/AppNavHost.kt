@@ -43,12 +43,15 @@ import com.hpz.llmdockchat.feature.models.ModelsScreen
 import com.hpz.llmdockchat.feature.models.ModelsViewModel
 import com.hpz.llmdockchat.feature.newchat.NewChatScreen
 import com.hpz.llmdockchat.feature.newchat.NewChatViewModel
+import com.hpz.llmdockchat.feature.pi.PiSessionScreen
+import com.hpz.llmdockchat.feature.pi.PiSessionViewModel
 import com.hpz.llmdockchat.feature.pi.PiSessionsScreen
 import com.hpz.llmdockchat.feature.pi.PiSessionsViewModel
 import com.hpz.llmdockchat.feature.share.ShareTargetScreen
 import com.hpz.llmdockchat.feature.share.ShareTargetViewModel
 import com.hpz.llmdockchat.feature.thread.ThreadScreen
 import com.hpz.llmdockchat.feature.thread.ThreadViewModel
+import com.hpz.llmdockchat.data.model.PiSessionKey
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.firstOrNull
@@ -200,13 +203,36 @@ fun AppNavHost(
                     )
                     val state by viewModel.state.collectAsState()
                     LaunchedEffect(Unit) { viewModel.start() }
-                    PiSessionsScreen(state = state)
+                    PiSessionsScreen(
+                        state = state,
+                        onOpen = { key -> navController.navigate(Destinations.piSession(key)) },
+                    )
                 }
             }
 
             composable(Destinations.DESIGN) {
                 TabScaffold(navController) { DesignLabGalleryScreen() }
             }
+        }
+
+        composable(Destinations.PI_SESSION) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId").orEmpty()
+            val instanceId = backStackEntry.arguments?.getString("instanceId").orEmpty()
+            val key = PiSessionKey(sessionId, instanceId)
+            val viewModel: PiSessionViewModel = viewModel(
+                key = "pi_session_${sessionId}_${instanceId}",
+                factory = viewModelFactory {
+                    initializer {
+                        PiSessionViewModel(
+                            key = key,
+                            repository = container.piSessionEventsRepository,
+                        )
+                    }
+                },
+            )
+            val state by viewModel.state.collectAsState()
+            LaunchedEffect(Unit) { viewModel.start() }
+            PiSessionScreen(state = state, onBack = { navController.popBackStack() })
         }
 
         composable(Destinations.ACCOUNT) {
