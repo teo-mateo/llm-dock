@@ -1,0 +1,199 @@
+[
+  {
+    "path": "/v1/hello",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 1000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "commands": []
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 1000,
+    "enqueue": {
+      "command_id": "cmd-1",
+      "kind": "abort",
+      "args": {},
+      "issued_at": 1000
+    },
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "commands": [
+        {
+          "command_id": "cmd-1",
+          "kind": "abort",
+          "args": {},
+          "issued_at": 1000
+        }
+      ]
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "commands": []
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "commands": [
+        {
+          "command_id": "cmd-1",
+          "kind": "abort",
+          "args": {},
+          "issued_at": 1000
+        }
+      ]
+    }
+  },
+  {
+    "path": "/v1/command-results",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "command_results",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "results": [
+        {
+          "command_id": "cmd-1",
+          "ok": true,
+          "error": null
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "commands": []
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "missing",
+      "instance_id": "missing",
+      "wait_ms": 0
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_results",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 0
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/commands/poll",
+    "now": 31000,
+    "request": {
+      "protocol": 1,
+      "type": "commands_poll",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "wait_ms": 25001
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  }
+]

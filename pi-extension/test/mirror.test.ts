@@ -169,3 +169,12 @@ test("run end, turn end, model, thinking and compaction", () => {
   assert.equal(emitted[6].type === "compaction" && emitted[6].tokens_before, 100);
   assert.equal(activity.working, false);
 });
+
+test("an aborted turn sets the run end outcome", () => {
+  const { emitted, mirror } = makeMirror();
+  mirror.handle({ type: "agent_start" } as any);
+  mirror.handle({ type: "turn_end", outcome: "aborted" } as any);
+  mirror.handle({ type: "agent_settled" } as any);
+  const runEnd = emitted.find((event) => event.type === "run_end");
+  assert.equal(runEnd?.type === "run_end" && runEnd.outcome, "aborted");
+});

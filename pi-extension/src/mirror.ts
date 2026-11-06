@@ -165,7 +165,10 @@ export class EventMirror {
     ));
   }
 
-  private onTurnEnd(event: TurnEndEvent): void { this.emitBody(turnEndBody(event.outcome)); }
+  private onTurnEnd(event: TurnEndEvent): void {
+    if (event.outcome !== "completed") this.lastOutcome = event.outcome;
+    this.emitBody(turnEndBody(event.outcome));
+  }
 
   private onModelSelect(event: ModelSelectEvent): void {
     this.emitBody(modelChangedBody(modelRef(event.model), modelRef(event.previousModel)));

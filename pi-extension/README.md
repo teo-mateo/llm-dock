@@ -3,17 +3,17 @@
 Registers a pi session with the llm-dock dashboard over a Unix socket, keeps the
 registration alive with heartbeats, and reports its own presence through `/remote`.
 
-This is P1-3a: `hello` / `heartbeat` / `bye`, the event mirror, the outbox and the
-`/v1/events` sender. Commands and prompts arrive in later issues. The dashboard's
-presence ingest exists; event storage is the next issue. The wire contract is in
-`docs/plans/pi-remote.md` §3 under *Extension endpoint*.
+This covers `hello` / `heartbeat` / `bye`, the event mirror, the outbox and the
+`/v1/events` sender, plus the command poller for `abort` (P3-1). `send_message` and
+prompts arrive in later issues. The wire contract is in `docs/plans/pi-remote.md` §3
+under *Extension endpoint*.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
 | `src/config.ts` | socket path + enabled flag; env `PI_REMOTE_SOCKET`, `PI_REMOTE=0`, file `~/.pi/agent/pi-remote.json`; env > file > default |
-| `src/protocol.ts` | typed frames for `hello` / `heartbeat` / `bye` / `events`, `protocol: 1`, batch/body limits, builders, response parsing — pure |
+| `src/protocol.ts` | typed frames for `hello` / `heartbeat` / `bye` / `events` / `commands_poll` / `command_results`, `protocol: 1`, limits, builders, response parsing — pure |
 | `src/events.ts` | event vocabulary, typed wire bodies, `EventStamper` (seq + ts) and `gapEvent` — pure, owns every event field name |
 | `src/coalesce.ts` | delta coalescer (~100 ms / 2 KB) — pure |
 | `src/throttle.ts` | tool-update throttle (≤ 4/s per call) — pure |
@@ -26,15 +26,18 @@ presence ingest exists; event storage is the next issue. The wire contract is in
 | `src/presence.ts` + `src/presence-types.ts` | presence state machine: offline → registering → online, heartbeat timer, backoff, idempotent `start()` / `stop()` / `rejoin()`, `onOnline(ackedSeq)`, injected clock and request |
 | `src/session.ts` | derive a session id from pi's session file name — pure |
 | `src/backoff.ts` | the 1 s → 30 s retry policy — pure, reused by later reconnects |
+| `src/commands.ts` | command types, `dispatch`, and the 200-entry `CommandDedupe` — pure |
+| `src/command-poller.ts` | owns the online-only long poll, results posting, backoff, 404 rejoin, start/pause/stop |
 | `src/activity.ts` | the working flag set by the mirror and read by the heartbeat |
 | `src/pi-adapter.ts` | `ExtensionContext` → protocol frames (the `contextWindow` → `window` rename lives here) |
 | `src/remote-command.ts` | `/remote` argument parsing and the status formatter — pure |
 | `src/remote-command-handler.ts` | the `/remote` command's effects (stop/start/status) |
-| `src/session-runtime.ts` | builds Presence + Sender + Mirror for one `session_start` with a fresh `instance_id`; owns `handle`, `pause`, `resume`, `stop` |
+| `src/session-runtime.ts` | builds Presence + Sender + Mirror + command poller for one `session_start` with a fresh `instance_id`; owns `handle`, `pause`, `resume`, `stop` |
 | `src/subscriptions.ts` | registers the pi event subscriptions used by the mirror |
-| `test/` | `node --test` suites, the fake clock, fake server and fake-events handler |
+| `test/` | `node --test` suites, the fake clock, fake server, fake-events and fake-commands handlers |
 | `test/contract/frames.json` | golden presence-contract fixtures shared with the dashboard's pytest |
-| `test/contract/events.json` | golden events-contract fixtures shared with the dashboard's next issue |
+| `test/contract/events.json` | golden events-contract fixtures shared with the dashboard |
+| `test/contract/commands.json` | golden command-contract fixtures shared with the dashboard |
 
 ## Load it
 
@@ -79,9 +82,11 @@ npm test
 The suite covers config precedence, the protocol builders, the presence state machine
 with a fake clock (register, heartbeats, server restart, backoff schedule, stop during
 backoff, `onOnline`/`rejoin`), event builders, coalescing/caps, outbox overflow/gap,
-sender batching/backoff/rejoin, mirror mapping, the golden presence and events
-contracts, and integration tests against an in-process fake server on a temp Unix
-socket (including a restart that resends unacked events).
+sender batching/backoff/rejoin, mirror mapping, command dispatch/dedupe, the poller
+(online-only, results, repeat dedupe, error backoff, 404 rejoin, pause/stop), the
+golden presence, events and commands contracts, and integration tests against an
+in-process fake server on a temp Unix socket (including a restart that resends
+unacked events).
 
 Run the fake server by hand:
 
@@ -91,3 +96,6 @@ node --experimental-strip-types test/fake-server.ts --socket /tmp/pi-remote-fake
 
 `kill -USR1 <pid>` clears its session registry, which simulates a dashboard restart
 (the next heartbeat gets `unknown_session` and the extension re-registers).
+`kill -USR2 <pid>` enqueues an `abort` command for every registered session, which is
+the live-check hook: the poller returns it, pi aborts the run, and the fake logs the
+result.
