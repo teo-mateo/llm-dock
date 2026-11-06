@@ -34,8 +34,23 @@ class PiToolRunsTest {
     }
 
     @Test
-    fun `streaming assistant is not absorbed`() {
-        assertEquals(listOf("group:1", "a1"), kinds(groupToolRuns(listOf(tool("1"), assistant("1", "", streaming = true)))))
+    fun `thinking between tools stays in the group as a flag`() {
+        val out = groupToolRuns(listOf(tool("1"), assistant("1", "", streaming = true)))
+        assertEquals(listOf("group:1"), kinds(out))
+        assertEquals(true, (out[0] as PiDisplayItem.ToolGroup).thinking)
+    }
+
+    @Test
+    fun `the next tool clears the thinking flag`() {
+        val out = groupToolRuns(listOf(tool("1"), assistant("1", "", streaming = true), tool("2")))
+        assertEquals(false, (out[0] as PiDisplayItem.ToolGroup).thinking)
+    }
+
+    @Test
+    fun `a streaming reply with text leaves the group`() {
+        val out = groupToolRuns(listOf(tool("1"), assistant("1", "Here", streaming = true)))
+        assertEquals(listOf("group:1", "a1"), kinds(out))
+        assertEquals(false, (out[0] as PiDisplayItem.ToolGroup).thinking)
     }
 
     @Test

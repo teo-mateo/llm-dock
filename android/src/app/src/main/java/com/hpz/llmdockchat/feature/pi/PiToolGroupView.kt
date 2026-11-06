@@ -57,6 +57,15 @@ fun PiToolGroupView(group: PiDisplayItem.ToolGroup) {
             if (index > 0) HorizontalDivider(color = colors.line)
             PiToolRow(tool)
         }
+        if (group.thinking) {
+            HorizontalDivider(color = colors.line)
+            Text(
+                "thinking…",
+                color = colors.muted,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).testTag("pi_tool_group_thinking"),
+            )
+        }
         if (visible.hidden > 0) {
             HorizontalDivider(color = colors.line)
             Text(

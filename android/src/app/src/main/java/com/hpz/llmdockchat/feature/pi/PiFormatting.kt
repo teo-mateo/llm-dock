@@ -10,5 +10,9 @@ fun formatAgo(nowMs: Long, thenMs: Long): String {
     }
 }
 
-fun shouldFollow(lastVisibleIndex: Int, itemCountBefore: Int): Boolean =
-    lastVisibleIndex >= itemCountBefore - 1
+data class FollowState(val following: Boolean, val seen: Any?) {
+    fun hasUnseen(current: Any?): Boolean = !following && current !== seen
+    fun pause(current: Any?): FollowState = FollowState(following = false, seen = current)
+    fun settle(atBottom: Boolean, current: Any?): FollowState = FollowState(following = atBottom, seen = current)
+    fun jump(current: Any?): FollowState = FollowState(following = true, seen = current)
+}

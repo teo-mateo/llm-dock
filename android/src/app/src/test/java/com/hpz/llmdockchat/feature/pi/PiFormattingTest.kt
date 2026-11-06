@@ -30,12 +30,27 @@ class PiFormattingTest {
     }
 
     @Test
-    fun `follows when at bottom`() {
-        assertTrue(shouldFollow(2, 3))
+    fun `following never reports unseen content`() {
+        assertFalse(FollowState(following = true, seen = "a").hasUnseen("b"))
     }
 
     @Test
-    fun `does not follow when scrolled up`() {
-        assertFalse(shouldFollow(1, 3))
+    fun `paused reports content that changed since the pause`() {
+        val paused = FollowState(following = true, seen = null).pause("a")
+        assertFalse(paused.hasUnseen("a"))
+        assertTrue(paused.hasUnseen("b"))
+    }
+
+    @Test
+    fun `settling at the bottom resumes following`() {
+        assertTrue(FollowState(following = false, seen = "a").settle(atBottom = true, current = "b").following)
+        assertFalse(FollowState(following = true, seen = "a").settle(atBottom = false, current = "b").following)
+    }
+
+    @Test
+    fun `jump resumes following and clears unseen`() {
+        val jumped = FollowState(following = false, seen = "a").jump("b")
+        assertTrue(jumped.following)
+        assertFalse(jumped.hasUnseen("b"))
     }
 }

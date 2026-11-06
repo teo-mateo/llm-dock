@@ -47,6 +47,9 @@ export default function PiToolGroup({ group }) {
       {shown.map((item) => (
         <PiToolRow key={item.id} item={item} />
       ))}
+      {group.thinking && (
+        <li className="animate-pulse px-3 py-1 text-xs text-fg-muted">thinking…</li>
+      )}
       {hidden > 0 && (
         <li>
           <button

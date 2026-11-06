@@ -25,9 +25,21 @@ describe('groupToolRuns', () => {
     expect(out.map((item) => item.kind)).toEqual(['tool_group', 'assistant', 'tool_group'])
   })
 
-  it('streaming assistant is not absorbed', () => {
+  it('thinking between tools stays in the group as a thinking flag', () => {
     const out = groupToolRuns([tool(1), assistant(1, '', true)])
+    expect(out).toHaveLength(1)
+    expect(out[0].thinking).toBe(true)
+  })
+
+  it('the next tool clears the thinking flag', () => {
+    const out = groupToolRuns([tool(1), assistant(1, '', false), tool(2)])
+    expect(out[0].thinking).toBe(false)
+  })
+
+  it('a streaming reply with text leaves the group', () => {
+    const out = groupToolRuns([tool(1), assistant(1, 'Here', true)])
     expect(out.map((item) => item.kind)).toEqual(['tool_group', 'assistant'])
+    expect(out[0].thinking).toBe(false)
   })
 
   it('empty assistant before the first tool stays', () => {
