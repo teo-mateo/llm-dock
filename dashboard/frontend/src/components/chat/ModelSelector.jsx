@@ -1,5 +1,6 @@
 import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
+import useProviderModels from '../../hooks/useProviderModels'
 import ModelOptions from './ModelOptions'
 
 // Single labeled model dropdown shared by the conversation header (via
@@ -17,6 +18,7 @@ export default function ModelSelector({
 }) {
   const { services, loading } = useRunningServices()
   const { data: openRouterData, loading: openRouterLoading } = useOpenRouterModels()
+  const { groups: providerGroups } = useProviderModels()
 
   if (loading || openRouterLoading) {
     return <div className="text-xs text-fg-subtle">Loading services...</div>
@@ -34,7 +36,7 @@ export default function ModelSelector({
           disabled={disabled}
           className="bg-surface border border-border rounded px-2 py-1 text-xs text-fg disabled:opacity-50"
         >
-          <ModelOptions services={services} openRouterModels={openRouterModels} selected={mainService} />
+          <ModelOptions services={services} openRouterModels={openRouterModels} providerGroups={providerGroups} selected={mainService} />
         </select>
       </div>
     )
@@ -51,7 +53,7 @@ export default function ModelSelector({
           className="bg-surface border border-border rounded px-2 py-1 text-xs text-fg disabled:opacity-50"
         >
           <option value="">Select model...</option>
-          <ModelOptions services={services} openRouterModels={openRouterModels} selected={mainService} />
+          <ModelOptions services={services} openRouterModels={openRouterModels} providerGroups={providerGroups} selected={mainService} />
         </select>
       </div>
       <div className="flex items-center gap-2">
@@ -63,7 +65,7 @@ export default function ModelSelector({
           className="bg-surface border border-border rounded px-2 py-1 text-xs text-fg disabled:opacity-50"
         >
           <option value="">None</option>
-          <ModelOptions services={services} openRouterModels={openRouterModels} selected={sidekickService} />
+          <ModelOptions services={services} openRouterModels={openRouterModels} providerGroups={providerGroups} selected={sidekickService} />
         </select>
       </div>
     </div>

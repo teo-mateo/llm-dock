@@ -102,7 +102,7 @@ describe('ChatArea no-conversation states', () => {
         setCritiques={() => {}}
       />
     )
-    expect(container.textContent).toContain('No model available. Start a local model or configure OpenRouter.')
+    expect(container.textContent).toContain('No model available. Start a local model or configure a provider in Settings.')
     expect(capturedModelSelectorProps.current).toBeNull()
     expect(container.querySelector('textarea').disabled).toBe(true)
   })

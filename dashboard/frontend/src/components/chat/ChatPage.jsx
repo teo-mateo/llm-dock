@@ -11,6 +11,8 @@ import { updateConversation } from '../../services/chat'
 import useRunningServices from '../../hooks/useRunningServices'
 import useOpenRouterModels from '../../hooks/useOpenRouterModels'
 import { serviceNameForModel } from '../../utils/openrouter'
+import useProviderModels from '../../hooks/useProviderModels'
+import { providerServiceName } from '../../utils/providers'
 import { pendingFlushDecision } from './pendingFlush'
 import { isReasoningLevelRejection, isSamplingParamsRejection } from './levelRejection'
 
@@ -28,6 +30,7 @@ export default function ChatPage() {
   const { projects, refresh: refreshProjects, create: createProject, rename: renameProject, remove: removeProject } = useProjects()
   const { services: runningServices } = useRunningServices()
   const { data: openRouterData } = useOpenRouterModels()
+  const { groups: providerGroups } = useProviderModels()
   const {
     conversation,
     messages,
@@ -152,7 +155,8 @@ export default function ChatPage() {
   const openRouterModels = openRouterData?.configured ? openRouterData.current : []
   const defaultModelName =
     runningServices[0]?.name ||
-    (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null)
+    (openRouterModels[0] ? serviceNameForModel(openRouterModels[0].id) : null) ||
+    (providerGroups[0] ? providerServiceName(providerGroups[0].id, providerGroups[0].models[0].id) : null)
 
   // Model pre-selected in the empty-state composer. Initialized from the
   // default once it arrives (SSE load is async); a user's explicit choice
@@ -212,7 +216,7 @@ export default function ChatPage() {
 
   const handleCreate = useCallback(async () => {
     if (!defaultModelName) {
-      window.alert('No model available. Start a local model or configure OpenRouter.')
+      window.alert('No model available. Start a local model or configure a provider in Settings.')
       return
     }
     if (!confirmDiscardEdits()) return
@@ -224,7 +228,7 @@ export default function ChatPage() {
 
   const handleCreateInProject = useCallback(async (projectId) => {
     if (!defaultModelName) {
-      window.alert('No model available. Start a local model or configure OpenRouter.')
+      window.alert('No model available. Start a local model or configure a provider in Settings.')
       return
     }
     if (!confirmDiscardEdits()) return
@@ -270,7 +274,7 @@ export default function ChatPage() {
   // message so it sends as soon as the new conversation loads.
   const handleCreateAndSend = useCallback(async (content, images) => {
     if (!selectedModel) {
-      window.alert('No model available. Start a local model or configure OpenRouter.')
+      window.alert('No model available. Start a local model or configure a provider in Settings.')
       return
     }
     let conv

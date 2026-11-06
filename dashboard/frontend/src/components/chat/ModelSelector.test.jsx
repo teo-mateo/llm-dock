@@ -8,6 +8,8 @@ const { mockRunningServices, mockOpenRouterModels } = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useRunningServices', () => ({ default: (...a) => mockRunningServices(...a) }))
 vi.mock('../../hooks/useOpenRouterModels', () => ({ default: (...a) => mockOpenRouterModels(...a) }))
+const { providerState } = vi.hoisted(() => ({ providerState: { current: { groups: [], providers: [], loading: false } } }))
+vi.mock('../../hooks/useProviderModels', () => ({ default: () => providerState.current }))
 
 const LOCAL = [{ name: 'vllm-test' }]
 const CURATED = [{ id: 'vendor/model-a', label: 'Model A' }]
@@ -29,7 +31,10 @@ function setup({ services = LOCAL, configured = true, current = CURATED, mainSer
   )
 }
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  providerState.current = { groups: [], providers: [], loading: false }
+})
 
 describe('ModelSelector OpenRouter integration', () => {
   it('shows Local and OpenRouter optgroups when configured', () => {
@@ -127,5 +132,24 @@ describe('ModelSelector new-chat variant', () => {
     )
     fireEvent.change(container.querySelector('select'), { target: { value: 'openrouter:vendor/model-a' } })
     expect(onChangeMain).toHaveBeenCalledWith('openrouter:vendor/model-a')
+  })
+})
+
+describe('ModelSelector provider groups', () => {
+  it('stays usable while provider catalogs are still loading', () => {
+    providerState.current = { groups: [], providers: [], loading: true }
+    const { container } = setup()
+    expect(container.querySelector('option[value="vllm-test"]')).not.toBeNull()
+  })
+
+  it('appends one group per configured provider', () => {
+    providerState.current = {
+      groups: [{ id: 'mistral', name: 'Mistral', models: [{ id: 'codestral-latest', label: 'codestral-latest' }] }],
+      providers: [], loading: false,
+    }
+    const { container } = setup()
+    const groups = [...container.querySelectorAll('optgroup')].map(g => g.label)
+    expect(groups).toEqual(['Local', 'OpenRouter', 'Mistral', 'Local', 'OpenRouter', 'Mistral'])
+    expect(container.querySelector('option[value="mistral:codestral-latest"]')).not.toBeNull()
   })
 })

@@ -139,7 +139,7 @@ export default function ChatArea({
           <p className="text-sm text-fg-subtle mb-4 text-center">
             {defaultModelName
               ? 'Choose a model, then type a message below.'
-              : 'No model available. Start a local model or configure OpenRouter.'}
+              : 'No model available. Start a local model or configure a provider in Settings.'}
           </p>
           {defaultModelName && (
             <div className="mb-4">
