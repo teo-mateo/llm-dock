@@ -1,6 +1,6 @@
 # F18 · Pi session view
 
-**Mockup:** `../../docs/pi-remote/mockups/PhoneSession.dc.html` · **Depends on:** F05, F17 · **Data layer:** #358
+**Mockup:** `../../docs/pi-remote/mockups/PhoneSession.dc.html` · **Depends on:** F05, F17 · **Data layer:** #358 · **Transcript:** #360 · **UI:** #362
 
 The session view is the read-only detail screen for one pi-remote session. It renders the
 session header and the event transcript; it does not send, steer, stop or change a run. Those
@@ -80,5 +80,15 @@ coverage.
 
 ## Verification notes
 
-JVM tests `PiSessionStreamEventTest`, `PiSessionEventsRepositoryTest` and `PiTranscriptTest` pass;
-`assembleDebug` builds. No UI is implemented, so F18-R1–R3 UI criteria remain unchecked.
+Data layer and transcript: JVM tests `PiSessionStreamEventTest`, `PiSessionEventsRepositoryTest` and
+`PiTranscriptTest` pass; `assembleDebug` builds.
+
+UI (#362): `PiSessionViewModelTest` covers loading, first transcript, Unknown, stale and idempotent
+start; `PiFormattingTest` covers `shouldFollow`; `PiSessionDestinationTest` covers encoded route
+segments. The screen is read-only: no composer, Stop or steering control; `MarkdownBody` and the
+now-`internal` thread `ReasoningBlock` are reused.
+
+Emulator check: the dashboard still answers `/api/pi/...` with 404 (no `llm-dock.service`
+restart), so no live session or session-screen screenshot was possible. The Pi tab screenshot
+`../../docs/pi-remote/screenshots/f18-pi-tab.png` shows the tab and empty/reconnecting state; the
+PO performs the live session check with the owner. No UI criteria are claimed as device-verified.

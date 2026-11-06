@@ -9,3 +9,6 @@ fun formatAgo(nowMs: Long, thenMs: Long): String {
         else -> "${elapsed / 86_400_000L} d ago"
     }
 }
+
+fun shouldFollow(lastVisibleIndex: Int, itemCountBefore: Int): Boolean =
+    lastVisibleIndex >= itemCountBefore - 1

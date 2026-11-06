@@ -172,7 +172,7 @@ fun AssistantBubble(
  * no empty block.
  */
 @Composable
-private fun ReasoningBlock(reasoning: String) {
+internal fun ReasoningBlock(reasoning: String) {
     val colors = LlmTheme.colors
     var expanded by remember { mutableStateOf(false) }
     Column(

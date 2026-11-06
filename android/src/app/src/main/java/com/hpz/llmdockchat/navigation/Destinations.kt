@@ -1,6 +1,9 @@
 package com.hpz.llmdockchat.navigation
 
 import com.hpz.llmdockchat.core.net.BaseUrl
+import com.hpz.llmdockchat.data.model.PiSessionKey
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
  * The app's destinations. The conversation list replaced the placeholder
@@ -16,6 +19,9 @@ object Destinations {
     const val CHATS = "chats"
     const val MODELS = "models"
     const val PI = "pi"
+    const val PI_SESSION = "pi/{sessionId}/{instanceId}"
+    fun piSession(key: PiSessionKey): String =
+        "pi/${encodePathSegment(key.sessionId)}/${encodePathSegment(key.instanceId)}"
 
     /** Design-lab gallery (experiment, not a shipped feature) — cycles the
      * `feature/designlab` mock screens the owner asked for. */
@@ -93,3 +99,6 @@ fun startDestination(server: BaseUrl?, token: String?, hasCredential: Boolean): 
     } else {
         Destinations.CONNECT
     }
+
+private fun encodePathSegment(value: String): String =
+    URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
