@@ -1,11 +1,12 @@
 import os
 import stat
 
+from pi_remote.contract import JsonResponse
 from pi_remote.listener import UdsListener
 
 
 def _handler(method, path, body):
-    return 200, {"ok": True, "method": method, "path": path, "body": body}
+    return JsonResponse(200, {"ok": True, "method": method, "path": path, "body": body})
 
 
 def _socket_dir(tmp_path, name="sockdir"):

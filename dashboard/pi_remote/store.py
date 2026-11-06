@@ -2,6 +2,8 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
+from .contract import HelloFrame
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS pi_sessions (
     session_id          TEXT NOT NULL,
@@ -84,24 +86,22 @@ class PiRemoteDB:
             finally:
                 self._close_conn(conn)
 
-    def upsert_session(self, fields: Dict[str, Any], now: int) -> None:
-        model = fields.get("model") or {}
-        provider = model.get("provider") if isinstance(model, dict) else None
-        model_id = model.get("id") if isinstance(model, dict) else None
+    def upsert_session(self, frame: HelloFrame, now: int) -> None:
+        model = frame.model
         values = [
-            fields["session_id"],
-            fields["instance_id"],
-            fields.get("session_file"),
-            fields["cwd"],
-            fields.get("name"),
-            fields["pid"],
-            provider,
-            model_id,
-            fields.get("thinking_level"),
-            fields["reason"],
-            fields.get("previous_session_id"),
-            fields.get("pi_version"),
-            fields["ext_version"],
+            frame.session_id,
+            frame.instance_id,
+            frame.session_file,
+            frame.cwd,
+            frame.name,
+            frame.pid,
+            model.provider if model is not None else None,
+            model.id if model is not None else None,
+            frame.thinking_level,
+            frame.reason,
+            frame.previous_session_id,
+            frame.pi_version,
+            frame.ext_version,
             now,
             now,
         ]
@@ -138,6 +138,20 @@ class PiRemoteDB:
                 )
                 conn.commit()
                 return cursor.rowcount > 0
+            finally:
+                self._close_conn(conn)
+
+    def end_open_sessions(self, reason: str, now: int) -> int:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                cursor = conn.execute(
+                    """UPDATE pi_sessions SET ended_at = ?, end_reason = ?
+                       WHERE ended_at IS NULL""",
+                    (now, reason),
+                )
+                conn.commit()
+                return cursor.rowcount
             finally:
                 self._close_conn(conn)
 

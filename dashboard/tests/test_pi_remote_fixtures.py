@@ -16,10 +16,10 @@ def test_golden_contract_frames():
     handler = PiRemoteHandler(registry, store)
 
     for index, case in enumerate(cases):
-        status, payload = handler.handle(
+        response = handler.handle(
             "POST", case["path"], case["request"], case["now"]
         )
-        assert status == case["status"], f"case {index} {case['path']} at {case['now']}"
-        assert payload == case["response"], f"case {index} {case['path']} at {case['now']}"
+        assert response.status == case["status"], f"case {index} {case['path']} at {case['now']}"
+        assert response.payload == case["response"], f"case {index} {case['path']} at {case['now']}"
 
     store.close()

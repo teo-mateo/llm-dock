@@ -367,8 +367,11 @@ Status codes:
   A heartbeat or bye for a known session with an unknown instance is
   `404 unknown_session`.
 - **Liveness: 45 s.** An instance is stale after 45 s without a heartbeat (3 missed at
-  the 15 s cadence); the next heartbeat from it gets `404 unknown_session` and the
-  extension re-registers. A `bye` from a stale instance is also 404.
+  the 15 s cadence). A sweeper owns the ending: it expires stale instances and writes
+  `ended_at`/`end_reason = "stale"` without waiting for another request. A late
+  heartbeat or `bye` from a stale instance still gets `404 unknown_session`. At dashboard
+  start, open rows are ended `dashboard_restart`; a live pi's next re-`hello` reopens its
+  row through the upsert.
 - **Check order**: `protocol` → path/type match → required fields. Unknown extra fields
   are **ignored**, so later additions are additive and a server that has not learned a
   new field still accepts the frame.
@@ -394,12 +397,15 @@ dashboard's pytest runs the same file against its handler
 
 | Module | Owns |
 |---|---|
-| `contract.py` | `PATHS`, protocol version, error codes, stale threshold, frame validation and the check order — pure |
-| `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, coexisting instances, 45 s liveness; thread-safe, time passed in |
-| `store.py` | `pi_remote.db` (`pi_sessions`), schema, upsert/touch/end; the only module writing SQL |
-| `handler.py` | `handle(method, path, body, now) -> (status, payload)`; routes registry then store, no sockets |
-| `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads` |
-| `supervisor.py` | singleton owning listener + registry + store; configured and started from `create_app()`, stopped by `atexit` |
+| `contract.py` | `PATHS`, protocol version, status/error constants, end reasons, typed frames, frame validation/check order, `JsonResponse` and response builders — pure |
+| `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
+| `store.py` | `pi_remote.db` (`pi_sessions`), schema, upsert/touch/end/end-open; the only module writing SQL |
+| `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
+| `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
+| `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
+| `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry and row ending |
+| `settings.py` | defaults and env resolution for the socket and DB |
+| `supervisor.py` | singleton owning listener + registry + store + sweeper; clock injected; configured/started from `create_app()`, stopped by `atexit` |
 | `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |
 
 - **Env**: `LLM_DOCK_PI_REMOTE_SOCKET` (default `~/.cache/pi-remote/pi-remote.sock` — the
@@ -412,7 +418,8 @@ dashboard's pytest runs the same file against its handler
   one (another dashboard) sets `bind_error`. `stop()` removes the socket file it created.
 - **Storage**: `pi_sessions` is one row per `(session_id, instance_id)`; hello upserts and
   preserves `first_seen`, heartbeat updates `last_seen`, bye sets `ended_at`/`end_reason`,
-  and an instance the registry finds stale is ended with `end_reason = "stale"`.
+  and the sweeper ends a stale instance with `end_reason = "stale"`. At supervisor start,
+  leftover open rows are ended `dashboard_restart` before the listener accepts traffic.
 
 The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`,
 plus the additive presence fields (`waiting_prompt`, queued-message flag,

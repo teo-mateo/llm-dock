@@ -1,7 +1,20 @@
-from typing import Any, Tuple
+from typing import Any, Callable, Dict
 
-from .contract import PATH_TO_TYPE, error_payload, validate_request
-from .registry import PresenceRegistry
+from .contract import (
+    PATHS,
+    ByeFrame,
+    ErrorCode,
+    HTTP_NOT_FOUND,
+    HeartbeatFrame,
+    HelloFrame,
+    JsonResponse,
+    bye_ok,
+    error_response,
+    heartbeat_ok,
+    hello_ok,
+    validate_request,
+)
+from .registry import PresenceRegistry, RegistryResult
 from .store import PiRemoteDB
 
 
@@ -9,49 +22,36 @@ class PiRemoteHandler:
     def __init__(self, registry: PresenceRegistry, store: PiRemoteDB) -> None:
         self.registry = registry
         self.store = store
+        self._routes: Dict[str, Callable[[Any, int], JsonResponse]] = {
+            PATHS["hello"]: self._hello,
+            PATHS["heartbeat"]: self._heartbeat,
+            PATHS["bye"]: self._bye,
+        }
 
-    def handle(self, method: str, path: str, body: Any, now: int) -> Tuple[int, Any]:
+    def handle(self, method: str, path: str, body: Any, now: int) -> JsonResponse:
         status, code, frame = validate_request(method, path, body)
         if code is not None:
-            return status, error_payload(code)
+            return error_response(status, code)
+        route = self._routes[path]
+        return route(frame, now)
 
-        kind = PATH_TO_TYPE[path]
-        session_id = frame["session_id"]
-        instance_id = frame["instance_id"]
+    def _hello(self, frame: HelloFrame, now: int) -> JsonResponse:
+        self.registry.register(frame, now)
+        self.store.upsert_session(frame, now)
+        return hello_ok(frame.session_id, frame.instance_id, now)
 
-        if kind == "hello":
-            self.registry.register(frame, now)
-            self.store.upsert_session(frame, now)
-            return 200, {
-                "ok": True,
-                "protocol": 1,
-                "session_id": session_id,
-                "instance_id": instance_id,
-                "server_time": now,
-            }
+    def _heartbeat(self, frame: HeartbeatFrame, now: int) -> JsonResponse:
+        result = self.registry.heartbeat(frame, now)
+        if result is RegistryResult.OK:
+            self.store.touch_session(frame.session_id, frame.instance_id, now)
+            return heartbeat_ok(now)
+        return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
 
-        if kind == "heartbeat":
-            result = self.registry.heartbeat(
-                session_id,
-                instance_id,
-                frame["state"],
-                frame.get("context"),
-                frame["sent_at"],
-                now,
-            )
-            if result == "ok":
-                self.store.touch_session(session_id, instance_id, now)
-                return 200, {"ok": True, "protocol": 1, "server_time": now}
-            if result == "stale":
-                self.store.end_session(session_id, instance_id, "stale", now)
-            return 404, error_payload("unknown_session")
-
-        result = self.registry.bye(session_id, instance_id, now)
-        if result == "ok":
+    def _bye(self, frame: ByeFrame, now: int) -> JsonResponse:
+        result = self.registry.bye(frame, now)
+        if result is RegistryResult.OK:
             self.store.end_session(
-                session_id, instance_id, frame.get("reason"), now
+                frame.session_id, frame.instance_id, frame.reason, now
             )
-            return 200, {"ok": True, "protocol": 1}
-        if result == "stale":
-            self.store.end_session(session_id, instance_id, "stale", now)
-        return 404, error_payload("unknown_session")
+            return bye_ok()
+        return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
