@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS pi_sessions (
     last_seen           INTEGER NOT NULL,
     ended_at            INTEGER,
     end_reason          TEXT,
+    acked_seq           INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_id, instance_id)
 );
 
@@ -29,6 +30,8 @@ CREATE TABLE IF NOT EXISTS pi_events (
     type         TEXT NOT NULL,
     ts           INTEGER NOT NULL,
     payload_json TEXT NOT NULL,
+    gap_from     INTEGER,
+    gap_to       INTEGER,
     received_at  INTEGER NOT NULL,
     PRIMARY KEY (session_id, instance_id, seq)
 );
@@ -42,8 +45,8 @@ INSERT INTO pi_sessions (
     session_id, instance_id, session_file, cwd, name, pid,
     model_provider, model_id, thinking_level, reason,
     previous_session_id, pi_version, ext_version,
-    first_seen, last_seen, ended_at, end_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+    first_seen, last_seen, ended_at, end_reason, acked_seq
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
 ON CONFLICT(session_id, instance_id) DO UPDATE SET
     session_file = excluded.session_file,
     cwd = excluded.cwd,
@@ -63,6 +66,6 @@ ON CONFLICT(session_id, instance_id) DO UPDATE SET
 
 INSERT_EVENT_SQL = """
 INSERT OR IGNORE INTO pi_events (
-    session_id, instance_id, seq, type, ts, payload_json, received_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    session_id, instance_id, seq, type, ts, payload_json, gap_from, gap_to, received_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 """

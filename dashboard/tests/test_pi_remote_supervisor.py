@@ -1,8 +1,7 @@
 import os
 
-from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
-from pi_remote.store import PiRemoteDB, RETENTION_MS
+from pi_remote.store import PiRemoteDB
 from pi_remote.supervisor import PiRemoteSupervisor
 
 
@@ -81,26 +80,5 @@ def test_supervisor_closes_open_rows_on_start(tmp_path):
     row = reader.get_session("s1", "i1")
     assert row["ended_at"] == 2000
     assert row["end_reason"] == "dashboard_restart"
-    reader.close()
-    supervisor.stop_all()
-
-def test_supervisor_start_purges_expired_events(tmp_path):
-    db_path = str(tmp_path / "pi_remote.db")
-    seed = PiRemoteDB(db_path)
-    seed.insert_events(
-        EventsFrame(session_id="s1", instance_id="i1", events=(Event(1, 1000, "state", {"state": "idle"}),)),
-        1000,
-    )
-    seed.close()
-    directory = _socket_dir(tmp_path)
-    now = 1000 + RETENTION_MS + 1
-    supervisor = PiRemoteSupervisor(
-        socket_path=str(directory / "pi.sock"),
-        db_path=db_path,
-        clock=lambda: now,
-    )
-    supervisor.start()
-    reader = PiRemoteDB(db_path)
-    assert reader.stored_events("s1", "i1") == []
     reader.close()
     supervisor.stop_all()

@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict
 from .contract import (
     PATHS,
     ErrorCode,
+    HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
     JsonResponse,
     bye_ok,
@@ -12,7 +13,7 @@ from .contract import (
     hello_ok,
     validate_request,
 )
-from .events import EventsFrame
+from .events import EventsEnvelope, parse_events
 from .frames import ByeFrame, HeartbeatFrame, HelloFrame
 from .registry import PresenceRegistry, RegistryResult
 from .store import PiRemoteDB
@@ -58,11 +59,11 @@ class PiRemoteHandler:
             return bye_ok()
         return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
 
-    def _events(self, frame: EventsFrame, now: int) -> JsonResponse:
-        result = self.registry.touch(frame.session_id, frame.instance_id, now)
+    def _events(self, envelope: EventsEnvelope, now: int) -> JsonResponse:
+        result = self.registry.touch(envelope.session_id, envelope.instance_id, now)
         if result is not RegistryResult.OK:
             return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
-        self.store.insert_events(frame, now)
-        self.store.touch_session(frame.session_id, frame.instance_id, now)
-        acked = self.store.acked_seq(frame.session_id, frame.instance_id)
-        return events_ok(acked)
+        frame = parse_events(envelope.body)
+        if frame is None:
+            return error_response(HTTP_BAD_REQUEST, ErrorCode.BAD_FRAME)
+        return events_ok(self.store.ingest(frame, now))

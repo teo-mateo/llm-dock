@@ -106,7 +106,8 @@ def test_thread_survives_one_store_exception():
 def test_sweeper_purges_at_most_once_per_hour():
     store = PiRemoteDB(":memory:")
     registry = PresenceRegistry()
-    store.insert_events(
+    store.upsert_session(hello(), 1000)
+    store.ingest(
         EventsFrame(session_id="s1", instance_id="i1", events=(Event(1, 1000, "state", {"state": "idle"}),)),
         1000,
     )
@@ -119,12 +120,10 @@ def test_sweeper_purges_at_most_once_per_hour():
 
     store.purge_old_events = counting_purge
     sweeper = StaleSweeper(registry, store, clock=lambda: 1000, interval_ms=1000)
-    sweeper.start()
     sweeper.sweep(1000)
-    assert calls == []
+    assert calls == [1000]
     sweeper.sweep(1000 + PURGE_INTERVAL_MS)
-    assert calls == [1000 + PURGE_INTERVAL_MS]
+    assert calls == [1000, 1000 + PURGE_INTERVAL_MS]
     sweeper.sweep(1000 + PURGE_INTERVAL_MS + 1)
-    assert len(calls) == 1
-    sweeper.stop()
+    assert len(calls) == 2
     store.close()

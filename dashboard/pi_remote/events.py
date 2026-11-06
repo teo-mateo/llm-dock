@@ -1,11 +1,17 @@
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-MAX_EVENTS_BATCH = 50
-MAX_EVENTS_BODY_BYTES = 1024 * 1024
+from .wire_types import (
+    STATES,
+    is_int,
+    is_nullable_model,
+    is_nullable_number,
+    is_nullable_str,
+    is_nullable_usage,
+)
 
-STATES = frozenset({"idle", "working"})
+MAX_EVENTS_BATCH = 50
+
 ORIGINS = frozenset({"terminal", "extension"})
 OUTCOMES = frozenset({"completed", "aborted", "error"})
 
@@ -26,43 +32,25 @@ class EventsFrame:
 
 
 @dataclass(frozen=True)
+class EventsEnvelope:
+    session_id: str
+    instance_id: str
+    body: Dict[str, Any]
+
+
+@dataclass(frozen=True)
 class StoredEvent:
     seq: int
     type: str
     payload: Dict[str, Any]
 
 
-def is_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _nullable_str(value: Any) -> bool:
-    return value is None or isinstance(value, str)
-
-
-def _nullable_number(value: Any) -> bool:
-    return value is None or (
-        isinstance(value, (int, float)) and not isinstance(value, bool)
-    )
-
-
-def _model(value: Any) -> bool:
-    if value is None:
-        return True
-    if not isinstance(value, dict):
-        return False
-    return isinstance(value.get("provider"), str) and isinstance(value.get("id"), str)
-
-
-def _usage(value: Any) -> bool:
-    if value is None:
-        return True
-    if not isinstance(value, dict):
-        return False
-    for key in ("input", "output", "cache_read", "cache_write", "total_tokens"):
-        if not isinstance(value.get(key), (int, float)) or isinstance(value.get(key), bool):
-            return False
-    return _nullable_number(value.get("reasoning")) and _nullable_number(value.get("cost_total"))
+@dataclass(frozen=True)
+class AckedEvent:
+    seq: int
+    type: str
+    from_seq: Optional[int] = None
+    to_seq: Optional[int] = None
 
 
 def _valid_gap(body: Dict[str, Any]) -> bool:
@@ -87,9 +75,9 @@ def _valid_assistant_message(body: Dict[str, Any]) -> bool:
     return (
         isinstance(body.get("text"), str)
         and isinstance(body.get("thinking"), str)
-        and _model(body.get("model"))
-        and _usage(body.get("usage"))
-        and _nullable_str(body.get("stop_reason"))
+        and is_nullable_model(body.get("model"))
+        and is_nullable_usage(body.get("usage"))
+        and is_nullable_str(body.get("stop_reason"))
     )
 
 
@@ -99,13 +87,13 @@ def _valid_tool(event_type: str, body: Dict[str, Any]) -> bool:
     if not isinstance(body.get("truncated"), bool):
         return False
     if event_type == "tool_start":
-        return _nullable_str(body.get("args"))
+        return is_nullable_str(body.get("args"))
     if event_type == "tool_update":
-        return _nullable_str(body.get("partial"))
+        return is_nullable_str(body.get("partial"))
     return (
-        _nullable_str(body.get("result"))
+        is_nullable_str(body.get("result"))
         and isinstance(body.get("is_error"), bool)
-        and _nullable_number(body.get("duration_ms"))
+        and is_nullable_number(body.get("duration_ms"))
     )
 
 
@@ -125,13 +113,13 @@ def _valid_payload(event_type: str, body: Dict[str, Any]) -> bool:
     if event_type in ("turn_end", "run_end"):
         return body.get("outcome") in OUTCOMES
     if event_type == "model_changed":
-        return _model(body.get("model")) and _model(body.get("previous"))
+        return is_nullable_model(body.get("model")) and is_nullable_model(body.get("previous"))
     if event_type == "thinking_changed":
-        return _nullable_str(body.get("level")) and _nullable_str(body.get("previous"))
+        return is_nullable_str(body.get("level")) and is_nullable_str(body.get("previous"))
     if event_type == "compaction":
         return (
             isinstance(body.get("summary"), str)
-            and _nullable_number(body.get("tokens_before"))
+            and is_nullable_number(body.get("tokens_before"))
             and isinstance(body.get("reason"), str)
         )
     return True
@@ -154,17 +142,22 @@ def _parse_event(raw: Any) -> Optional[Event]:
     return Event(seq=seq, ts=ts, type=event_type, payload=payload)
 
 
-def parse_events(body: Dict[str, Any]) -> Optional[EventsFrame]:
+def parse_events_envelope(body: Dict[str, Any]) -> Optional[EventsEnvelope]:
     session_id = body.get("session_id")
     instance_id = body.get("instance_id")
     if not isinstance(session_id, str) or not session_id:
         return None
     if not isinstance(instance_id, str) or not instance_id:
         return None
+    return EventsEnvelope(session_id=session_id, instance_id=instance_id, body=body)
+
+
+def parse_events(body: Dict[str, Any]) -> Optional[EventsFrame]:
+    envelope = parse_events_envelope(body)
+    if envelope is None:
+        return None
     raw_events = body.get("events")
     if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS_BATCH:
-        return None
-    if len(json.dumps(body, separators=(",", ":")).encode("utf-8")) > MAX_EVENTS_BODY_BYTES:
         return None
     parsed: List[Event] = []
     for raw in raw_events:
@@ -172,25 +165,26 @@ def parse_events(body: Dict[str, Any]) -> Optional[EventsFrame]:
         if event is None:
             return None
         parsed.append(event)
-    return EventsFrame(session_id=session_id, instance_id=instance_id, events=tuple(parsed))
+    return EventsFrame(
+        session_id=envelope.session_id,
+        instance_id=envelope.instance_id,
+        events=tuple(parsed),
+    )
 
 
-def acked_seq(events: Iterable[StoredEvent]) -> int:
+def acked_seq(events: Iterable[AckedEvent], start: Optional[int] = None) -> int:
     intervals: List[Tuple[int, int]] = []
     for event in events:
         intervals.append((event.seq, event.seq))
-        if event.type == "gap":
-            from_seq = event.payload.get("from_seq")
-            to_seq = event.payload.get("to_seq")
-            if is_int(from_seq) and is_int(to_seq) and from_seq >= 1 and to_seq >= from_seq:
-                intervals.append((from_seq, to_seq))
+        if event.type == "gap" and event.from_seq is not None and event.to_seq is not None:
+            if event.from_seq >= 1 and event.to_seq >= event.from_seq:
+                intervals.append((event.from_seq, event.to_seq))
     if not intervals:
-        return 0
+        return 0 if start is None else start
     intervals.sort()
-    first = intervals[0][0]
-    acked = first - 1
-    for start, end in intervals:
-        if start <= acked + 1:
+    acked = intervals[0][0] - 1 if start is None or start == 0 else start
+    for begin, end in intervals:
+        if begin <= acked + 1:
             if end > acked:
                 acked = end
         else:

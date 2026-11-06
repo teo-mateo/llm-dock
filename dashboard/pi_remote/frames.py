@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
+from .wire_types import STATES, is_int, is_model, is_nullable_str, is_number
+
 SESSION_REASONS = frozenset({"startup", "reload", "new", "resume", "fork"})
-STATES = frozenset({"idle", "working"})
 
 
 @dataclass(frozen=True)
@@ -53,30 +54,13 @@ class ByeFrame:
 Frame = Union[HelloFrame, HeartbeatFrame, ByeFrame]
 
 
-def is_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _optional_str(body: Dict[str, Any], key: str) -> bool:
-    value = body.get(key)
-    return value is None or isinstance(value, str)
-
-
 def _parse_model(body: Dict[str, Any]) -> Optional[ModelRef]:
     model = body.get("model")
     if model is None:
         return None
-    if not isinstance(model, dict):
+    if not is_model(model):
         return None
-    provider = model.get("provider")
-    model_id = model.get("id")
-    if not isinstance(provider, str) or not isinstance(model_id, str):
-        return None
-    return ModelRef(provider=provider, id=model_id)
+    return ModelRef(provider=model["provider"], id=model["id"])
 
 
 def _parse_context(body: Dict[str, Any]) -> Optional[ContextUsage]:
@@ -87,7 +71,7 @@ def _parse_context(body: Dict[str, Any]) -> Optional[ContextUsage]:
         return None
     for key in ("tokens", "window", "percent"):
         value = context.get(key)
-        if value is not None and not _is_number(value):
+        if value is not None and not is_number(value):
             return None
     return ContextUsage(
         tokens=context.get("tokens"),
@@ -112,7 +96,7 @@ def parse_hello(body: Dict[str, Any]) -> Optional[HelloFrame]:
     if not isinstance(body.get("ext_version"), str):
         return None
     for key in ("session_file", "name", "thinking_level", "previous_session_id", "pi_version"):
-        if not _optional_str(body, key):
+        if not is_nullable_str(body.get(key)):
             return None
     model = _parse_model(body)
     if body.get("model") is not None and model is None:
@@ -163,7 +147,7 @@ def parse_bye(body: Dict[str, Any]) -> Optional[ByeFrame]:
         return None
     if not isinstance(instance_id, str) or not instance_id:
         return None
-    if not _optional_str(body, "reason"):
+    if not is_nullable_str(body.get("reason")):
         return None
     return ByeFrame(
         session_id=session_id,

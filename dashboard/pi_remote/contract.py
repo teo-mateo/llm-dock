@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-from .events import EventsFrame, parse_events
-from .frames import Frame, is_int, parse_bye, parse_hello, parse_heartbeat
+from .events import EventsEnvelope, parse_events_envelope
+from .frames import Frame, parse_bye, parse_hello, parse_heartbeat
+from .wire_types import is_int
 
 PROTOCOL_VERSION = 1
 STALE_AFTER_MS = 45000
+MAX_EVENTS_BODY_BYTES = 1024 * 1024
 HTTP_OK = 200
 HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
@@ -19,6 +21,15 @@ PATHS = {
 }
 
 PATH_TO_TYPE = {path: kind for kind, path in PATHS.items()}
+
+FrameOrEnvelope = Union[Frame, EventsEnvelope]
+
+PARSERS: Dict[str, Callable[[Dict[str, Any]], Optional[FrameOrEnvelope]]] = {
+    "hello": parse_hello,
+    "heartbeat": parse_heartbeat,
+    "bye": parse_bye,
+    "events": parse_events_envelope,
+}
 
 
 class ErrorCode(str, Enum):
@@ -82,7 +93,7 @@ def bye_ok() -> JsonResponse:
 
 def validate_request(
     method: str, path: str, body: Any
-) -> Tuple[int, Optional[ErrorCode], Optional[Union[Frame, EventsFrame]]]:
+) -> Tuple[int, Optional[ErrorCode], Optional[FrameOrEnvelope]]:
     if method != "POST":
         return HTTP_NOT_FOUND, ErrorCode.NOT_FOUND, None
     kind = PATH_TO_TYPE.get(path)
@@ -95,14 +106,7 @@ def validate_request(
         return HTTP_BAD_REQUEST, ErrorCode.UNSUPPORTED_PROTOCOL, None
     if body.get("type") != kind:
         return HTTP_BAD_REQUEST, ErrorCode.BAD_FRAME, None
-    if kind == "hello":
-        frame = parse_hello(body)
-    elif kind == "heartbeat":
-        frame = parse_heartbeat(body)
-    elif kind == "bye":
-        frame = parse_bye(body)
-    else:
-        frame = parse_events(body)
+    frame = PARSERS[kind](body)
     if frame is None:
         return HTTP_BAD_REQUEST, ErrorCode.BAD_FRAME, None
     return HTTP_OK, None, frame
