@@ -539,7 +539,7 @@ them through `test/fake-server.ts`'s `handleFrame`, and
 The body-limit cases are separate listener tests: ~400 KB of emoji is accepted and a
 declared `Content-Length > 1 MiB` is rejected without reading.
 
-**Ingest package** — `dashboard/pi_remote/`, built in #331:
+**Ingest package** — `dashboard/pi_remote/`:
 
 | Module | Owns |
 |---|---|
@@ -547,19 +547,27 @@ declared `Content-Length > 1 MiB` is rejected without reading.
 | `wire_types.py` | shared wire vocabulary: `STATES`, int/number/nullable/model/usage checks used by both parsers |
 | `frames.py` | frozen presence frame dataclasses (`ModelRef`, `ContextUsage`, `HelloFrame`, `HeartbeatFrame`, `ByeFrame`) and parse helpers |
 | `events.py` | frozen `Event`/`EventsEnvelope`/`EventsFrame` dataclasses, envelope and known-payload validation, unknown-type acceptance, batch limit, and the pure `acked_seq()` |
-| `schema.py` | SQL text for `pi_sessions` and `pi_events` plus insert/upsert statements |
+| `schema.py` | SQL text for `pi_sessions`, `pi_events` and `pi_commands` plus insert/upsert statements |
 | `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, `touch`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
-| `store.py` | `pi_remote.db` (`pi_sessions`, `pi_events`), upsert/touch/end/end-open, `ingest` (insert + last_seen + mark in one transaction), history read, retention purge; the only module writing SQL |
+| `store.py` | `PiRemoteDB`: path, lock, `_connection()` context manager, schema init + migrations, `close()`; builds `sessions = SessionStore(self)`, `events = EventStore(self)`, `commands = CommandStore(self)`; no SQL of its own |
+| `session_store.py` | `SessionStore`: `upsert`, `touch`, `end`, `end_open`, `get`, `list` over `pi_sessions` |
+| `event_store.py` | `EventStore`: `ingest` (insert + last_seen + mark in one transaction), `stored`, `page`, `acked_seq`, `purge_old`; owns `RETENTION_MS` over `pi_events` |
+| `command_store.py` | `CommandStore`: `record` (SHA-256 args digest), `complete`, `drop`, `get` over `pi_commands` |
 | `read_model.py` | pure query model: `SessionSummary`, `EventView`, `EventPage`, `session_summary`, `event_page`, `clamp_limit`; no I/O |
 | `bus.py` | in-process fan-out: `EventBus`, `Subscription`, `BusMessage`; a full subscriber is marked `lagged` and closed, never silently dropped |
 | `stream.py` | SSE generators over a `StreamSource` protocol: subscribe-before-replay, cursor dedupe, lagged ends; no Flask imports |
+| `commands.py` | `CommandsPollFrame`, `CommandResultsFrame`, `CommandResult`; parsers and `MAX_WAIT_MS = 25000` |
+| `command_queue.py` | thread-safe `CommandQueue`: `enqueue`, long-poll `take`, redelivery, `complete`, `wait_result`, `drop_key`, `close`; injected `now`, no I/O |
+| `limits.py` | pure sliding-window `RateLimiter` |
+| `publishing.py` | `PublishCallback`, `bus_publisher` and `publish_session` — the bus callback and session-summary publication used by handler/sweeper |
 | `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
 | `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
 | `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
 | `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry, row ending, and the first/hourly retention purge; logs a failed sweep and keeps looping |
 | `settings.py` | defaults and env resolution for the socket and DB |
-| `supervisor.py` | singleton owning listener + registry + store + sweeper + bus; clock injected; configured/started from `create_app()`, stopped by `atexit`; facade `session()`, `sessions()`, `events()` and `subscribe()` |
-| `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |
+| `client.py` | `PiRemoteClient(store, registry, bus, queue, limiter, clock)`: the read and command facade (`subscribe`, `session`, `sessions`, `events`, `send_command`, `await_command`); satisfies `StreamSource` |
+| `supervisor.py` | singleton owning listener + registry + store + sweeper + bus + queue + limiter + handler + client; clock injected; configured/started from `create_app()`, stopped by `atexit`; exposes `client -> Optional[PiRemoteClient]` |
+| `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check, plus the dev-only `--send-abort-after` hook |
 
 - **Env**: `LLM_DOCK_PI_REMOTE_SOCKET` (default `~/.cache/pi-remote/pi-remote.sock` — the
   same path as `pi-extension/src/config.ts`; the two defaults must change together) and

@@ -4,8 +4,7 @@ from typing import Callable, List, Optional, Tuple
 
 from .command_queue import CommandQueue
 from .contract import END_REASON_STALE
-from .handler import PublishCallback
-from .read_model import session_summary
+from .publishing import PublishCallback, publish_session
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
@@ -42,10 +41,10 @@ class StaleSweeper:
             try:
                 if self.queue is not None:
                     pending = self.queue.drop_key((session_id, instance_id))
-                    self.store.drop_commands(
+                    self.store.commands.drop(
                         [command.command_id for command in pending], now
                     )
-                self.store.end_session(
+                self.store.sessions.end(
                     session_id, instance_id, END_REASON_STALE, now
                 )
             except Exception:
@@ -54,21 +53,17 @@ class StaleSweeper:
                     session_id,
                     instance_id,
                 )
-            self._publish_session(session_id, instance_id)
+            publish_session(
+                self.store, self.registry, self.publish,
+                session_id, instance_id, now,
+            )
         if self._last_purge_ms is None or now - self._last_purge_ms >= PURGE_INTERVAL_MS:
             try:
-                self.store.purge_old_events(now)
+                self.store.events.purge_old(now)
             except Exception:
                 logger.exception("pi remote: event retention purge failed")
             self._last_purge_ms = now
         return keys
-
-    def _publish_session(self, session_id: str, instance_id: str) -> None:
-        row = self.store.get_session(session_id, instance_id)
-        if row is None:
-            return
-        summary = session_summary(row, None)
-        self.publish("session", (session_id, instance_id), (), summary)
 
     def start(self) -> None:
         with self._lock:

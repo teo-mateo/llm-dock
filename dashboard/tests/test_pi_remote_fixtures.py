@@ -67,7 +67,7 @@ def test_golden_contract_commands():
         ext_version="0.1.0",
     )
     registry.register(seed, cases[0]["now"])
-    store.upsert_session(seed, cases[0]["now"])
+    store.sessions.upsert(seed, cases[0]["now"])
 
     for index, case in enumerate(cases[1:], start=1):
         enqueue = case.get("enqueue")

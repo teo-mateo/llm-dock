@@ -1,11 +1,8 @@
 import os
-from dataclasses import replace
 
 import pytest
 
-from pi_remote.commands import CommandResult
 from pi_remote.contract import STALE_AFTER_MS
-from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
 from pi_remote.store import PiRemoteDB
 from pi_remote.supervisor import PiRemoteSupervisor
@@ -73,7 +70,7 @@ def _hello():
 def test_supervisor_closes_open_rows_on_start(tmp_path):
     db_path = str(tmp_path / "pi_remote.db")
     seed = PiRemoteDB(db_path)
-    seed.upsert_session(_hello(), 1000)
+    seed.sessions.upsert(_hello(), 1000)
     seed.close()
     directory = _socket_dir(tmp_path)
     supervisor = PiRemoteSupervisor(
@@ -83,80 +80,10 @@ def test_supervisor_closes_open_rows_on_start(tmp_path):
     )
     supervisor.start()
     reader = PiRemoteDB(db_path)
-    row = reader.get_session("s1", "i1")
+    row = reader.sessions.get("s1", "i1")
     assert row["ended_at"] == 2000
     assert row["end_reason"] == "dashboard_restart"
     reader.close()
-    supervisor.stop_all()
-
-
-def test_sessions_live_first_then_last_seen_desc(tmp_path):
-    directory = _socket_dir(tmp_path)
-    supervisor = PiRemoteSupervisor(
-        socket_path=str(directory / "pi.sock"),
-        db_path=str(tmp_path / "pi_remote.db"),
-        clock=lambda: 1000,
-    )
-    supervisor.start()
-    store = supervisor._store
-    store.upsert_session(replace(_hello(), session_id="s2"), 2000)
-    store.end_session("s2", "i1", "remote_off", 2000)
-    store.upsert_session(replace(_hello(), session_id="s3"), 1500)
-    store.end_session("s3", "i1", "remote_off", 1500)
-    store.upsert_session(_hello(), 1000)
-    supervisor._registry.register(_hello(), 1000)
-
-    summaries = supervisor.sessions()
-    assert [summary.session_id for summary in summaries] == ["s1", "s2", "s3"]
-    assert summaries[0].live is True
-    assert summaries[0].last_seen == 1000
-    assert summaries[1].live is False
-    assert summaries[2].live is False
-    supervisor.stop_all()
-
-
-def test_events_unknown_key_is_none(tmp_path):
-    directory = _socket_dir(tmp_path)
-    supervisor = PiRemoteSupervisor(
-        socket_path=str(directory / "pi.sock"),
-        db_path=str(tmp_path / "pi_remote.db"),
-        clock=lambda: 1000,
-    )
-    supervisor.start()
-    assert supervisor.events("missing", "i1") is None
-    supervisor.stop_all()
-
-
-def test_events_pages_through_all_stored_events(tmp_path):
-    directory = _socket_dir(tmp_path)
-    supervisor = PiRemoteSupervisor(
-        socket_path=str(directory / "pi.sock"),
-        db_path=str(tmp_path / "pi_remote.db"),
-        clock=lambda: 1000,
-    )
-    supervisor.start()
-    store = supervisor._store
-    store.upsert_session(_hello(), 1000)
-    events = tuple(
-        Event(seq, seq * 1000, "state", {"state": "idle"})
-        for seq in range(1, 451)
-    )
-    store.ingest(EventsFrame("s1", "i1", events), 1000)
-
-    first = supervisor.events("s1", "i1", after_seq=0, limit=200)
-    assert len(first.events) == 200
-    assert first.next_after == 200
-    assert first.has_more is True
-
-    second = supervisor.events("s1", "i1", after_seq=first.next_after, limit=200)
-    assert len(second.events) == 200
-    assert second.next_after == 400
-    assert second.has_more is True
-
-    third = supervisor.events("s1", "i1", after_seq=second.next_after, limit=200)
-    assert len(third.events) == 50
-    assert third.next_after == 450
-    assert third.has_more is False
     supervisor.stop_all()
 
 
@@ -228,7 +155,7 @@ def _events_body(events):
 
 def test_events_batch_publishes_inserted_events(supervisor):
     assert supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000).status == 200
-    subscription = supervisor.subscribe(("s1", "i1"))
+    subscription = supervisor.client.subscribe(("s1", "i1"))
     body = _events_body([
         {"type": "state", "seq": 1, "ts": 1000, "state": "idle"},
     ])
@@ -242,7 +169,7 @@ def test_events_batch_publishes_inserted_events(supervisor):
 
 def test_duplicate_batch_publishes_nothing(supervisor):
     assert supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000).status == 200
-    subscription = supervisor.subscribe(("s1", "i1"))
+    subscription = supervisor.client.subscribe(("s1", "i1"))
     body = _events_body([
         {"type": "state", "seq": 1, "ts": 1000, "state": "idle"},
     ])
@@ -253,7 +180,7 @@ def test_duplicate_batch_publishes_nothing(supervisor):
 
 
 def test_hello_and_bye_publish_session_messages(supervisor):
-    subscription = supervisor.subscribe(("s1", "i1"))
+    subscription = supervisor.client.subscribe(("s1", "i1"))
     supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
     hello_message = subscription.get(1)
     assert hello_message.kind == "session"
@@ -269,7 +196,7 @@ def test_hello_and_bye_publish_session_messages(supervisor):
 
 def test_state_change_heartbeat_publishes_once(supervisor):
     supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    subscription = supervisor.subscribe(("s1", "i1"))
+    subscription = supervisor.client.subscribe(("s1", "i1"))
 
     supervisor._handler.handle("POST", "/v1/heartbeat", _heartbeat_body("idle"), 1000)
     first = subscription.get(1)
@@ -286,9 +213,9 @@ def test_state_change_heartbeat_publishes_once(supervisor):
 
 
 def test_stale_expiry_publishes_session_message(supervisor):
-    supervisor._store.upsert_session(_hello(), 1000)
+    supervisor._store.sessions.upsert(_hello(), 1000)
     supervisor._registry.register(_hello(), 1000)
-    subscription = supervisor.subscribe(("s1", "i1"))
+    subscription = supervisor.client.subscribe(("s1", "i1"))
     supervisor._sweeper.sweep(1000 + STALE_AFTER_MS + 1)
     message = subscription.get(1)
     assert message.kind == "session"
@@ -298,106 +225,27 @@ def test_stale_expiry_publishes_session_message(supervisor):
 
 
 def test_stop_all_closes_subscriptions(supervisor):
-    subscription = supervisor.subscribe()
+    subscription = supervisor.client.subscribe()
     supervisor.stop_all()
     assert subscription.closed is True
     assert subscription.get(0.2) is None
 
 
-def _commands_poll_body(wait_ms=0):
-    return {
-        "protocol": 1,
-        "type": "commands_poll",
-        "session_id": "s1",
-        "instance_id": "i1",
-        "wait_ms": wait_ms,
-    }
-
-
-def _command_results_body(results):
-    return {
-        "protocol": 1,
-        "type": "command_results",
-        "session_id": "s1",
-        "instance_id": "i1",
-        "results": results,
-    }
-
-
-def test_send_command_offline(supervisor):
-    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
-    assert command_id is None
-    assert error == "pi_session_offline"
-
-
-def test_send_command_rate_limited_on_11th(supervisor):
-    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    for _ in range(10):
-        command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
-        assert command_id is not None
-        assert error is None
-    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
-    assert command_id is None
-    assert error == "rate_limited"
-
-
-def test_send_command_unsupported_kind(supervisor):
-    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    command_id, error = supervisor.send_command(("s1", "i1"), "set_model", {})
-    assert command_id is None
-    assert error == "unsupported_command"
-
-
-def test_poll_delivers_and_results_resolve_await_command(supervisor):
-    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
-    assert error is None
-
-    poll = supervisor._handler.handle(
-        "POST", "/v1/commands/poll", _commands_poll_body(), 1000
-    )
-    assert poll.status == 200
-    assert poll.payload["commands"][0]["command_id"] == command_id
-    assert poll.payload["commands"][0]["kind"] == "abort"
-
-    result_body = _command_results_body([
-        {"command_id": command_id, "ok": True, "error": None},
-    ])
-    assert supervisor._handler.handle(
-        "POST", "/v1/command-results", result_body, 1000
-    ).status == 200
-    assert supervisor.await_command(command_id, 0.1) == CommandResult(command_id, True, None)
-    assert supervisor._store.get_command(command_id)["outcome"] == "done"
-
-
 def test_bye_drops_pending_commands_and_marks_dropped(supervisor):
     supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    command_id, error = supervisor.client.send_command(("s1", "i1"), "abort", {})
     assert error is None
     assert supervisor._handler.handle(
         "POST", "/v1/bye", _bye_body(), 1000
     ).status == 200
-    row = supervisor._store.get_command(command_id)
+    row = supervisor._store.commands.get(command_id)
     assert row["outcome"] == "dropped"
     assert row["completed_at"] == 1000
 
 
 def test_stale_expiry_drops_pending_commands(supervisor):
     supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    command_id, error = supervisor.client.send_command(("s1", "i1"), "abort", {})
     assert error is None
     supervisor._sweeper.sweep(1000 + STALE_AFTER_MS + 1)
-    assert supervisor._store.get_command(command_id)["outcome"] == "dropped"
-
-
-def test_audit_row_stores_a_digest_not_the_text(supervisor):
-    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
-    command_id, error = supervisor.send_command(
-        ("s1", "i1"), "send_message", {"text": "secret-text"}
-    )
-    assert error is None
-    row = supervisor._store.get_command(command_id)
-    assert row["outcome"] == "pending"
-    assert len(row["args_digest"]) == 64
-    assert row["args_digest"] != "secret-text"
-    assert "secret-text" not in str(row)
+    assert supervisor._store.commands.get(command_id)["outcome"] == "dropped"

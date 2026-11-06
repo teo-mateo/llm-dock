@@ -1,23 +1,16 @@
 import logging
 import threading
 import time
-from typing import Any, Callable, List, Mapping, Optional, Tuple
+from typing import Callable, Optional
 
-from .bus import BusMessage, EventBus, SessionKey, Subscription
+from .bus import EventBus
+from .client import PiRemoteClient
 from .command_queue import CommandQueue
-from .commands import CommandResult
 from .contract import END_REASON_DASHBOARD_RESTART
 from .handler import PiRemoteHandler
 from .limits import RateLimiter
 from .listener import UdsListener
-from .read_model import (
-    EventPage,
-    EventView,
-    SessionSummary,
-    clamp_limit,
-    event_page,
-    session_summary,
-)
+from .publishing import bus_publisher
 from .registry import PresenceRegistry
 from .settings import resolve_db_path, resolve_socket_path
 from .store import PiRemoteDB
@@ -49,6 +42,7 @@ class PiRemoteSupervisor:
         self._bus: Optional[EventBus] = None
         self._queue: Optional[CommandQueue] = None
         self._rate_limiter = RateLimiter()
+        self._client: Optional[PiRemoteClient] = None
         self._startup_error: Optional[str] = None
 
     def configure(self, socket_path: Optional[str] = None, db_path: Optional[str] = None) -> None:
@@ -70,6 +64,7 @@ class PiRemoteSupervisor:
                 self._sweeper = None
                 self._bus = None
                 self._queue = None
+                self._client = None
                 self._startup_error = None
                 if queue is not None:
                     queue.close()
@@ -95,18 +90,28 @@ class PiRemoteSupervisor:
                     self._startup_error = str(exc)
                     logger.error("pi remote: cannot open %s: %s", self._db_path, exc)
                     return
-            self._store.end_open_sessions(END_REASON_DASHBOARD_RESTART, self._clock())
+            self._store.sessions.end_open(END_REASON_DASHBOARD_RESTART, self._clock())
             if self._registry is None:
                 self._registry = PresenceRegistry()
             if self._bus is None:
                 self._bus = EventBus()
             if self._queue is None:
                 self._queue = CommandQueue()
+            if self._client is None:
+                self._client = PiRemoteClient(
+                    self._store,
+                    self._registry,
+                    self._bus,
+                    self._queue,
+                    self._rate_limiter,
+                    self._clock,
+                )
+            publish = bus_publisher(self._bus)
             if self._handler is None:
                 self._handler = PiRemoteHandler(
                     self._registry,
                     self._store,
-                    publish=self._publish,
+                    publish=publish,
                     queue=self._queue,
                 )
             if self._sweeper is None:
@@ -114,7 +119,7 @@ class PiRemoteSupervisor:
                     self._registry,
                     self._store,
                     self._clock,
-                    publish=self._publish,
+                    publish=publish,
                     queue=self._queue,
                 )
             if self._listener is None:
@@ -153,6 +158,7 @@ class PiRemoteSupervisor:
             self._sweeper = None
             self._bus = None
             self._queue = None
+            self._client = None
             self._startup_error = None
         if queue is not None:
             queue.close()
@@ -165,94 +171,10 @@ class PiRemoteSupervisor:
         if store is not None:
             store.close()
 
-    def subscribe(self, key: Optional[SessionKey] = None) -> Subscription:
+    @property
+    def client(self) -> Optional[PiRemoteClient]:
         with self._lock:
-            bus = self._bus
-        if bus is None:
-            raise RuntimeError("pi remote bus is not running")
-        return bus.subscribe(key)
-
-    def _publish(
-        self,
-        kind: str,
-        key: SessionKey,
-        events: Tuple[EventView, ...],
-        summary: Optional[SessionSummary],
-    ) -> None:
-        with self._lock:
-            bus = self._bus
-        if bus is None:
-            return
-        bus.publish(BusMessage(kind, key, events, summary))
-
-    def session(self, key: SessionKey) -> Optional[SessionSummary]:
-        with self._lock:
-            store, registry = self._store, self._registry
-        if store is None:
-            return None
-        row = store.get_session(key[0], key[1])
-        if row is None:
-            return None
-        presence = (
-            registry.get(key[0], key[1], self._clock())
-            if registry is not None
-            else None
-        )
-        return session_summary(row, presence)
-
-    def sessions(self) -> List[SessionSummary]:
-        with self._lock:
-            store, registry = self._store, self._registry
-        if store is None or registry is None:
-            return []
-        now = self._clock()
-        summaries = [
-            session_summary(row, registry.get(row["session_id"], row["instance_id"], now))
-            for row in store.list_sessions()
-        ]
-        return sorted(summaries, key=lambda summary: (not summary.live, -summary.last_seen))
-
-    def events(
-        self,
-        session_id: str,
-        instance_id: str,
-        after_seq: int = 0,
-        limit: Optional[int] = None,
-    ) -> Optional[EventPage]:
-        with self._lock:
-            store = self._store
-        if store is None or store.get_session(session_id, instance_id) is None:
-            return None
-        page_limit = clamp_limit(limit)
-        rows = store.events_page(session_id, instance_id, after_seq, page_limit)
-        return event_page(rows, after_seq, page_limit)
-
-    def send_command(
-        self, key: SessionKey, kind: str, args: Mapping[str, Any]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        with self._lock:
-            queue, registry, store = self._queue, self._registry, self._store
-            now = self._clock()
-        if queue is None or registry is None or store is None:
-            return None, "pi_session_offline"
-        if registry.get(key[0], key[1], now) is None:
-            return None, "pi_session_offline"
-        if kind not in ("send_message", "abort"):
-            return None, "unsupported_command"
-        if not self._rate_limiter.allow(key, now):
-            return None, "rate_limited"
-        command = queue.enqueue(key, kind, args, now)
-        if command is None:
-            return None, "queue_full"
-        store.record_command(command, key)
-        return command.command_id, None
-
-    def await_command(self, command_id: str, timeout_s: float) -> Optional[CommandResult]:
-        with self._lock:
-            queue = self._queue
-        if queue is None:
-            return None
-        return queue.wait_result(command_id, timeout_s)
+            return self._client
 
     def status(self) -> dict:
         with self._lock:

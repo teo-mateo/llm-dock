@@ -28,13 +28,13 @@ def hello():
 def test_sweeper_ends_stale_row_without_a_request():
     store = PiRemoteDB(":memory:")
     registry = PresenceRegistry()
-    store.upsert_session(hello(), 1000)
+    store.sessions.upsert(hello(), 1000)
     registry.register(hello(), 1000)
     late = 1000 + STALE_AFTER_MS + 1
     sweeper = StaleSweeper(registry, store, clock=lambda: late)
     keys = sweeper.sweep(late)
     assert keys == [("s1", "i1")]
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["ended_at"] == late
     assert row["end_reason"] == "stale"
     assert registry.entries(late) == []
@@ -44,12 +44,12 @@ def test_sweeper_ends_stale_row_without_a_request():
 def test_boundary_entry_is_not_expired():
     store = PiRemoteDB(":memory:")
     registry = PresenceRegistry()
-    store.upsert_session(hello(), 1000)
+    store.sessions.upsert(hello(), 1000)
     registry.register(hello(), 1000)
     boundary = 1000 + STALE_AFTER_MS
     sweeper = StaleSweeper(registry, store, clock=lambda: boundary)
     assert sweeper.sweep(boundary) == []
-    assert store.get_session("s1", "i1")["ended_at"] is None
+    assert store.sessions.get("s1", "i1")["ended_at"] is None
     store.close()
 
 
@@ -69,7 +69,7 @@ def test_start_and_stop_are_idempotent():
 def test_thread_survives_one_store_exception():
     store = PiRemoteDB(":memory:")
     registry = PresenceRegistry()
-    store.upsert_session(hello(), 1000)
+    store.sessions.upsert(hello(), 1000)
     registry.register(hello(), 1000)
     late = 1000 + STALE_AFTER_MS + 1
     sweeper = StaleSweeper(registry, store, clock=lambda: late, interval_ms=10)
@@ -84,7 +84,7 @@ def test_thread_survives_one_store_exception():
             second_sweep.set()
         return original_expire(now)
 
-    original_end = store.end_session
+    original_end = store.sessions.end
     fail_once = [True]
 
     def flaky_end(session_id, instance_id, reason, now):
@@ -94,7 +94,7 @@ def test_thread_survives_one_store_exception():
         return original_end(session_id, instance_id, reason, now)
 
     registry.expire = counting_expire
-    store.end_session = flaky_end
+    store.sessions.end = flaky_end
     sweeper.start()
     assert second_sweep.wait(2) is True
     sweeper.stop()
@@ -106,19 +106,19 @@ def test_thread_survives_one_store_exception():
 def test_sweeper_purges_at_most_once_per_hour():
     store = PiRemoteDB(":memory:")
     registry = PresenceRegistry()
-    store.upsert_session(hello(), 1000)
-    store.ingest(
+    store.sessions.upsert(hello(), 1000)
+    store.events.ingest(
         EventsFrame(session_id="s1", instance_id="i1", events=(Event(1, 1000, "state", {"state": "idle"}),)),
         1000,
     )
     calls = []
-    original_purge = store.purge_old_events
+    original_purge = store.events.purge_old
 
     def counting_purge(now):
         calls.append(now)
         return original_purge(now)
 
-    store.purge_old_events = counting_purge
+    store.events.purge_old = counting_purge
     sweeper = StaleSweeper(registry, store, clock=lambda: 1000, interval_ms=1000)
     sweeper.sweep(1000)
     assert calls == [1000]

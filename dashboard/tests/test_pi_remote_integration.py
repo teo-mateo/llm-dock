@@ -109,7 +109,7 @@ def test_listener_ingests_hello_heartbeat_bye(tmp_path):
     assert status == 200
     assert payload["ok"] is True
 
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row is not None
     assert row["last_seen"] >= row["first_seen"]
     assert row["ended_at"] is None
@@ -123,7 +123,7 @@ def test_listener_ingests_hello_heartbeat_bye(tmp_path):
     }
     status, payload = _post(socket_path, "/v1/bye", bye)
     assert status == 200
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["ended_at"] is not None
     assert row["end_reason"] == "shutdown"
 
@@ -176,7 +176,7 @@ def test_listener_ingests_events(tmp_path):
     status, payload = _post(socket_path, "/v1/events", events)
     assert status == 200
     assert payload["acked_seq"] == 2
-    assert [row.seq for row in store.stored_events("s1", "i1")] == [1, 2]
+    assert [row.seq for row in store.events.stored("s1", "i1")] == [1, 2]
 
     listener.stop()
     store.close()
@@ -228,7 +228,7 @@ def test_listener_accepts_non_ascii_events_under_limit(tmp_path):
     status, payload = _post(socket_path, "/v1/events", events)
     assert status == 200
     assert payload["acked_seq"] == 1
-    assert store.stored_events("s1", "i1")[0].payload["text"] == text
+    assert store.events.stored("s1", "i1")[0].payload["text"] == text
 
     listener.stop()
     store.close()

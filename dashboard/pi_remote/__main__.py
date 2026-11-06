@@ -46,10 +46,14 @@ def main() -> int:
 
 def _send_abort(supervisor: PiRemoteSupervisor, delay: float) -> None:
     time.sleep(delay)
-    for summary in supervisor.sessions():
+    client = supervisor.client
+    if client is None:
+        logger.info("pi remote dev abort skipped: client unavailable")
+        return
+    for summary in client.sessions():
         if not summary.live:
             continue
-        command_id, error = supervisor.send_command(
+        command_id, error = client.send_command(
             (summary.session_id, summary.instance_id), "abort", {}
         )
         logger.info("pi remote dev abort %s %s", command_id, error)
