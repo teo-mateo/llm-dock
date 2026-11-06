@@ -1,4 +1,7 @@
-from pi_remote.contract import STALE_AFTER_MS, HelloFrame
+import threading
+
+from pi_remote.contract import STALE_AFTER_MS
+from pi_remote.frames import HelloFrame
 from pi_remote.registry import PresenceRegistry
 from pi_remote.store import PiRemoteDB
 from pi_remote.sweeper import StaleSweeper
@@ -59,4 +62,40 @@ def test_start_and_stop_are_idempotent():
     sweeper.stop()
     sweeper.stop()
     assert sweeper.running is False
+    store.close()
+
+
+def test_thread_survives_one_store_exception():
+    store = PiRemoteDB(":memory:")
+    registry = PresenceRegistry()
+    store.upsert_session(hello(), 1000)
+    registry.register(hello(), 1000)
+    late = 1000 + STALE_AFTER_MS + 1
+    sweeper = StaleSweeper(registry, store, clock=lambda: late, interval_ms=10)
+
+    calls = []
+    second_sweep = threading.Event()
+    original_expire = registry.expire
+
+    def counting_expire(now):
+        calls.append(now)
+        if len(calls) >= 2:
+            second_sweep.set()
+        return original_expire(now)
+
+    original_end = store.end_session
+    fail_once = [True]
+
+    def flaky_end(session_id, instance_id, reason, now):
+        if fail_once[0]:
+            fail_once[0] = False
+            raise RuntimeError("database locked")
+        return original_end(session_id, instance_id, reason, now)
+
+    registry.expire = counting_expire
+    store.end_session = flaky_end
+    sweeper.start()
+    assert second_sweep.wait(2) is True
+    sweeper.stop()
+    assert len(calls) >= 2
     store.close()

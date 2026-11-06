@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from pi_remote.contract import HelloFrame, ModelRef
+from pi_remote.frames import HelloFrame, ModelRef
 from pi_remote.store import PiRemoteDB
 
 

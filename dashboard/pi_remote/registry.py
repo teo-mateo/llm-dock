@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from .contract import END_REASON_STALE, STALE_AFTER_MS, ByeFrame, ContextUsage, HeartbeatFrame, HelloFrame
+from .contract import END_REASON_STALE, STALE_AFTER_MS
+from .frames import ByeFrame, ContextUsage, HeartbeatFrame, HelloFrame
 
 
 class RegistryResult(str, Enum):

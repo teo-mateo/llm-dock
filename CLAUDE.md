@@ -94,7 +94,7 @@ llm-dock/
 │   │   ├── ports.py             # 34000–34999 upstream-port allocator
 │   │   └── supervisor.py        # ProxySupervisor singleton reconciling proxies with services.json
 │   │
-│   ├── pi_remote/               # pi-remote ingest over a Unix socket (contract, registry, store, listener, supervisor)
+│   ├── pi_remote/               # pi-remote ingest over a Unix socket (contract, frames, registry, store, listener, sweeper, supervisor)
 │   │
 │   ├── services/                # Docker event subsystem
 │   │   ├── __init__.py          # `event_manager` singleton, started by app.py

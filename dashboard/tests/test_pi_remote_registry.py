@@ -1,4 +1,5 @@
-from pi_remote.contract import STALE_AFTER_MS, ByeFrame, HeartbeatFrame, HelloFrame
+from pi_remote.contract import STALE_AFTER_MS
+from pi_remote.frames import ByeFrame, HeartbeatFrame, HelloFrame
 from pi_remote.registry import PresenceRegistry, RegistryResult
 
 

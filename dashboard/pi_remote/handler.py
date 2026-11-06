@@ -2,11 +2,8 @@ from typing import Any, Callable, Dict
 
 from .contract import (
     PATHS,
-    ByeFrame,
     ErrorCode,
     HTTP_NOT_FOUND,
-    HeartbeatFrame,
-    HelloFrame,
     JsonResponse,
     bye_ok,
     error_response,
@@ -14,6 +11,7 @@ from .contract import (
     hello_ok,
     validate_request,
 )
+from .frames import ByeFrame, HeartbeatFrame, HelloFrame
 from .registry import PresenceRegistry, RegistryResult
 from .store import PiRemoteDB
 

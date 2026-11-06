@@ -1,6 +1,6 @@
 import os
 
-from pi_remote.contract import HelloFrame, ModelRef
+from pi_remote.frames import HelloFrame, ModelRef
 from pi_remote.store import PiRemoteDB
 from pi_remote.supervisor import PiRemoteSupervisor
 

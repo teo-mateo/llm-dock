@@ -397,13 +397,14 @@ dashboard's pytest runs the same file against its handler
 
 | Module | Owns |
 |---|---|
-| `contract.py` | `PATHS`, protocol version, status/error constants, end reasons, typed frames, frame validation/check order, `JsonResponse` and response builders — pure |
+| `contract.py` | `PATHS`, protocol version, status/error constants, end reasons, `JsonResponse` and response builders; `validate_request` calls `frames` |
+| `frames.py` | frozen frame dataclasses (`ModelRef`, `ContextUsage`, `HelloFrame`, `HeartbeatFrame`, `ByeFrame`) and the parse helpers |
 | `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
 | `store.py` | `pi_remote.db` (`pi_sessions`), schema, upsert/touch/end/end-open; the only module writing SQL |
 | `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
 | `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
 | `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
-| `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry and row ending |
+| `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry and row ending; logs a failed sweep and keeps looping |
 | `settings.py` | defaults and env resolution for the socket and DB |
 | `supervisor.py` | singleton owning listener + registry + store + sweeper; clock injected; configured/started from `create_app()`, stopped by `atexit` |
 | `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |

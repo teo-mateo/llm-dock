@@ -1,12 +1,5 @@
-from pi_remote.contract import (
-    ByeFrame,
-    ContextUsage,
-    ErrorCode,
-    HeartbeatFrame,
-    HelloFrame,
-    ModelRef,
-    validate_request,
-)
+from pi_remote.contract import ErrorCode, validate_request
+from pi_remote.frames import ByeFrame, ContextUsage, HeartbeatFrame, HelloFrame, ModelRef
 
 
 HELLO = {

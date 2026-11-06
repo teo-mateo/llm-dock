@@ -1,9 +1,12 @@
+import logging
 import threading
 from typing import Callable, List, Tuple
 
 from .contract import END_REASON_STALE
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_MS = 15000
 
@@ -27,7 +30,16 @@ class StaleSweeper:
     def sweep(self, now: int) -> List[Tuple[str, str]]:
         keys = self.registry.expire(now)
         for session_id, instance_id in keys:
-            self.store.end_session(session_id, instance_id, END_REASON_STALE, now)
+            try:
+                self.store.end_session(
+                    session_id, instance_id, END_REASON_STALE, now
+                )
+            except Exception:
+                logger.exception(
+                    "pi remote: could not end stale session %s/%s",
+                    session_id,
+                    instance_id,
+                )
         return keys
 
     def start(self) -> None:
@@ -47,7 +59,10 @@ class StaleSweeper:
             event = self._stop_event
             if event is None or event.is_set():
                 return
-            self.sweep(self.clock())
+            try:
+                self.sweep(self.clock())
+            except Exception:
+                logger.exception("pi remote: stale sweep failed; continuing")
             event.wait(self.interval_ms / 1000)
 
     def stop(self) -> None:

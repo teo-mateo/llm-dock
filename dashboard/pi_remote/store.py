@@ -2,7 +2,7 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
-from .contract import HelloFrame
+from .frames import HelloFrame
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS pi_sessions (
