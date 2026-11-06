@@ -42,6 +42,7 @@ class EventsEnvelope:
 class StoredEvent:
     seq: int
     type: str
+    ts: int
     payload: Dict[str, Any]
 
 

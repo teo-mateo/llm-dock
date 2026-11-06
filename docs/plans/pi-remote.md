@@ -494,12 +494,13 @@ declared `Content-Length > 1 MiB` is rejected without reading.
 | `schema.py` | SQL text for `pi_sessions` and `pi_events` plus insert/upsert statements |
 | `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, `touch`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
 | `store.py` | `pi_remote.db` (`pi_sessions`, `pi_events`), upsert/touch/end/end-open, `ingest` (insert + last_seen + mark in one transaction), history read, retention purge; the only module writing SQL |
+| `read_model.py` | pure query model: `SessionSummary`, `EventView`, `EventPage`, `session_summary`, `event_page`, `clamp_limit`; no I/O |
 | `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
 | `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
 | `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
 | `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry, row ending, and the first/hourly retention purge; logs a failed sweep and keeps looping |
 | `settings.py` | defaults and env resolution for the socket and DB |
-| `supervisor.py` | singleton owning listener + registry + store + sweeper; clock injected; configured/started from `create_app()`, stopped by `atexit` |
+| `supervisor.py` | singleton owning listener + registry + store + sweeper; clock injected; configured/started from `create_app()`, stopped by `atexit`; facade `sessions()` and `events()` for the client API |
 | `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |
 
 - **Env**: `LLM_DOCK_PI_REMOTE_SOCKET` (default `~/.cache/pi-remote/pi-remote.sock` — the

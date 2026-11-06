@@ -1,11 +1,12 @@
 import logging
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from .contract import END_REASON_DASHBOARD_RESTART
 from .handler import PiRemoteHandler
 from .listener import UdsListener
+from .read_model import EventPage, SessionSummary, clamp_limit, event_page, session_summary
 from .registry import PresenceRegistry
 from .settings import resolve_db_path, resolve_socket_path
 from .store import PiRemoteDB
@@ -110,6 +111,33 @@ class PiRemoteSupervisor:
             sweeper.stop()
         if store is not None:
             store.close()
+
+    def sessions(self) -> List[SessionSummary]:
+        with self._lock:
+            store, registry = self._store, self._registry
+        if store is None or registry is None:
+            return []
+        now = self._clock()
+        summaries = [
+            session_summary(row, registry.get(row["session_id"], row["instance_id"], now))
+            for row in store.list_sessions()
+        ]
+        return sorted(summaries, key=lambda summary: (not summary.live, -summary.last_seen))
+
+    def events(
+        self,
+        session_id: str,
+        instance_id: str,
+        after_seq: int = 0,
+        limit: Optional[int] = None,
+    ) -> Optional[EventPage]:
+        with self._lock:
+            store = self._store
+        if store is None or store.get_session(session_id, instance_id) is None:
+            return None
+        page_limit = clamp_limit(limit)
+        rows = store.events_page(session_id, instance_id, after_seq, page_limit)
+        return event_page(rows, after_seq, page_limit)
 
     def status(self) -> dict:
         with self._lock:

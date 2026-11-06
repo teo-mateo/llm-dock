@@ -1,8 +1,33 @@
+import http.client
+import logging
 import os
+import socket
 import stat
 
 from pi_remote.contract import JsonResponse
 from pi_remote.listener import UdsListener
+
+
+class UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path, timeout=5):
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.socket_path)
+
+
+def _get(socket_path):
+    connection = UnixHTTPConnection(socket_path)
+    try:
+        connection.request("GET", "/v1/health")
+        response = connection.getresponse()
+        response.read()
+        return response.status
+    finally:
+        connection.close()
 
 
 def _handler(method, path, body):
@@ -76,3 +101,24 @@ def test_live_socket_is_a_bind_error(tmp_path):
     second.stop()
     first.stop()
     assert not os.path.exists(socket_path)
+
+
+
+def test_successful_requests_log_at_debug(tmp_path, caplog):
+    directory = _socket_dir(tmp_path)
+    listener = UdsListener(str(directory / "pi.sock"), _handler)
+    listener.start()
+    caplog.set_level(logging.DEBUG, logger="pi_remote.listener")
+    assert _get(str(directory / "pi.sock")) == 200
+    records = [record for record in caplog.records if record.name == "pi_remote.listener"]
+    assert any(
+        record.levelno == logging.DEBUG
+        and "GET /v1/health -> 200" in record.getMessage()
+        for record in records
+    )
+    assert not any(
+        record.levelno == logging.INFO
+        and "GET /v1/health" in record.getMessage()
+        for record in records
+    )
+    listener.stop()

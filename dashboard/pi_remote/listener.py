@@ -146,7 +146,10 @@ def _make_handler(request_handler: Callable[[str, str, Any], JsonResponse]):
             else:
                 body = self._read_body(length)
                 response = request_handler(method, path, body)
-            logger.info("pi remote %s %s -> %s", method, path, response.status)
+            if response.status >= 400:
+                logger.info("pi remote %s %s -> %s", method, path, response.status)
+            else:
+                logger.debug("pi remote %s %s -> %s", method, path, response.status)
             data = json.dumps(response.payload).encode("utf-8")
             self.send_response(response.status)
             self.send_header("Content-Type", "application/json")
