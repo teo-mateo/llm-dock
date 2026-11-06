@@ -1,10 +1,11 @@
 import threading
 
 from pi_remote.contract import STALE_AFTER_MS
+from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame
 from pi_remote.registry import PresenceRegistry
 from pi_remote.store import PiRemoteDB
-from pi_remote.sweeper import StaleSweeper
+from pi_remote.sweeper import PURGE_INTERVAL_MS, StaleSweeper
 
 
 def hello():
@@ -98,4 +99,31 @@ def test_thread_survives_one_store_exception():
     assert second_sweep.wait(2) is True
     sweeper.stop()
     assert len(calls) >= 2
+    store.close()
+
+
+
+def test_sweeper_purges_at_most_once_per_hour():
+    store = PiRemoteDB(":memory:")
+    registry = PresenceRegistry()
+    store.upsert_session(hello(), 1000)
+    store.ingest(
+        EventsFrame(session_id="s1", instance_id="i1", events=(Event(1, 1000, "state", {"state": "idle"}),)),
+        1000,
+    )
+    calls = []
+    original_purge = store.purge_old_events
+
+    def counting_purge(now):
+        calls.append(now)
+        return original_purge(now)
+
+    store.purge_old_events = counting_purge
+    sweeper = StaleSweeper(registry, store, clock=lambda: 1000, interval_ms=1000)
+    sweeper.sweep(1000)
+    assert calls == [1000]
+    sweeper.sweep(1000 + PURGE_INTERVAL_MS)
+    assert calls == [1000, 1000 + PURGE_INTERVAL_MS]
+    sweeper.sweep(1000 + PURGE_INTERVAL_MS + 1)
+    assert len(calls) == 2
     store.close()

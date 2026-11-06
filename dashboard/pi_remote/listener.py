@@ -6,7 +6,14 @@ import threading
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Optional
 
-from .contract import JsonResponse
+from .contract import (
+    ErrorCode,
+    HTTP_BAD_REQUEST,
+    JsonResponse,
+    MAX_EVENTS_BODY_BYTES,
+    PATHS,
+    error_response,
+)
 from .socket_path import clear_stale_socket, ensure_directory
 
 logger = logging.getLogger(__name__)
@@ -113,12 +120,14 @@ def _make_handler(request_handler: Callable[[str, str, Any], JsonResponse]):
         def log_message(self, format: str, *args) -> None:
             logger.debug("pi remote: " + format, *args)
 
-        def _read_body(self) -> Any:
+        def _content_length(self) -> int:
             raw_length = self.headers.get("Content-Length")
             try:
-                length = int(raw_length) if raw_length else 0
+                return int(raw_length) if raw_length else 0
             except ValueError:
-                length = 0
+                return 0
+
+        def _read_body(self, length: int) -> Any:
             raw = self.rfile.read(length) if length > 0 else b""
             if not raw:
                 return None
@@ -129,9 +138,14 @@ def _make_handler(request_handler: Callable[[str, str, Any], JsonResponse]):
 
         def _handle(self) -> None:
             method = self.command
-            body = self._read_body()
             path = self.path.split("?", 1)[0]
-            response = request_handler(method, path, body)
+            length = self._content_length()
+            if method == "POST" and path == PATHS["events"] and length > MAX_EVENTS_BODY_BYTES:
+                response = error_response(HTTP_BAD_REQUEST, ErrorCode.BAD_FRAME)
+                self.close_connection = True
+            else:
+                body = self._read_body(length)
+                response = request_handler(method, path, body)
             logger.info("pi remote %s %s -> %s", method, path, response.status)
             data = json.dumps(response.payload).encode("utf-8")
             self.send_response(response.status)

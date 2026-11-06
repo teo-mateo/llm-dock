@@ -65,6 +65,17 @@ class PresenceRegistry:
             entry.sent_at = frame.sent_at
             return RegistryResult.OK
 
+    def touch(self, session_id: str, instance_id: str, now: int) -> RegistryResult:
+        key = (session_id, instance_id)
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return RegistryResult.UNKNOWN
+            if not is_live(entry, now):
+                return RegistryResult.STALE
+            entry.last_seen = now
+            return RegistryResult.OK
+
     def bye(self, frame: ByeFrame, now: int) -> RegistryResult:
         key = (frame.session_id, frame.instance_id)
         with self._lock:

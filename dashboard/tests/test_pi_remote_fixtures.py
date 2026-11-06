@@ -7,10 +7,28 @@ from pi_remote.store import PiRemoteDB
 
 
 FIXTURES = Path(__file__).resolve().parents[2] / "pi-extension" / "test" / "contract" / "frames.json"
+EVENTS_FIXTURES = Path(__file__).resolve().parents[2] / "pi-extension" / "test" / "contract" / "events.json"
+
 
 
 def test_golden_contract_frames():
     cases = json.loads(FIXTURES.read_text())
+    registry = PresenceRegistry()
+    store = PiRemoteDB(":memory:")
+    handler = PiRemoteHandler(registry, store)
+
+    for index, case in enumerate(cases):
+        response = handler.handle(
+            "POST", case["path"], case["request"], case["now"]
+        )
+        assert response.status == case["status"], f"case {index} {case['path']} at {case['now']}"
+        assert response.payload == case["response"], f"case {index} {case['path']} at {case['now']}"
+
+    store.close()
+
+
+def test_golden_contract_events():
+    cases = json.loads(EVENTS_FIXTURES.read_text())
     registry = PresenceRegistry()
     store = PiRemoteDB(":memory:")
     handler = PiRemoteHandler(registry, store)

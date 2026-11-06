@@ -1,57 +1,14 @@
+import json
 import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
+from .events import AckedEvent, EventsFrame, StoredEvent, acked_seq as compute_acked_seq
 from .frames import HelloFrame
+from .schema import INSERT_EVENT_SQL, SCHEMA_SQL, UPSERT_SQL
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS pi_sessions (
-    session_id          TEXT NOT NULL,
-    instance_id         TEXT NOT NULL,
-    session_file        TEXT,
-    cwd                 TEXT NOT NULL,
-    name                TEXT,
-    pid                 INTEGER NOT NULL,
-    model_provider      TEXT,
-    model_id            TEXT,
-    thinking_level      TEXT,
-    reason              TEXT NOT NULL,
-    previous_session_id TEXT,
-    pi_version          TEXT,
-    ext_version         TEXT NOT NULL,
-    first_seen          INTEGER NOT NULL,
-    last_seen           INTEGER NOT NULL,
-    ended_at            INTEGER,
-    end_reason          TEXT,
-    PRIMARY KEY (session_id, instance_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_pi_sessions_last_seen ON pi_sessions(last_seen);
-"""
-
-UPSERT_SQL = """
-INSERT INTO pi_sessions (
-    session_id, instance_id, session_file, cwd, name, pid,
-    model_provider, model_id, thinking_level, reason,
-    previous_session_id, pi_version, ext_version,
-    first_seen, last_seen, ended_at, end_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
-ON CONFLICT(session_id, instance_id) DO UPDATE SET
-    session_file = excluded.session_file,
-    cwd = excluded.cwd,
-    name = excluded.name,
-    pid = excluded.pid,
-    model_provider = excluded.model_provider,
-    model_id = excluded.model_id,
-    thinking_level = excluded.thinking_level,
-    reason = excluded.reason,
-    previous_session_id = excluded.previous_session_id,
-    pi_version = excluded.pi_version,
-    ext_version = excluded.ext_version,
-    last_seen = excluded.last_seen,
-    ended_at = NULL,
-    end_reason = NULL
-"""
+RETENTION_DAYS = 30
+RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000
 
 
 class PiRemoteDB:
@@ -82,6 +39,14 @@ class PiRemoteDB:
             conn = self._get_conn()
             try:
                 conn.executescript(SCHEMA_SQL)
+                for table, column, definition in (
+                    ("pi_sessions", "acked_seq", "INTEGER NOT NULL DEFAULT 0"),
+                    ("pi_events", "gap_from", "INTEGER"),
+                    ("pi_events", "gap_to", "INTEGER"),
+                ):
+                    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                    if column not in columns:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
                 conn.commit()
             finally:
                 self._close_conn(conn)
@@ -89,21 +54,12 @@ class PiRemoteDB:
     def upsert_session(self, frame: HelloFrame, now: int) -> None:
         model = frame.model
         values = [
-            frame.session_id,
-            frame.instance_id,
-            frame.session_file,
-            frame.cwd,
-            frame.name,
-            frame.pid,
+            frame.session_id, frame.instance_id, frame.session_file, frame.cwd,
+            frame.name, frame.pid,
             model.provider if model is not None else None,
             model.id if model is not None else None,
-            frame.thinking_level,
-            frame.reason,
-            frame.previous_session_id,
-            frame.pi_version,
-            frame.ext_version,
-            now,
-            now,
+            frame.thinking_level, frame.reason, frame.previous_session_id,
+            frame.pi_version, frame.ext_version, now, now,
         ]
         with self._lock:
             conn = self._get_conn()
@@ -155,13 +111,82 @@ class PiRemoteDB:
             finally:
                 self._close_conn(conn)
 
+    def ingest(self, frame: EventsFrame, now: int) -> int:
+        rows = [
+            (frame.session_id, frame.instance_id, event.seq, event.type, event.ts,
+             json.dumps(event.payload),
+             event.payload.get("from_seq") if event.type == "gap" else None,
+             event.payload.get("to_seq") if event.type == "gap" else None, now)
+            for event in frame.events
+        ]
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    row = conn.execute(
+                        "SELECT acked_seq FROM pi_sessions WHERE session_id = ? AND instance_id = ?",
+                        (frame.session_id, frame.instance_id),
+                    ).fetchone()
+                    mark = row["acked_seq"] if row is not None else 0
+                    conn.executemany(INSERT_EVENT_SQL, rows)
+                    covered = conn.execute(
+                        """SELECT seq, type, gap_from, gap_to FROM pi_events
+                           WHERE session_id = ? AND instance_id = ? AND seq > ?
+                           ORDER BY seq""",
+                        (frame.session_id, frame.instance_id, mark),
+                    ).fetchall()
+                    new_mark = compute_acked_seq(
+                        (AckedEvent(row["seq"], row["type"], row["gap_from"], row["gap_to"])
+                         for row in covered),
+                        mark,
+                    )
+                    conn.execute(
+                        """UPDATE pi_sessions SET last_seen = ?, acked_seq = ?
+                           WHERE session_id = ? AND instance_id = ?""",
+                        (now, new_mark, frame.session_id, frame.instance_id),
+                    )
+                    return new_mark
+            finally:
+                self._close_conn(conn)
+
+    def stored_events(
+        self, session_id: str, instance_id: str, after_seq: int = 0
+    ) -> List[StoredEvent]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    """SELECT seq, type, payload_json FROM pi_events
+                       WHERE session_id = ? AND instance_id = ? AND seq > ?
+                       ORDER BY seq""",
+                    (session_id, instance_id, after_seq),
+                ).fetchall()
+            finally:
+                self._close_conn(conn)
+        return [StoredEvent(row["seq"], row["type"], json.loads(row["payload_json"])) for row in rows]
+
+    def acked_seq(self, session_id: str, instance_id: str) -> int:
+        row = self.get_session(session_id, instance_id)
+        return row["acked_seq"] if row is not None else 0
+
+    def purge_old_events(self, now: int) -> int:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM pi_events WHERE received_at < ?", (now - RETENTION_MS,)
+                )
+                conn.commit()
+                return cursor.rowcount
+            finally:
+                self._close_conn(conn)
+
     def get_session(self, session_id: str, instance_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             conn = self._get_conn()
             try:
                 row = conn.execute(
-                    """SELECT * FROM pi_sessions
-                       WHERE session_id = ? AND instance_id = ?""",
+                    "SELECT * FROM pi_sessions WHERE session_id = ? AND instance_id = ?",
                     (session_id, instance_id),
                 ).fetchone()
                 return dict(row) if row is not None else None

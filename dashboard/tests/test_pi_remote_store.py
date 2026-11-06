@@ -1,7 +1,10 @@
+import sqlite3
 from dataclasses import replace
 
+from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
-from pi_remote.store import PiRemoteDB
+from pi_remote.schema import SCHEMA_SQL
+from pi_remote.store import PiRemoteDB, RETENTION_MS
 
 
 def hello(instance_id="i1", reason="startup", name="probe"):
@@ -85,3 +88,70 @@ def test_end_open_sessions_closes_leftovers(tmp_path):
     assert all(row["ended_at"] == 2000 for row in rows)
     assert all(row["end_reason"] == "dashboard_restart" for row in rows)
     store.close()
+
+
+
+def events_frame(events):
+    return EventsFrame(session_id="s1", instance_id="i1", events=tuple(events))
+
+
+def test_events_round_trip_and_first_copy_wins(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.upsert_session(hello(), 1000)
+    store.ingest(
+        events_frame([
+            Event(1, 1000, "state", {"state": "idle"}),
+            Event(2, 1000, "user_message", {"text": "hi", "image_count": 0, "origin": "terminal"}),
+            Event(2, 1000, "user_message", {"text": "second", "image_count": 0, "origin": "terminal"}),
+        ]),
+        1000,
+    )
+    rows = store.stored_events("s1", "i1")
+    assert [row.seq for row in rows] == [1, 2]
+    assert rows[1].payload["text"] == "hi"
+    assert store.acked_seq("s1", "i1") == 2
+    assert [row.seq for row in store.stored_events("s1", "i1", after_seq=1)] == [2]
+    store.close()
+
+
+def test_event_stream_survives_reopen(tmp_path):
+    db_path = str(tmp_path / "pi_remote.db")
+    store = PiRemoteDB(db_path)
+    store.upsert_session(hello(), 1000)
+    store.ingest(events_frame([Event(5, 1000, "state", {"state": "idle"})]), 1000)
+    assert store.acked_seq("s1", "i1") == 5
+    store.close()
+
+    reopened = PiRemoteDB(db_path)
+    assert reopened.acked_seq("s1", "i1") == 5
+    reopened.close()
+
+
+def test_purge_keeps_events_inside_the_retention_window(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.upsert_session(hello(), 1000)
+    store.ingest(events_frame([Event(1, 1000, "state", {"state": "idle"})]), 1000)
+    now = 1000 + RETENTION_MS + 1
+    store.ingest(events_frame([Event(2, now, "state", {"state": "idle"})]), now)
+    assert store.purge_old_events(now) == 1
+    assert [row.seq for row in store.stored_events("s1", "i1")] == [2]
+    store.close()
+
+def test_old_session_schema_is_migrated(tmp_path):
+    db_path = str(tmp_path / "pi_remote.db")
+    old = SCHEMA_SQL.replace(
+        "    acked_seq           INTEGER NOT NULL DEFAULT 0,\n", ""
+    ).replace("    gap_from     INTEGER,\n", "").replace("    gap_to       INTEGER,\n", "")
+    connection = sqlite3.connect(db_path)
+    connection.executescript(old)
+    connection.commit()
+    connection.close()
+
+    store = PiRemoteDB(db_path)
+    store.close()
+    connection = sqlite3.connect(db_path)
+    session_columns = {row[1] for row in connection.execute("PRAGMA table_info(pi_sessions)")}
+    event_columns = {row[1] for row in connection.execute("PRAGMA table_info(pi_events)")}
+    connection.close()
+    assert "acked_seq" in session_columns
+    assert {"gap_from", "gap_to"} <= event_columns
