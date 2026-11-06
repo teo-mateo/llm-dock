@@ -1,6 +1,6 @@
 from dataclasses import fields
 
-from pi_remote.api_json import page_json, parse_paging, summary_json
+from pi_remote.api_json import MAX_MESSAGE_TEXT, page_json, parse_message_body, parse_paging, summary_json
 from pi_remote.read_model import EventPage, EventView, SessionSummary
 
 
@@ -58,3 +58,30 @@ def test_parse_paging_rejects_negative_and_non_int():
 
 def test_parse_paging_rejects_zero_limit():
     assert parse_paging({"limit": "0"}) == (None, None, "invalid_paging")
+
+
+def test_message_body_valid():
+    assert parse_message_body({"text": "hello"}) == ("hello", None)
+    assert parse_message_body({"text": "  hello  "}) == ("  hello  ", None)
+    assert parse_message_body({"text": "x" * MAX_MESSAGE_TEXT}) == ("x" * MAX_MESSAGE_TEXT, None)
+
+
+def test_message_body_empty_and_whitespace_invalid():
+    assert parse_message_body({"text": ""}) == (None, "invalid_text")
+    assert parse_message_body({"text": "   "}) == (None, "invalid_text")
+
+
+def test_message_body_over_long_invalid():
+    assert parse_message_body({"text": "x" * (MAX_MESSAGE_TEXT + 1)}) == (None, "invalid_text")
+
+
+def test_message_body_non_string_invalid():
+    assert parse_message_body({"text": 123}) == (None, "invalid_text")
+    assert parse_message_body({"text": None}) == (None, "invalid_text")
+    assert parse_message_body({}) == (None, "invalid_text")
+
+
+def test_message_body_non_object_invalid():
+    assert parse_message_body(None) == (None, "invalid_body")
+    assert parse_message_body([]) == (None, "invalid_body")
+    assert parse_message_body("text") == (None, "invalid_body")

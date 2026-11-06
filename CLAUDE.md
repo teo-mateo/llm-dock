@@ -488,7 +488,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 | `chat_bp` | `/api/chat/*` | Chat conversations, messages, runs, projects, project files, prompts, MCP registry, settings |
 | `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer/SGLang), live slots (llama.cpp only) |
 | `inspector_bp` | `/api/inspector/captures`, `/api/inspector/captures/<id>`, `/api/inspector/services` | Captured-request list/detail/delete, services-with-history ∪ live-proxies |
-| `pi_remote_bp` | `/api/pi/sessions`, `/api/pi/sessions/stream`, `/api/pi/sessions/<session_id>/<instance_id>/events`, `/api/pi/sessions/<session_id>/<instance_id>/stream` | pi session summaries; paged stored events and live SSE streams |
+| `pi_remote_bp` | `/api/pi/sessions`, `/api/pi/sessions/stream`, `/api/pi/sessions/<session_id>/<instance_id>/events`, `/api/pi/sessions/<session_id>/<instance_id>/stream`, `/api/pi/sessions/<session_id>/<instance_id>/messages`, `/api/pi/sessions/<session_id>/<instance_id>/abort` | pi session summaries; paged stored events and live SSE streams; `send_message` and `abort` commands with 200 result / 202 pending and typed 400/409/429/503 errors |
 | `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/status`, `/api/totp/disable` | TOTP enrollment |
 
 ## Coding Conventions

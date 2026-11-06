@@ -3,6 +3,8 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .read_model import EventPage, SessionSummary
 
+MAX_MESSAGE_TEXT = 32000
+
 
 def summary_json(summary: SessionSummary) -> Dict[str, Any]:
     return asdict(summary)
@@ -14,6 +16,15 @@ def page_json(page: EventPage) -> Dict[str, Any]:
         "next_after": page.next_after,
         "has_more": page.has_more,
     }
+
+
+def parse_message_body(body: Any) -> Tuple[Optional[str], Optional[str]]:
+    if not isinstance(body, dict):
+        return None, "invalid_body"
+    text = body.get("text")
+    if not isinstance(text, str) or not text.strip() or len(text) > MAX_MESSAGE_TEXT:
+        return None, "invalid_text"
+    return text, None
 
 
 def parse_paging(

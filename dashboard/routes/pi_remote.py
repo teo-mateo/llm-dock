@@ -1,12 +1,20 @@
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from auth import require_auth
-from pi_remote.api_json import page_json, parse_paging, summary_json
+from pi_remote.api_json import page_json, parse_message_body, parse_paging, summary_json
 from pi_remote.stream import session_stream as build_session_stream
 from pi_remote.stream import sessions_stream as build_sessions_stream
 from pi_remote.supervisor import pi_remote_supervisor
 
 pi_remote_bp = Blueprint("pi_remote", __name__)
+
+COMMAND_WAIT_S = 5.0
+COMMAND_ERROR_STATUS = {
+    "pi_session_offline": 409,
+    "rate_limited": 429,
+    "queue_full": 503,
+    "unsupported_command": 400,
+}
 
 
 def _stream_response(generator):
@@ -22,6 +30,18 @@ def _client_or_503():
     if client is None:
         return None, (jsonify({"error": "pi_remote_unavailable"}), 503)
     return client, None
+
+
+def _command_response(client, key, kind, args):
+    command_id, error = client.send_command(key, kind, args)
+    if error is not None:
+        return jsonify({"error": error}), COMMAND_ERROR_STATUS.get(error, 400)
+    result = client.await_command(command_id, COMMAND_WAIT_S)
+    if result is None:
+        return jsonify({"command_id": command_id, "pending": True}), 202
+    return jsonify(
+        {"command_id": result.command_id, "ok": result.ok, "error": result.error}
+    ), 200
 
 
 @pi_remote_bp.route("/api/pi/sessions", methods=["GET"])
@@ -42,6 +62,33 @@ def sessions_sse():
     if unavailable is not None:
         return unavailable
     return _stream_response(build_sessions_stream(client))
+
+
+@pi_remote_bp.route(
+    "/api/pi/sessions/<session_id>/<instance_id>/messages", methods=["POST"]
+)
+@require_auth
+def session_messages(session_id, instance_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
+    text, error = parse_message_body(request.get_json(silent=True))
+    if error is not None:
+        return jsonify({"error": error}), 400
+    return _command_response(
+        client, (session_id, instance_id), "send_message", {"text": text}
+    )
+
+
+@pi_remote_bp.route(
+    "/api/pi/sessions/<session_id>/<instance_id>/abort", methods=["POST"]
+)
+@require_auth
+def session_abort(session_id, instance_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
+    return _command_response(client, (session_id, instance_id), "abort", {})
 
 
 @pi_remote_bp.route(
