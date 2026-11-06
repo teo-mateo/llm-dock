@@ -221,6 +221,7 @@ private fun NewChatSheetBody(
             services = state.services,
             remoteModels = state.remoteModels,
             remoteModelsConfigured = state.remoteModelsConfigured,
+            providerGroups = state.providerGroups,
             selectedRef = state.selectedModel?.ref,
             onSelect = {
                 onSelectModel(it)
@@ -255,6 +256,7 @@ private fun NewChatSheetBody(
 private fun ModelOption.displayLabel(): String = when (this) {
     is ModelOption.LocalService -> serviceName
     is ModelOption.Remote -> label
+    is ModelOption.ProviderModel -> label
 }
 
 @Composable

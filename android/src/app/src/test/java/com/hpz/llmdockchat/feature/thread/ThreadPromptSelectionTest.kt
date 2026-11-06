@@ -16,6 +16,7 @@ import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
@@ -74,6 +75,7 @@ class ThreadPromptSelectionTest {
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var conversationsApi: ApiClient
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
@@ -101,6 +103,7 @@ class ThreadPromptSelectionTest {
         // shift every takeRequest() assertion.
         servicesRepository = ServicesRepository(ApiClient(client, FakeServerUrlStore(), ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        providerModelsRepository = ProviderModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsApi = ApiClient(client, urlStore, ApiJson, Dispatchers.IO)
         conversationsRepository = ConversationsRepository(conversationsApi)
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
@@ -133,6 +136,7 @@ class ThreadPromptSelectionTest {
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    providerModelsRepository = providerModelsRepository,
                     conversationsRepository = conversations,
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,

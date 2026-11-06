@@ -12,6 +12,7 @@ import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
@@ -106,6 +107,7 @@ class ThreadAutoSendTest {
                         servicesStreamRepository = ServicesStreamRepository(FakeSseTransport()),
                         servicesRepository = ServicesRepository(api),
                         openRouterModelsRepository = OpenRouterModelsRepository(api),
+                        providerModelsRepository = ProviderModelsRepository(api),
                         conversationsRepository = ConversationsRepository(api),
                         mcpServersRepository = McpServersRepository(api),
                         promptsRepository = PromptsRepository(api),

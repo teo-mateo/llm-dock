@@ -40,6 +40,7 @@ import com.hpz.llmdockchat.data.LogsStreamRepository
 import com.hpz.llmdockchat.data.HealthRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ReachabilityRepository
 import com.hpz.llmdockchat.data.ServicesRepository
@@ -131,6 +132,7 @@ class AppContainer(
     val promptsRepository = PromptsRepository(apiClient)
     val mcpServersRepository = McpServersRepository(apiClient)
     val openRouterModelsRepository = OpenRouterModelsRepository(apiClient)
+    val providerModelsRepository = ProviderModelsRepository(apiClient)
     val newChatPreferences: NewChatPreferences = DataStoreNewChatPreferences(dataStore, appScope)
 
     val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
@@ -162,6 +164,7 @@ class AppContainer(
     val summarizeLauncher: SummarizeLauncher = SummarizeCoordinator(
         servicesRepository = servicesRepository,
         openRouterModelsRepository = openRouterModelsRepository,
+        providerModelsRepository = providerModelsRepository,
         mcpServersRepository = mcpServersRepository,
         conversationsRepository = conversationsRepository,
         preferences = newChatPreferences,

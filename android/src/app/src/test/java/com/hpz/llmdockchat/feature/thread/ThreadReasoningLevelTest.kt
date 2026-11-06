@@ -14,6 +14,7 @@ import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
@@ -58,6 +59,7 @@ class ThreadReasoningLevelTest {
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesRepository: ServicesRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var conversationsRepository: ConversationsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var promptsRepository: PromptsRepository
@@ -82,6 +84,7 @@ class ThreadReasoningLevelTest {
         servicesStreamRepository = ServicesStreamRepository(servicesTransport)
         servicesRepository = ServicesRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         openRouterModelsRepository = OpenRouterModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
+        providerModelsRepository = ProviderModelsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         conversationsRepository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         mcpServersRepository = McpServersRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
         promptsRepository = PromptsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
@@ -137,6 +140,7 @@ class ThreadReasoningLevelTest {
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,
+                    providerModelsRepository = providerModelsRepository,
                     conversationsRepository = conversationsRepository,
                     mcpServersRepository = mcpServersRepository,
                     promptsRepository = promptsRepository,
@@ -225,6 +229,7 @@ class ThreadReasoningLevelTest {
                 """"kind": "chat", "host_port": 3302, "reasoning_levels": [{"id": "off"}, {"id": "xhigh"}]}]}}""",
         )
         orSettings(orLadderRow("anthropic/claude-sonnet-5", "low", "high"))
+        enqueue("""{"providers":[]}""")
         viewModel.openModelPicker()
 
         val state = viewModel.awaitState { it.laddersByService.containsKey("vllm-b") }
@@ -268,6 +273,7 @@ class ThreadReasoningLevelTest {
         conversation()
         services(ladderRow("vllm-a", "off"))
         enqueue("""{"models":[],"configured":false}""")
+        enqueue("""{"providers":[]}""")
         val viewModel = openedThread()
 
         servicesTransport.payloads = listOf(

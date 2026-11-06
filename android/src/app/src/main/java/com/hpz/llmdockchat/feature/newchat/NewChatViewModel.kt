@@ -9,12 +9,14 @@ import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
+import com.hpz.llmdockchat.data.model.ProviderGroup
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModel
@@ -42,6 +44,7 @@ sealed interface NewChatUiState {
         val services: List<ServiceSummary> = emptyList(),
         val remoteModels: List<ModelOption.Remote>,
         val remoteModelsConfigured: Boolean,
+        val providerGroups: List<ProviderGroup> = emptyList(),
         val selectedModel: ModelOption?,
         /**
          * Start is off and the sheet asks for an explicit model choice: set
@@ -95,6 +98,7 @@ class NewChatViewModel(
     private val promptsRepository: PromptsRepository,
     private val mcpServersRepository: McpServersRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
+    private val providerModelsRepository: ProviderModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val preferences: NewChatPreferences,
     private val servicesStreamRepository: ServicesStreamRepository,
@@ -141,11 +145,12 @@ class NewChatViewModel(
                 .filter { it.isChatCapable }
                 .map { ModelOption.LocalService(it.name, it.status) }
 
-            // Prompts, tools and OpenRouter models are all Should-priority
+            // Prompts, tools, OpenRouter and provider models are all Should-priority
             // — a failure on any of them degrades to an
             // empty/unconfigured row rather than failing the whole sheet;
             // only the model list blocks the screen.
             val openRouter = openRouterModelsRepository.list().getOrNull()
+            val providerGroups = providerModelsRepository.list().getOrNull().orEmpty()
             val prompts = promptsRepository.list().getOrNull().orEmpty().sortedBy { it.sortOrder }
             val catalog = mcpServersRepository.catalog(probe = summarizeMode).getOrNull()
             val mcpServers = catalog?.servers.orEmpty()
@@ -163,6 +168,7 @@ class NewChatViewModel(
                 rememberedRaw = rememberedRaw,
                 localServices = localServices,
                 remoteModels = remoteModels,
+                providerModels = providerGroups.flatMap { it.models },
                 preselectedServiceName = preselectedServiceName,
             )
             val selectedModel = (remembered as? RememberedModel.Resolved)?.option
@@ -173,6 +179,7 @@ class NewChatViewModel(
                 services = services,
                 remoteModels = remoteModels,
                 remoteModelsConfigured = remoteConfigured,
+                providerGroups = providerGroups,
                 selectedModel = selectedModel,
                 modelUnavailable = unavailable,
                 prompts = prompts,
@@ -304,14 +311,15 @@ class NewChatViewModel(
  * set rather than the status captured at pick time: a local service only
  * while the live list carries it as a chat-capable running row — the picker's
  * own filter ([com.hpz.llmdockchat.feature.modelpicker.runningChatCapable])
- * and this predicate must stay one rule; a remote model always, since
- * OpenRouter has no stopped state to lose. `null` is never
+ * and this predicate must stay one rule; a remote or provider model always,
+ * since a hosted model has no stopped state to lose. `null` is never
  * selectable.
  */
 internal fun ModelOption?.isLiveSelectable(services: List<ServiceSummary>): Boolean =
     when (this) {
         null -> false
         is ModelOption.Remote -> true
+        is ModelOption.ProviderModel -> true
         is ModelOption.LocalService ->
             services.any { it.name == serviceName && it.isChatCapable && it.isRunning }
     }

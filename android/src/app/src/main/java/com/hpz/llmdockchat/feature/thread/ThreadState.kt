@@ -7,6 +7,7 @@ import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ParseWarning
+import com.hpz.llmdockchat.data.model.ProviderGroup
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 
@@ -55,6 +56,7 @@ data class ModelPickerState(
     val services: List<ServiceSummary> = emptyList(),
     val remoteModels: List<ModelOption.Remote> = emptyList(),
     val remoteModelsConfigured: Boolean = false,
+    val providerGroups: List<ProviderGroup> = emptyList(),
 )
 
 data class ChatSettingsState(

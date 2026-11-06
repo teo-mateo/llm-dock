@@ -1,0 +1,11 @@
+{"providers": [
+  {"id": "acme", "name": "Acme", "configured": false, "models": [], "stale": false, "error": null},
+  {"id": "broken", "name": "Broken", "configured": true, "models": [
+    {"id": "b-1", "label": "b-1", "aliases": [], "vision": false, "tools": true, "context_length": 8192}
+  ], "stale": false, "error": "Provider 'broken' returned HTTP 503"},
+  {"id": "empty", "name": "Empty", "configured": true, "models": [], "stale": false, "error": null},
+  {"id": "mistral", "name": "Mistral", "configured": true, "models": [
+    {"id": "mistral-large-latest", "label": "mistral-large-latest", "aliases": ["mistral-large-2511"], "vision": true, "tools": true, "context_length": 262144},
+    {"id": "codestral-latest", "label": "Codestral", "aliases": [], "vision": false, "tools": true, "context_length": null}
+  ], "stale": true, "error": null}
+]}

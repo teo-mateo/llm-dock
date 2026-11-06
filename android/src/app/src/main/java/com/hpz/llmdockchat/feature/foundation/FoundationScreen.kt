@@ -82,6 +82,7 @@ fun FoundationScreen(serverUrl: Stored<BaseUrl>, modifier: Modifier = Modifier) 
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("OpenRouter", colors.engineOpenRouter)
+                Chip("provider", colors.engineProvider)
                 Chip("unknown", colors.engineUnknown)
             }
         }

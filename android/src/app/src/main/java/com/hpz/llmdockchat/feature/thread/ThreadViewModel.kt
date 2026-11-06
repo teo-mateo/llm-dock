@@ -21,6 +21,7 @@ import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.PromptsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
@@ -48,6 +49,7 @@ class ThreadViewModel(
     private val servicesStreamRepository: ServicesStreamRepository,
     private val servicesRepository: ServicesRepository,
     private val openRouterModelsRepository: OpenRouterModelsRepository,
+    private val providerModelsRepository: ProviderModelsRepository,
     private val conversationsRepository: ConversationsRepository,
     private val mcpServersRepository: McpServersRepository,
     private val promptsRepository: PromptsRepository,
@@ -514,11 +516,13 @@ class ThreadViewModel(
         modelPickerJob = viewModelScope.launch {
             val openRouter = openRouterModelsRepository.list().getOrNull()
             openRouter?.let { updateRemoteLadders(it.models) }
+            val providerGroups = providerModelsRepository.list().getOrNull().orEmpty()
             loaded()?.let {
                 _state.value = it.copy(
                     modelPicker = it.modelPicker?.copy(
                         remoteModels = openRouter?.models.orEmpty(),
                         remoteModelsConfigured = openRouter?.configured ?: false,
+                        providerGroups = providerGroups,
                     ),
                 )
             }

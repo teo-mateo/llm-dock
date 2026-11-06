@@ -677,6 +677,7 @@ private fun EngineChip(engine: Engine, isRunning: Boolean, modifier: Modifier = 
         Engine.TABBYAPI -> colors.engineTabbyapi
         Engine.NINFER -> colors.engineNinfer
         Engine.OPEN_ROUTER -> colors.engineOpenRouter
+        Engine.PROVIDER -> colors.engineProvider
         Engine.UNKNOWN -> colors.engineUnknown
     }
     Row(modifier.height(IntrinsicSize.Min)) {
@@ -728,6 +729,7 @@ internal fun engineLabel(engine: Engine): String = when (engine) {
     Engine.SGLANG -> "SGLang"
     Engine.MAYA -> "Maya"
     Engine.OPEN_ROUTER -> "open router"
+    Engine.PROVIDER -> "api"
     Engine.UNKNOWN -> "?"
 }
 

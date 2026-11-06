@@ -9,10 +9,12 @@ import com.hpz.llmdockchat.core.net.BaseUrlResult
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
+import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ModelOption
+import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.feature.modelpicker.runningChatCapable
 import com.hpz.llmdockchat.testing.FakeNewChatPreferences
@@ -54,6 +56,7 @@ class NewChatViewModelTest {
     private lateinit var promptsRepository: PromptsRepository
     private lateinit var mcpServersRepository: McpServersRepository
     private lateinit var openRouterModelsRepository: OpenRouterModelsRepository
+    private lateinit var providerModelsRepository: ProviderModelsRepository
     private lateinit var servicesStreamRepository: ServicesStreamRepository
     private lateinit var servicesStreamTransport: FakeSseTransport
     private lateinit var preferences: FakeNewChatPreferences
@@ -74,6 +77,7 @@ class NewChatViewModelTest {
         promptsRepository = PromptsRepository(api)
         mcpServersRepository = McpServersRepository(api)
         openRouterModelsRepository = OpenRouterModelsRepository(api)
+        providerModelsRepository = ProviderModelsRepository(api)
         // No payloads by default: most tests never open a picker, and an
         // empty FakeSseTransport just never emits rather than erroring.
         servicesStreamTransport = FakeSseTransport()
@@ -91,21 +95,25 @@ class NewChatViewModelTest {
         promptsRepository = promptsRepository,
         mcpServersRepository = mcpServersRepository,
         openRouterModelsRepository = openRouterModelsRepository,
+        providerModelsRepository = providerModelsRepository,
         conversationsRepository = conversationsRepository,
         preferences = preferences,
         servicesStreamRepository = servicesStreamRepository,
         preselectedServiceName = preselectedServiceName,
     )
 
-    /** Load order in [NewChatViewModel.load]: services, openrouter, prompts, mcp-servers. */
+    /** Load order in [NewChatViewModel.load]: services, openrouter, providers, prompts, mcp-servers. */
     private fun enqueueLoadResponses(
         services: String = readFixture("services_list.json"),
         openRouter: String = readFixture("openrouter_models.json"),
         prompts: String = readFixture("prompts.json"),
         mcpServers: String = readFixture("mcp_servers.json"),
+        providers: String = readFixture("provider_models.json"),
+        providersCode: Int = 200,
     ) {
         server.enqueue(MockResponse.Builder().body(services).build())
         server.enqueue(MockResponse.Builder().body(openRouter).build())
+        server.enqueue(MockResponse.Builder().code(providersCode).body(providers).build())
         server.enqueue(MockResponse.Builder().body(prompts).build())
         server.enqueue(MockResponse.Builder().body(mcpServers).build())
     }
@@ -467,7 +475,7 @@ class NewChatViewModelTest {
         assertEquals("new-conv-3", createdId)
         assertNull((finalState as NewChatUiState.Loaded).toolsFailure)
         // 4 load GETs + POST create + failed PUT + retried PUT — never a second POST create.
-        assertEquals(7, server.requestCount)
+        assertEquals(8, server.requestCount)
     }
 
     @Test
@@ -492,7 +500,7 @@ class NewChatViewModelTest {
 
         assertEquals("new-conv-4", createdId)
         // 4 load GETs + POST create + failed PUT — openAnyway itself never touches the network.
-        assertEquals(6, server.requestCount)
+        assertEquals(7, server.requestCount)
     }
 
     // ---- Issue 266: the live stream owns what may start a chat ----
@@ -679,7 +687,7 @@ class NewChatViewModelTest {
         assertTrue(state.modelUnavailable)
         assertFalse(state.canStart)
         // The 4 load GETs only — create() refused before sending anything.
-        assertEquals(4, server.requestCount)
+        assertEquals(5, server.requestCount)
     }
 
     /** Pure: the captured status is never consulted — the live row decides. */
@@ -735,5 +743,69 @@ class NewChatViewModelTest {
         assertEquals(setOf("render-html"), invalidated.requiredMcpServerIds)
         assertEquals("https://example.com/article", invalidated.summarizeUrl)
         assertEquals(loaded.toolsFailure, invalidated.toolsFailure)
+    }
+
+    @Test
+    fun `provider models load as one group per usable provider`() {
+        enqueueLoadResponses()
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = settled(viewModel) as NewChatUiState.Loaded
+
+        assertEquals(listOf("Mistral"), state.providerGroups.map { it.name })
+        assertEquals(
+            listOf("mistral-large-latest", "codestral-latest"),
+            state.providerGroups.single().models.map { it.modelId },
+        )
+    }
+
+    @Test
+    fun `a failing provider endpoint leaves the local and OpenRouter options intact`() {
+        enqueueLoadResponses(providers = """{"error": "provider list unavailable"}""", providersCode = 503)
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = settled(viewModel) as NewChatUiState.Loaded
+
+        assertTrue(state.providerGroups.isEmpty())
+        assertTrue(state.localServices.any { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        assertTrue(state.remoteModelsConfigured)
+        assertTrue(state.remoteModels.isNotEmpty())
+        assertTrue(state.prompts.isNotEmpty())
+    }
+
+    @Test
+    fun `choosing a provider model creates the thread with its provider-prefixed main_service`() {
+        enqueueLoadResponses()
+        val viewModel = viewModel()
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        val model = loaded.providerGroups.single().models.first()
+
+        viewModel.selectModel(model)
+        assertTrue((viewModel.state.value as NewChatUiState.Loaded).canStart)
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-p"}""").build())
+
+        val created = CompletableDeferred<String>()
+        viewModel.create { created.complete(it) }
+        assertEquals("new-conv-p", runBlocking { withTimeout(10_000) { created.await() } })
+
+        val post = List(server.requestCount) { server.takeRequest() }.single { it.method == "POST" }
+        assertTrue(post.body!!.utf8().contains(""""main_service":"mistral:mistral-large-latest""""))
+        assertEquals("mistral:mistral-large-latest", preferences.rememberedModel)
+    }
+
+    @Test
+    fun `a remembered provider model no longer listed is kept, not replaced`() {
+        preferences = FakeNewChatPreferences(initialModel = "mistral:retired-model")
+        enqueueLoadResponses()
+        val viewModel = viewModel()
+
+        viewModel.load()
+        val state = settled(viewModel) as NewChatUiState.Loaded
+
+        assertEquals(ModelRef.Provider("mistral", "retired-model"), state.selectedModel?.ref)
+        assertFalse(state.modelUnavailable)
     }
 }
