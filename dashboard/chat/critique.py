@@ -6,7 +6,7 @@ import re
 import requests
 
 from .constants import CRITIQUE_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
-from .llm_proxy import build_endpoint, request_model, resolve_service, unreachable_message
+from .llm_proxy import build_endpoint, request_model, resolve_service, split_content_parts, unreachable_message
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -56,8 +56,8 @@ def request_critique(sidekick_service: str, context: str, extra_instructions: st
         message = data["choices"][0]["message"]
         # OpenAI-compatible providers define content as string|null — an
         # explicit null bypasses .get()'s default, so normalize with `or`.
-        raw_content = message.get("content") or ""
-        raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+        raw_content, thinking = split_content_parts(message.get("content"))
+        raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or thinking
 
         # The actual critique may be in content or reasoning_content depending on model
         critique_text = raw_content if raw_content.strip() else raw_reasoning

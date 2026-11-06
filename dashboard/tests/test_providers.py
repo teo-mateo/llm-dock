@@ -294,3 +294,40 @@ def test_local_request_keeps_reasoning_content(monkeypatch):
     captured = _capture_post(monkeypatch)
     list(llm_proxy.stream_chat_completion("llamacpp-x", HISTORY))
     assert captured["json"]["messages"][1]["reasoning_content"] == "thinking"
+
+
+class _ChunkStream(_Stream):
+    def __init__(self, lines):
+        self._lines = lines
+
+    def iter_lines(self, decode_unicode=True):
+        yield from self._lines
+
+
+MISTRAL_THINKING_STREAM = [
+    'data: {"choices":[{"delta":{"role":"assistant","content":""}}]}',
+    'data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"The user"}],"closed":true}]}}]}',
+    'data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":" says hi."}]}]}}]}',
+    'data: {"choices":[{"delta":{"content":[{"type":"text","text":"Hi"}]}}]}',
+    'data: {"choices":[{"delta":{"content":" there"},"finish_reason":"stop"}]}',
+    "data: [DONE]",
+]
+
+
+def test_list_shaped_content_is_split_into_text_and_thinking(monkeypatch):
+    _mistral(api_key=SECRET)
+    monkeypatch.setattr(llm_proxy.requests, "post", lambda url, **kw: _ChunkStream(MISTRAL_THINKING_STREAM))
+    events = list(llm_proxy.stream_chat_completion("mistral:mistral-large-4", HISTORY))
+    assert ("done", {"content": "Hi there", "reasoning_content": "The user says hi."}) in events
+    deltas = [d for kind, d in events if kind == "delta"]
+    for d in deltas:
+        assert isinstance(json.loads(d["raw"])["choices"][0]["delta"]["content"], str)
+    assert json.loads(deltas[0]["raw"])["choices"][0]["delta"]["reasoning_content"] == "The user"
+
+
+def test_split_content_parts():
+    assert llm_proxy.split_content_parts("plain") == ("plain", "")
+    assert llm_proxy.split_content_parts(None) == ("", "")
+    assert llm_proxy.split_content_parts([
+        {"type": "thinking", "thinking": "a"}, {"type": "text", "text": "b"}, {"type": "image_url"}, "x",
+    ]) == ("b", "a")
