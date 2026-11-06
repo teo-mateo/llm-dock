@@ -266,7 +266,8 @@ Key mechanics:
 | `pi/PiPage.jsx` | Route owner: session list + selected session header/transcript/composer; selecting navigates to `/pi/:sessionId/:instanceId`; Stop records `lastStopAt` before aborting |
 | `pi/PiSessionList.jsx` | Session rows with text status, name/cwd, live-only filter, empty state |
 | `pi/PiSessionHeader.jsx` | Selected session name, state badge, cwd/model/thinking line, context bar, ended reason |
-| `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notices/run-end dividers, labels run ends via `runEndLabel`; auto-scrolls only when near the bottom |
+| `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notice pills/run-end dividers, labels run ends via `runEndLabel`; auto-scrolls only when near the bottom |
+| `pi/PiNotice.jsx` | Notice pill; model/thinking changes render as labelled from→to chips |
 | `pi/PiComposer.jsx` | Send/Stop composer: Enter sends, Shift+Enter newlines, idle vs working placeholder, clear on done/pending, inline rejection status, read-only when ended |
 | `pi/PiMessage.jsx` | User bubbles + assistant markdown (table cells wrap), collapsed thinking, streaming caret; no per-turn token count |
 | `pi/PiToolGroup.jsx` | Consecutive tool calls as one compact block: status dot, name, one-line args, Details toggle |
