@@ -200,6 +200,7 @@ Key mechanics:
 | `src/utils/openrouter.js` | Pure helpers for the `openrouter:<model-id>` service-string convention (`isOpenRouterService`, `openRouterModelId`, `serviceNameForModel`, `formatModelLabel`) |
 | `src/utils/openrouterModels.js` | Curated-list helpers shared by the picker and its JSON panel: `validateModelsJson`/`validateModels` (mirror of the server rules), `modelsToJson`, `deriveLabel`, `formatPricePerMtok`, `formatContext`, `CONTEXT_PRESETS` |
 | `src/utils/sseFrames.js` | Pure incremental SSE parser: chunks split anywhere, CRLF, comments, multi-line data, event defaults to `message` |
+| `src/utils/piTranscript.js` | Pure event-to-transcript builder: user/assistant/tool/notice/run_end items, streaming assistant coalescing, tool call state, gap/compaction notices, stable ids |
 
 ### Services (per-domain API clients under `src/services/`)
 
