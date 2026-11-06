@@ -14,6 +14,7 @@ dashboard/mcp_servers.json
 
 # Machine-local chat settings (user-customized default system prompt)
 dashboard/chat_settings.json
+dashboard/providers.json
 
 # Logs
 *.log

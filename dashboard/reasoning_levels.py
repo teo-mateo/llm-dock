@@ -36,6 +36,7 @@ ENGINE_VLLM = "vllm"
 ENGINE_SGLANG = "sglang"
 ENGINE_MAYA = "maya"
 ENGINE_OPENROUTER = "openrouter"
+ENGINE_PROVIDER = "provider"
 
 
 def _normalize(raw: Any) -> Optional[str]:
