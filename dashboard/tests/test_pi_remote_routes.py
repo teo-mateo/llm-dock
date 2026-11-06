@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 import pytest
 from flask import Flask
@@ -43,7 +44,7 @@ def _page():
     )
 
 
-class _FakeSupervisor:
+class _FakeClient:
     def __init__(self, summaries=None, page=None):
         self._summaries = summaries or []
         self._page = page
@@ -67,6 +68,11 @@ class _FakeSupervisor:
         return self._page
 
 
+class _FakeSupervisor:
+    def __init__(self, summaries=None, page=None):
+        self.client = _FakeClient(summaries, page)
+
+
 @pytest.fixture
 def env(monkeypatch):
     fake = _FakeSupervisor()
@@ -83,10 +89,21 @@ def test_sessions_requires_auth(env):
     assert response.status_code == 401
 
 
+def test_client_unavailable_is_503(monkeypatch):
+    monkeypatch.setattr(pi_remote_routes, "pi_remote_supervisor", SimpleNamespace(client=None))
+    app = Flask(__name__)
+    app.config["DASHBOARD_TOKEN"] = TOKEN
+    app.register_blueprint(pi_remote_bp)
+    app.testing = True
+    response = app.test_client().get("/api/pi/sessions", headers=_auth())
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "pi_remote_unavailable"}
+
+
 def test_sessions_lists_summaries_in_supervisor_order(env):
     first = _summary("s1")
     second = _summary("s2", live=False)
-    env["fake"]._summaries = [first, second]
+    env["fake"].client._summaries = [first, second]
 
     response = env["client"].get("/api/pi/sessions", headers=_auth())
 
@@ -95,7 +112,7 @@ def test_sessions_lists_summaries_in_supervisor_order(env):
 
 
 def test_events_returns_page(env):
-    env["fake"]._page = _page()
+    env["fake"].client._page = _page()
     response = env["client"].get(
         "/api/pi/sessions/s1/i1/events", headers=_auth()
     )
@@ -104,12 +121,12 @@ def test_events_returns_page(env):
 
 
 def test_events_passes_after_and_limit_to_facade(env):
-    env["fake"]._page = _page()
+    env["fake"].client._page = _page()
     response = env["client"].get(
         "/api/pi/sessions/s1/i1/events?after=5&limit=10", headers=_auth()
     )
     assert response.status_code == 200
-    assert env["fake"].calls == [("s1", "i1", 5, 10)]
+    assert env["fake"].client.calls == [("s1", "i1", 5, 10)]
 
 
 def test_events_unknown_session_is_404(env):
@@ -126,7 +143,7 @@ def test_events_invalid_paging_is_400(env):
     )
     assert response.status_code == 400
     assert response.get_json() == {"error": "invalid_paging"}
-    assert env["fake"].calls == []
+    assert env["fake"].client.calls == []
 
 
 def _socket_dir(tmp_path):
@@ -217,8 +234,8 @@ def test_stream_unknown_session_is_404(env):
 
 
 def test_stream_after_from_last_event_id(env):
-    env["fake"]._summaries = [_summary()]
-    env["fake"]._page = _page()
+    env["fake"].client._summaries = [_summary()]
+    env["fake"].client._page = _page()
     response = env["client"].get(
         "/api/pi/sessions/s1/i1/stream",
         headers={**_auth(), "Last-Event-ID": "7"},
@@ -227,30 +244,30 @@ def test_stream_after_from_last_event_id(env):
     assert response.status_code == 200
     _next_frame(response)
     _next_frame(response)
-    env["fake"].bus.close()
+    env["fake"].client.bus.close()
     assert list(response.response) == []
-    assert env["fake"].calls == [("s1", "i1", 7, 500)]
+    assert env["fake"].client.calls == [("s1", "i1", 7, 500)]
 
 
 def test_stream_invalid_after_is_400(env):
-    env["fake"]._summaries = [_summary()]
+    env["fake"].client._summaries = [_summary()]
     response = env["client"].get(
         "/api/pi/sessions/s1/i1/stream?after=-1", headers=_auth()
     )
     assert response.status_code == 400
     assert response.get_json() == {"error": "invalid_paging"}
-    assert env["fake"].calls == []
+    assert env["fake"].client.calls == []
 
 
 def test_sessions_stream_path_is_not_a_session_id(env):
-    env["fake"]._summaries = [_summary()]
+    env["fake"].client._summaries = [_summary()]
     response = env["client"].get(
         "/api/pi/sessions/stream", headers=_auth(), buffered=False
     )
     assert response.status_code == 200
     snapshot = _next_frame(response)
     assert snapshot.startswith("event: snapshot\n")
-    env["fake"].bus.close()
+    env["fake"].client.bus.close()
     assert list(response.response) == []
 
 

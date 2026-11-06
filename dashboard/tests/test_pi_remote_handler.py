@@ -47,7 +47,7 @@ def test_hello_writes_the_session():
     assert response.status == 200
     assert response.payload["session_id"] == "s1"
     assert response.payload["server_time"] == 1000
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["first_seen"] == 1000
     assert row["last_seen"] == 1000
     store.close()
@@ -62,7 +62,7 @@ def test_stale_heartbeat_does_not_end_the_row():
     )
     assert response.status == 404
     assert response.payload["error"] == "unknown_session"
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["ended_at"] is None
     store.close()
 
@@ -73,7 +73,7 @@ def test_unknown_heartbeat_writes_nothing():
     response = handler.handle("POST", "/v1/heartbeat", HEARTBEAT, 1000)
     assert response.status == 404
     assert response.payload["error"] == "unknown_session"
-    assert store.list_sessions() == []
+    assert store.sessions.list() == []
     store.close()
 
 
@@ -84,7 +84,7 @@ def test_bye_sets_the_reason():
     response = handler.handle("POST", "/v1/bye", BYE, 2000)
     assert response.status == 200
     assert response.payload == {"ok": True, "protocol": 1}
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["ended_at"] == 2000
     assert row["end_reason"] == "remote_off"
     store.close()
@@ -96,7 +96,7 @@ def test_non_post_is_rejected_without_touching_the_store():
     response = handler.handle("GET", "/v1/hello", HELLO, 1000)
     assert response.status == 404
     assert response.payload["error"] == "not_found"
-    assert store.list_sessions() == []
+    assert store.sessions.list() == []
     store.close()
 
 
@@ -122,7 +122,7 @@ def test_events_advance_the_hello_mark_and_touch_the_session(tmp_path):
     response = handler.handle("POST", "/v1/events", events_request([1, 2]), 2000)
     assert response.status == 200
     assert response.payload["acked_seq"] == 2
-    row = store.get_session("s1", "i1")
+    row = store.sessions.get("s1", "i1")
     assert row["last_seen"] == 2000
 
     again = handler.handle("POST", "/v1/hello", HELLO, 3000)
@@ -154,7 +154,7 @@ def test_stale_events_are_rejected_without_storage():
     )
     assert response.status == 404
     assert response.payload["error"] == "unknown_session"
-    assert store.stored_events("s1", "i1") == []
+    assert store.events.stored("s1", "i1") == []
     store.close()
 
 def test_stale_bad_payload_gets_unknown_session():
@@ -173,5 +173,5 @@ def test_stale_bad_payload_gets_unknown_session():
     )
     assert response.status == 404
     assert response.payload["error"] == "unknown_session"
-    assert store.stored_events("s1", "i1") == []
+    assert store.events.stored("s1", "i1") == []
     store.close()

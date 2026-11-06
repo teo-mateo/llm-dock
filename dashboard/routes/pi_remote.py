@@ -17,18 +17,31 @@ def _stream_response(generator):
     )
 
 
+def _client_or_503():
+    client = pi_remote_supervisor.client
+    if client is None:
+        return None, (jsonify({"error": "pi_remote_unavailable"}), 503)
+    return client, None
+
+
 @pi_remote_bp.route("/api/pi/sessions", methods=["GET"])
 @require_auth
 def sessions():
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
     return jsonify(
-        {"sessions": [summary_json(summary) for summary in pi_remote_supervisor.sessions()]}
+        {"sessions": [summary_json(summary) for summary in client.sessions()]}
     )
 
 
 @pi_remote_bp.route("/api/pi/sessions/stream", methods=["GET"])
 @require_auth
 def sessions_sse():
-    return _stream_response(build_sessions_stream(pi_remote_supervisor))
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
+    return _stream_response(build_sessions_stream(client))
 
 
 @pi_remote_bp.route(
@@ -36,10 +49,13 @@ def sessions_sse():
 )
 @require_auth
 def session_events(session_id, instance_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
     after_seq, limit, error = parse_paging(request.args)
     if error is not None:
         return jsonify({"error": error}), 400
-    page = pi_remote_supervisor.events(session_id, instance_id, after_seq, limit)
+    page = client.events(session_id, instance_id, after_seq, limit)
     if page is None:
         return jsonify({"error": "unknown_session"}), 404
     return jsonify(page_json(page))
@@ -50,8 +66,11 @@ def session_events(session_id, instance_id):
 )
 @require_auth
 def session_sse(session_id, instance_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
     key = (session_id, instance_id)
-    if pi_remote_supervisor.session(key) is None:
+    if client.session(key) is None:
         return jsonify({"error": "unknown_session"}), 404
     raw_after = request.args.get("after")
     if raw_after is None:
@@ -62,4 +81,4 @@ def session_sse(session_id, instance_id):
         after_seq, _, error = parse_paging({"after": raw_after})
         if error is not None:
             return jsonify({"error": error}), 400
-    return _stream_response(build_session_stream(pi_remote_supervisor, key, after_seq))
+    return _stream_response(build_session_stream(client, key, after_seq))
