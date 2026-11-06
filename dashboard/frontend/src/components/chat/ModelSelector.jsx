@@ -18,9 +18,9 @@ export default function ModelSelector({
 }) {
   const { services, loading } = useRunningServices()
   const { data: openRouterData, loading: openRouterLoading } = useOpenRouterModels()
-  const { groups: providerGroups, loading: providersLoading } = useProviderModels()
+  const { groups: providerGroups } = useProviderModels()
 
-  if (loading || openRouterLoading || providersLoading) {
+  if (loading || openRouterLoading) {
     return <div className="text-xs text-fg-subtle">Loading services...</div>
   }
 

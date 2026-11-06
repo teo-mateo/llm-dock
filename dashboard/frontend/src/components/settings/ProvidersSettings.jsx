@@ -21,7 +21,7 @@ function KeyBadge({ provider }) {
   )
 }
 
-function ProviderForm({ initial, isNew, existingIds, onSave, onCancel }) {
+function ProviderForm({ initial, isNew, existingIds, presets = [], onSave, onCancel }) {
   const [id, setId] = useState(initial.id || '')
   const [name, setName] = useState(initial.name || '')
   const [baseUrl, setBaseUrl] = useState(initial.base_url || '')
@@ -30,6 +30,16 @@ function ProviderForm({ initial, isNew, existingIds, onSave, onCancel }) {
   const [envName, setEnvName] = useState(initial.api_key_env || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [preset, setPreset] = useState('')
+
+  const applyPreset = (presetId) => {
+    setPreset(presetId)
+    const p = presets.find(x => x.id === presetId) || {}
+    setId(p.id || '')
+    setName(p.name || '')
+    setBaseUrl(p.base_url || '')
+    setEnvName(p.api_key_env || '')
+  }
 
   const idError = isNew && id && (!PROVIDER_ID_RE.test(id) || id === 'openrouter' || existingIds.includes(id))
   const canSave = !saving && name.trim() && baseUrl.trim() && (!isNew || (id && !idError))
@@ -51,20 +61,29 @@ function ProviderForm({ initial, isNew, existingIds, onSave, onCancel }) {
 
   return (
     <form onSubmit={submit} className="space-y-3 border border-border rounded p-4 bg-surface-muted">
+      {isNew && presets.length > 0 && (
+        <label className="block">
+          <span className="text-xs text-fg-muted">Start from</span>
+          <select className={INPUT} value={preset} onChange={e => applyPreset(e.target.value)} aria-label="Start from">
+            <option value="">Custom (any OpenAI-compatible API)</option>
+            {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+      )}
       {isNew && (
         <label className="block">
-          <span className="text-xs text-fg-muted">Id — the prefix in model names, e.g. <code>{id || 'mistral'}:mistral-large-latest</code></span>
-          <input className={INPUT} value={id} onChange={e => setId(e.target.value.toLowerCase())} placeholder="mistral" />
+          <span className="text-xs text-fg-muted">Id — the prefix in model names, e.g. <code>{id || 'acme'}:&lt;model&gt;</code></span>
+          <input className={INPUT} value={id} onChange={e => setId(e.target.value.toLowerCase())} placeholder="acme" />
           {idError && <span className="text-xs text-danger-fg">2–32 chars of a–z, 0–9, “-”, starting with a letter; not already used; not “openrouter”.</span>}
         </label>
       )}
       <label className="block">
         <span className="text-xs text-fg-muted">Name</span>
-        <input className={INPUT} value={name} onChange={e => setName(e.target.value)} placeholder="Mistral" />
+        <input className={INPUT} value={name} onChange={e => setName(e.target.value)} placeholder="Acme AI" />
       </label>
       <label className="block">
         <span className="text-xs text-fg-muted">Base URL (OpenAI-compatible, ending in /v1)</span>
-        <input className={INPUT} value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.mistral.ai/v1" />
+        <input className={INPUT} value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
       </label>
       <label className="block">
         <span className="text-xs text-fg-muted">API key {initial.key_source === 'stored' ? '— leave blank to keep the stored key' : ''}</span>
@@ -82,7 +101,7 @@ function ProviderForm({ initial, isNew, existingIds, onSave, onCancel }) {
           Or read the key from an environment variable (used when no key is stored).
           It must be visible to the dashboard process — e.g. in <code>dashboard/.env</code> — not just your shell.
         </span>
-        <input className={INPUT} value={envName} onChange={e => setEnvName(e.target.value.toUpperCase())} placeholder="MISTRAL_API_KEY" />
+        <input className={INPUT} value={envName} onChange={e => setEnvName(e.target.value.toUpperCase())} placeholder="ACME_API_KEY" />
       </label>
       {error && <div className="text-xs text-danger-fg bg-danger-subtle border border-danger rounded px-3 py-2">{error}</div>}
       <div className="flex gap-2">
@@ -143,6 +162,16 @@ function ProviderRow({ provider, onEdit, onToggle, onDelete, onTest }) {
 export default function ProvidersSettings() {
   const { data, error, save, remove, test } = useProviderSettings()
   const [editing, setEditing] = useState(null)
+  const [actionError, setActionError] = useState(null)
+
+  const act = (fn) => async (...args) => {
+    setActionError(null)
+    try {
+      await fn(...args)
+    } catch (e) {
+      setActionError(e.message || 'Request failed')
+    }
+  }
 
   const providers = data?.providers || []
   const ids = providers.map(p => p.id)
@@ -160,11 +189,12 @@ export default function ProvidersSettings() {
         OpenAI-compatible APIs. All of a provider's chat models appear in the chat model pickers, on the web and on Android.
       </p>
       {error && <div className="text-xs text-danger-fg mb-3">{error}</div>}
+      {actionError && <div className="text-xs text-danger-fg bg-danger-subtle border border-danger rounded px-3 py-2 mb-3">{actionError}</div>}
 
       {providers.length > 0 && (
         <ul className="space-y-2 mb-4">
           {providers.map(p => (
-            editing?.initial.id === p.id && !editing.isNew ? (
+            editing && !editing.isNew && editing.initial.id === p.id ? (
               <li key={p.id}>
                 <ProviderForm initial={p} isNew={false} existingIds={ids} onSave={handleSave} onCancel={() => setEditing(null)} />
               </li>
@@ -173,8 +203,8 @@ export default function ProvidersSettings() {
                 key={p.id}
                 provider={p}
                 onEdit={(prov) => setEditing({ initial: prov, isNew: false })}
-                onToggle={(prov) => save(prov.id, { enabled: !prov.enabled })}
-                onDelete={remove}
+                onToggle={act((prov) => save(prov.id, { enabled: !prov.enabled }))}
+                onDelete={act(remove)}
                 onTest={test}
               />
             )
@@ -183,18 +213,11 @@ export default function ProvidersSettings() {
       )}
 
       {editing?.isNew ? (
-        <ProviderForm initial={editing.initial} isNew existingIds={ids} onSave={handleSave} onCancel={() => setEditing(null)} />
+        <ProviderForm initial={{}} isNew existingIds={ids} presets={presets} onSave={handleSave} onCancel={() => setEditing(null)} />
       ) : (
-        <div className="flex gap-2 flex-wrap">
-          {presets.map(p => (
-            <button key={p.id} onClick={() => setEditing({ initial: p, isNew: true })} className={BTN_PRIMARY}>
-              <i className="fa-solid fa-plus mr-1"></i>Add {p.name}
-            </button>
-          ))}
-          <button onClick={() => setEditing({ initial: {}, isNew: true })} className={BTN}>
-            <i className="fa-solid fa-plus mr-1"></i>Custom provider
-          </button>
-        </div>
+        <button onClick={() => setEditing({ isNew: true })} className={BTN_PRIMARY}>
+          <i className="fa-solid fa-plus mr-1"></i>Add provider
+        </button>
       )}
     </div>
   )
