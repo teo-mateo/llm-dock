@@ -2,6 +2,7 @@ package com.hpz.llmdockchat.feature.pi
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,23 +36,25 @@ class PiFormattingTest {
     }
 
     @Test
-    fun `session meta line carries cwd model context and age`() {
+    fun `session meta head joins cwd and model`() {
         assertEquals(
-            "/forgejo/tubevault · qwen3.8-27b · ctx 12% · 4 min ago",
-            piSessionMetaLine("/forgejo/tubevault", "qwen3.8-27b", 12.0, "4 min ago"),
+            "/forgejo/tubevault · llm-dock/pennyroyal-qwen3-8-flash-next",
+            piSessionMetaHead("/forgejo/tubevault", "llm-dock/pennyroyal-qwen3-8-flash-next"),
         )
     }
 
     @Test
-    fun `session meta line omits unknown model and context instead of faking them`() {
-        assertEquals("/repo · now", piSessionMetaLine("/repo", null, null, "now"))
-        assertEquals("/repo · now", piSessionMetaLine("/repo", "  ", null, "now"))
-        assertEquals("/repo · ctx 0% · now", piSessionMetaLine("/repo", null, 0.0, "now"))
+    fun `session meta head omits an unknown model instead of faking one`() {
+        assertEquals("/repo", piSessionMetaHead("/repo", null))
+        assertEquals("/repo", piSessionMetaHead("/repo", "  "))
+        assertEquals("", piSessionMetaHead("", null))
     }
 
     @Test
-    fun `session meta line rounds the context percentage`() {
-        assertEquals("/repo · ctx 34% · now", piSessionMetaLine("/repo", null, 33.6, "now"))
+    fun `context label is absent rather than zero when unknown`() {
+        assertNull(piContextLabel(null))
+        assertEquals("ctx 0%", piContextLabel(0.0))
+        assertEquals("ctx 34%", piContextLabel(33.6))
     }
 
     @Test

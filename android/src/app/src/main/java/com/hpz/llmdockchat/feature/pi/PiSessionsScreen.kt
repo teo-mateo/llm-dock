@@ -153,13 +153,25 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
-        Text(
-            piSessionMetaLine(session.cwd, session.model, session.contextPercent, formatAgo(nowMs, session.lastSeen)),
-            color = colors.muted,
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = MonoFontFamily,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                piSessionMetaHead(session.cwd, session.model),
+                color = colors.muted,
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = MonoFontFamily,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            piContextLabel(session.contextPercent)?.let {
+                Text(it, color = colors.muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+            Text(
+                formatAgo(nowMs, session.lastSeen),
+                color = colors.subtle,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
     }
 }

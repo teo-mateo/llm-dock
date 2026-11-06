@@ -10,13 +10,10 @@ fun formatAgo(nowMs: Long, thenMs: Long): String {
     }
 }
 
-fun piSessionMetaLine(cwd: String, model: String?, contextPercent: Double?, ago: String): String =
-    listOfNotNull(
-        cwd.takeIf { it.isNotBlank() },
-        model?.takeIf { it.isNotBlank() },
-        contextPercent?.let { "ctx ${Math.round(it)}%" },
-        ago,
-    ).joinToString(" · ")
+fun piSessionMetaHead(cwd: String, model: String?): String =
+    listOfNotNull(cwd.takeIf { it.isNotBlank() }, model?.takeIf { it.isNotBlank() }).joinToString(" · ")
+
+fun piContextLabel(contextPercent: Double?): String? = contextPercent?.let { "ctx ${Math.round(it)}%" }
 
 data class FollowState(val following: Boolean, val seen: Any?) {
     fun hasUnseen(current: Any?): Boolean = !following && current !== seen
