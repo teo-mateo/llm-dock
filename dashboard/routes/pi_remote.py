@@ -1,10 +1,20 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from auth import require_auth
 from pi_remote.api_json import page_json, parse_paging, summary_json
+from pi_remote.stream import session_stream as build_session_stream
+from pi_remote.stream import sessions_stream as build_sessions_stream
 from pi_remote.supervisor import pi_remote_supervisor
 
 pi_remote_bp = Blueprint("pi_remote", __name__)
+
+
+def _stream_response(generator):
+    return Response(
+        stream_with_context(generator),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @pi_remote_bp.route("/api/pi/sessions", methods=["GET"])
@@ -13,6 +23,12 @@ def sessions():
     return jsonify(
         {"sessions": [summary_json(summary) for summary in pi_remote_supervisor.sessions()]}
     )
+
+
+@pi_remote_bp.route("/api/pi/sessions/stream", methods=["GET"])
+@require_auth
+def sessions_sse():
+    return _stream_response(build_sessions_stream(pi_remote_supervisor))
 
 
 @pi_remote_bp.route(
@@ -27,3 +43,23 @@ def session_events(session_id, instance_id):
     if page is None:
         return jsonify({"error": "unknown_session"}), 404
     return jsonify(page_json(page))
+
+
+@pi_remote_bp.route(
+    "/api/pi/sessions/<session_id>/<instance_id>/stream", methods=["GET"]
+)
+@require_auth
+def session_sse(session_id, instance_id):
+    key = (session_id, instance_id)
+    if pi_remote_supervisor.session(key) is None:
+        return jsonify({"error": "unknown_session"}), 404
+    raw_after = request.args.get("after")
+    if raw_after is None:
+        raw_after = request.headers.get("Last-Event-ID")
+    if raw_after is None:
+        after_seq = 0
+    else:
+        after_seq, _, error = parse_paging({"after": raw_after})
+        if error is not None:
+            return jsonify({"error": error}), 400
+    return _stream_response(build_session_stream(pi_remote_supervisor, key, after_seq))

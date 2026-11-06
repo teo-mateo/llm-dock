@@ -163,6 +163,21 @@ class PiRemoteSupervisor:
             return
         bus.publish(BusMessage(kind, key, events, summary))
 
+    def session(self, key: SessionKey) -> Optional[SessionSummary]:
+        with self._lock:
+            store, registry = self._store, self._registry
+        if store is None:
+            return None
+        row = store.get_session(key[0], key[1])
+        if row is None:
+            return None
+        presence = (
+            registry.get(key[0], key[1], self._clock())
+            if registry is not None
+            else None
+        )
+        return session_summary(row, presence)
+
     def sessions(self) -> List[SessionSummary]:
         with self._lock:
             store, registry = self._store, self._registry
