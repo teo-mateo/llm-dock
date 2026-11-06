@@ -1,3 +1,5 @@
+import { needsAnswer } from '../../utils/piPrompts'
+
 function sessionName(session) {
   if (session.name) return session.name
   const segments = session.cwd.split('/').filter(Boolean)
@@ -78,6 +80,15 @@ export default function PiSessionList({
                       {status}
                     </span>
                   </span>
+                  {needsAnswer(session) && (
+                    <span className="mt-1 flex items-center gap-2">
+                      <span className="rounded-full border border-accent bg-accent-subtle px-2 py-0.5 text-xs font-semibold text-accent-strong">
+                        {session.prompts.length === 1
+                          ? '1 question waiting'
+                          : `${session.prompts.length} questions waiting`}
+                      </span>
+                    </span>
+                  )}
                   <span className="mt-1 block truncate font-mono text-xs text-fg-muted">
                     {session.cwd}
                   </span>

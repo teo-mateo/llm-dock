@@ -76,3 +76,10 @@ export async function abortPiRun(sessionId, instanceId) {
     {},
   )
 }
+
+export async function answerPiPrompt(sessionId, instanceId, promptId, value) {
+  return postPiCommand(
+    `/pi/sessions/${sessionId}/${instanceId}/prompts/${encodeURIComponent(promptId)}/answer`,
+    { value },
+  )
+}

@@ -245,6 +245,7 @@ Key mechanics:
 | `useInspectorCaptures.js` | Capture list state: fresh first page per mount/filter change, merge-based `refresh()` so a Load-more'd tail survives, append-only deduping `loadMore()`, replacing `reload()` (Delete-all needs it — merge cannot empty the list), local `removeRow()`, 5 s live refetch with a `paused` flag, `services` for the filter select; exports pure `mergeReload`/`appendPage` |
 | `usePiSessions.js` | Pi session list from `/api/pi/sessions/stream`; pure `applySessionsFrame` snapshot/upsert reducer with live-first ordering; reconnect resumes from the stream |
 | `usePiSessionEvents.js` | One pi session's events from its SSE stream; pure `applySessionEventsFrame` appends only `seq > lastSeq`, sets summary and lagged; reconnect sends `Last-Event-ID` = `lastSeq` |
+| `piPrompts.js` | Pure prompt-state helpers for the pi pages: `needsAnswer`/`pendingCount` for the list indicator, `answerLabel` for reading a winner back, and `promptOutcome(status, body)` mapping the answer endpoint's responses — 200 accepted, 202 never rendered as answered, 409 carrying who won, 404 gone, 400 pi refused the value, 409/429/503 service states |
 
 ### Dashboard components (`src/components/`)
 
@@ -263,8 +264,9 @@ Key mechanics:
 | `ParameterReference.jsx` | Flag metadata reference + add-flag |
 | `SettingsPage.jsx` / `settings/PromptsEditor.jsx` / `TOTPSetup.jsx` | Settings: theme, chat prompts editor, TOTP enrollment |
 | `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges, read-only ladder chips with a per-row re-read) + collapsed JSON panel. Rows carry a provider line (count, names, quantizations, price spread, expandable per-provider uptime/status) once it lands; which rows want one comes from an `IntersectionObserver` on the pane, not from list position |
-| `pi/PiPage.jsx` | Route owner: session list + selected session header/transcript/composer; selecting navigates to `/pi/:sessionId/:instanceId`; Stop records `lastStopAt` before aborting |
-| `pi/PiSessionList.jsx` | Session rows with text status, name/cwd, live-only filter, empty state |
+| `pi/PiPage.jsx` | Route owner: session list + selected session header/prompt cards/transcript/composer; selecting navigates to `/pi/:sessionId/:instanceId`; Stop records `lastStopAt` before aborting |
+| `pi/PiSessionList.jsx` | Session rows with text status, name/cwd, live-only filter, needs-answer chip, empty state |
+| `pi/PiPromptCard.jsx` | One open question above the transcript: confirm as Yes/No, select as option buttons (+ free text only when the prompt allows it), input as a text field, approval as Allow once / Allow for session / Deny with an optional reason; controls lock while a send is in flight, a 202 reads as sent-not-accepted, a 409 names the winner, a rejection keeps the typed text, and an offline session offers no active control |
 | `pi/PiSessionHeader.jsx` | Selected session name, state badge, cwd/model/thinking line, context bar, ended reason |
 | `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notice pills/run-end dividers, labels run ends via `runEndLabel`; auto-scrolls only when near the bottom |
 | `pi/PiNotice.jsx` | Notice pill; model/thinking changes render as labelled from→to chips |
