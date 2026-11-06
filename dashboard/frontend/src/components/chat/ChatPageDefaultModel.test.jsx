@@ -26,6 +26,8 @@ const { mockServicesSSE, mockOpenRouterModels, servicesRef } = vi.hoisted(() => 
 mockServicesSSE.mockImplementation(() => ({ services: servicesRef.current, loading: false }))
 vi.mock('../../hooks/useServicesSSE', () => ({ default: (...a) => mockServicesSSE(...a) }))
 vi.mock('../../hooks/useOpenRouterModels', () => ({ default: (...a) => mockOpenRouterModels(...a) }))
+const { providerGroupsRef } = vi.hoisted(() => ({ providerGroupsRef: { current: [] } }))
+vi.mock('../../hooks/useProviderModels', () => ({ default: () => ({ groups: providerGroupsRef.current, providers: [], loading: false }) }))
 
 const { mockListConversations } = vi.hoisted(() => ({ mockListConversations: vi.fn() }))
 vi.mock('../../services/chat', async (importActual) => ({
@@ -58,6 +60,7 @@ function renderPage() {
 beforeEach(() => {
   capturedAreaProps.current = null
   servicesRef.current = []
+  providerGroupsRef.current = []
   mockListConversations.mockReset()
   mockListConversations.mockResolvedValue({ conversations: [] })
 })
@@ -65,6 +68,13 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('ChatPage default model fallback', () => {
+  it('falls back to the first provider model when nothing else is available', async () => {
+    mockOpenRouterModels.mockReturnValue({ data: { configured: false, current: [] }, loading: false })
+    providerGroupsRef.current = [{ id: 'mistral', name: 'Mistral', models: [{ id: 'codestral-latest', label: 'codestral-latest' }] }]
+    renderPage()
+    await waitFor(() => expect(capturedAreaProps.current?.defaultModelName).toBe('mistral:codestral-latest'))
+  })
+
   it('prefers the first running local service', async () => {
     servicesRef.current = [{ name: 'vllm-test', status: 'running', kind: 'chat' }]
     mockOpenRouterModels.mockReturnValue({

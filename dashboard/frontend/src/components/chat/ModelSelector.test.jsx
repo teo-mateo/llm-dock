@@ -8,6 +8,7 @@ const { mockRunningServices, mockOpenRouterModels } = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useRunningServices', () => ({ default: (...a) => mockRunningServices(...a) }))
 vi.mock('../../hooks/useOpenRouterModels', () => ({ default: (...a) => mockOpenRouterModels(...a) }))
+vi.mock('../../hooks/useProviderModels', () => ({ default: () => ({ groups: [], providers: [], loading: false }) }))
 
 const LOCAL = [{ name: 'vllm-test' }]
 const CURATED = [{ id: 'vendor/model-a', label: 'Model A' }]
