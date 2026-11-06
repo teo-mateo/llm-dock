@@ -2,7 +2,8 @@ import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 
-import { PATHS } from "../src/protocol.ts";
+import { MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
+import { ackedSeq, handleEvents, type EventStore } from "./fake-events.ts";
 
 export const STALE_AFTER_MS = 45000;
 
@@ -22,8 +23,9 @@ export type FakeServer = {
   socketPath: string;
   records: FakeRecord[];
   registry: Registry;
+  events: EventStore;
   close: () => Promise<void>;
-  clearSessions: () => void;
+  clearSessions: (dropEvents?: boolean) => void;
 };
 
 function timestamp(): string {
@@ -45,13 +47,17 @@ function bodySummary(body: Record<string, unknown>): string {
   }
   const model = body.model as { provider?: string; id?: string } | undefined;
   if (model?.provider && model?.id) parts.push(`model=${model.provider}/${model.id}`);
+  if (Array.isArray(body.events)) {
+    parts.push(`events=${body.events.map((event) => `${(event as { type?: string }).type}:${(event as { seq?: number }).seq}`).join(",")}`);
+  }
   return parts.join(" ");
 }
 
-function expectedType(path: string): "hello" | "heartbeat" | "bye" | null {
+function expectedType(path: string): "hello" | "heartbeat" | "bye" | "events" | null {
   if (path === PATHS.hello) return "hello";
   if (path === PATHS.heartbeat) return "heartbeat";
   if (path === PATHS.bye) return "bye";
+  if (path === PATHS.events) return "events";
   return null;
 }
 
@@ -64,13 +70,14 @@ export function handleFrame(
   frame: Frame,
   registry: Registry,
   now = Date.now(),
+  eventsByKey: EventStore = new Map(),
 ): { status: number; payload: unknown } {
-  if (frame.protocol !== 1) {
-    return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
-  }
   const type = expectedType(path);
   if (!type) {
     return { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+  }
+  if (frame.protocol !== 1) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
   }
   if (frame.type !== type) {
     return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
@@ -82,6 +89,7 @@ export function handleFrame(
   }
 
   const key = keyOf(sessionId, instanceId);
+  const stored = eventsByKey.get(key) ?? new Map();
   if (path === PATHS.hello) {
     registry.set(key, { sessionId, instanceId, lastSeen: now });
     return {
@@ -92,6 +100,7 @@ export function handleFrame(
         session_id: sessionId,
         instance_id: instanceId,
         server_time: now,
+        acked_seq: ackedSeq(stored),
       },
     };
   }
@@ -101,17 +110,26 @@ export function handleFrame(
     registry.delete(key);
     return { status: 404, payload: { ok: false, protocol: 1, error: "unknown_session" } };
   }
+
   if (path === PATHS.heartbeat) {
     entry.lastSeen = now;
     return { status: 200, payload: { ok: true, protocol: 1, server_time: now } };
   }
-  registry.delete(key);
-  return { status: 200, payload: { ok: true, protocol: 1 } };
+
+  if (path === PATHS.bye) {
+    registry.delete(key);
+    return { status: 200, payload: { ok: true, protocol: 1 } };
+  }
+
+  const result = handleEvents(frame, stored);
+  if (result.status === 200) eventsByKey.set(key, stored);
+  return result;
 }
 
 export function startFakeServer(socketPath: string): Promise<FakeServer> {
   if (existsSync(socketPath)) unlinkSync(socketPath);
   const registry: Registry = new Map();
+  const events: EventStore = new Map();
   const records: FakeRecord[] = [];
 
   const server = createServer((req, res: ServerResponse) => {
@@ -129,10 +147,14 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
       let result: { status: number; payload: unknown };
       if (req.method !== "POST") {
         result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+      } else if (!expectedType(path)) {
+        result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+      } else if (path === PATHS.events && Buffer.byteLength(raw) > MAX_EVENTS_BODY_BYTES) {
+        result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else if (!body || typeof body !== "object" || Array.isArray(body)) {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else {
-        result = handleFrame(path, body as Frame, registry, Date.now());
+        result = handleFrame(path, body as Frame, registry, Date.now(), events);
       }
 
       record.status = result.status;
@@ -155,13 +177,15 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
         socketPath,
         records,
         registry,
+        events,
         close: () =>
           new Promise<void>((done) => {
             server.close(() => done());
           }),
-        clearSessions: () => {
+        clearSessions: (dropEvents = false) => {
           registry.clear();
-          console.log(`[${timestamp()}] sessions cleared (simulated dashboard restart)`);
+          if (dropEvents) events.clear();
+          console.log(`[${timestamp()}] sessions cleared (simulated dashboard restart${dropEvents ? ", events dropped" : ""})`);
         },
       });
     });
@@ -178,7 +202,7 @@ async function main(): Promise<void> {
     }
   }
   const fake = await startFakeServer(socketPath);
-  process.on("SIGUSR1", () => fake.clearSessions());
+  process.on("SIGUSR1", () => fake.clearSessions(true));
   const shutdown = async () => {
     await fake.close();
     process.exit(0);

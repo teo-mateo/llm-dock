@@ -1,0 +1,824 @@
+[
+  {
+    "path": "/v1/hello",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 1000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "events": [
+        {
+          "type": "state",
+          "seq": 1,
+          "ts": 1000,
+          "state": "idle"
+        },
+        {
+          "type": "user_message",
+          "seq": 2,
+          "ts": 1000,
+          "text": "hi",
+          "image_count": 0,
+          "origin": "terminal"
+        },
+        {
+          "type": "assistant_delta",
+          "seq": 3,
+          "ts": 1000,
+          "text": "hello",
+          "thinking": ""
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 1000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "events": [
+        {
+          "type": "user_message",
+          "seq": 2,
+          "ts": 1000,
+          "text": "hi",
+          "image_count": 0,
+          "origin": "terminal"
+        },
+        {
+          "type": "assistant_delta",
+          "seq": 3,
+          "ts": 1000,
+          "text": "hello",
+          "thinking": ""
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "reload",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s1",
+      "instance_id": "i1",
+      "server_time": 2000,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s2",
+      "instance_id": "i2",
+      "server_time": 2000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "gap",
+          "seq": 1,
+          "ts": 2000,
+          "from_seq": 1,
+          "to_seq": 2
+        },
+        {
+          "type": "state",
+          "seq": 3,
+          "ts": 2000,
+          "state": "idle"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "state",
+          "seq": 4,
+          "ts": 2000,
+          "state": "working"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 4
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "nope",
+          "seq": 5,
+          "ts": 2000,
+          "payload": "opaque"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 5
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "state",
+          "seq": 6,
+          "ts": 2000
+        }
+      ]
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s9",
+      "instance_id": "i9",
+      "events": []
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "unknown_session"
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "events": [
+        {
+          "type": "state",
+          "seq": 0,
+          "ts": 2000,
+          "state": "idle"
+        }
+      ]
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "events": [
+        {
+          "type": "state",
+          "seq": 1,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 2,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 3,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 4,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 5,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 6,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 7,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 8,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 9,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 10,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 11,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 12,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 13,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 14,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 15,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 16,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 17,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 18,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 19,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 20,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 21,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 22,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 23,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 24,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 25,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 26,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 27,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 28,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 29,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 30,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 31,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 32,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 33,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 34,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 35,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 36,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 37,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 38,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 39,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 40,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 41,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 42,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 43,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 44,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 45,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 46,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 47,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 48,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 49,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 50,
+          "ts": 2000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 51,
+          "ts": 2000,
+          "state": "idle"
+        }
+      ]
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s1",
+      "instance_id": "i1",
+      "events": []
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s3",
+      "instance_id": "i3",
+      "server_time": 3000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "events": [
+        {
+          "type": "state",
+          "seq": 5,
+          "ts": 3000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 6,
+          "ts": 3000,
+          "state": "working"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 6
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "events": [
+        {
+          "type": "state",
+          "seq": 7,
+          "ts": 3000,
+          "state": "idle"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 7
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s4",
+      "instance_id": "i4",
+      "server_time": 4000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "events": [
+        {
+          "type": "gap",
+          "seq": 10,
+          "ts": 4000,
+          "from_seq": 10,
+          "to_seq": 10
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 10
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 4000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s4",
+      "instance_id": "i4",
+      "events": [
+        {
+          "type": "gap",
+          "seq": 11,
+          "ts": 4000,
+          "from_seq": 11,
+          "to_seq": 11
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 11
+    }
+  },
+  {
+    "path": "/v1/nope",
+    "now": 4000,
+    "request": {
+      "protocol": 2,
+      "type": "events",
+      "session_id": "s5",
+      "instance_id": "i5",
+      "events": []
+    },
+    "status": 404,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "not_found"
+    }
+  }
+]

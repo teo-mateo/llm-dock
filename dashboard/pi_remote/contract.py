@@ -53,6 +53,7 @@ def hello_ok(session_id: str, instance_id: str, now: int) -> JsonResponse:
             "session_id": session_id,
             "instance_id": instance_id,
             "server_time": now,
+            "acked_seq": 0,
         },
     )
 

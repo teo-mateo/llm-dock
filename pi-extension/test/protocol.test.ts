@@ -5,7 +5,9 @@ import {
   PROTOCOL_VERSION,
   buildBye,
   buildHeartbeat,
+  buildEvents,
   buildHello,
+  classifyResponse,
   parseResponse,
 } from "../src/protocol.ts";
 
@@ -68,4 +70,22 @@ test("parseResponse rejects malformed bodies", () => {
 test("parseResponse carries error codes", () => {
   const response = parseResponse(JSON.stringify({ ok: false, protocol: 1, error: "unknown_session" }));
   assert.equal(response?.error, "unknown_session");
+});
+
+test("buildEvents stamps protocol and type", () => {
+  const frame = buildEvents({ session_id: "s1", instance_id: "i1", events: [] });
+  assert.equal(frame.protocol, PROTOCOL_VERSION);
+  assert.equal(frame.type, "events");
+  assert.deepEqual(frame.events, []);
+});
+
+test("classifyResponse distinguishes bad_frame from rejection", () => {
+  assert.equal(classifyResponse(400, JSON.stringify({ ok: false, protocol: 1, error: "bad_frame" })), "bad_frame");
+  assert.equal(classifyResponse(400, JSON.stringify({ ok: false, protocol: 1, error: "unsupported_protocol" })), "rejected");
+  assert.equal(classifyResponse(404, JSON.stringify({ ok: false, protocol: 1, error: "unknown_session" })), "unknown_session");
+});
+
+test("parseResponse carries acked_seq", () => {
+  const response = parseResponse(JSON.stringify({ ok: true, protocol: 1, acked_seq: 3 }));
+  assert.equal(response?.acked_seq, 3);
 });
