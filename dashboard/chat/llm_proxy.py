@@ -5,7 +5,7 @@ import re
 
 import requests
 
-from reasoning_levels import ENGINE_OPENROUTER, find_level, parse_levels, request_fields
+from reasoning_levels import ENGINE_OPENROUTER, ENGINE_PROVIDER, find_level, parse_levels, request_fields
 import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
@@ -128,6 +128,9 @@ def resolve_service(service_name: str) -> dict:
                 openrouter.ladder_for_model(openrouter.model_id(service_name))
             )
         return svc
+    from . import providers
+    if providers.is_provider_service(service_name):
+        return providers.resolve(service_name)
     from docker_utils import get_docker_services
     services = get_docker_services()
     for svc in services:
@@ -142,12 +145,28 @@ def resolve_service(service_name: str) -> dict:
     return None
 
 
+def without_reasoning_content(messages: list) -> list:
+    """Replayed history minus ``reasoning_content``, for strict providers.
+
+    Mistral answers 422 ``extra_forbidden`` for any message field it does not
+    define, and assistant turns written by a local thinking model carry this one —
+    so a conversation switched onto a provider would fail on its first request.
+    """
+    return [
+        {k: v for k, v in m.items() if k != "reasoning_content"} if isinstance(m, dict) else m
+        for m in messages
+    ]
+
+
 def unreachable_message(service_name: str) -> str:
     """Error text for a service that failed to resolve."""
     from . import openrouter
     if openrouter.is_openrouter_service(service_name):
         return ("OpenRouter is not configured "
                 "(OPENROUTER_API_KEY missing in dashboard/.env).")
+    from . import providers
+    if providers.is_provider_service(service_name):
+        return providers.unreachable_message(service_name)
     return f"Service '{service_name}' is not reachable. Is it running?"
 
 
@@ -361,6 +380,8 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
         return
 
     url, headers = build_endpoint(svc)
+    if svc.get("template_type") == ENGINE_PROVIDER:
+        messages_array = without_reasoning_content(messages_array)
     payload = {
         "messages": messages_array,
         "stream": True,

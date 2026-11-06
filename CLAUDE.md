@@ -1362,6 +1362,30 @@ appear in the chat pickers.
     predates this feature (nothing in llm-dock ever sent it) and is characterised, not
     fixed, by the probe in `docs/plans/openrouter-reasoning-levels.md`.
 
+## Chatting with provider models (Mistral, …)
+
+OpenAI-compatible providers are configured at runtime and every chat model they serve
+becomes selectable. Owner: `dashboard/chat/providers.py` (store, resolution, model
+catalog) + `chat/providers_routes.py`. Design, measurements and what is not done:
+`docs/plans/chat-providers.md`.
+
+- **Addressing:** `<provider-id>:<model-id>` in the usual service columns
+  (`mistral:mistral-large-latest`). Docker names cannot hold `:`, so the colon is the
+  discriminator; `openrouter` is a reserved id. `parse_service` is syntax-only, so a
+  deleted provider's conversations still fail as provider models.
+- **Storage:** `dashboard/providers.json` (gitignored, 0600, `LLM_DOCK_PROVIDERS_FILE`).
+  A stored `api_key` wins over `api_key_env`. The key is write-only over HTTP — responses
+  carry `key_source` only, and a `PUT` without `api_key` keeps the stored one.
+- **The dashboard does not see your shell's exports.** It runs as the `llm-dock` systemd
+  unit; `MISTRAL_API_KEY` in `~/.bashrc` is invisible to it. Paste the key in Settings, or
+  put it in `dashboard/.env` and restart.
+- **API:** `GET/PUT/DELETE /api/chat/settings/providers[/<id>]`, `POST …/<id>/test`
+  (live, never cached), `GET /api/chat/providers/models[?refresh=1]` (enabled providers +
+  models, 15-min cache per provider, stale-on-failure).
+- **Engine `"provider"`:** always sends `model`; no reasoning or sampling mapping yet.
+  **Mistral 422s on unknown fields**, including `reasoning_content` on replayed assistant
+  turns, which `llm_proxy.without_reasoning_content` strips for this engine only.
+
 ## Reference: working embedding service
 
 `vllm-nomic-embed-text-v1.5`, currently on port 3380 (port and entry live in

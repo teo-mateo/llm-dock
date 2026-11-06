@@ -18,9 +18,9 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import openrouter, openrouter_catalog, settings_store, url_retrieval
+from . import openrouter, openrouter_catalog, providers, settings_store, url_retrieval
 from .prompt_seed import seed_default_prompts
-from reasoning_levels import ENGINE_OPENROUTER, find_level, format_levels, parse_levels
+from reasoning_levels import ENGINE_OPENROUTER, ENGINE_PROVIDER, find_level, format_levels, parse_levels
 import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
@@ -103,6 +103,8 @@ def _service_reasoning_levels(service_name):
     """
     if openrouter.is_openrouter_service(service_name):
         return parse_levels(openrouter.ladder_for_model(openrouter.model_id(service_name)))
+    if providers.is_provider_service(service_name):
+        return []
     from docker_utils import get_docker_services
     try:
         services = get_docker_services()
@@ -174,6 +176,8 @@ def _service_engine(service_name):
     """
     if openrouter.is_openrouter_service(service_name):
         return ENGINE_OPENROUTER
+    if providers.is_provider_service(service_name):
+        return ENGINE_PROVIDER
     from docker_utils import get_docker_services
     try:
         services = get_docker_services()
@@ -1357,3 +1361,4 @@ def ghost_chat():
 # is being imported by app.py — before the blueprint is registered.
 from . import mcp_admin_routes  # noqa: E402,F401
 from . import project_files_routes  # noqa: E402,F401
+from . import providers_routes  # noqa: E402,F401
