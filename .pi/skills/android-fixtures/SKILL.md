@@ -38,6 +38,8 @@ python3 scripts/scenario.py offline
 
 Every change updates both GET and already-connected sessions SSE clients. `waiting` has one live
 question and one ended session with a retained question (a live-only indicator must ignore the latter).
+`offline` marks all sessions ended; `stress` is the same live/ended pair plus a working session whose
+name, `cwd` and model are all long, carrying an open question, for layout stress at a narrow width.
 `empty` closes the live question; `absent` omits the prompts key for older-server compatibility;
 `offline` marks all sessions ended. Start with `empty`, switch to `waiting`, then `empty` to prove
 stream-driven indicator appearance/disappearance without navigating away. Wait for UI conditions,
