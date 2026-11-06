@@ -58,8 +58,8 @@ channel. Below 50%, nothing happens.
 > stay in scope (`NOTE` the rest), tests with the code, gates green, PR with a criteria
 > → evidence checklist, checkout back on `main`, `DONE #N <url>`. Repo rules: no comments
 > by default, no AI attribution, never delete files, never touch model containers or
-> `llm-dock.service`. Architecture is reviewed: small single-purpose modules, pure logic
-> apart from I/O and wiring, no big files or functions. Test pi sessions are throwaway,
+> `llm-dock.service`. Architecture follows `docs/architecture-principles.md`: small
+> single-purpose modules, pure logic apart from I/O and wiring, one owner per contract. Test pi sessions are throwaway,
 > in their own tmux window, on `mistral/mistral-small-latest`.
 
 ## Shared checkout
@@ -95,6 +95,7 @@ Both agents use `/github/teo-mateo/llm-dock`. Turn-taking:
 
 ## Standing rules for pi
 
+- Architecture follows `docs/architecture-principles.md`; review findings cite its rule numbers.
 - Repo conventions in `CLAUDE.md` apply: no comments by default, double-quoted Python
   strings, change only lines related to the task, one branch per issue from fresh `main`.
 - No AI attribution in commits or PRs (no `Co-Authored-By`, no "Generated with").
