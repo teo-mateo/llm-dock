@@ -198,7 +198,7 @@ handler answers `failed`. In v1 the kinds are `abort {}` and `send_message {text
 
 | Command | Executes |
 |---|---|
-| `send_message {text, images}` | idle → `pi.sendUserMessage` (starts a turn); busy → `deliverAs: "steer"`, fixed; unconfirmed commands re-sent once at `agent_settled` (see *Delivery identity* below) |
+| `send_message {text}` | idle → `pi.sendUserMessage` (starts a turn); busy → `deliverAs: "steer"`, fixed; unconfirmed commands re-sent once at `agent_settled` (see *Delivery identity* below). Images are a later addition; `Delivery` already counts image parts for matching. |
 | `abort` | `ctx.abort()` |
 | `answer_prompt {prompt_id, value}` | resolves a pending prompt (§4) |
 | `set_model {provider, id}` / `set_thinking {level}` | `pi.setModel` / `pi.setThinkingLevel`; result reports clamping/auth failure |
@@ -230,11 +230,18 @@ model, and matching on text alone breaks on duplicates and images. So:
   risk is a duplicate: if the queued copy is delivered later anyway, the model sees it
   twice; the FIFO head is already `resent`, so the duplicate is recorded, not re-sent.
 
-**Module shape.** All of that is one pure module, `delivery.ts`, with
-`track(command_id, content, now)`, `observe(message, now)` and
-`settle(branch, hasPending)`, owning every timer it starts and covered by `node --test`;
-the lifecycle wiring in `index.ts` only forwards events. Same shape as the
-`ReconnectingStream` note from the #324 review.
+**Module shape (P3-2).** `delivery.ts` is pure, with no pi imports and an injected
+clock passed by the caller: `contentHash(text, imageCount)`, `track(commandId, text,
+imageCount, now)`, `observe(userText, imageCount)`, `settle()` and `pending()`. It owns
+no timers. `send-message.ts` is a pure handler over a small `SendPort`
+(`isIdle`, `send(text, mode)`, `notify`); the runtime adapter maps `send` to
+`pi.sendUserMessage(..., {expandPromptTemplates: false})` and `notify` to
+`ctx.ui.notify`. The runtime forwards `message_start` user messages to
+`delivery.observe` and `agent_settled` to `delivery.settle`, then sends each returned
+entry once with `mode: "turn"`. Command dispatch passes the real `command_id` to the
+handler; a direct handler call without one falls back to a local id for the delivery
+FIFO entry. Same lifecycle shape as
+the `ReconnectingStream` note from the #324 review.
 
 `expandPromptTemplates` is always **false**: phone text never dispatches slash
 commands. Phone messages are echoed into the terminal via `ctx.ui.notify("📱 …")`

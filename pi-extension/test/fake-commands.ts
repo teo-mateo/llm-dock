@@ -25,6 +25,16 @@ export class FakeCommands {
     return { command_id: `abort-${this.sequence}`, kind: "abort", args: {}, issued_at: now };
   }
 
+  sendCommand(text: string, now = Date.now()): Command {
+    this.sequence += 1;
+    return {
+      command_id: `send-${this.sequence}`,
+      kind: "send_message",
+      args: { text },
+      issued_at: now,
+    };
+  }
+
   enqueue(key: string, command: Command): void {
     const queue = this.queues.get(key) ?? [];
     queue.push({ command, handedAt: null });

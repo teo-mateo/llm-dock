@@ -49,8 +49,8 @@ function bodySummary(body: Record<string, unknown>): string {
   if (model?.provider && model?.id) parts.push(`model=${model.provider}/${model.id}`);
   if (Array.isArray(body.events)) {
     parts.push(`events=${body.events.map((event) => {
-      const typed = event as { type?: string; seq?: number; outcome?: string };
-      return `${typed.type}:${typed.seq}${typed.outcome ? `/${typed.outcome}` : ""}`;
+      const typed = event as { type?: string; seq?: number; outcome?: string; origin?: string };
+      return `${typed.type}:${typed.seq}${typed.origin ? `/${typed.origin}` : ""}${typed.outcome ? `/${typed.outcome}` : ""}`;
     }).join(",")}`);
   }
   if (Array.isArray(body.commands)) {
@@ -238,6 +238,13 @@ async function main(): Promise<void> {
       fake.commands.enqueue(key, fake.commands.abortCommand());
     }
     console.log(`[${timestamp()}] SIGUSR2 enqueued abort for ${fake.registry.size} session(s)`);
+  });
+  process.on("SIGHUP", () => {
+    const text = "Reply with exactly REMOTE_OK and nothing else.";
+    for (const key of fake.registry.keys()) {
+      fake.commands.enqueue(key, fake.commands.sendCommand(text));
+    }
+    console.log(`[${timestamp()}] SIGHUP enqueued send_message for ${fake.registry.size} session(s)`);
   });
   const shutdown = async () => {
     await fake.close();

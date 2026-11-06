@@ -47,3 +47,10 @@ test("dedupe evicts beyond capacity", () => {
   assert.equal(dedupe.seen("c2")?.command_id, "c2");
   assert.equal(dedupe.seen("c3")?.command_id, "c3");
 });
+
+test("dispatch uses a handler outcome", async () => {
+  const result = await dispatch(command("c1", "send_message"), {
+    send_message: () => ({ command_id: "local", ok: false, error: "invalid_args" }),
+  });
+  assert.deepEqual(result, { command_id: "c1", ok: false, error: "invalid_args" });
+});

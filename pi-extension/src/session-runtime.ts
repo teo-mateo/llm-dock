@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { ExtensionContext, ExtensionEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 
 import { CommandPoller } from "./command-poller.ts";
+import { Delivery } from "./delivery.ts";
+import { userMessageContent } from "./message-content.ts";
+import { createSendMessageHandler, type SendPort } from "./send-message.ts";
 
 import type { Activity } from "./activity.ts";
 import type { RemoteConfig } from "./config.ts";
@@ -24,6 +27,7 @@ export type SessionRuntime = {
 export type SessionRuntimeOptions = {
   config: RemoteConfig;
   ctx: ExtensionContext;
+  pi: ExtensionAPI;
   event: SessionStartEvent;
   extVersion: string;
   piVersion: string | null;
@@ -40,6 +44,18 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
   };
   let sender: EventSender | undefined;
   let poller: CommandPoller | undefined;
+  const delivery = new Delivery();
+  const sendPort: SendPort = {
+    isIdle: () => options.ctx.isIdle(),
+    send: (text, mode) => {
+      if (mode === "steer") {
+        options.pi.sendUserMessage(text, { deliverAs: "steer", expandPromptTemplates: false });
+      } else {
+        options.pi.sendUserMessage(text, { expandPromptTemplates: false });
+      }
+    },
+    notify: (text) => options.ctx.ui.notify(text),
+  };
   const presence = new Presence({
     socketPath: options.config.socketPath,
     enabled: options.config.enabled,
@@ -67,7 +83,10 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     socketPath: options.config.socketPath,
     presence,
     clock,
-    handlers: { abort: () => options.ctx.abort() },
+    handlers: {
+      abort: () => options.ctx.abort(),
+      send_message: createSendMessageHandler(sendPort, delivery, clock.now),
+    },
   });
   options.activity.working = false;
   const stamper = new EventStamper(clock);
@@ -84,7 +103,14 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     sender,
     mirror,
     handle: (event) => {
-      if (!paused) mirror.handle(event);
+      if (paused) return;
+      mirror.handle(event);
+      if (event.type === "message_start") {
+        const user = userMessageContent(event.message);
+        if (user) delivery.observe(user.text, user.imageCount);
+      } else if (event.type === "agent_settled") {
+        for (const entry of delivery.settle()) sendPort.send(entry.text, "turn");
+      }
     },
     pause: async () => {
       paused = true;

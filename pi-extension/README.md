@@ -4,8 +4,8 @@ Registers a pi session with the llm-dock dashboard over a Unix socket, keeps the
 registration alive with heartbeats, and reports its own presence through `/remote`.
 
 This covers `hello` / `heartbeat` / `bye`, the event mirror, the outbox and the
-`/v1/events` sender, plus the command poller for `abort` (P3-1). `send_message` and
-prompts arrive in later issues. The wire contract is in `docs/plans/pi-remote.md` §3
+`/v1/events` sender, the command poller for `abort` (P3-1), and the `send_message`
+handler with its delivery FIFO (P3-2). Prompts arrive in later issues. The wire contract is in `docs/plans/pi-remote.md` §3
 under *Extension endpoint*.
 
 ## Layout
@@ -28,11 +28,13 @@ under *Extension endpoint*.
 | `src/backoff.ts` | the 1 s → 30 s retry policy — pure, reused by later reconnects |
 | `src/commands.ts` | command types, `dispatch`, and the 200-entry `CommandDedupe` — pure |
 | `src/command-poller.ts` | owns the online-only long poll, results posting, backoff, 404 rejoin, start/pause/stop |
+| `src/delivery.ts` | busy-send FIFO, content hash, head-only observe, settle/re-send selection — pure |
+| `src/send-message.ts` | `send_message` validation and idle/steer handler over a small `SendPort` — pure |
 | `src/activity.ts` | the working flag set by the mirror and read by the heartbeat |
 | `src/pi-adapter.ts` | `ExtensionContext` → protocol frames (the `contextWindow` → `window` rename lives here) |
 | `src/remote-command.ts` | `/remote` argument parsing and the status formatter — pure |
 | `src/remote-command-handler.ts` | the `/remote` command's effects (stop/start/status) |
-| `src/session-runtime.ts` | builds Presence + Sender + Mirror + command poller for one `session_start` with a fresh `instance_id`; owns `handle`, `pause`, `resume`, `stop` |
+| `src/session-runtime.ts` | builds Presence + Sender + Mirror + command poller + delivery for one `session_start` with a fresh `instance_id`; owns `handle`, `pause`, `resume`, `stop` |
 | `src/subscriptions.ts` | registers the pi event subscriptions used by the mirror |
 | `test/` | `node --test` suites, the fake clock, fake server, fake-events and fake-commands handlers |
 | `test/contract/frames.json` | golden presence-contract fixtures shared with the dashboard's pytest |
@@ -84,7 +86,8 @@ with a fake clock (register, heartbeats, server restart, backoff schedule, stop 
 backoff, `onOnline`/`rejoin`), event builders, coalescing/caps, outbox overflow/gap,
 sender batching/backoff/rejoin, mirror mapping, command dispatch/dedupe, the poller
 (online-only, results, repeat dedupe, error backoff, 404 rejoin, pause/stop), the
-golden presence, events and commands contracts, and integration tests against an
+golden presence, events and commands contracts, delivery FIFO/settle rules,
+send-message validation and idle/steer behaviour, and integration tests against an
 in-process fake server on a temp Unix socket (including a restart that resends
 unacked events).
 
@@ -96,6 +99,7 @@ node --experimental-strip-types test/fake-server.ts --socket /tmp/pi-remote-fake
 
 `kill -USR1 <pid>` clears its session registry, which simulates a dashboard restart
 (the next heartbeat gets `unknown_session` and the extension re-registers).
-`kill -USR2 <pid>` enqueues an `abort` command for every registered session, which is
-the live-check hook: the poller returns it, pi aborts the run, and the fake logs the
-result.
+`kill -USR2 <pid>` enqueues an `abort` command for every registered session.
+`kill -HUP <pid>` enqueues the fixed `send_message` text `Reply with exactly
+REMOTE_OK and nothing else.`; the fake logs the `user_message origin: extension`
+and the result. These are the live-check hooks.

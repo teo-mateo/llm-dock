@@ -25,6 +25,7 @@ export default function (pi: ExtensionAPI) {
     runtime = createSessionRuntime({
       config,
       ctx,
+      pi,
       event,
       extVersion,
       piVersion,
