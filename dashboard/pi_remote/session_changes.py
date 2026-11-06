@@ -2,7 +2,9 @@ from typing import Any, Dict, Iterable, Optional
 
 from .events import StoredEvent
 
-SESSION_CHANGE_TYPES = frozenset({"model_changed", "thinking_changed"})
+SESSION_CHANGE_TYPES = frozenset(
+    {"model_changed", "thinking_changed", "prompt_open", "prompt_closed"}
+)
 
 
 def _model_columns(model: Any) -> Dict[str, Optional[str]]:

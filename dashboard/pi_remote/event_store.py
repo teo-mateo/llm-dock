@@ -8,6 +8,7 @@ from .events import (
     StoredEvent,
     acked_seq as compute_acked_seq,
 )
+from .prompt_store import apply_prompt_events
 from .schema import INSERT_EVENT_SQL
 from .session_changes import session_changes
 
@@ -52,6 +53,9 @@ class EventStore:
                    ORDER BY seq""",
                 (frame.session_id, frame.instance_id, mark),
             ).fetchall()
+            apply_prompt_events(
+                conn, frame.session_id, frame.instance_id, tuple(frame.events)
+            )
             new_mark = compute_acked_seq(
                 (AckedEvent(row["seq"], row["type"], row["gap_from"], row["gap_to"])
                  for row in covered),
@@ -107,4 +111,6 @@ class EventStore:
             cursor = conn.execute(
                 "DELETE FROM pi_events WHERE received_at < ?", (now - RETENTION_MS,)
             )
-            return cursor.rowcount
+            deleted = cursor.rowcount
+        deleted += self.db.prompts.purge_closed(now - RETENTION_MS)
+        return deleted

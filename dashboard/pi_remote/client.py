@@ -8,7 +8,7 @@ from .read_model import EventPage, SessionSummary, clamp_limit, event_page, sess
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
-SUPPORTED_COMMANDS = frozenset({"send_message", "abort"})
+SUPPORTED_COMMANDS = frozenset({"send_message", "abort", "answer_prompt"})
 
 
 class PiRemoteClient:
@@ -36,12 +36,18 @@ class PiRemoteClient:
         if row is None:
             return None
         presence = self.registry.get(key[0], key[1], self.clock())
-        return session_summary(row, presence)
+        prompts = self.store.prompts.open_for(key[0], key[1])
+        return session_summary(row, presence, prompts)
 
     def sessions(self) -> List[SessionSummary]:
         now = self.clock()
+        grouped = self.store.prompts.open_by_session()
         summaries = [
-            session_summary(row, self.registry.get(row["session_id"], row["instance_id"], now))
+            session_summary(
+                row,
+                self.registry.get(row["session_id"], row["instance_id"], now),
+                grouped.get((row["session_id"], row["instance_id"]), []),
+            )
             for row in self.store.sessions.list()
         ]
         return sorted(summaries, key=lambda summary: (not summary.live, -summary.last_seen))

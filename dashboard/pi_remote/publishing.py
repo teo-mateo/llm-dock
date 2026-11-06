@@ -28,5 +28,6 @@ def publish_session(
     if row is None:
         return
     presence = registry.get(session_id, instance_id, now)
-    summary = session_summary(row, presence)
+    prompts = store.prompts.open_for(session_id, instance_id)
+    summary = session_summary(row, presence, prompts)
     publish("session", (session_id, instance_id), (), summary)

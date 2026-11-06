@@ -5,6 +5,7 @@ from typing import Iterator, Optional
 
 from .command_store import CommandStore
 from .event_store import EventStore
+from .prompt_store import PromptStore
 from .schema import SCHEMA_SQL
 from .session_store import SessionStore
 
@@ -21,6 +22,7 @@ class PiRemoteDB:
         self.sessions = SessionStore(self)
         self.events = EventStore(self)
         self.commands = CommandStore(self)
+        self.prompts = PromptStore(self)
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._persistent_conn is not None:
