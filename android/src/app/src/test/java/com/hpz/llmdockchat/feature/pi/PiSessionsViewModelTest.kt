@@ -64,6 +64,32 @@ class PiSessionsViewModelTest {
     }
 
     @Test
+    fun `needs answer reaches the loaded state through the stream`() {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            snapshotJson(),
+            """
+                {"type":"session","session_id":"live","instance_id":"i1","name":"live-one",
+                 "cwd":"/repo/live","model":null,"thinking_level":null,"first_seen":0,
+                 "last_seen":2000,"ended_at":null,"end_reason":null,"live":true,
+                 "state":"working","context_percent":null,
+                 "prompts":[{"prompt_id":"p1","kind":"approval","title":"Approve rm?"}]}
+            """.trimIndent(),
+        )
+        val viewModel = PiSessionsViewModel(PiSessionsRepository(transport))
+        viewModel.start()
+
+        val loaded = runBlocking {
+            withTimeout(5_000) {
+                viewModel.state.first { state ->
+                    state is PiSessionsUiState.Loaded && state.live.single().needsAnswer
+                }
+            }
+        } as PiSessionsUiState.Loaded
+        assertEquals(listOf("live"), loaded.live.map { it.key.sessionId })
+    }
+
+    @Test
     fun `stale is passed through`() {
         val transport = ScriptedSseTransport()
         transport.script(ScriptedSseTransport.Leg(failWith = RuntimeException("down")))
