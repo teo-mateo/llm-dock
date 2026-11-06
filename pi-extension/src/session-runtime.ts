@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext, ExtensionEvent, SessionStartEvent 
 import { CommandPoller } from "./command-poller.ts";
 import { Delivery } from "./delivery.ts";
 import { userMessageContent } from "./message-content.ts";
+import { createAnswerPromptHandler, RemotePrompts } from "./remote-prompts.ts";
 import { createSendMessageHandler, type SendPort } from "./send-message.ts";
 
 import type { Activity } from "./activity.ts";
@@ -18,6 +19,7 @@ export type SessionRuntime = {
   presence: Presence;
   sender: EventSender;
   mirror: EventMirror;
+  remotePrompts: RemotePrompts;
   handle: (event: ExtensionEvent) => void;
   pause: () => Promise<void>;
   resume: () => void;
@@ -72,11 +74,18 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     onOnline: (ackedSeq) => {
       sender?.onOnline(ackedSeq);
       poller?.start();
+      remotePrompts.replayOpen();
     },
   });
   sender = new EventSender({
     socketPath: options.config.socketPath,
     presence,
+    clock,
+  });
+  const stamper = new EventStamper(clock);
+  const remotePrompts = new RemotePrompts({
+    stamper,
+    emit: (event) => sender?.enqueue(event),
     clock,
   });
   poller = new CommandPoller({
@@ -86,10 +95,10 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     handlers: {
       abort: () => options.ctx.abort(),
       send_message: createSendMessageHandler(sendPort, delivery, clock.now),
+      answer_prompt: createAnswerPromptHandler(remotePrompts),
     },
   });
   options.activity.working = false;
-  const stamper = new EventStamper(clock);
   const mirror = new EventMirror({
     stamper,
     activity: options.activity,
@@ -102,6 +111,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
     presence,
     sender,
     mirror,
+    remotePrompts,
     handle: (event) => {
       if (paused) return;
       mirror.handle(event);

@@ -35,6 +35,16 @@ export class FakeCommands {
     };
   }
 
+  answerPromptCommand(promptId: string, value: unknown, now = Date.now()): Command {
+    this.sequence += 1;
+    return {
+      command_id: `prompt-${this.sequence}`,
+      kind: "answer_prompt",
+      args: { prompt_id: promptId, value },
+      issued_at: now,
+    };
+  }
+
   enqueue(key: string, command: Command): void {
     const queue = this.queues.get(key) ?? [];
     queue.push({ command, handedAt: null });
