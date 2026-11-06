@@ -488,6 +488,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 - **Routes:** Organized as Flask blueprints in `routes/`
 - **File updates:** Always use atomic writes (temp file + rename) with backup/rollback
 - **Security:** Constant-time token comparison, security headers on all responses (X-Content-Type-Options, X-Frame-Options, etc.)
+- **Architecture:** follow `docs/architecture-principles.md` (pure core / thin shell, one owner per contract and rule, small units, executable contracts). Reviews cite its rule numbers.
 - **Comments:** none by default. The single exception, and the test for it, are in [Comments](#comments) below.
 - **Python strings:** Always use **double quotes** for all strings, except when a string contains double quotes — then use single quotes. This matches `ruff`/`black` default behavior.
 
