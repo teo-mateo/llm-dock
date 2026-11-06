@@ -3,9 +3,9 @@
 Registers a pi session with the llm-dock dashboard over a Unix socket, keeps the
 registration alive with heartbeats, and reports its own presence through `/remote`.
 
-This is the P1 skeleton: `hello` / `heartbeat` / `bye` and `/remote` only. Event
-mirroring, the outbox, commands and prompts arrive in later issues. The dashboard
-side does not exist yet; the wire contract it must implement is in
+This is P1-3a: `hello` / `heartbeat` / `bye`, the event mirror, the outbox and the
+`/v1/events` sender. Commands and prompts arrive in later issues. The dashboard's
+presence ingest exists; event storage is the next issue. The wire contract is in
 `docs/plans/pi-remote.md` §3 under *Extension endpoint*.
 
 ## Layout
@@ -13,7 +13,13 @@ side does not exist yet; the wire contract it must implement is in
 | Path | Purpose |
 |---|---|
 | `src/config.ts` | socket path + enabled flag; env `PI_REMOTE_SOCKET`, `PI_REMOTE=0`, file `~/.pi/agent/pi-remote.json`; env > file > default |
-| `src/protocol.ts` | typed frames for `hello` / `heartbeat` / `bye`, `protocol: 1`, builders, response parsing — pure |
+| `src/protocol.ts` | typed frames for `hello` / `heartbeat` / `bye` / `events`, `protocol: 1`, batch/body limits, builders, response parsing — pure |
+| `src/events.ts` | event vocabulary, wire types, builders and the `EventSequencer` — pure, owns every event field name |
+| `src/coalesce.ts` | delta coalescer (~100 ms / 2 KB), tool-update throttle (≤ 4/s), 64 KB tool-text truncation — pure |
+| `src/outbox.ts` | bounded unacked-event queue, ack, oldest-delta drops and `gap` marker — pure |
+| `src/sender.ts` | batches unacked events to `/v1/events`, shared backoff, rejoin on 404, `onOnline` flush |
+| `src/mirror.ts` + `src/message-content.ts` | pi event → wire event mapping and content/usage extraction — pure |
+| `src/index.ts` | pi lifecycle subscriptions, session setup, `/remote` handler and forwarding only |
 | `src/transport.ts` | the only `node:http` module; `POST` over the socket with a timeout |
 | `src/presence.ts` + `src/presence-types.ts` | presence state machine: offline → registering → online, heartbeat timer, backoff, idempotent `start()` / `stop()`, injected clock and request |
 | `src/session.ts` | derive a session id from pi's session file name — pure |
@@ -21,9 +27,12 @@ side does not exist yet; the wire contract it must implement is in
 | `src/activity.ts` | the idle/working flag fed to heartbeats |
 | `src/pi-adapter.ts` | `ExtensionContext` → protocol frames (the `contextWindow` → `window` rename lives here) |
 | `src/remote-command.ts` | `/remote` argument parsing and the status formatter — pure |
-| `src/index.ts` | pi lifecycle subscriptions plus a short `/remote` handler |
+| `src/remote-command-handler.ts` | the `/remote` command's effects (stop/start/status) |
+| `src/session-runtime.ts` | builds and starts Presence + Sender + Mirror for one `session_start`; owns their stop |
+| `src/subscriptions.ts` | registers the pi event subscriptions used by the mirror |
 | `test/` | `node --test` suites, the fake clock and the fake server |
-| `test/contract/frames.json` | golden wire-contract fixtures shared with the dashboard's pytest |
+| `test/contract/frames.json` | golden presence-contract fixtures shared with the dashboard's pytest |
+| `test/contract/events.json` | golden events-contract fixtures shared with the dashboard's next issue |
 
 ## Load it
 
@@ -67,8 +76,10 @@ npm test
 
 The suite covers config precedence, the protocol builders, the presence state machine
 with a fake clock (register, heartbeats, server restart, backoff schedule, stop during
-backoff), and an integration test against an in-process fake server on a temp Unix
-socket.
+backoff, `onOnline`/`rejoin`), event builders, coalescing/caps, outbox overflow/gap,
+sender batching/backoff/rejoin, mirror mapping, the golden presence and events
+contracts, and integration tests against an in-process fake server on a temp Unix
+socket (including a restart that resends unacked events).
 
 Run the fake server by hand:
 

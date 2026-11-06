@@ -2,12 +2,14 @@ import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 
-import { PATHS } from "../src/protocol.ts";
+import { EVENT_TYPES, type WireEvent } from "../src/events.ts";
+import { MAX_EVENTS_BATCH, MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
 
 export const STALE_AFTER_MS = 45000;
 
 export type RegistryEntry = { sessionId: string; instanceId: string; lastSeen: number };
 export type Registry = Map<string, RegistryEntry>;
+export type EventStore = Map<string, Map<number, WireEvent>>;
 
 export type Frame = Record<string, unknown>;
 
@@ -22,6 +24,7 @@ export type FakeServer = {
   socketPath: string;
   records: FakeRecord[];
   registry: Registry;
+  events: EventStore;
   close: () => Promise<void>;
   clearSessions: () => void;
 };
@@ -45,13 +48,17 @@ function bodySummary(body: Record<string, unknown>): string {
   }
   const model = body.model as { provider?: string; id?: string } | undefined;
   if (model?.provider && model?.id) parts.push(`model=${model.provider}/${model.id}`);
+  if (Array.isArray(body.events)) {
+    parts.push(`events=${body.events.map((event) => `${(event as { type?: string }).type}:${(event as { seq?: number }).seq}`).join(",")}`);
+  }
   return parts.join(" ");
 }
 
-function expectedType(path: string): "hello" | "heartbeat" | "bye" | null {
+function expectedType(path: string): "hello" | "heartbeat" | "bye" | "events" | null {
   if (path === PATHS.hello) return "hello";
   if (path === PATHS.heartbeat) return "heartbeat";
   if (path === PATHS.bye) return "bye";
+  if (path === PATHS.events) return "events";
   return null;
 }
 
@@ -59,11 +66,41 @@ function keyOf(sessionId: string, instanceId: string): string {
   return `${sessionId}|${instanceId}`;
 }
 
+function isInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function validEvent(event: unknown): event is WireEvent {
+  if (!event || typeof event !== "object" || Array.isArray(event)) return false;
+  const typed = event as Record<string, unknown>;
+  if (typeof typed.type !== "string" || !EVENT_TYPES.has(typed.type)) return false;
+  if (!isInt(typed.seq) || typed.seq < 1 || !isInt(typed.ts)) return false;
+  if (typed.type === "gap") {
+    if (!isInt(typed.from_seq) || !isInt(typed.to_seq)) return false;
+    if (typed.from_seq < 1 || typed.to_seq < typed.from_seq) return false;
+  }
+  return true;
+}
+
+function ackedSeq(stored: Map<number, WireEvent>): number {
+  const covered = new Set<number>();
+  for (const [seq, event] of stored) {
+    covered.add(seq);
+    if (event.type === "gap") {
+      for (let s = event.from_seq; s <= event.to_seq; s += 1) covered.add(s);
+    }
+  }
+  let acked = 0;
+  while (covered.has(acked + 1)) acked += 1;
+  return acked;
+}
+
 export function handleFrame(
   path: string,
   frame: Frame,
   registry: Registry,
   now = Date.now(),
+  eventsByKey: EventStore = new Map(),
 ): { status: number; payload: unknown } {
   if (frame.protocol !== 1) {
     return { status: 400, payload: { ok: false, protocol: 1, error: "unsupported_protocol" } };
@@ -101,17 +138,43 @@ export function handleFrame(
     registry.delete(key);
     return { status: 404, payload: { ok: false, protocol: 1, error: "unknown_session" } };
   }
+
   if (path === PATHS.heartbeat) {
     entry.lastSeen = now;
     return { status: 200, payload: { ok: true, protocol: 1, server_time: now } };
   }
-  registry.delete(key);
-  return { status: 200, payload: { ok: true, protocol: 1 } };
+
+  if (path === PATHS.bye) {
+    registry.delete(key);
+    return { status: 200, payload: { ok: true, protocol: 1 } };
+  }
+
+  const events = frame.events;
+  if (!Array.isArray(events) || events.length > MAX_EVENTS_BATCH) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
+  }
+  if (Buffer.byteLength(JSON.stringify(frame)) > MAX_EVENTS_BODY_BYTES) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
+  }
+  if (!events.every(validEvent)) {
+    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
+  }
+
+  const stored = eventsByKey.get(key) ?? new Map<number, WireEvent>();
+  for (const event of events as WireEvent[]) {
+    if (!stored.has(event.seq)) stored.set(event.seq, event);
+  }
+  eventsByKey.set(key, stored);
+  return {
+    status: 200,
+    payload: { ok: true, protocol: 1, acked_seq: ackedSeq(stored) },
+  };
 }
 
 export function startFakeServer(socketPath: string): Promise<FakeServer> {
   if (existsSync(socketPath)) unlinkSync(socketPath);
   const registry: Registry = new Map();
+  const events: EventStore = new Map();
   const records: FakeRecord[] = [];
 
   const server = createServer((req, res: ServerResponse) => {
@@ -129,10 +192,12 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
       let result: { status: number; payload: unknown };
       if (req.method !== "POST") {
         result = { status: 404, payload: { ok: false, protocol: 1, error: "not_found" } };
+      } else if (path === PATHS.events && Buffer.byteLength(raw) > MAX_EVENTS_BODY_BYTES) {
+        result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else if (!body || typeof body !== "object" || Array.isArray(body)) {
         result = { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
       } else {
-        result = handleFrame(path, body as Frame, registry, Date.now());
+        result = handleFrame(path, body as Frame, registry, Date.now(), events);
       }
 
       record.status = result.status;
@@ -155,6 +220,7 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
         socketPath,
         records,
         registry,
+        events,
         close: () =>
           new Promise<void>((done) => {
             server.close(() => done());

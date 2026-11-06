@@ -62,6 +62,7 @@ export class Presence {
     if (this.state === "online" || this.state === "registering") return;
     this.register();
   }
+  rejoin(): void { this.register(); }
 
   async stop(reason: string | null = null): Promise<void> {
     if (this.stopped) return;
@@ -109,6 +110,7 @@ export class Presence {
           }
           this.setState("online");
           this.lastHeartbeatAt = null;
+          this.opts.onOnline();
           this.scheduleHeartbeat();
           return;
         }

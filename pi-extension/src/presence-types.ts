@@ -26,6 +26,7 @@ export type PresenceOptions = {
   maxBackoffMs?: number;
   onNotice?: (message: string, level: "info" | "warning") => void;
   onStateChange?: (state: PresenceState) => void;
+  onOnline?: () => void;
 };
 
 export type ResolvedPresenceOptions = {
@@ -35,12 +36,18 @@ export type ResolvedPresenceOptions = {
   heartbeatSample: () => HeartbeatSample;
   notices: (message: string, level: "info" | "warning") => void;
   stateChanges: (state: PresenceState) => void;
+  onOnline: () => void;
   heartbeatMs: number;
   helloTimeoutMs: number;
   heartbeatTimeoutMs: number;
   byeTimeoutMs: number;
   initialBackoffMs: number;
   maxBackoffMs: number;
+};
+
+export type PresenceLike = {
+  status: () => PresenceStatus;
+  rejoin: () => void;
 };
 
 export type PresenceStatus = {
@@ -61,6 +68,7 @@ export function resolvePresenceOptions(options: PresenceOptions): ResolvedPresen
     heartbeatSample: options.heartbeatSample,
     notices: options.onNotice ?? (() => {}),
     stateChanges: options.onStateChange ?? (() => {}),
+    onOnline: options.onOnline ?? (() => {}),
     heartbeatMs: options.heartbeatMs ?? 15000,
     helloTimeoutMs: options.helloTimeoutMs ?? 3000,
     heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? 2000,

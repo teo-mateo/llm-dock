@@ -1,9 +1,14 @@
+import type { WireEvent } from "./events.ts";
+
 export const PROTOCOL_VERSION = 1;
+export const MAX_EVENTS_BATCH = 50;
+export const MAX_EVENTS_BODY_BYTES = 1024 * 1024;
 
 export const PATHS = {
   hello: "/v1/hello",
   heartbeat: "/v1/heartbeat",
   bye: "/v1/bye",
+  events: "/v1/events",
 } as const;
 
 export type WirePath = (typeof PATHS)[keyof typeof PATHS];
@@ -54,6 +59,14 @@ export type HelloFrame = HelloFields & { protocol: number; type: "hello" };
 export type HeartbeatFrame = HeartbeatFields & { protocol: number; type: "heartbeat" };
 export type ByeFrame = ByeFields & { protocol: number; type: "bye" };
 
+export type EventsFields = {
+  session_id: string;
+  instance_id: string;
+  events: WireEvent[];
+};
+
+export type EventsFrame = EventsFields & { protocol: number; type: "events" };
+
 export type ServerResponse = {
   ok: boolean;
   protocol: number;
@@ -61,6 +74,7 @@ export type ServerResponse = {
   session_id?: string;
   instance_id?: string;
   server_time?: number;
+  acked_seq?: number;
 };
 
 export function buildHello(fields: HelloFields): HelloFrame {
@@ -73,6 +87,10 @@ export function buildHeartbeat(fields: HeartbeatFields): HeartbeatFrame {
 
 export function buildBye(fields: ByeFields): ByeFrame {
   return { protocol: PROTOCOL_VERSION, type: "bye", ...fields };
+}
+
+export function buildEvents(fields: EventsFields): EventsFrame {
+  return { protocol: PROTOCOL_VERSION, type: "events", ...fields };
 }
 
 export function parseResponse(text: string): ServerResponse | null {

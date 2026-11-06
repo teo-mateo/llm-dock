@@ -140,8 +140,8 @@ Split like chatterbox: `index.ts` (wiring), pure modules for outbox/protocol/pro
 with `node --test` units, a transport module.
 
 **Registration & heartbeat** — the wire fields, paths, status codes and timeouts are
-specified once in §3 *Extension endpoint*; this is the behaviour (P1 skeleton today:
-hello/heartbeat/bye only).
+specified once in §3 *Extension endpoint*; this is the behaviour (P1 today:
+hello/heartbeat/bye plus `POST /v1/events`).
 - On `session_start` (any reason): `hello` with the session identity and runtime
   metadata. `instance_id` is random per runtime, so one session resumed in two
   terminals is two instances, not one.
@@ -154,16 +154,22 @@ hello/heartbeat/bye only).
 - On `session_shutdown`: best-effort `bye {reason}`; on `new/resume/fork` the next
   `session_start` links `previous_session_id`.
 
-**Event mirror** — subscribes to the events in §0 and emits the vocabulary in §3.
-Each event gets a per-instance monotonic `seq`. Token deltas are coalesced (~100 ms
-or ~2 KB batches) before leaving the process; tool updates throttled and truncated
-(e.g. 64 KB per result, with `truncated: true`).
+**Event mirror** — `mirror.ts` subscribes to the events in §0 and emits the vocabulary
+in §3 through `events.ts` builders. Each event gets a monotonic `seq` from an
+`EventSequencer` created at `session_start`. Token deltas are coalesced (~100 ms or
+~2 KB batches) and flushed at `message_end`; tool updates are throttled to ≤ 4/s per
+call; tool args/results are capped at 64 KB with `truncated: true`. `index.ts` only
+forwards pi events into the mirror (the size/clock helpers live in `message-content.ts`
+and `coalesce.ts`).
 
-**Outbox & reconnect** — bounded in-memory outbox; events stay until the dashboard
-acks their `seq`. On reconnect: re-`hello`, resend unacked. Overflow drops the oldest
-deltas first, never prompts/state events, and records a `gap` event. The outbox will
-be a separate pure `outbox.ts`, driven by a registered callback from `Presence`
-(whose state machine already owns reconnect/backoff); `Presence` itself never holds
+**Outbox & reconnect** — pure `outbox.ts`, bounded to 1000 data events (gap markers are
+extra and merge adjacent dropped seqs). Events stay until the dashboard acks their
+`seq`. Overflow drops the oldest deltas first, then tool updates, and never
+`state`/`run_end`/`user_message`/`assistant_message`; it records a `gap` event at the
+dropped seq's slot. `sender.ts` flushes batches (≤ 50 events, ≤ 1 MiB body) while
+`Presence` is online, using the shared `backoff.ts`, and resends all unacked events from
+`Presence`'s `onOnline` callback after every successful (re-)hello. A 404 on `/v1/events`
+calls `Presence.rejoin()`, the same re-hello path as a heartbeat. `Presence` owns no
 events.
 
 **Inbound commands** (SSE stream from the dashboard, each with `command_id`, result
@@ -242,16 +248,16 @@ mostly verbatim, every frame `{type, seq, ts, …}`):
 |---|---|---|
 | `hello` / `bye` / `heartbeat` | §2 | session_start / session_shutdown / timer |
 | `state` | `idle \| working \| waiting_prompt` | agent_start, agent_settled, ui_prompt_* |
-| `user_message` | text, images (refs), `origin: terminal\|phone\|extension` | input / message_start(user) |
+| `user_message` | text, image count, `origin: terminal\|extension` | input |
 | `assistant_delta` | text and thinking chunks | message_update |
 | `assistant_message` | final content, usage, model | message_end |
-| `tool_start` / `tool_update` / `tool_end` | id, name, args, partial/result, isError, durationMs | tool_execution_* |
+| `tool_start` / `tool_update` / `tool_end` | call id, name, args/partial/result, is_error, duration_ms, truncated | tool_execution_* |
 | `turn_end` / `run_end` | outcome `completed\|aborted\|error` | turn_end / agent_settled |
 | `model_changed` / `thinking_changed` | new + previous | model_select / thinking_level_select |
-| `compaction` | summary flag, tokens | session_compact |
+| `compaction` | summary, tokens_before, reason | session_compact |
 | `prompt_open` / `prompt_closed` | §4 | broker |
 | `terminal_waiting` | kind, title (unanswerable) | ui_prompt_start from other extensions |
-| `notice` / `gap` | text / dropped range | extension |
+| `notice` / `gap` | text / dropped seq range | extension |
 
 Client frames on SSE are the same events, plus `heartbeat` and `command_result`.
 Unlike chat, there is no raw OpenAI delta — every frame is typed.
@@ -350,6 +356,41 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 
 200: `{ok: true, protocol: 1}`.
 
+**`events`** — `POST /v1/events`
+
+| Field | Type | Null | Notes |
+|---|---|---|---|
+| `protocol` | int | no | `1` |
+| `type` | string | no | `"events"` |
+| `session_id` | string | no | |
+| `instance_id` | string | no | |
+| `events` | array | no | max **50** per batch; body max **1 MiB**; each event ≤ that body limit |
+
+200: `{ok: true, protocol: 1, acked_seq: N}`. `acked_seq` is the highest `N` such that
+every seq `1..N` is stored or covered by a `gap` range. Duplicate seqs are accepted and
+ignored (idempotent resend). The same 404/400/status rules as the presence frames; an
+unknown session is `404 unknown_session`, an invalid/oversize batch or event is
+`400 bad_frame`.
+
+**Event payloads** (common `seq` int ≥ 1 monotonic per registered session/instance, `ts`
+epoch ms):
+
+| Event | Payload fields (type / nullable / units) |
+|---|---|
+| `state` | `state`: `"idle" \| "working"` |
+| `user_message` | `text` string; `image_count` int; `origin`: `"terminal" \| "extension"` |
+| `assistant_delta` | `text` string; `thinking` string (one may be empty; coalesced chunks) |
+| `assistant_message` | `text` string; `thinking` string; `model`: `{provider, id}` \| null; `usage`: `{input, output, cache_read, cache_write, reasoning\|null, total_tokens, cost_total\|null}` \| null; `stop_reason` string \| null |
+| `tool_start` | `call_id` string; `name` string; `args` string \| null (JSON text, ≤ 64 KB); `truncated` bool |
+| `tool_update` | `call_id` string; `name` string; `partial` string \| null (JSON text, ≤ 64 KB); `truncated` bool; emitted at most 4/s per call |
+| `tool_end` | `call_id` string; `name` string; `result` string \| null (JSON text, ≤ 64 KB); `is_error` bool; `duration_ms` int \| null; `truncated` bool |
+| `turn_end` | `outcome`: `"completed" \| "aborted" \| "error"` |
+| `run_end` | `outcome`: `"completed" \| "aborted" \| "error"` |
+| `model_changed` | `model`: `{provider, id}` \| null; `previous`: `{provider, id}` \| null |
+| `thinking_changed` | `level` string \| null; `previous` string \| null |
+| `compaction` | `summary` string; `tokens_before` int \| null; `reason` string |
+| `gap` | `from_seq` int; `to_seq` int (inclusive); replaces/merges dropped seqs |
+
 Status codes:
 
 | Code | Body | Meaning |
@@ -386,12 +427,14 @@ for `bye` (the last two bounded so a dashboard restart cannot stall pi); server-
 read timeout 5 s per request.
 
 **Golden fixtures**: `pi-extension/test/contract/frames.json` is the executable form of
-this contract — ordered `{path, now, request, status, response}` cases (hello, second
-instance, heartbeat ok, unknown session, stale instance, bye, instance mismatch,
-bad_frame, unsupported_protocol, type/path mismatch, not_found, ignored extra field).
-The extension's TS test runs them through `test/fake-server.ts`'s `handleFrame`; the
-dashboard's pytest runs the same file against its handler
-(`dashboard/tests/test_pi_remote_fixtures.py`).
+the presence contract (hello, second instance, heartbeat ok, unknown session, stale
+instance, bye, instance mismatch, bad_frame, unsupported_protocol, type/path mismatch,
+not_found, ignored extra field). `pi-extension/test/contract/events.json` is the
+executable events contract (ok batch, duplicate resend, gap, unknown session, bad event,
+oversize batch, empty batch). Both are ordered `{path, now, request, status, response}`
+cases; the extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`,
+and the dashboard issue runs `frames.json` and `events.json` against its handler
+(`dashboard/tests/test_pi_remote_fixtures.py` for frames; a new events fixture test).
 
 **Ingest package** — `dashboard/pi_remote/`, built in #331:
 
@@ -422,10 +465,10 @@ dashboard's pytest runs the same file against its handler
   and the sweeper ends a stale instance with `end_reason = "stale"`. At supervisor start,
   leftover open rows are ended `dashboard_restart` before the listener accepts traffic.
 
-The later `POST /v1/events`, `GET /v1/commands` (SSE) and `POST /v1/command-results`,
-plus the additive presence fields (`waiting_prompt`, queued-message flag,
-`target_session_file` on bye), are not part of this contract — they arrive with the
-mirror/prompt issues and are ignored by a server that does not know them.
+The later `GET /v1/commands` (SSE) and `POST /v1/command-results`, plus the additive
+presence fields (`waiting_prompt`, queued-message flag, `target_session_file` on bye),
+are not part of this contract — they arrive with the commands/prompt issues and are
+ignored by a server that does not know them.
 
 **Relation to chat conversations** — separate entity. A pi session is not a
 `conversations` row: the model runs inside pi, not through `llm_proxy`, and the

@@ -207,3 +207,27 @@ test("disabled config never contacts the dashboard", async () => {
   assert.equal(presence.status().state, "disabled");
   assert.equal(transport.calls.length, 0);
 });
+
+test("onOnline fires after hello and rejoin registers again", async () => {
+  const clock = fakeClock();
+  const transport = scripted(() => ({ status: 200, body: { ok: true, protocol: 1 } }));
+  let online = 0;
+  const presence = new Presence({
+    socketPath: "/tmp/test.sock",
+    enabled: true,
+    clock,
+    helloFields,
+    heartbeatSample,
+    request: transport.request,
+    onOnline: () => { online += 1; },
+  });
+
+  presence.start();
+  await flush();
+  assert.equal(online, 1);
+
+  presence.rejoin();
+  await flush();
+  assert.equal(online, 2);
+  assert.deepEqual(transport.calls.map((call) => call.path), ["/v1/hello", "/v1/hello"]);
+});
