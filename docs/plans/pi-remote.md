@@ -313,6 +313,8 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 | POST | `/transcribe` | audio → text via local whisper.cpp |
 | DELETE | `/sessions/<id>` | delete stored history (ended sessions only) |
 
+Built in #339: `GET /api/pi/sessions` → `{"sessions": [summary_json…]}`; `GET /api/pi/sessions/<session_id>/<instance_id>/events?after=&limit=` → `page_json`, with `invalid_paging` 400 and `unknown_session` 404.
+
 Command flow: client POST → broker records audit row → queues to the live
 instance's command stream → waits briefly for `command_result` (e.g. 5 s) → returns
 it, or `202 pending` and the result arrives as an SSE frame. Session offline → 409

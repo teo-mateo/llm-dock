@@ -68,7 +68,7 @@ llm-dock/
 │   ├── docker_utils.py          # Docker API utilities
 │   │
 │   ├── routes/                  # Flask blueprints
-│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp, inspector_bp
+│   │   ├── __init__.py          # Exports: gpu_bp, services_bp, system_bp, openwebui_bp, metrics_bp, totp_bp, inspector_bp, pi_remote_bp
 │   │   ├── gpu.py               # GPU stats (nvidia-smi), device detection
 │   │   ├── services.py          # CRUD for model services
 │   │   ├── system.py            # System info endpoints
@@ -298,7 +298,8 @@ there or its size and existence stop resolving.
 6. `chat_bp` - Chat functionality
 7. `metrics_bp` - Service metrics
 8. `inspector_bp` - Request inspector captures
-9. `totp_bp` - TOTP enrollment
+9. `pi_remote_bp` - pi session summaries and stored event pages
+10. `totp_bp` - TOTP enrollment
 
 ### Authentication
 All API routes use the `@require_auth` decorator from `auth.py` except
@@ -486,6 +487,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 | `chat_bp` | `/api/chat/*` | Chat conversations, messages, runs, projects, project files, prompts, MCP registry, settings |
 | `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer/SGLang), live slots (llama.cpp only) |
 | `inspector_bp` | `/api/inspector/captures`, `/api/inspector/captures/<id>`, `/api/inspector/services` | Captured-request list/detail/delete, services-with-history ∪ live-proxies |
+| `pi_remote_bp` | `/api/pi/sessions`, `/api/pi/sessions/<session_id>/<instance_id>/events` | pi session summaries; paged stored events for one instance |
 | `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/status`, `/api/totp/disable` | TOTP enrollment |
 
 ## Coding Conventions
