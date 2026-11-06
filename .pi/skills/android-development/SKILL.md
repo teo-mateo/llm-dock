@@ -12,9 +12,20 @@ feature requirements and source relevant to the issue. Do not copy their rules h
 
 - Build, JVM tests, SDK setup, known test flakes: read `../android-testing/SKILL.md`.
 - Device interaction and screenshot evidence: read `../android-emulator/SKILL.md`.
-- Backend feature missing, or deterministic session-list/SSE states needed:
-  read `../android-fixtures/SKILL.md`.
+- Before starting a fixture server OR changing the app's backend URL for a test,
+  read `../android-fixtures/SKILL.md` completely. This is a prerequisite, not optional context.
 - Branch/PR hand-back: follow `../../../docs/pi-dev-protocol.md`.
+
+## Example: choose the skill before the action
+
+Task: photograph a pending-question indicator, but the deployed backend lacks prompts.
+Correct sequence: read `android-fixtures/SKILL.md` → start its server → run its setup helper
+(which checks readiness and forwarding) → connect with dummy credentials → change scenario.
+Do not start the server after reading only this entry skill, then troubleshoot login by guessing
+URLs, trying TOTP, or writing another parser. The fixture skill carries those prerequisites.
+
+Task: adjust row spacing against the live session list without changing servers.
+Use the emulator skill; no fixture skill is needed unless deterministic data becomes necessary.
 
 ## Working agreement
 

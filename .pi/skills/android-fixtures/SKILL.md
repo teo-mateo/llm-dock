@@ -16,12 +16,17 @@ Reserve the emulator. Start via the process tool (not shell backgrounding):
 python3 scripts/server.py --port 3999
 ```
 
-Readiness is `Android Pi fixture ready`. The server binds only 127.0.0.1; route the reserved
-emulator explicitly:
+Readiness is `Android Pi fixture ready`. Before touching login, run the preflight:
 
 ```bash
-$HOME/Android/Sdk/platform-tools/adb -s emulator-5554 reverse tcp:3999 tcp:3999
+python3 scripts/setup.py --device emulator-5554 --reserved
 ```
+
+The server binds only 127.0.0.1. This command checks the expected fixture is reachable, confirms
+the emulator is authorized, establishes and verifies adb reverse forwarding, and prints the app
+URL. It refuses physical devices and a conflicting existing mapping. `--reserved` confirms you
+already hold the reservation; it does not acquire one. Stop on failure instead of retrying login.
+The output says whether the mapping was created or reused; remove only a mapping you created.
 
 Record the app's prior dashboard URL without exposing its credential. In the emulator app only,
 sign out and connect to `http://127.0.0.1:3999` with the dummy password `fixture`.
@@ -66,6 +71,16 @@ updated. For the close transition select `empty`, then verify badge disappearanc
 has consumed the update; a single immediate `absent` assertion can race the SSE delivery.
 Label the screenshot **fixture-driven**. Do not describe it as a real pi prompt reaching the phone.
 Do not write another timed fixture server to reproduce these existing scenarios.
+
+## Example: diagnose connection failure before credentials
+
+Good: start `server.py`, run `setup.py --device emulator-5554 --reserved`, then use its printed
+URL and dummy password. If setup says the server is unavailable, inspect the fixture process;
+if it reports an adb problem, fix device authorization/forwarding before returning to login.
+
+Bad: host curl succeeds, but the app says connection failed, so repeatedly change passwords or
+try TOTP. Host reachability does not imply emulator reachability. The setup helper verifies the
+forwarding prerequisite; it does not claim a real app request succeeded.
 
 ## Coverage boundary
 

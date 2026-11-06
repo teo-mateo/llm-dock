@@ -15,6 +15,7 @@ android-fixtures/             deterministic Pi session-list + SSE evidence
   scripts/server.py           loopback-only mock dashboard
   scripts/scenarios.py        absent/empty/waiting/offline data
   scripts/scenario.py         change state explicitly, no timed transitions
+  scripts/setup.py            readiness + emulator authorization/forwarding preflight
   tests/test_helpers.py       real HTTP/SSE and UI parsing/target-safety checks
 ```
 

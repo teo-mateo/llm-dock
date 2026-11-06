@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 SKILL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL / "scripts"))
 from server import FixtureServer
+from setup import prepare
 from scenarios import sessions
 
 UI_PATH = SKILL.parent / "android-emulator/scripts/ui.py"
@@ -89,6 +90,44 @@ class FixtureTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             self.post("/__fixture/scenario", {"name": "typo"})
         self.assertEqual(caught.exception.code, 400)
+
+
+class SetupTests(unittest.TestCase):
+    def test_setup_creates_and_verifies_mapping(self):
+        responses = ["device", "", "", "emulator-5554 tcp:3999 tcp:3999"]
+        def adb(*_args, **_kwargs):
+            return subprocess.CompletedProcess([], 0, responses.pop(0))
+        with patch("setup.urlopen", return_value=io.StringIO('{"scenario":"empty"}')), \
+             patch("setup.subprocess.run", side_effect=adb) as run:
+            result = prepare("emulator-5554", 3999, "adb")
+        self.assertTrue(result["mapping_created"])
+        self.assertEqual(result["url"], "http://127.0.0.1:3999")
+        self.assertIn("reverse", run.call_args_list[2].args[0])
+
+    def test_setup_reuses_mapping_without_writing(self):
+        mapping = "emulator-5554 tcp:3999 tcp:3999"
+        with patch("setup.urlopen", return_value=io.StringIO('{"scenario":"waiting"}')), \
+             patch("setup.subprocess.run", side_effect=[subprocess.CompletedProcess([], 0, value)
+                   for value in ["device", mapping, mapping]]) as run:
+            self.assertFalse(prepare("emulator-5554", 3999, "adb")["mapping_created"])
+        self.assertEqual(run.call_count, 3)
+
+    def test_setup_refuses_conflicting_mapping(self):
+        with patch("setup.urlopen", return_value=io.StringIO('{"scenario":"empty"}')), \
+             patch("setup.subprocess.run", side_effect=[subprocess.CompletedProcess([], 0, value)
+                   for value in ["device", "emulator-5554 tcp:3999 tcp:8888"]]) as run:
+            with self.assertRaisesRegex(ValueError, "already forwards elsewhere"):
+                prepare("emulator-5554", 3999, "adb")
+        self.assertEqual(run.call_count, 2)
+
+    def test_setup_rejects_wrong_server_and_phone_before_adb(self):
+        with patch("setup.subprocess.run") as run:
+            with self.assertRaisesRegex(ValueError, "only emulator"):
+                prepare("phone", 3999, "adb")
+            with patch("setup.urlopen", return_value=io.StringIO('{"status":"healthy"}')):
+                with self.assertRaisesRegex(ValueError, "expected Android Pi fixture"):
+                    prepare("emulator-5554", 3999, "adb")
+        run.assert_not_called()
 
 
 class UiTests(unittest.TestCase):
