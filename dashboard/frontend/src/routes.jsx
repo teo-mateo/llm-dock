@@ -5,6 +5,7 @@ import ChatPage from './components/chat/ChatPage'
 import GhostChatPage from './components/chat/GhostChatPage'
 import ToolsPage from './components/tools/ToolsPage'
 import InspectorPage from './components/inspector/InspectorPage'
+import PiPage from './components/pi/PiPage'
 import SettingsPage from './components/SettingsPage'
 import { DefaultLayout, AppShell } from './layout'
 
@@ -25,6 +26,7 @@ export const routes = [
       { path: 'chat/project/:projectId', element: <ChatPage /> },
       { path: 'tools', element: <DefaultLayout><ToolsPage /></DefaultLayout> },
       { path: 'inspector', element: <DefaultLayout><InspectorPage /></DefaultLayout> },
+      { path: 'pi/:sessionId?/:instanceId?', element: <DefaultLayout><PiPage /></DefaultLayout> },
       { path: 'services/:serviceName/*', element: <DefaultLayout><ServiceDetailsPage /></DefaultLayout> },
       { path: 'settings', element: <DefaultLayout><SettingsPage /></DefaultLayout> },
     ],
