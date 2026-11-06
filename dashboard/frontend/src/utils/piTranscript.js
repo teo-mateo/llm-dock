@@ -32,23 +32,35 @@ function toolItem(ts, payload, status, output) {
   }
 }
 
-function noticeText(type, payload) {
+function noticePayload(type, payload) {
   if (type === 'model_changed') {
-    return `Model: ${modelLabel(payload.previous) || '—'} → ${modelLabel(payload.model) || '—'}`
+    return {
+      change: {
+        label: 'Model',
+        from: modelLabel(payload.previous) || '—',
+        to: modelLabel(payload.model) || '—',
+      },
+    }
   }
   if (type === 'thinking_changed') {
-    return `Thinking: ${payload.previous || '—'} → ${payload.level || '—'}`
+    return {
+      change: {
+        label: 'Thinking',
+        from: payload.previous || '—',
+        to: payload.level || '—',
+      },
+    }
   }
   if (type === 'compaction') {
     const tokens =
       payload.tokens_before === null || payload.tokens_before === undefined
         ? ''
         : ` (${payload.tokens_before} tokens)`
-    return `Context compacted${tokens}`
+    return { text: `Context compacted${tokens}` }
   }
   if (type === 'gap') {
     const count = payload.to_seq - payload.from_seq + 1
-    return `${count} events missing (${payload.from_seq}–${payload.to_seq})`
+    return { text: `${count} events missing (${payload.from_seq}–${payload.to_seq})` }
   }
   return null
 }
@@ -137,8 +149,8 @@ function applyEvent(state, event) {
     closeOpen(state)
     state.items.push({ kind: 'run_end', id: `r${seq}`, outcome: payload.outcome, ts })
   } else {
-    const text = noticeText(type, payload)
-    if (text) state.items.push({ kind: 'notice', id: `n${seq}`, text, ts })
+    const notice = noticePayload(type, payload)
+    if (notice) state.items.push({ kind: 'notice', id: `n${seq}`, ts, ...notice })
   }
 }
 

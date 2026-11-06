@@ -184,10 +184,20 @@ describe('buildTranscript', () => {
       }),
       event(2, 'thinking_changed', { previous: 'low', level: 'high' }),
     ])
-    expect(items.map((item) => item.text)).toEqual([
-      'Model: a/1 → b/2',
-      'Thinking: low → high',
+    expect(items[0].change).toEqual({ label: 'Model', from: 'a/1', to: 'b/2' })
+    expect(items[1].change).toEqual({ label: 'Thinking', from: 'low', to: 'high' })
+    expect(items[0].text).toBeUndefined()
+    expect(items[1].text).toBeUndefined()
+  })
+
+  it('model notice keeps a model id holding the separator', () => {
+    const { items } = buildTranscript([
+      event(1, 'model_changed', {
+        previous: { provider: 'x', id: 'old' },
+        model: { provider: 'x', id: 'a → b' },
+      }),
     ])
+    expect(items[0].change.to).toBe('x/a → b')
   })
 
   it('compaction notice with and without tokens', () => {
@@ -199,6 +209,7 @@ describe('buildTranscript', () => {
       'Context compacted (123 tokens)',
       'Context compacted',
     ])
+    expect(items.map((item) => item.change)).toEqual([undefined, undefined])
   })
 
   it('gap notice counts missing events', () => {
@@ -206,6 +217,7 @@ describe('buildTranscript', () => {
       event(1, 'gap', { from_seq: 5, to_seq: 7 }),
     ])
     expect(items[0].text).toBe('3 events missing (5–7)')
+    expect(items[0].change).toBeUndefined()
   })
 
   it('state turn_end and unknown types add no items', () => {
