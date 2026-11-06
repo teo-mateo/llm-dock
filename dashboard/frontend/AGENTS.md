@@ -178,6 +178,7 @@ Key mechanics:
 | `/chat/project/:projectId` | `ChatPage` | Project file explorer |
 | `/tools` | `ToolsPage` | MCP registry, default prompt |
 | `/inspector` | `InspectorPage` | Request-capture viewer (issue #234) |
+| `/pi/:sessionId?/:instanceId?` | `PiPage` | Live pi session list + read-only transcript |
 | `/services/:serviceName/*` | `ServiceDetailsPage` | Config / logs / metrics |
 | `/settings` | `SettingsPage` | Theme, prompts, OpenRouter models, TOTP |
 
@@ -261,6 +262,12 @@ Key mechanics:
 | `ParameterReference.jsx` | Flag metadata reference + add-flag |
 | `SettingsPage.jsx` / `settings/PromptsEditor.jsx` / `TOTPSetup.jsx` | Settings: theme, chat prompts editor, TOTP enrollment |
 | `settings/OpenRouterModelsPicker.jsx` | Curated OpenRouter list: live-catalog pane (search, vendor/facet filters, sort, counted "show N non-chat" reveal) + short-list pane (reorder, inline labels, stale/deprecated badges, read-only ladder chips with a per-row re-read) + collapsed JSON panel. Rows carry a provider line (count, names, quantizations, price spread, expandable per-provider uptime/status) once it lands; which rows want one comes from an `IntersectionObserver` on the pane, not from list position |
+| `pi/PiPage.jsx` | Route owner: session list + selected session header/transcript; selecting navigates to `/pi/:sessionId/:instanceId` |
+| `pi/PiSessionList.jsx` | Session rows with text status, name/cwd, live-only filter, empty state |
+| `pi/PiSessionHeader.jsx` | Selected session name, state badge, cwd/model/thinking line, context bar, ended reason |
+| `pi/PiTranscript.jsx` | Maps transcript items to messages/tools/notices/run-end dividers; auto-scrolls only when near the bottom |
+| `pi/PiMessage.jsx` | User bubbles + assistant markdown, collapsed thinking, streaming caret, usage |
+| `pi/PiToolCard.jsx` | Tool name/status, collapsed args, output capped at 20 lines, truncation note |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
 | `tools/RegistryEditor.jsx` | JSON editor for `mcp_servers.json` |
 | `tools/DefaultPromptEditor.jsx` | Default system prompt editor |

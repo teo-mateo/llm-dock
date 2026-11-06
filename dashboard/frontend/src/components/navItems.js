@@ -5,5 +5,6 @@ export const NAV_ITEMS = [
   { to: '/chat', end: false, icon: 'fa-comments', label: 'Chat' },
   { to: '/tools', end: false, icon: 'fa-toolbox', label: 'Tools' },
   { to: '/inspector', end: false, icon: 'fa-magnifying-glass', label: 'Inspector' },
+  { to: '/pi', end: false, icon: 'fa-terminal', label: 'pi' },
   { to: '/settings', end: false, icon: 'fa-gear', label: 'Settings' },
 ]

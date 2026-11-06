@@ -8,6 +8,7 @@ import ChatPage from './components/chat/ChatPage'
 import GhostChatPage from './components/chat/GhostChatPage'
 import ToolsPage from './components/tools/ToolsPage'
 import SettingsPage from './components/SettingsPage'
+import PiPage from './components/pi/PiPage'
 import { AppShell, DefaultLayout } from './layout'
 
 // The data router's route table is the single source of truth for paths, and
@@ -47,6 +48,18 @@ describe('route table', () => {
 
   it('serves the project page (beating the optional conversation param)', () => {
     expect(leafFor('/chat/project/p1').type).toBe(ChatPage)
+  })
+
+  it('serves pi at /pi and /pi/:sessionId/:instanceId inside the default layout', () => {
+    const element = leafFor('/pi')
+    expect(element.type).toBe(DefaultLayout)
+    expect(element.props.children.type).toBe(PiPage)
+
+    const router = createMemoryRouter(routes, { initialEntries: ['/pi/s1/i1'] })
+    const leaf = router.state.matches[1]
+    expect(leaf.route.element.props.children.type).toBe(PiPage)
+    expect(leaf.params.sessionId).toBe('s1')
+    expect(leaf.params.instanceId).toBe('i1')
   })
 
   it('serves tools and settings', () => {
