@@ -54,7 +54,63 @@ CREATE TABLE IF NOT EXISTS pi_commands (
 
 CREATE INDEX IF NOT EXISTS idx_pi_commands_session
     ON pi_commands(session_id, instance_id, issued_at);
+
+CREATE TABLE IF NOT EXISTS pi_prompts (
+    session_id      TEXT NOT NULL,
+    instance_id     TEXT NOT NULL,
+    prompt_id       TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    title           TEXT,
+    message         TEXT,
+    options_json    TEXT NOT NULL DEFAULT '[]',
+    allow_free_text INTEGER NOT NULL DEFAULT 0,
+    timeout_ms      INTEGER,
+    status          TEXT NOT NULL,
+    value_json      TEXT,
+    answered_by     TEXT,
+    opened_seq      INTEGER NOT NULL,
+    opened_ts       INTEGER NOT NULL,
+    closed_seq      INTEGER,
+    closed_ts       INTEGER,
+    applied_seq     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, instance_id, prompt_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pi_prompts_session_status
+    ON pi_prompts(session_id, instance_id, status);
 """
+
+UPSERT_PROMPT_SQL = """
+INSERT INTO pi_prompts (
+    session_id, instance_id, prompt_id, kind, title, message,
+    options_json, allow_free_text, timeout_ms, status,
+    opened_seq, opened_ts, applied_seq
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+ON CONFLICT(session_id, instance_id, prompt_id) DO UPDATE SET
+    kind = excluded.kind,
+    title = excluded.title,
+    message = excluded.message,
+    options_json = excluded.options_json,
+    allow_free_text = excluded.allow_free_text,
+    timeout_ms = excluded.timeout_ms,
+    status = 'open',
+    value_json = NULL,
+    answered_by = NULL,
+    opened_seq = excluded.opened_seq,
+    opened_ts = excluded.opened_ts,
+    closed_seq = NULL,
+    closed_ts = NULL,
+    applied_seq = excluded.applied_seq
+ WHERE pi_prompts.applied_seq < excluded.applied_seq
+"""
+
+CLOSE_PROMPT_SQL = """
+UPDATE pi_prompts SET status = ?, value_json = ?, answered_by = ?, closed_seq = ?, closed_ts = ?,
+    applied_seq = ?
+ WHERE session_id = ? AND instance_id = ? AND prompt_id = ?
+   AND applied_seq < ?
+"""
+
 
 UPSERT_SQL = """
 INSERT INTO pi_sessions (

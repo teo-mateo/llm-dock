@@ -5,6 +5,7 @@ from typing import Iterator, Optional
 
 from .command_store import CommandStore
 from .event_store import EventStore
+from .prompt_store import PromptStore
 from .schema import SCHEMA_SQL
 from .session_store import SessionStore
 
@@ -21,6 +22,7 @@ class PiRemoteDB:
         self.sessions = SessionStore(self)
         self.events = EventStore(self)
         self.commands = CommandStore(self)
+        self.prompts = PromptStore(self)
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._persistent_conn is not None:
@@ -55,6 +57,7 @@ class PiRemoteDB:
                 ("pi_sessions", "acked_seq", "INTEGER NOT NULL DEFAULT 0"),
                 ("pi_events", "gap_from", "INTEGER"),
                 ("pi_events", "gap_to", "INTEGER"),
+                ("pi_prompts", "applied_seq", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:

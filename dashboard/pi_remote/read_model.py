@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from .events import StoredEvent
+from .prompts import PromptRow
 from .registry import PresenceEntry
 
 
@@ -20,6 +21,7 @@ class SessionSummary:
     live: bool
     state: Optional[str]
     context_percent: Optional[float]
+    prompts: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,11 @@ class EventPage:
     has_more: bool
 
 
-def session_summary(row: Mapping[str, Any], presence: Optional[PresenceEntry]) -> SessionSummary:
+def session_summary(
+    row: Mapping[str, Any],
+    presence: Optional[PresenceEntry],
+    prompts: Sequence[PromptRow] = (),
+) -> SessionSummary:
     provider = row.get("model_provider")
     model_id = row.get("model_id")
     model = f"{provider}/{model_id}" if provider and model_id else None
@@ -57,6 +63,7 @@ def session_summary(row: Mapping[str, Any], presence: Optional[PresenceEntry]) -
         live=live,
         state=presence.state if presence is not None else None,
         context_percent=context.percent if context is not None else None,
+        prompts=[prompt.question() for prompt in prompts if prompt.status == "open"],
     )
 
 

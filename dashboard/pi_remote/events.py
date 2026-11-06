@@ -8,12 +8,14 @@ from .wire_types import (
     is_nullable_number,
     is_nullable_str,
     is_nullable_usage,
+    is_prompt_body,
 )
 
 MAX_EVENTS_BATCH = 50
 
 ORIGINS = frozenset({"terminal", "extension"})
 OUTCOMES = frozenset({"completed", "aborted", "error"})
+PROMPT_TYPES = ("prompt_open", "prompt_closed")
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,8 @@ def _valid_payload(event_type: str, body: Dict[str, Any]) -> bool:
             and is_nullable_number(body.get("tokens_before"))
             and isinstance(body.get("reason"), str)
         )
+    if event_type in PROMPT_TYPES:
+        return is_prompt_body(event_type, body)
     return True
 
 def _parse_event(raw: Any) -> Optional[Event]:

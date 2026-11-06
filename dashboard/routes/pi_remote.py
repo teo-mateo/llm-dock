@@ -1,6 +1,7 @@
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from auth import require_auth
+from pi_remote.answering import answer_prompt
 from pi_remote.api_json import page_json, parse_message_body, parse_paging, summary_json
 from pi_remote.stream import session_stream as build_session_stream
 from pi_remote.stream import sessions_stream as build_sessions_stream
@@ -89,6 +90,21 @@ def session_abort(session_id, instance_id):
     if unavailable is not None:
         return unavailable
     return _command_response(client, (session_id, instance_id), "abort", {})
+
+
+@pi_remote_bp.route(
+    "/api/pi/sessions/<session_id>/<instance_id>/prompts/<prompt_id>/answer",
+    methods=["POST"],
+)
+@require_auth
+def session_prompt_answer(session_id, instance_id, prompt_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
+    status, payload = answer_prompt(
+        client, (session_id, instance_id), prompt_id, request.get_json(silent=True)
+    )
+    return jsonify(payload), status
 
 
 @pi_remote_bp.route(
