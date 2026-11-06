@@ -32,7 +32,7 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-test("hello, heartbeats, re-hello after a server restart, then bye", async () => {
+test("hello, heartbeats, re-hello after a server restart, then bye", { timeout: 10000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-remote-"));
   const socketPath = join(dir, "fake.sock");
   const fake = await startFakeServer(socketPath);
@@ -53,9 +53,10 @@ test("hello, heartbeats, re-hello after a server restart, then bye", async () =>
     initialBackoffMs: 50,
   });
 
-  presence.start();
-  await sleep(150);
-  assert.equal(presence.status().state, "online");
+  try {
+    presence.start();
+    await sleep(150);
+    assert.equal(presence.status().state, "online");
 
   const hellos = fake.records.filter((record) => record.path === "/v1/hello");
   assert.ok(hellos.length >= 1);
@@ -92,6 +93,8 @@ test("hello, heartbeats, re-hello after a server restart, then bye", async () =>
   assert.equal(byes.length, 1);
   assert.equal(byes[0].status, 200);
   assert.equal((byes[0].body as Record<string, any>).reason, "test-shutdown");
-
-  await fake.close();
+  } finally {
+    await presence.stop("test-shutdown");
+    await fake.close();
+  }
 });

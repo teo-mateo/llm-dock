@@ -14,23 +14,25 @@ presence ingest exists; event storage is the next issue. The wire contract is in
 |---|---|
 | `src/config.ts` | socket path + enabled flag; env `PI_REMOTE_SOCKET`, `PI_REMOTE=0`, file `~/.pi/agent/pi-remote.json`; env > file > default |
 | `src/protocol.ts` | typed frames for `hello` / `heartbeat` / `bye` / `events`, `protocol: 1`, batch/body limits, builders, response parsing — pure |
-| `src/events.ts` | event vocabulary, wire types, builders and the `EventSequencer` — pure, owns every event field name |
-| `src/coalesce.ts` | delta coalescer (~100 ms / 2 KB), tool-update throttle (≤ 4/s), 64 KB tool-text truncation — pure |
-| `src/outbox.ts` | bounded unacked-event queue, ack, oldest-delta drops and `gap` marker — pure |
-| `src/sender.ts` | batches unacked events to `/v1/events`, shared backoff, rejoin on 404, `onOnline` flush |
+| `src/events.ts` | event vocabulary, typed wire bodies, `EventStamper` (seq + ts) and `gapEvent` — pure, owns every event field name |
+| `src/coalesce.ts` | delta coalescer (~100 ms / 2 KB) — pure |
+| `src/throttle.ts` | tool-update throttle (≤ 4/s per call) — pure |
+| `src/tool-text.ts` | JSON serialization + 64 KB UTF-8 truncation of tool args/results — pure |
+| `src/outbox.ts` | bounded unacked-event queue, ack, oldest-delta drops, `discard` and `gap` markers — pure |
+| `src/sender.ts` | batches unacked events to `/v1/events`, shared backoff, rejoin on 404, `onOnline(ackedSeq)` flush, `bad_frame` discard, stop waits for in-flight |
 | `src/mirror.ts` + `src/message-content.ts` | pi event → wire event mapping and content/usage extraction — pure |
 | `src/index.ts` | pi lifecycle subscriptions, session setup, `/remote` handler and forwarding only |
 | `src/transport.ts` | the only `node:http` module; `POST` over the socket with a timeout |
-| `src/presence.ts` + `src/presence-types.ts` | presence state machine: offline → registering → online, heartbeat timer, backoff, idempotent `start()` / `stop()`, injected clock and request |
+| `src/presence.ts` + `src/presence-types.ts` | presence state machine: offline → registering → online, heartbeat timer, backoff, idempotent `start()` / `stop()` / `rejoin()`, `onOnline(ackedSeq)`, injected clock and request |
 | `src/session.ts` | derive a session id from pi's session file name — pure |
 | `src/backoff.ts` | the 1 s → 30 s retry policy — pure, reused by later reconnects |
-| `src/activity.ts` | the idle/working flag fed to heartbeats |
+| `src/activity.ts` | the working flag set by the mirror and read by the heartbeat |
 | `src/pi-adapter.ts` | `ExtensionContext` → protocol frames (the `contextWindow` → `window` rename lives here) |
 | `src/remote-command.ts` | `/remote` argument parsing and the status formatter — pure |
 | `src/remote-command-handler.ts` | the `/remote` command's effects (stop/start/status) |
-| `src/session-runtime.ts` | builds and starts Presence + Sender + Mirror for one `session_start`; owns their stop |
+| `src/session-runtime.ts` | builds Presence + Sender + Mirror for one `session_start`; owns `handle`, `pause`, `resume`, `stop` |
 | `src/subscriptions.ts` | registers the pi event subscriptions used by the mirror |
-| `test/` | `node --test` suites, the fake clock and the fake server |
+| `test/` | `node --test` suites, the fake clock, fake server and fake-events handler |
 | `test/contract/frames.json` | golden presence-contract fixtures shared with the dashboard's pytest |
 | `test/contract/events.json` | golden events-contract fixtures shared with the dashboard's next issue |
 

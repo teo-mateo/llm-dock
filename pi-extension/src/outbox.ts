@@ -1,8 +1,8 @@
-import { gapEvent, type GapEvent, type WireEvent } from "./events.ts";
+import { gapEvent, type EventType, type GapEvent, type WireEvent } from "./events.ts";
 
 export const DEFAULT_CAPACITY = 1000;
 
-const PROTECTED = new Set<string>([
+const PROTECTED: ReadonlySet<EventType> = new Set([
   "state",
   "run_end",
   "user_message",
@@ -30,8 +30,27 @@ export class Outbox {
       this.items.push(event);
       return;
     }
-    this.recordGap(dropped);
+    this.recordGapRange(dropped.seq, dropped.seq);
     this.items.push(event);
+  }
+
+  discard(seqs: number[]): void {
+    const sorted = [...new Set(seqs)].sort((a, b) => a - b);
+    if (sorted.length === 0) return;
+    const remove = new Set(sorted);
+    this.items = this.items.filter((event) => !remove.has(event.seq));
+    let runStart = sorted[0];
+    let previous = sorted[0];
+    for (const seq of sorted.slice(1)) {
+      if (seq === previous + 1) {
+        previous = seq;
+      } else {
+        this.recordGapRange(runStart, previous);
+        runStart = seq;
+        previous = seq;
+      }
+    }
+    this.recordGapRange(runStart, previous);
   }
 
   ack(seq: number): void {
@@ -53,27 +72,25 @@ export class Outbox {
   private dropOne(): WireEvent | null {
     let index = this.items.findIndex((event) => event.type === "assistant_delta");
     if (index < 0) index = this.items.findIndex((event) => event.type === "tool_update");
-    if (index < 0) index = this.items.findIndex((event) => !PROTECTED.has(event.type));
+    if (index < 0) {
+      index = this.items.findIndex((event) => !PROTECTED.has(event.type));
+    }
     if (index < 0) return null;
     return this.items.splice(index, 1)[0];
   }
 
-  private recordGap(dropped: WireEvent): void {
+  private recordGapRange(fromSeq: number, toSeq: number): void {
     const gaps = this.items.filter((event): event is GapEvent => event.type === "gap");
-    const covering = gaps.find(
-      (gap) => dropped.seq >= gap.from_seq && dropped.seq <= gap.to_seq,
+    const target = gaps.find(
+      (gap) => !(toSeq < gap.from_seq - 1 || fromSeq > gap.to_seq + 1),
     );
-    if (covering) return;
-    const adjacent = gaps.find(
-      (gap) => gap.to_seq + 1 === dropped.seq || dropped.seq + 1 === gap.from_seq,
-    );
-    if (adjacent) {
-      const from = Math.min(adjacent.from_seq, dropped.seq);
-      const to = Math.max(adjacent.to_seq, dropped.seq);
-      const replacement = gapEvent(adjacent.seq, this.now(), from, to);
-      this.items[this.items.indexOf(adjacent)] = replacement;
+    if (target) {
+      const from = Math.min(target.from_seq, fromSeq);
+      const to = Math.max(target.to_seq, toSeq);
+      const replacement = gapEvent(target.seq, this.now(), from, to);
+      this.items[this.items.indexOf(target)] = replacement;
       return;
     }
-    this.items.push(gapEvent(dropped.seq, this.now(), dropped.seq, dropped.seq));
+    this.items.push(gapEvent(fromSeq, this.now(), fromSeq, toSeq));
   }
 }

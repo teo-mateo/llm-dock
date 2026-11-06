@@ -29,6 +29,7 @@ export class EventSender {
   private flushing = false;
   private stopped = false;
   private retryTimer: unknown;
+  private inFlight: Promise<void> | null = null;
 
   constructor(options: SenderOptions) {
     this.socketPath = options.socketPath;
@@ -49,15 +50,28 @@ export class EventSender {
     this.flush();
   }
 
-  onOnline(): void {
+  start(): void {
+    this.stopped = false;
+  }
+
+  onOnline(ackedSeq: number): void {
+    this.outbox.ack(ackedSeq);
     this.clearRetry();
     this.backoff.reset();
     this.flush();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     this.clearRetry();
+    const inFlight = this.inFlight;
+    if (inFlight === null) return;
+    let timer: unknown;
+    const bound = new Promise<void>((resolve) => {
+      timer = this.clock.setTimeout(resolve, 1500);
+    });
+    await Promise.race([inFlight, bound]);
+    if (timer !== undefined) this.clock.clearTimeout(timer);
   }
 
   private flush(): void {
@@ -72,12 +86,17 @@ export class EventSender {
       events: batch,
     });
     this.flushing = true;
-    this.request(this.socketPath, PATHS.events, frame, this.timeoutMs)
+    const task = this.request(this.socketPath, PATHS.events, frame, this.timeoutMs)
       .then((result) => {
         if (this.stopped) return;
         const kind = classifyResponse(result.status, result.body);
         if (kind === "unknown_session") {
           this.presence.rejoin();
+          return;
+        }
+        if (kind === "bad_frame") {
+          this.outbox.discard(batch.map((event) => event.seq));
+          this.backoff.reset();
           return;
         }
         if (kind !== "ok") {
@@ -93,13 +112,14 @@ export class EventSender {
         this.outbox.ack(acked);
         this.backoff.reset();
       })
-      .catch((err: Error) => {
+      .catch(() => {
         if (!this.stopped) this.scheduleRetry();
       })
       .finally(() => {
         this.flushing = false;
         if (!this.stopped) this.flush();
       });
+    this.inFlight = task;
   }
 
   private takeBatch(sessionId: string, instanceId: string): WireEvent[] {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { stateEvent } from "../src/events.ts";
+import { EventStamper, stateBody, type WireEvent } from "../src/events.ts";
 import { Outbox } from "../src/outbox.ts";
 import type { PresenceState } from "../src/presence-types.ts";
 import { EventSender } from "../src/sender.ts";
@@ -47,6 +47,11 @@ function ackFor(payload: any) {
   return { status: 200, body: { ok: true, protocol: 1, acked_seq: max } };
 }
 
+function makeStates(count: number): WireEvent[] {
+  const stamper = new EventStamper({ now: () => 1000 });
+  return Array.from({ length: count }, () => stamper.stamp(stateBody("idle")));
+}
+
 test("enqueued events flush in order and are acknowledged", async () => {
   const clock = fakeClock();
   const transport = scripted(ackFor);
@@ -58,8 +63,9 @@ test("enqueued events flush in order and are acknowledged", async () => {
     request: transport.request,
   });
 
-  sender.enqueue(stateEvent(1, 1000, "idle"));
-  sender.enqueue(stateEvent(2, 1000, "working"));
+  const events = makeStates(2);
+  sender.enqueue(events[0]);
+  sender.enqueue(events[1]);
   await flush();
 
   assert.equal(transport.calls.length, 2);
@@ -72,9 +78,10 @@ test("one batch carries multiple queued events", async () => {
   const transport = scripted(ackFor);
   const presenceState = presence();
   const outbox = new Outbox(1000, () => clock.now());
-  outbox.enqueue(stateEvent(1, 1000, "idle"));
-  outbox.enqueue(stateEvent(2, 1000, "working"));
-  outbox.enqueue(stateEvent(3, 1000, "idle"));
+  const events = makeStates(3);
+  outbox.enqueue(events[0]);
+  outbox.enqueue(events[1]);
+  outbox.enqueue(events[2]);
   const sender = new EventSender({
     socketPath: "/tmp/test.sock",
     presence: presenceState,
@@ -83,7 +90,7 @@ test("one batch carries multiple queued events", async () => {
     request: transport.request,
   });
 
-  sender.onOnline();
+  sender.onOnline(0);
   await flush();
   assert.equal(transport.calls.length, 1);
   assert.deepEqual(transport.calls[0].events.map((event: any) => event.seq), [1, 2, 3]);
@@ -100,12 +107,12 @@ test("offline presence holds events until onOnline", async () => {
     request: transport.request,
   });
 
-  sender.enqueue(stateEvent(1, 1000, "idle"));
+  sender.enqueue(makeStates(1)[0]);
   await flush();
   assert.equal(transport.calls.length, 0);
 
   presenceState.setState("online");
-  sender.onOnline();
+  sender.onOnline(0);
   await flush();
   assert.equal(transport.calls.length, 1);
 });
@@ -124,7 +131,7 @@ test("404 on events triggers rejoin and keeps the events", async () => {
     request: transport.request,
   });
 
-  sender.enqueue(stateEvent(1, 1000, "idle"));
+  sender.enqueue(makeStates(1)[0]);
   await flush();
   assert.equal(presenceState.rejoinCalls(), 1);
   assert.deepEqual(clock.pending(), []);
@@ -142,7 +149,7 @@ test("transport failure backs off with the shared backoff", async () => {
     request: transport.request,
   });
 
-  sender.enqueue(stateEvent(1, 1000, "idle"));
+  sender.enqueue(makeStates(1)[0]);
   await flush();
   assert.deepEqual(clock.pending(), [1000]);
 
@@ -163,7 +170,37 @@ test("missing acked_seq is a retryable failure", async () => {
     request: transport.request,
   });
 
-  sender.enqueue(stateEvent(1, 1000, "idle"));
+  sender.enqueue(makeStates(1)[0]);
   await flush();
   assert.deepEqual(clock.pending(), [1000]);
+});
+
+
+test("bad_frame discards the batch and records a gap", async () => {
+  const clock = fakeClock();
+  let calls = 0;
+  const transport = scripted((payload) => {
+    calls += 1;
+    if (calls === 1) {
+      return { status: 400, body: { ok: false, protocol: 1, error: "bad_frame" } };
+    }
+    return ackFor(payload);
+  });
+  const presenceState = presence();
+  const outbox = new Outbox(100, () => clock.now());
+  const events = makeStates(2);
+  outbox.enqueue(events[0]);
+  outbox.enqueue(events[1]);
+  const sender = new EventSender({
+    socketPath: "/tmp/test.sock",
+    presence: presenceState,
+    clock,
+    outbox,
+    request: transport.request,
+  });
+
+  sender.onOnline(0);
+  await flush();
+  assert.equal(transport.calls.length, 2);
+  assert.equal(outbox.size, 0);
 });

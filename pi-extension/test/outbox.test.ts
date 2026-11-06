@@ -1,18 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { assistantMessageEvent, assistantDeltaEvent, stateEvent, userMessageEvent } from "../src/events.ts";
+import {
+  EventStamper,
+  assistantDeltaBody,
+  assistantMessageBody,
+  stateBody,
+  userMessageBody,
+} from "../src/events.ts";
 import { Outbox } from "../src/outbox.ts";
 
-const assistantMessage = assistantMessageEvent(4, 1000, "final", "", null, null, "stop");
+function makeStamper() {
+  return new EventStamper({ now: () => 1000 });
+}
 
 test("overflow drops oldest deltas and records one gap", () => {
   const outbox = new Outbox(4, () => 1000);
-  outbox.enqueue(stateEvent(1, 1000, "idle"));
-  outbox.enqueue(userMessageEvent(2, 1000, "hi", 0, "terminal"));
-  outbox.enqueue(assistantDeltaEvent(3, 1000, "a", ""));
-  outbox.enqueue(assistantMessage);
-  outbox.enqueue(assistantDeltaEvent(5, 1000, "b", ""));
+  const stamper = makeStamper();
+  outbox.enqueue(stamper.stamp(stateBody("idle")));
+  outbox.enqueue(stamper.stamp(userMessageBody("hi", 0, "terminal")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("a", "")));
+  outbox.enqueue(stamper.stamp(assistantMessageBody("final", "", null, null, "stop")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("b", "")));
 
   const items = outbox.unacked();
   assert.deepEqual(items.map((event) => event.seq), [1, 2, 3, 4, 5]);
@@ -28,21 +37,37 @@ test("overflow drops oldest deltas and records one gap", () => {
 
 test("protected events are never dropped", () => {
   const outbox = new Outbox(3, () => 1000);
-  outbox.enqueue(stateEvent(1, 1000, "idle"));
-  outbox.enqueue(userMessageEvent(2, 1000, "hi", 0, "terminal"));
-  outbox.enqueue(assistantMessage);
-  outbox.enqueue(assistantDeltaEvent(4, 1000, "delta", ""));
+  const stamper = makeStamper();
+  outbox.enqueue(stamper.stamp(stateBody("idle")));
+  outbox.enqueue(stamper.stamp(userMessageBody("hi", 0, "terminal")));
+  outbox.enqueue(stamper.stamp(assistantMessageBody("final", "", null, null, "stop")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("delta", "")));
   const types = outbox.unacked().map((event) => event.type);
   assert.ok(types.includes("state"));
   assert.ok(types.includes("user_message"));
   assert.ok(types.includes("assistant_message"));
 });
 
+test("discard removes a batch and records a gap", () => {
+  const outbox = new Outbox(10, () => 1000);
+  const stamper = makeStamper();
+  outbox.enqueue(stamper.stamp(stateBody("idle")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("a", "")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("b", "")));
+  outbox.discard([2, 3]);
+  const items = outbox.unacked();
+  assert.deepEqual(items.map((event) => event.seq), [1, 2]);
+  assert.equal(items[1].type, "gap");
+  assert.equal(items[1].type === "gap" && items[1].from_seq, 2);
+  assert.equal(items[1].type === "gap" && items[1].to_seq, 3);
+});
+
 test("ack removes everything up to the acknowledged seq", () => {
   const outbox = new Outbox(10, () => 1000);
-  outbox.enqueue(stateEvent(1, 1000, "idle"));
-  outbox.enqueue(assistantDeltaEvent(2, 1000, "a", ""));
-  outbox.enqueue(assistantDeltaEvent(3, 1000, "b", ""));
+  const stamper = makeStamper();
+  outbox.enqueue(stamper.stamp(stateBody("idle")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("a", "")));
+  outbox.enqueue(stamper.stamp(assistantDeltaBody("b", "")));
   outbox.ack(2);
   assert.deepEqual(outbox.unacked().map((event) => event.seq), [3]);
   outbox.ack(3);

@@ -5,6 +5,6 @@
   "type": "module",
   "description": "pi extension that registers a pi session with the llm-dock dashboard over a Unix socket",
   "scripts": {
-    "test": "node --experimental-strip-types --test test/config.test.ts test/session.test.ts test/protocol.test.ts test/backoff.test.ts test/remote-command.test.ts test/pi-adapter.test.ts test/presence.test.ts test/contract.test.ts test/events-contract.test.ts test/events.test.ts test/coalesce.test.ts test/outbox.test.ts test/sender.test.ts test/mirror.test.ts test/integration.test.ts test/events-integration.test.ts"
+    "test": "node --experimental-strip-types --test test/config.test.ts test/session.test.ts test/protocol.test.ts test/backoff.test.ts test/remote-command.test.ts test/pi-adapter.test.ts test/presence.test.ts test/contract.test.ts test/events-contract.test.ts test/events.test.ts test/coalesce.test.ts test/throttle.test.ts test/tool-text.test.ts test/outbox.test.ts test/sender.test.ts test/mirror.test.ts test/integration.test.ts test/events-integration.test.ts test/session-runtime.test.ts test/remote-command-handler.test.ts"
   }
 }

@@ -21,11 +21,26 @@ export function contentThinking(message: unknown): string {
     .join("");
 }
 
+export function isAssistant(message: unknown): boolean {
+  return (message as { role?: string })?.role === "assistant";
+}
+
 export function modelRef(model: unknown): ModelRef | null {
   if (!model || typeof model !== "object") return null;
   const typed = model as { provider?: unknown; id?: unknown };
   if (typeof typed.provider !== "string" || typeof typed.id !== "string") return null;
   return { provider: typed.provider, id: typed.id };
+}
+
+export function messageModel(message: unknown): ModelRef | null {
+  const typed = message as { provider?: unknown; model?: unknown };
+  if (typeof typed.provider !== "string" || typeof typed.model !== "string") return null;
+  return { provider: typed.provider, id: typed.model };
+}
+
+export function stopReasonOf(message: unknown): string | null {
+  const typed = message as { stopReason?: unknown };
+  return typeof typed.stopReason === "string" ? typed.stopReason : null;
 }
 
 export function usageOf(message: unknown): AssistantUsage | null {

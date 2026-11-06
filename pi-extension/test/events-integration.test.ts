@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { stateEvent } from "../src/events.ts";
+import { EventStamper, stateBody } from "../src/events.ts";
 import { Presence } from "../src/presence.ts";
 import { EventSender } from "../src/sender.ts";
 import { startFakeServer } from "./fake-server.ts";
@@ -34,12 +34,12 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-test("events flush, survive a fake restart, and resend without loss", async () => {
+test("events flush, survive a fake restart, and resend without loss", { timeout: 10000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-remote-events-"));
   const socketPath = join(dir, "fake.sock");
   const fake = await startFakeServer(socketPath);
 
-  let sender: EventSender;
+  let sender: EventSender | undefined;
   const presence = new Presence({
     socketPath,
     enabled: true,
@@ -51,36 +51,42 @@ test("events flush, survive a fake restart, and resend without loss", async () =
     heartbeatTimeoutMs: 1000,
     byeTimeoutMs: 1000,
     initialBackoffMs: 50,
-    onOnline: () => sender.onOnline(),
-  });
-  sender = new EventSender({
-    socketPath,
-    presence,
-    clock: realClock,
-    initialBackoffMs: 50,
+    onOnline: (ackedSeq) => sender?.onOnline(ackedSeq),
   });
 
-  presence.start();
-  await sleep(100);
-  assert.equal(presence.status().state, "online");
+  try {
+    sender = new EventSender({
+      socketPath,
+      presence,
+      clock: realClock,
+      initialBackoffMs: 50,
+    });
 
-  sender.enqueue(stateEvent(1, Date.now(), "idle"));
-  sender.enqueue(stateEvent(2, Date.now(), "working"));
-  await sleep(100);
+    presence.start();
+    await sleep(100);
+    assert.equal(presence.status().state, "online");
 
-  const key = "events-session|events-instance";
-  const first = fake.events.get(key);
-  assert.ok(first);
-  assert.deepEqual([...first.keys()].sort((a, b) => a - b), [1, 2]);
+    const stamper = new EventStamper({ now: () => Date.now() });
+    sender.enqueue(stamper.stamp(stateBody("idle")));
+    sender.enqueue(stamper.stamp(stateBody("working")));
+    await sleep(100);
 
-  fake.clearSessions();
-  sender.enqueue(stateEvent(3, Date.now(), "idle"));
-  await sleep(200);
+    const key = "events-session|events-instance";
+    const first = fake.events.get(key);
+    assert.ok(first);
+    assert.deepEqual([...first.keys()].sort((a, b) => a - b), [1, 2]);
 
-  const second = fake.events.get(key);
-  assert.ok(second);
-  assert.deepEqual([...second.keys()].sort((a, b) => a - b), [1, 2, 3]);
+    fake.clearSessions(true);
+    sender.enqueue(stamper.stamp(stateBody("idle")));
+    sender.enqueue(stamper.stamp(stateBody("working")));
+    await sleep(200);
 
-  await presence.stop("test");
-  await fake.close();
+    const second = fake.events.get(key);
+    assert.ok(second);
+    assert.deepEqual([...second.keys()].sort((a, b) => a - b), [3, 4]);
+  } finally {
+    await sender?.stop();
+    await presence.stop("test");
+    await fake.close();
+  }
 });

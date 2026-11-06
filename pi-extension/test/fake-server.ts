@@ -2,14 +2,13 @@ import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 
-import { EVENT_TYPES, type WireEvent } from "../src/events.ts";
-import { MAX_EVENTS_BATCH, MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
+import { MAX_EVENTS_BODY_BYTES, PATHS } from "../src/protocol.ts";
+import { ackedSeq, handleEvents, type EventStore } from "./fake-events.ts";
 
 export const STALE_AFTER_MS = 45000;
 
 export type RegistryEntry = { sessionId: string; instanceId: string; lastSeen: number };
 export type Registry = Map<string, RegistryEntry>;
-export type EventStore = Map<string, Map<number, WireEvent>>;
 
 export type Frame = Record<string, unknown>;
 
@@ -26,7 +25,7 @@ export type FakeServer = {
   registry: Registry;
   events: EventStore;
   close: () => Promise<void>;
-  clearSessions: () => void;
+  clearSessions: (dropEvents?: boolean) => void;
 };
 
 function timestamp(): string {
@@ -66,35 +65,6 @@ function keyOf(sessionId: string, instanceId: string): string {
   return `${sessionId}|${instanceId}`;
 }
 
-function isInt(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value);
-}
-
-function validEvent(event: unknown): event is WireEvent {
-  if (!event || typeof event !== "object" || Array.isArray(event)) return false;
-  const typed = event as Record<string, unknown>;
-  if (typeof typed.type !== "string" || !EVENT_TYPES.has(typed.type)) return false;
-  if (!isInt(typed.seq) || typed.seq < 1 || !isInt(typed.ts)) return false;
-  if (typed.type === "gap") {
-    if (!isInt(typed.from_seq) || !isInt(typed.to_seq)) return false;
-    if (typed.from_seq < 1 || typed.to_seq < typed.from_seq) return false;
-  }
-  return true;
-}
-
-function ackedSeq(stored: Map<number, WireEvent>): number {
-  const covered = new Set<number>();
-  for (const [seq, event] of stored) {
-    covered.add(seq);
-    if (event.type === "gap") {
-      for (let s = event.from_seq; s <= event.to_seq; s += 1) covered.add(s);
-    }
-  }
-  let acked = 0;
-  while (covered.has(acked + 1)) acked += 1;
-  return acked;
-}
-
 export function handleFrame(
   path: string,
   frame: Frame,
@@ -119,6 +89,7 @@ export function handleFrame(
   }
 
   const key = keyOf(sessionId, instanceId);
+  const stored = eventsByKey.get(key) ?? new Map();
   if (path === PATHS.hello) {
     registry.set(key, { sessionId, instanceId, lastSeen: now });
     return {
@@ -129,6 +100,7 @@ export function handleFrame(
         session_id: sessionId,
         instance_id: instanceId,
         server_time: now,
+        acked_seq: ackedSeq(stored),
       },
     };
   }
@@ -149,26 +121,9 @@ export function handleFrame(
     return { status: 200, payload: { ok: true, protocol: 1 } };
   }
 
-  const events = frame.events;
-  if (!Array.isArray(events) || events.length > MAX_EVENTS_BATCH) {
-    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
-  }
-  if (Buffer.byteLength(JSON.stringify(frame)) > MAX_EVENTS_BODY_BYTES) {
-    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
-  }
-  if (!events.every(validEvent)) {
-    return { status: 400, payload: { ok: false, protocol: 1, error: "bad_frame" } };
-  }
-
-  const stored = eventsByKey.get(key) ?? new Map<number, WireEvent>();
-  for (const event of events as WireEvent[]) {
-    if (!stored.has(event.seq)) stored.set(event.seq, event);
-  }
-  eventsByKey.set(key, stored);
-  return {
-    status: 200,
-    payload: { ok: true, protocol: 1, acked_seq: ackedSeq(stored) },
-  };
+  const result = handleEvents(frame, stored);
+  if (result.status === 200) eventsByKey.set(key, stored);
+  return result;
 }
 
 export function startFakeServer(socketPath: string): Promise<FakeServer> {
@@ -225,9 +180,10 @@ export function startFakeServer(socketPath: string): Promise<FakeServer> {
           new Promise<void>((done) => {
             server.close(() => done());
           }),
-        clearSessions: () => {
+        clearSessions: (dropEvents = false) => {
           registry.clear();
-          console.log(`[${timestamp()}] sessions cleared (simulated dashboard restart)`);
+          if (dropEvents) events.clear();
+          console.log(`[${timestamp()}] sessions cleared (simulated dashboard restart${dropEvents ? ", events dropped" : ""})`);
         },
       });
     });
@@ -244,7 +200,7 @@ async function main(): Promise<void> {
     }
   }
   const fake = await startFakeServer(socketPath);
-  process.on("SIGUSR1", () => fake.clearSessions());
+  process.on("SIGUSR1", () => fake.clearSessions(true));
   const shutdown = async () => {
     await fake.close();
     process.exit(0);

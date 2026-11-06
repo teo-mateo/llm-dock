@@ -26,7 +26,7 @@ export type PresenceOptions = {
   maxBackoffMs?: number;
   onNotice?: (message: string, level: "info" | "warning") => void;
   onStateChange?: (state: PresenceState) => void;
-  onOnline?: () => void;
+  onOnline?: (ackedSeq: number) => void;
 };
 
 export type ResolvedPresenceOptions = {
@@ -36,7 +36,7 @@ export type ResolvedPresenceOptions = {
   heartbeatSample: () => HeartbeatSample;
   notices: (message: string, level: "info" | "warning") => void;
   stateChanges: (state: PresenceState) => void;
-  onOnline: () => void;
+  onOnline: (ackedSeq: number) => void;
   heartbeatMs: number;
   helloTimeoutMs: number;
   heartbeatTimeoutMs: number;

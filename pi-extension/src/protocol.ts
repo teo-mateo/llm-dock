@@ -110,12 +110,13 @@ export function parseResponse(text: string): ServerResponse | null {
   }
 }
 
-export type ResponseKind = "ok" | "unknown_session" | "rejected" | "unparseable";
+export type ResponseKind = "ok" | "unknown_session" | "bad_frame" | "rejected" | "unparseable";
 
 export function classifyResponse(status: number, body: string): ResponseKind {
   const response = parseResponse(body);
   if (!response) return "unparseable";
   if (status === 404 && response.error === "unknown_session") return "unknown_session";
+  if (status === 400 && response.error === "bad_frame") return "bad_frame";
   if (status === 200 && response.ok) return "ok";
   return "rejected";
 }

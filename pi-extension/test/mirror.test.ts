@@ -1,23 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { EventSequencer, type WireEvent } from "../src/events.ts";
+import { createActivity } from "../src/activity.ts";
+import { EventStamper, type WireEvent } from "../src/events.ts";
 import { EventMirror } from "../src/mirror.ts";
 import { fakeClock } from "./fake-clock.ts";
 
 function makeMirror() {
   const clock = fakeClock(1000);
   const emitted: WireEvent[] = [];
+  const activity = createActivity();
+  const stamper = new EventStamper(clock);
   const mirror = new EventMirror({
-    sequencer: new EventSequencer(),
-    clock,
+    stamper,
+    activity,
     emit: (event) => emitted.push(event),
   });
-  return { clock, emitted, mirror };
+  return { clock, emitted, mirror, activity };
 }
 
 test("input, agent state, deltas and the final assistant message", async () => {
-  const { clock, emitted, mirror } = makeMirror();
+  const { clock, emitted, mirror, activity } = makeMirror();
 
   mirror.handle({
     type: "input",
@@ -69,6 +72,7 @@ test("input, agent state, deltas and the final assistant message", async () => {
     "user_message", "state", "assistant_delta", "assistant_delta", "assistant_message",
   ]);
   assert.equal(emitted[0].type === "user_message" && emitted[0].origin, "terminal");
+  assert.equal(activity.working, true);
   assert.equal(emitted[0].type === "user_message" && emitted[0].image_count, 1);
   assert.equal(emitted[2].type === "assistant_delta" && emitted[2].text, "hel");
   assert.equal(emitted[2].type === "assistant_delta" && emitted[2].thinking, "th");
@@ -132,7 +136,7 @@ test("tool events are throttled and ended", async () => {
 });
 
 test("run end, turn end, model, thinking and compaction", () => {
-  const { emitted, mirror } = makeMirror();
+  const { emitted, mirror, activity } = makeMirror();
 
   mirror.handle({ type: "agent_start" } as any);
   mirror.handle({ type: "agent_before_settle", outcome: "error" } as any);
@@ -163,4 +167,5 @@ test("run end, turn end, model, thinking and compaction", () => {
   assert.equal(emitted[4].type === "model_changed" && emitted[4].model?.id, "small");
   assert.equal(emitted[5].type === "thinking_changed" && emitted[5].level, "high");
   assert.equal(emitted[6].type === "compaction" && emitted[6].tokens_before, 100);
+  assert.equal(activity.working, false);
 });

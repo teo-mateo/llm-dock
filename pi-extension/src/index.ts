@@ -18,12 +18,11 @@ export default function (pi: ExtensionAPI) {
   let runtime: SessionRuntime | undefined;
 
   const forward = (event: ExtensionEvent): void => {
-    runtime?.mirror.handle(event);
+    runtime?.handle(event);
   };
   registerEventSubscriptions(pi, forward);
 
   pi.on("session_start", async (event, ctx) => {
-    activity.working = false;
     const previousSessionId = sessionIdFromFile(event.previousSessionFile);
     if (runtime) await runtime.stop("switch");
     runtime = createSessionRuntime({
@@ -45,16 +44,8 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("agent_start", async () => {
-    activity.working = true;
-  });
-
-  pi.on("agent_settled", async () => {
-    activity.working = false;
-  });
-
   pi.registerCommand("remote", {
     description: "Show or change pi-remote registration: /remote [status|on|off]",
-    handler: (args, ctx) => handleRemoteCommand(args, ctx, runtime?.presence),
+    handler: (args, ctx) => handleRemoteCommand(args, ctx, runtime),
   });
 }

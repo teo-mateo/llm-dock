@@ -155,22 +155,32 @@ hello/heartbeat/bye plus `POST /v1/events`).
   `session_start` links `previous_session_id`.
 
 **Event mirror** — `mirror.ts` subscribes to the events in §0 and emits the vocabulary
-in §3 through `events.ts` builders. Each event gets a monotonic `seq` from an
-`EventSequencer` created at `session_start`. Token deltas are coalesced (~100 ms or
-~2 KB batches) and flushed at `message_end`; tool updates are throttled to ≤ 4/s per
-call; tool args/results are capped at 64 KB with `truncated: true`. `index.ts` only
-forwards pi events into the mirror (the size/clock helpers live in `message-content.ts`
-and `coalesce.ts`).
+in §3 through `events.ts` bodies stamped by one `EventStamper` (sequencer + clock) at
+`session_start`. It also owns the `working` flag the heartbeat reads; `index.ts` only
+forwards pi events. Token deltas are coalesced (~100 ms or ~2 KB batches) and flushed at
+`message_end`; tool updates are throttled to ≤ 4/s per call; tool args/results are capped
+at 64 KB UTF-8 bytes with `truncated: true`. `message-content.ts`, `coalesce.ts`,
+`throttle.ts` and `tool-text.ts` hold the extraction/coalescing/throttle/truncation
+rules.
 
 **Outbox & reconnect** — pure `outbox.ts`, bounded to 1000 data events (gap markers are
 extra and merge adjacent dropped seqs). Events stay until the dashboard acks their
 `seq`. Overflow drops the oldest deltas first, then tool updates, and never
 `state`/`run_end`/`user_message`/`assistant_message`; it records a `gap` event at the
-dropped seq's slot. `sender.ts` flushes batches (≤ 50 events, ≤ 1 MiB body) while
-`Presence` is online, using the shared `backoff.ts`, and resends all unacked events from
-`Presence`'s `onOnline` callback after every successful (re-)hello. A 404 on `/v1/events`
-calls `Presence.rejoin()`, the same re-hello path as a heartbeat. `Presence` owns no
-events.
+dropped seq's slot. `discard(seqs)` removes a rejected batch and records its gap.
+`sender.ts` flushes batches (≤ 50 events, ≤ 1 MiB body) while `Presence` is online,
+using the shared `backoff.ts`. On `onOnline(ackedSeq)` it acks the hello's stream
+position and resends the rest; a 404 on `/v1/events` calls `Presence.rejoin()`, the same
+re-hello path as a heartbeat; `400 bad_frame` discards the batch with a gap instead of
+retrying. `Presence` owns no events and `rejoin()` is idempotent while registering.
+
+**Off / on / stop** — one `SessionRuntime` owns Presence, Sender and Mirror.
+`pause()` (from `/remote off`) stops the sender (awaiting an in-flight batch), sends
+`bye remote_off`, and pauses the mirror: events while off are dropped, while unacked
+events from before the pause stay in the outbox and are resent on `resume()`. Switching
+sessions or shutdown calls `stop(reason)`, which also awaits the in-flight send before
+`bye`; the switching runtime's outbox is dropped. The command handler talks to the
+runtime, not to Presence alone.
 
 **Inbound commands** (SSE stream from the dashboard, each with `command_id`, result
 returned as `command_result {command_id, ok, error}`; ids are idempotent):
@@ -328,7 +338,9 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 | `pi_version` | string | yes | null when not obtainable |
 | `ext_version` | string | no | extension package version |
 
-200: `{ok: true, protocol: 1, session_id, instance_id, server_time}`.
+200: `{ok: true, protocol: 1, session_id, instance_id, server_time, acked_seq: N}`.
+`acked_seq` is the stream position for that `(session_id, instance_id)` at hello (0 if
+nothing is stored); the extension acks its outbox to it and then resends the rest.
 
 **`heartbeat`** — `POST /v1/heartbeat`
 
@@ -366,11 +378,14 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 | `instance_id` | string | no | |
 | `events` | array | no | max **50** per batch; body max **1 MiB**; each event ≤ that body limit |
 
-200: `{ok: true, protocol: 1, acked_seq: N}`. `acked_seq` is the highest `N` such that
-every seq `1..N` is stored or covered by a `gap` range. Duplicate seqs are accepted and
-ignored (idempotent resend). The same 404/400/status rules as the presence frames; an
-unknown session is `404 unknown_session`, an invalid/oversize batch or event is
-`400 bad_frame`.
+200: `{ok: true, protocol: 1, acked_seq: N}`. **Stream rule:** let `first` be the
+smallest seq stored for the key after the current hello (0 if none). `N` starts at
+`first - 1` and advances while every seq from `first` to `N` is stored or covered by a
+`gap` range. Thus a key whose first stored batch is `5..6` acks `6` even though `1..4`
+are absent; a fresh/empty key acks `0`. Duplicate seqs are accepted and ignored (first
+wins). An unknown event **type** is accepted and stored opaque (additive), and counts
+as acked; only a malformed envelope, a malformed *known* payload, an oversize batch, or
+an oversize body is `400 bad_frame`. Unknown session is `404 unknown_session`.
 
 **Event payloads** (common `seq` int ≥ 1 monotonic per registered session/instance, `ts`
 epoch ms):
@@ -413,12 +428,22 @@ Status codes:
   heartbeat or `bye` from a stale instance still gets `404 unknown_session`. At dashboard
   start, open rows are ended `dashboard_restart`; a live pi's next re-`hello` reopens its
   row through the upsert.
-- **Check order**: `protocol` → path/type match → required fields. Unknown extra fields
-  are **ignored**, so later additions are additive and a server that has not learned a
-  new field still accepts the frame.
-- **Client handling**: `400` or a transport error/timeout → offline + backoff
-  (1 s → 30 s cap); `404 unknown_session` on heartbeat → immediate re-`hello`; `404` on
-  `bye` is ignored (best-effort). `server_time`/`sent_at` are epoch ms.
+- **Check order** (server): (1) method/path → `404 not_found`; (2) body/`protocol`
+  → `400 unsupported_protocol`; (3) path/`type` match → `400 bad_frame`; (4)
+  `session_id`/`instance_id` and liveness → `404 unknown_session`; (5) for `events`,
+  batch shape/count/body size → `400 bad_frame`; (6) each event. Unknown extra fields are
+  **ignored**.
+- **Per-event validation depth**: known types validate the common envelope (`type`,
+  `seq` int ≥ 1, `ts` int) plus their table fields (required types/nulls, `gap` range,
+  usage/model shapes); unknown types validate only the envelope. A duplicate seq with a
+  different payload keeps the first stored payload. A `gap` whose seq collides with an
+  existing event is a duplicate and is ignored; the existing event wins.
+- **Client handling**: transport error/timeout, `400 unsupported_protocol`, or another
+  non-ok status → offline + backoff (1 s → 30 s cap); `404 unknown_session` on heartbeat
+  or `/v1/events` → immediate re-`hello`; `404` on `bye` is ignored (best-effort).
+  `400 bad_frame` on `/v1/events` discards that batch with a `gap` marker instead of
+  retrying it forever. `server_time`/`sent_at` are epoch ms; unknown event types are
+  accepted and count as acked, so one rejected future event cannot block the stream.
 
 **Version rule**: both directions carry `protocol: 1`; a mismatch is a 400
 `unsupported_protocol`, and a version bump ships in the extension and the dashboard
@@ -427,13 +452,15 @@ for `bye` (the last two bounded so a dashboard restart cannot stall pi); server-
 read timeout 5 s per request.
 
 **Golden fixtures**: `pi-extension/test/contract/frames.json` is the executable form of
-the presence contract (hello, second instance, heartbeat ok, unknown session, stale
-instance, bye, instance mismatch, bad_frame, unsupported_protocol, type/path mismatch,
-not_found, ignored extra field). `pi-extension/test/contract/events.json` is the
-executable events contract (ok batch, duplicate resend, gap, unknown session, bad event,
-oversize batch, empty batch). Both are ordered `{path, now, request, status, response}`
-cases; the extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`,
-and the dashboard issue runs `frames.json` and `events.json` against its handler
+the presence contract (hello response now includes `acked_seq`, second instance,
+heartbeat ok, unknown session, stale instance, bye, instance mismatch, bad_frame,
+unsupported_protocol, type/path mismatch, not_found, ignored extra field).
+`pi-extension/test/contract/events.json` is the executable events contract (ok batch,
+duplicate resend, gap, unknown accepted type, malformed known event, unknown session,
+oversize batch, empty batch, and a hello with nothing below seq 5 followed by `5..6` →
+acked `6`). Both are ordered `{path, now, request, status, response}` cases; the
+extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`, and the
+dashboard issue runs `frames.json` and `events.json` against its handler
 (`dashboard/tests/test_pi_remote_fixtures.py` for frames; a new events fixture test).
 
 **Ingest package** — `dashboard/pi_remote/`, built in #331:

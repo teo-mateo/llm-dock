@@ -4,6 +4,7 @@ import {
   buildHeartbeat,
   buildHello,
   classifyResponse,
+  parseResponse,
   PATHS,
   type ByeFields,
   type HeartbeatFields,
@@ -62,7 +63,7 @@ export class Presence {
     if (this.state === "online" || this.state === "registering") return;
     this.register();
   }
-  rejoin(): void { this.register(); }
+  rejoin(): void { if (this.stopped || !this.enabled || this.state === "registering") return; this.register(); }
 
   async stop(reason: string | null = null): Promise<void> {
     if (this.stopped) return;
@@ -108,10 +109,9 @@ export class Presence {
             this.opts.notices("pi-remote: dashboard reachable again", "info");
             this.offlineNotified = false;
           }
-          this.setState("online");
-          this.lastHeartbeatAt = null;
-          this.opts.onOnline();
-          this.scheduleHeartbeat();
+          const acked = parseResponse(result.body)?.acked_seq ?? 0;
+          this.setState("online"); this.lastHeartbeatAt = null;
+          this.opts.onOnline(acked); this.scheduleHeartbeat();
           return;
         }
         this.fail(`hello status ${result.status}`);
@@ -149,7 +149,7 @@ export class Presence {
       if (this.stopped) return;
       const kind = classifyResponse(result.status, result.body);
       if (kind === "unknown_session") {
-        this.register();
+        this.rejoin();
         return;
       }
       if (kind !== "ok") {

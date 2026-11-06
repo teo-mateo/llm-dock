@@ -24,7 +24,8 @@
       "protocol": 1,
       "session_id": "s1",
       "instance_id": "i1",
-      "server_time": 1000
+      "server_time": 1000,
+      "acked_seq": 0
     }
   },
   {
@@ -124,7 +125,8 @@
       "protocol": 1,
       "session_id": "s2",
       "instance_id": "i2",
-      "server_time": 2000
+      "server_time": 2000,
+      "acked_seq": 0
     }
   },
   {
@@ -188,6 +190,53 @@
     "request": {
       "protocol": 1,
       "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "nope",
+          "seq": 5,
+          "ts": 2000,
+          "payload": "opaque"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 5
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s2",
+      "instance_id": "i2",
+      "events": [
+        {
+          "type": "state",
+          "seq": 6,
+          "ts": 2000
+        }
+      ]
+    },
+    "status": 400,
+    "response": {
+      "ok": false,
+      "protocol": 1,
+      "error": "bad_frame"
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 2000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
       "session_id": "s9",
       "instance_id": "i9",
       "events": []
@@ -213,29 +262,6 @@
           "seq": 0,
           "ts": 2000,
           "state": "idle"
-        }
-      ]
-    },
-    "status": 400,
-    "response": {
-      "ok": false,
-      "protocol": 1,
-      "error": "bad_frame"
-    }
-  },
-  {
-    "path": "/v1/events",
-    "now": 2000,
-    "request": {
-      "protocol": 1,
-      "type": "events",
-      "session_id": "s1",
-      "instance_id": "i1",
-      "events": [
-        {
-          "type": "nope",
-          "seq": 1,
-          "ts": 2000
         }
       ]
     },
@@ -585,6 +611,89 @@
       "ok": true,
       "protocol": 1,
       "acked_seq": 3
+    }
+  },
+  {
+    "path": "/v1/hello",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "session_file": null,
+      "cwd": "/tmp",
+      "name": null,
+      "pid": 1,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "pi_version": null,
+      "ext_version": "0.1.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s3",
+      "instance_id": "i3",
+      "server_time": 3000,
+      "acked_seq": 0
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "events": [
+        {
+          "type": "state",
+          "seq": 5,
+          "ts": 3000,
+          "state": "idle"
+        },
+        {
+          "type": "state",
+          "seq": 6,
+          "ts": 3000,
+          "state": "working"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 6
+    }
+  },
+  {
+    "path": "/v1/events",
+    "now": 3000,
+    "request": {
+      "protocol": 1,
+      "type": "events",
+      "session_id": "s3",
+      "instance_id": "i3",
+      "events": [
+        {
+          "type": "state",
+          "seq": 7,
+          "ts": 3000,
+          "state": "idle"
+        }
+      ]
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "acked_seq": 7
     }
   }
 ]
