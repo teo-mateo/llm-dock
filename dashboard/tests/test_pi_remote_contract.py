@@ -46,10 +46,10 @@ def test_unknown_path_is_not_found():
     assert validate_request("POST", "/v1/nope", HELLO) == (404, ErrorCode.NOT_FOUND, None)
 
 
-def test_protocol_checked_before_path():
+def test_path_checked_before_protocol():
     assert validate_request("POST", "/v1/nope", {"protocol": 2}) == (
-        400,
-        ErrorCode.UNSUPPORTED_PROTOCOL,
+        404,
+        ErrorCode.NOT_FOUND,
         None,
     )
 

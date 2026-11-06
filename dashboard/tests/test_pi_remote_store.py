@@ -1,7 +1,8 @@
 from dataclasses import replace
 
+from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
-from pi_remote.store import PiRemoteDB
+from pi_remote.store import PiRemoteDB, RETENTION_MS
 
 
 def hello(instance_id="i1", reason="startup", name="probe"):
@@ -84,4 +85,55 @@ def test_end_open_sessions_closes_leftovers(tmp_path):
     rows = store.list_sessions()
     assert all(row["ended_at"] == 2000 for row in rows)
     assert all(row["end_reason"] == "dashboard_restart" for row in rows)
+    store.close()
+
+
+
+def events_frame(events):
+    return EventsFrame(session_id="s1", instance_id="i1", events=tuple(events))
+
+
+def test_events_round_trip_and_first_copy_wins(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.insert_events(
+        events_frame(
+            [
+                Event(1, 1000, "state", {"state": "idle"}),
+                Event(2, 1000, "user_message", {"text": "hi", "image_count": 0, "origin": "terminal"}),
+                Event(2, 1000, "user_message", {"text": "second", "image_count": 0, "origin": "terminal"}),
+            ]
+        ),
+        1000,
+    )
+    rows = store.stored_events("s1", "i1")
+    assert [row.seq for row in rows] == [1, 2]
+    assert rows[1].payload["text"] == "hi"
+    assert store.acked_seq("s1", "i1") == 2
+    assert [row.seq for row in store.stored_events("s1", "i1", after_seq=1)] == [2]
+    store.close()
+
+
+def test_event_stream_survives_reopen(tmp_path):
+    db_path = str(tmp_path / "pi_remote.db")
+    store = PiRemoteDB(db_path)
+    store.insert_events(events_frame([Event(5, 1000, "state", {"state": "idle"})]), 1000)
+    assert store.acked_seq("s1", "i1") == 5
+    store.close()
+
+    reopened = PiRemoteDB(db_path)
+    assert reopened.acked_seq("s1", "i1") == 5
+    reopened.close()
+
+
+def test_purge_keeps_events_inside_the_retention_window(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.insert_events(
+        events_frame([Event(1, 1000, "state", {"state": "idle"})]), 1000
+    )
+    now = 1000 + RETENTION_MS + 1
+    store.insert_events(
+        events_frame([Event(2, now, "state", {"state": "idle"})]), now
+    )
+    assert store.purge_old_events(now) == 1
+    assert [row.seq for row in store.stored_events("s1", "i1")] == [2]
     store.close()

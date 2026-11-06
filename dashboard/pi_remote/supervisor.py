@@ -68,7 +68,12 @@ class PiRemoteSupervisor:
                     self._startup_error = str(exc)
                     logger.error("pi remote: cannot open %s: %s", self._db_path, exc)
                     return
-            self._store.end_open_sessions(END_REASON_DASHBOARD_RESTART, self._clock())
+            now = self._clock()
+            self._store.end_open_sessions(END_REASON_DASHBOARD_RESTART, now)
+            try:
+                self._store.purge_old_events(now)
+            except Exception:
+                logger.exception("pi remote: event retention purge failed")
             if self._registry is None:
                 self._registry = PresenceRegistry()
             if self._handler is None:

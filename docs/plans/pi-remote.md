@@ -282,14 +282,17 @@ differs, and keeping it apart avoids touching chat migrations. Precedent:
 | Table | Holds |
 |---|---|
 | `pi_sessions` | session_id, instance_id, cwd, name, session_file, model, first/last seen, ended_at, end_reason, previous_session_id |
-| `pi_events` | (session_id, instance_id, seq) PK, type, payload_json, ts — dedup on retry |
+| `pi_events` | (session_id, instance_id, seq) PK, type, ts, payload_json, received_at — dedup on retry; indexed by session and seq |
 | `pi_prompts` | prompt_id, session, kind, question, options, status, answered_by, value, opened/closed |
 | `pi_commands` | audit log: command_id, session, type, payload digest, client token kind, IP, ts, result |
 | `pi_attachments` | uploaded images/audio, size-capped, by id |
 
-Histories survive pi exit because they are the event log. Retention: keep ended
-sessions N days (setting), delete per session from UI. Optional later: import
-pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
+Histories survive pi exit because they are the event log. Retention bound: events
+older than **30 days** (`received_at`) are deleted; ended sessions' events are kept
+until that bound, not deleted at `bye`. The purge runs once at listener start and then
+at most once per hour from the existing sweeper — not on every accepted batch.
+Optional later: import pre-existing JSONL files from `~/.pi/agent/sessions/` as
+read-only history.
 
 **Client API** (on :3399, `@require_auth`, all under `/api/pi/`):
 
@@ -340,8 +343,9 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 | `ext_version` | string | no | extension package version |
 
 200: `{ok: true, protocol: 1, session_id, instance_id, server_time, acked_seq: N}`.
-`acked_seq` is the stream position for that `(session_id, instance_id)` at hello (0 if
-nothing is stored); the extension acks its outbox to it and then resends the rest.
+`acked_seq` is computed from the stored event stream for that `(session_id, instance_id)`
+(0 if nothing is stored); the extension acks its outbox to it and then resends the rest.
+It survives a dashboard restart because it is read from `pi_events`, not memory.
 
 **`heartbeat`** — `POST /v1/heartbeat`
 
@@ -387,6 +391,8 @@ are absent; a fresh/empty key acks `0`. Duplicate seqs are accepted and ignored 
 wins). An unknown event **type** is accepted and stored opaque (additive), and counts
 as acked; only a malformed envelope, a malformed *known* payload, an oversize batch, or
 an oversize body is `400 bad_frame`. Unknown session is `404 unknown_session`.
+An accepted batch inserts all events in one transaction (first copy wins), touches
+`pi_sessions.last_seen` once, and returns the new stored mark.
 
 **Event payloads** (common `seq` int ≥ 1 monotonic per registered session/instance, `ts`
 epoch ms):
@@ -422,7 +428,9 @@ Status codes:
 - **Registry key is `(session_id, instance_id)`.** A second `hello` for the same session
   from another instance **coexists** — two terminals on one session are two instances.
   A heartbeat or bye for a known session with an unknown instance is
-  `404 unknown_session`.
+  `404 unknown_session`; an events batch for an unknown or stale instance is likewise
+  `404 unknown_session`. An accepted events batch touches the instance's liveness and
+  `pi_sessions.last_seen` at most once.
 - **Liveness: 45 s.** An instance is stale after 45 s without a heartbeat (3 missed at
   the 15 s cadence). A sweeper owns the ending: it expires stale instances and writes
   `ended_at`/`end_reason = "stale"` without waiting for another request. A late
@@ -461,22 +469,24 @@ duplicate resend, re-hello on a key holding `1..3` → acked `3`, gap, unknown a
 type, malformed known event, unknown session, oversize batch, empty batch, a hello with
 nothing below seq 5 followed by `5..6` → acked `6`, immutable gaps `10..10` then
 `11..11` → acked `11`, and an unknown path with `protocol: 2` → `404 not_found`). Both are ordered `{path, now, request, status, response}` cases; the
-extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`, and the
-dashboard issue runs `frames.json` and `events.json` against its handler
-(`dashboard/tests/test_pi_remote_fixtures.py` for frames; a new events fixture test).
+extension's TS tests run them through `test/fake-server.ts`'s `handleFrame`, and
+`dashboard/tests/test_pi_remote_fixtures.py` runs both files against the Python handler;
+the oversize-body case is a separate Python test next to them.
 
 **Ingest package** — `dashboard/pi_remote/`, built in #331:
 
 | Module | Owns |
 |---|---|
-| `contract.py` | `PATHS`, protocol version, status/error constants, end reasons, `JsonResponse` and response builders; `validate_request` calls `frames` |
-| `frames.py` | frozen frame dataclasses (`ModelRef`, `ContextUsage`, `HelloFrame`, `HeartbeatFrame`, `ByeFrame`) and the parse helpers |
-| `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
-| `store.py` | `pi_remote.db` (`pi_sessions`), schema, upsert/touch/end/end-open; the only module writing SQL |
+| `contract.py` | `PATHS`, protocol version, status/error constants, end reasons, `JsonResponse` and response builders; `validate_request` calls `frames` and `events` |
+| `frames.py` | frozen presence frame dataclasses (`ModelRef`, `ContextUsage`, `HelloFrame`, `HeartbeatFrame`, `ByeFrame`) and parse helpers |
+| `events.py` | frozen `Event`/`EventsFrame` dataclasses, envelope and known-payload validation, unknown-type acceptance, per-event batch/body limits, and the pure `acked_seq()` |
+| `schema.py` | SQL text for `pi_sessions` and `pi_events` plus the insert/upsert statements |
+| `registry.py` | in-memory instances keyed by `(session_id, instance_id)`, `is_live`, `expire`, `touch`, typed frames and the `RegistryResult` enum; thread-safe, time passed in |
+| `store.py` | `pi_remote.db` (`pi_sessions`, `pi_events`), upsert/touch/end/end-open, event insert/read/ack, retention purge; the only module writing SQL |
 | `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
 | `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
 | `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
-| `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry and row ending; logs a failed sweep and keeps looping |
+| `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry, row ending, and the hourly retention purge; logs a failed sweep and keeps looping |
 | `settings.py` | defaults and env resolution for the socket and DB |
 | `supervisor.py` | singleton owning listener + registry + store + sweeper; clock injected; configured/started from `create_app()`, stopped by `atexit` |
 | `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |

@@ -9,6 +9,7 @@ from .store import PiRemoteDB
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_MS = 15000
+PURGE_INTERVAL_MS = 3600000
 
 
 class StaleSweeper:
@@ -26,6 +27,7 @@ class StaleSweeper:
         self._lock = threading.RLock()
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
+        self._last_purge_ms = 0
 
     def sweep(self, now: int) -> List[Tuple[str, str]]:
         keys = self.registry.expire(now)
@@ -40,6 +42,12 @@ class StaleSweeper:
                     session_id,
                     instance_id,
                 )
+        if now - self._last_purge_ms >= PURGE_INTERVAL_MS:
+            try:
+                self.store.purge_old_events(now)
+            except Exception:
+                logger.exception("pi remote: event retention purge failed")
+            self._last_purge_ms = now
         return keys
 
     def start(self) -> None:
@@ -47,6 +55,7 @@ class StaleSweeper:
             if self._thread is not None and self._thread.is_alive():
                 return
             self._stop_event = threading.Event()
+            self._last_purge_ms = self.clock()
             self._thread = threading.Thread(
                 target=self._run,
                 name="pi-remote-sweeper",

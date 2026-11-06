@@ -7,10 +7,12 @@ from .contract import (
     JsonResponse,
     bye_ok,
     error_response,
+    events_ok,
     heartbeat_ok,
     hello_ok,
     validate_request,
 )
+from .events import EventsFrame
 from .frames import ByeFrame, HeartbeatFrame, HelloFrame
 from .registry import PresenceRegistry, RegistryResult
 from .store import PiRemoteDB
@@ -24,6 +26,7 @@ class PiRemoteHandler:
             PATHS["hello"]: self._hello,
             PATHS["heartbeat"]: self._heartbeat,
             PATHS["bye"]: self._bye,
+            PATHS["events"]: self._events,
         }
 
     def handle(self, method: str, path: str, body: Any, now: int) -> JsonResponse:
@@ -36,7 +39,8 @@ class PiRemoteHandler:
     def _hello(self, frame: HelloFrame, now: int) -> JsonResponse:
         self.registry.register(frame, now)
         self.store.upsert_session(frame, now)
-        return hello_ok(frame.session_id, frame.instance_id, now)
+        acked = self.store.acked_seq(frame.session_id, frame.instance_id)
+        return hello_ok(frame.session_id, frame.instance_id, now, acked)
 
     def _heartbeat(self, frame: HeartbeatFrame, now: int) -> JsonResponse:
         result = self.registry.heartbeat(frame, now)
@@ -53,3 +57,12 @@ class PiRemoteHandler:
             )
             return bye_ok()
         return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
+
+    def _events(self, frame: EventsFrame, now: int) -> JsonResponse:
+        result = self.registry.touch(frame.session_id, frame.instance_id, now)
+        if result is not RegistryResult.OK:
+            return error_response(HTTP_NOT_FOUND, ErrorCode.UNKNOWN_SESSION)
+        self.store.insert_events(frame, now)
+        self.store.touch_session(frame.session_id, frame.instance_id, now)
+        acked = self.store.acked_seq(frame.session_id, frame.instance_id)
+        return events_ok(acked)

@@ -105,3 +105,54 @@ def test_listener_ingests_hello_heartbeat_bye(tmp_path):
     listener.stop()
     store.close()
     assert not os.path.exists(socket_path)
+
+def test_listener_ingests_events(tmp_path):
+    directory = tmp_path / "sockdir"
+    directory.mkdir()
+    os.chmod(directory, 0o700)
+    socket_path = str(directory / "pi.sock")
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    handler = PiRemoteHandler(PresenceRegistry(), store)
+    listener = UdsListener(
+        socket_path, lambda method, path, body: handler.handle(method, path, body, now_ms())
+    )
+    listener.start()
+    assert listener.running
+
+    hello = {
+        "protocol": 1,
+        "type": "hello",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "session_file": None,
+        "cwd": "/tmp",
+        "name": None,
+        "pid": 1,
+        "model": None,
+        "thinking_level": None,
+        "reason": "startup",
+        "previous_session_id": None,
+        "pi_version": None,
+        "ext_version": "0.1.0",
+    }
+    status, _ = _post(socket_path, "/v1/hello", hello)
+    assert status == 200
+
+    events = {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": [
+            {"type": "state", "seq": 1, "ts": now_ms(), "state": "idle"},
+            {"type": "state", "seq": 2, "ts": now_ms(), "state": "working"},
+        ],
+    }
+    status, payload = _post(socket_path, "/v1/events", events)
+    assert status == 200
+    assert payload["acked_seq"] == 2
+    assert [row.seq for row in store.stored_events("s1", "i1")] == [1, 2]
+
+    listener.stop()
+    store.close()
+    assert not os.path.exists(socket_path)

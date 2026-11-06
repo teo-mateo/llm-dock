@@ -1,4 +1,5 @@
 from pi_remote.contract import STALE_AFTER_MS
+from pi_remote.events import Event, EventsFrame
 from pi_remote.handler import PiRemoteHandler
 from pi_remote.registry import PresenceRegistry
 from pi_remote.store import PiRemoteDB
@@ -97,4 +98,63 @@ def test_non_post_is_rejected_without_touching_the_store():
     assert response.status == 404
     assert response.payload["error"] == "not_found"
     assert store.list_sessions() == []
+    store.close()
+
+
+
+def events_frame(events):
+    return EventsFrame(session_id="s1", instance_id="i1", events=tuple(events))
+
+
+def events_request(seqs):
+    return {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": [
+            {"type": "state", "seq": seq, "ts": 2000, "state": "idle"}
+            for seq in seqs
+        ],
+    }
+
+
+def test_events_advance_the_hello_mark_and_touch_the_session(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    handler = PiRemoteHandler(PresenceRegistry(), store)
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    response = handler.handle("POST", "/v1/events", events_request([1, 2]), 2000)
+    assert response.status == 200
+    assert response.payload["acked_seq"] == 2
+    row = store.get_session("s1", "i1")
+    assert row["last_seen"] == 2000
+
+    again = handler.handle("POST", "/v1/hello", HELLO, 3000)
+    assert again.payload["acked_seq"] == 2
+    store.close()
+
+
+def test_rebuilt_store_keeps_the_hello_mark(tmp_path):
+    db_path = str(tmp_path / "pi_remote.db")
+    first = PiRemoteDB(db_path)
+    first.insert_events(events_frame([Event(5, 1000, "state", {"state": "idle"})]), 1000)
+    first.close()
+
+    second = PiRemoteDB(db_path)
+    handler = PiRemoteHandler(PresenceRegistry(), second)
+    response = handler.handle("POST", "/v1/hello", HELLO, 3000)
+    assert response.payload["acked_seq"] == 5
+    second.close()
+
+
+def test_stale_events_are_rejected_without_storage():
+    store = PiRemoteDB(":memory:")
+    handler = PiRemoteHandler(PresenceRegistry(), store)
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    response = handler.handle(
+        "POST", "/v1/events", events_request([1]), 1000 + STALE_AFTER_MS + 1
+    )
+    assert response.status == 404
+    assert response.payload["error"] == "unknown_session"
+    assert store.stored_events("s1", "i1") == []
     store.close()
