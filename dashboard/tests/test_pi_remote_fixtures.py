@@ -1,3 +1,4 @@
+import itertools
 import json
 from pathlib import Path
 
@@ -50,7 +51,8 @@ def test_golden_contract_commands():
     cases = json.loads(COMMANDS_FIXTURES.read_text())
     registry = PresenceRegistry()
     store = PiRemoteDB(":memory:")
-    queue = CommandQueue()
+    counter = itertools.count(1)
+    queue = CommandQueue(new_id=lambda: f"cmd-{next(counter)}")
     handler = PiRemoteHandler(registry, store, queue=queue)
     seed = HelloFrame(
         session_id="s1",

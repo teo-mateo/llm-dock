@@ -190,3 +190,20 @@ def test_audit_row_stores_a_digest_not_the_text(env):
     assert len(row["args_digest"]) == 64
     assert row["args_digest"] != "secret-text"
     assert "secret-text" not in str(row)
+
+
+def test_send_after_restart_does_not_reuse_stored_ids(tmp_path):
+    path = str(tmp_path / "pi_remote.db")
+    sent = []
+    for _ in range(2):
+        store = PiRemoteDB(path)
+        registry = PresenceRegistry()
+        bus = EventBus()
+        registry.register(hello(), 1000)
+        client = PiRemoteClient(store, registry, bus, CommandQueue(), RateLimiter(), lambda: 1000)
+        command_id, error = client.send_command(("s1", "i1"), "abort", {})
+        assert error is None
+        sent.append(command_id)
+        bus.close()
+        store.close()
+    assert sent[0] != sent[1]
