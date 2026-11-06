@@ -43,7 +43,6 @@ private fun PiUserItem(item: PiItem.User) {
             )
         }
         val footer = listOfNotNull(
-            "from phone".takeIf { item.fromPhone },
             "+${item.imageCount} ${if (item.imageCount == 1) "image" else "images"}".takeIf { item.imageCount > 0 },
         )
         if (footer.isNotEmpty()) {

@@ -14,20 +14,25 @@ sealed interface PiDisplayItem {
         override val id: String get() = item.id
     }
 
-    data class ToolGroup(override val id: String, val tools: List<PiItem.Tool>) : PiDisplayItem
+    data class ToolGroup(override val id: String, val tools: List<PiItem.Tool>, val thinking: Boolean = false) : PiDisplayItem
 }
 
 fun groupToolRuns(items: List<PiItem>): List<PiDisplayItem> {
     val out = mutableListOf<PiDisplayItem>()
     var tools: MutableList<PiItem.Tool>? = null
+    var thinking = false
     fun flush() {
-        tools?.let { out.add(PiDisplayItem.ToolGroup("g${it.first().id}", it.toList())) }
+        tools?.let { out.add(PiDisplayItem.ToolGroup("g${it.first().id}", it.toList(), thinking)) }
         tools = null
+        thinking = false
     }
     for (item in items) {
         when {
-            item is PiItem.Tool -> (tools ?: mutableListOf<PiItem.Tool>().also { tools = it }).add(item)
-            tools != null && item.isQuietAssistant() -> Unit
+            item is PiItem.Tool -> {
+                (tools ?: mutableListOf<PiItem.Tool>().also { tools = it }).add(item)
+                thinking = false
+            }
+            tools != null && item is PiItem.Assistant && item.text.isBlank() -> thinking = item.streaming
             else -> {
                 flush()
                 out.add(PiDisplayItem.Single(item))
@@ -37,9 +42,6 @@ fun groupToolRuns(items: List<PiItem>): List<PiDisplayItem> {
     flush()
     return out
 }
-
-private fun PiItem.isQuietAssistant(): Boolean =
-    this is PiItem.Assistant && !streaming && text.isBlank()
 
 fun argsSummary(args: String?): String {
     if (args == null) return ""

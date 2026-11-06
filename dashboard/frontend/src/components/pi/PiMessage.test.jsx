@@ -41,10 +41,10 @@ function assistantItem(overrides = {}) {
 afterEach(cleanup)
 
 describe('PiMessage', () => {
-  it('user bubble shows from phone for extension origin', () => {
+  it('user bubble has no origin label, only the image count', () => {
     renderMessage(userItem({ origin: 'extension', imageCount: 2 }))
     expect(screen.getByText('hello')).toBeInTheDocument()
-    expect(screen.getByText('from phone')).toBeInTheDocument()
+    expect(screen.queryByText('from phone')).not.toBeInTheDocument()
     expect(screen.getByText('+2 images')).toBeInTheDocument()
   })
 

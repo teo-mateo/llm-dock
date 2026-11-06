@@ -19,7 +19,6 @@ export default function PiMessage({ item }) {
 
   if (item.kind === 'user') {
     const footer = [
-      item.origin === 'extension' ? 'from phone' : null,
       item.imageCount > 0 ? imageLabel(item.imageCount) : null,
     ].filter(Boolean)
 

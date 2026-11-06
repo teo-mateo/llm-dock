@@ -18,7 +18,7 @@ function tool(id, overrides = {}) {
   }
 }
 
-const group = (tools) => ({ kind: 'tool_group', id: 'g1', tools })
+const group = (tools, thinking = false) => ({ kind: 'tool_group', id: 'g1', tools, thinking })
 
 afterEach(cleanup)
 
@@ -49,5 +49,10 @@ describe('PiToolGroup', () => {
     fireEvent.click(screen.getByRole('button', { name: '2 more…' }))
     expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(5)
     expect(screen.queryByText('2 more…')).not.toBeInTheDocument()
+  })
+
+  it('shows a thinking row while pi thinks between calls', () => {
+    render(<PiToolGroup group={group([tool(1)], true)} />)
+    expect(screen.getByText('thinking…')).toBeInTheDocument()
   })
 })

@@ -1,8 +1,8 @@
 const MAX_SUMMARY_CHARS = 160
 export const VISIBLE_TOOL_ROWS = 3
 
-function isQuietAssistant(item) {
-  return item.kind === 'assistant' && !item.streaming && item.text.trim() === ''
+function isSilentAssistant(item) {
+  return item.kind === 'assistant' && item.text.trim() === ''
 }
 
 export function groupToolRuns(items) {
@@ -11,11 +11,14 @@ export function groupToolRuns(items) {
   for (const item of items) {
     if (item.kind === 'tool') {
       if (!group) {
-        group = { kind: 'tool_group', id: `g${item.id}`, tools: [] }
+        group = { kind: 'tool_group', id: `g${item.id}`, tools: [], thinking: false }
         out.push(group)
       }
       group.tools.push(item)
-    } else if (!(group && isQuietAssistant(item))) {
+      group.thinking = false
+    } else if (group && isSilentAssistant(item)) {
+      group.thinking = item.streaming
+    } else {
       group = null
       out.push(item)
     }
