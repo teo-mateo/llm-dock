@@ -75,6 +75,7 @@ llm-dock/
 │   │   ├── openwebui.py         # Open WebUI management
 │   │   ├── metrics.py           # Service metrics endpoints
 │   │   ├── inspector.py         # Request-inspector capture list/detail/delete API
+│   │   ├── pi_remote.py        # pi session summaries, event pages, live SSE streams
 │   │   └── totp.py              # TOTP enrollment endpoints
 │   │
 │   ├── benchmarking/            # Benchmark subsystem
@@ -298,7 +299,7 @@ there or its size and existence stop resolving.
 6. `chat_bp` - Chat functionality
 7. `metrics_bp` - Service metrics
 8. `inspector_bp` - Request inspector captures
-9. `pi_remote_bp` - pi session summaries and stored event pages
+9. `pi_remote_bp` - pi session summaries, stored event pages, live SSE streams
 10. `totp_bp` - TOTP enrollment
 
 ### Authentication
@@ -487,7 +488,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 | `chat_bp` | `/api/chat/*` | Chat conversations, messages, runs, projects, project files, prompts, MCP registry, settings |
 | `metrics_bp` | `/api/services/<name>/metrics`, `/api/services/<name>/slots` | Prometheus metrics (vLLM/llama.cpp/NInfer/SGLang), live slots (llama.cpp only) |
 | `inspector_bp` | `/api/inspector/captures`, `/api/inspector/captures/<id>`, `/api/inspector/services` | Captured-request list/detail/delete, services-with-history ∪ live-proxies |
-| `pi_remote_bp` | `/api/pi/sessions`, `/api/pi/sessions/<session_id>/<instance_id>/events` | pi session summaries; paged stored events for one instance |
+| `pi_remote_bp` | `/api/pi/sessions`, `/api/pi/sessions/stream`, `/api/pi/sessions/<session_id>/<instance_id>/events`, `/api/pi/sessions/<session_id>/<instance_id>/stream` | pi session summaries; paged stored events and live SSE streams |
 | `totp_bp` | `/api/totp/setup`, `/api/totp/verify`, `/api/totp/status`, `/api/totp/disable` | TOTP enrollment |
 
 ## Coding Conventions

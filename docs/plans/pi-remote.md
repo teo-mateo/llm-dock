@@ -315,6 +315,8 @@ pre-existing JSONL files from `~/.pi/agent/sessions/` as read-only history.
 
 Built in #339: `GET /api/pi/sessions` → `{"sessions": [summary_json…]}`; `GET /api/pi/sessions/<session_id>/<instance_id>/events?after=&limit=` → `page_json`, with `invalid_paging` 400 and `unknown_session` 404.
 
+Built in #344: `GET /api/pi/sessions/stream` → `snapshot` then session `session` deltas; `GET /api/pi/sessions/<session_id>/<instance_id>/stream?after=<int>` → replay `events`, then live. Frames are `events` / `session` / `snapshot` / `lagged`; `id` is the last seq sent; reconnect uses `after` or `Last-Event-ID`; a lagged stream sends `lagged` with `after` and ends.
+
 Command flow: client POST → broker records audit row → queues to the live
 instance's command stream → waits briefly for `command_result` (e.g. 5 s) → returns
 it, or `202 pending` and the result arrives as an SSE frame. Session offline → 409
@@ -498,12 +500,13 @@ declared `Content-Length > 1 MiB` is rejected without reading.
 | `store.py` | `pi_remote.db` (`pi_sessions`, `pi_events`), upsert/touch/end/end-open, `ingest` (insert + last_seen + mark in one transaction), history read, retention purge; the only module writing SQL |
 | `read_model.py` | pure query model: `SessionSummary`, `EventView`, `EventPage`, `session_summary`, `event_page`, `clamp_limit`; no I/O |
 | `bus.py` | in-process fan-out: `EventBus`, `Subscription`, `BusMessage`; a full subscriber is marked `lagged` and closed, never silently dropped |
+| `stream.py` | SSE generators over a `StreamSource` protocol: subscribe-before-replay, cursor dedupe, lagged ends; no Flask imports |
 | `handler.py` | `handle(method, path, body, now) -> JsonResponse`; a `{path: route}` table, no sockets |
 | `listener.py` | the only module with sockets: `UdsListener` with `start()`/`stop()`/`running`/`bind_error`, owned thread, `daemon_threads`; speaks only `JsonResponse` |
 | `socket_path.py` | filesystem policy as plain functions: directory `0700`, stale-socket replacement, live-socket detection |
 | `sweeper.py` | `StaleSweeper` (injected clock + interval, idempotent `start()`/`stop()`) owns stale expiry, row ending, and the first/hourly retention purge; logs a failed sweep and keeps looping |
 | `settings.py` | defaults and env resolution for the socket and DB |
-| `supervisor.py` | singleton owning listener + registry + store + sweeper + bus; clock injected; configured/started from `create_app()`, stopped by `atexit`; facade `sessions()`, `events()` and `subscribe()` |
+| `supervisor.py` | singleton owning listener + registry + store + sweeper + bus; clock injected; configured/started from `create_app()`, stopped by `atexit`; facade `session()`, `sessions()`, `events()` and `subscribe()` |
 | `__main__.py` | standalone `python -m pi_remote --socket … --db …` for the live check |
 
 - **Env**: `LLM_DOCK_PI_REMOTE_SOCKET` (default `~/.cache/pi-remote/pi-remote.sock` — the
