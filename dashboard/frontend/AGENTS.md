@@ -199,6 +199,7 @@ Key mechanics:
 | `src/utils/fence.js` | Fence helpers for markdown/code fences |
 | `src/utils/openrouter.js` | Pure helpers for the `openrouter:<model-id>` service-string convention (`isOpenRouterService`, `openRouterModelId`, `serviceNameForModel`, `formatModelLabel`) |
 | `src/utils/openrouterModels.js` | Curated-list helpers shared by the picker and its JSON panel: `validateModelsJson`/`validateModels` (mirror of the server rules), `modelsToJson`, `deriveLabel`, `formatPricePerMtok`, `formatContext`, `CONTEXT_PRESETS` |
+| `src/utils/sseFrames.js` | Pure incremental SSE parser: chunks split anywhere, CRLF, comments, multi-line data, event defaults to `message` |
 
 ### Services (per-domain API clients under `src/services/`)
 
@@ -214,6 +215,7 @@ Key mechanics:
 | `openrouterProviders.js` | Per-provider detail for a batch of model ids (`…/openrouter-catalog/endpoints`, POST); `MAX_PROVIDER_BATCH` mirrors the server cap |
 | `mcpRegistry.js` | Registry get/json/put/reload/test; surfaces structured `err.body` validation errors |
 | `inspector.js` | Capture list/detail/delete + `inspectorServices()` for the filter (`/inspector/*`) |
+| `piRemote.js` | Fetch/read pi SSE streams: bearer and `Last-Event-ID`, parser frames with JSON data, auth/status errors |
 
 ### Hooks (`src/hooks/`)
 
@@ -238,6 +240,8 @@ Key mechanics:
 | `useResizableWidth.js` | Drag-resize panel width with localStorage persistence + ResizeObserver clamp |
 | `useProseClass.js` | Prose/markdown class helper for message rendering |
 | `useInspectorCaptures.js` | Capture list state: fresh first page per mount/filter change, merge-based `refresh()` so a Load-more'd tail survives, append-only deduping `loadMore()`, replacing `reload()` (Delete-all needs it — merge cannot empty the list), local `removeRow()`, 5 s live refetch with a `paused` flag, `services` for the filter select; exports pure `mergeReload`/`appendPage` |
+| `usePiSessions.js` | Pi session list from `/api/pi/sessions/stream`; pure `applySessionsFrame` snapshot/upsert reducer with live-first ordering; reconnect resumes from the stream |
+| `usePiSessionEvents.js` | One pi session's events from its SSE stream; pure `applySessionEventsFrame` appends only `seq > lastSeq`, sets summary and lagged; reconnect sends `Last-Event-ID` = `lastSeq` |
 
 ### Dashboard components (`src/components/`)
 
