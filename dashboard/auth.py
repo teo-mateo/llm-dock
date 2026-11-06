@@ -59,7 +59,7 @@ def require_auth(f):
                     _totp_sessions[token] = (
                         datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
                     )
-                    logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
+                    logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                     return f(*args, **kwargs)
                 else:
                     _totp_sessions.pop(token, None)
@@ -68,7 +68,7 @@ def require_auth(f):
             # Check against configured credentials
             dashboard_token = current_app.config["DASHBOARD_TOKEN"]
             if secrets.compare_digest(token, dashboard_token):
-                logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
+                logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                 return f(*args, **kwargs)
 
         # Try TOTP code via X-TOTP-Code header
@@ -80,7 +80,7 @@ def require_auth(f):
                 _totp_sessions[short_token] = (
                     datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
                 )
-                logger.info("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, short_token[:8])
+                logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, short_token[:8])
                 response = make_response(f(*args, **kwargs))
                 response.headers["X-TOTP-Token"] = short_token
                 return response
