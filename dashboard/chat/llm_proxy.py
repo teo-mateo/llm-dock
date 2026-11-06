@@ -145,6 +145,37 @@ def resolve_service(service_name: str) -> dict:
     return None
 
 
+def _part_text(value) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_part_text(p.get("text") if isinstance(p, dict) else p) for p in value)
+    return ""
+
+
+def split_content_parts(content):
+    """``(text, thinking)`` from a message or delta ``content``.
+
+    Mistral's reasoning models send ``content`` as a list of typed parts —
+    ``{"type": "thinking", "thinking": [{"type": "text", "text": …}]}`` and
+    ``{"type": "text", "text": …}`` — where every other engine sends a string.
+    The web and Android clients parse the forwarded raw delta themselves and read
+    ``content`` as a string, so the stream rewrites such a delta to the string
+    shape before forwarding it rather than only fixing its own accumulator.
+    """
+    if isinstance(content, list):
+        text, thinking = [], []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "thinking":
+                thinking.append(_part_text(part.get("thinking")))
+            elif part.get("type") == "text":
+                text.append(_part_text(part.get("text")))
+        return "".join(text), "".join(thinking)
+    return (content if isinstance(content, str) else ""), ""
+
+
 def without_reasoning_content(messages: list) -> list:
     """Replayed history minus ``reasoning_content``, for strict providers.
 
@@ -456,8 +487,15 @@ def stream_chat_completion(service_name: str, messages_array: list, tools: list 
             if chunk_finish:
                 finish_reason = chunk_finish
 
+            if isinstance(delta.get("content"), list):
+                text, thinking = split_content_parts(delta["content"])
+                delta["content"] = text
+                if thinking:
+                    delta["reasoning_content"] = (delta.get("reasoning_content") or "") + thinking
+                data = json.dumps(chunk)
+
             # Accumulate content
-            content_piece = delta.get("content", "")
+            content_piece = delta.get("content") or ""
             reasoning_piece = delta.get("reasoning_content") or delta.get("reasoning") or ""
             if content_piece:
                 collected_content += content_piece
