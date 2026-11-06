@@ -9,6 +9,7 @@ from .events import (
     acked_seq as compute_acked_seq,
 )
 from .schema import INSERT_EVENT_SQL
+from .session_changes import session_changes
 
 RETENTION_DAYS = 30
 RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000
@@ -61,6 +62,13 @@ class EventStore:
                    WHERE session_id = ? AND instance_id = ?""",
                 (now, new_mark, frame.session_id, frame.instance_id),
             )
+            changes = session_changes(inserted)
+            if changes:
+                assignments = ", ".join(f"{column} = ?" for column in changes)
+                conn.execute(
+                    f"UPDATE pi_sessions SET {assignments} WHERE session_id = ? AND instance_id = ?",
+                    (*changes.values(), frame.session_id, frame.instance_id),
+                )
             inserted.sort(key=lambda event: event.seq)
             return IngestResult(new_mark, tuple(inserted))
 

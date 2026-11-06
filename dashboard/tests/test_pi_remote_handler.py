@@ -175,3 +175,47 @@ def test_stale_bad_payload_gets_unknown_session():
     assert response.payload["error"] == "unknown_session"
     assert store.events.stored("s1", "i1") == []
     store.close()
+
+
+def test_model_and_thinking_changes_update_the_session_and_publish_it(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append((kind, summary)),
+    )
+    handler.handle("POST", "/v1/hello", {**HELLO, "model": {"provider": "old", "id": "m1"}, "thinking_level": "high"}, 1000)
+    published.clear()
+    body = {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": [
+            {"type": "model_changed", "seq": 1, "ts": 2000,
+             "model": {"provider": "mistral", "id": "small"}, "previous": {"provider": "old", "id": "m1"}},
+            {"type": "thinking_changed", "seq": 2, "ts": 2000, "level": "max", "previous": "high"},
+        ],
+    }
+    assert handler.handle("POST", "/v1/events", body, 2000).status == 200
+    row = store.sessions.get("s1", "i1")
+    assert (row["model_provider"], row["model_id"], row["thinking_level"]) == ("mistral", "small", "max")
+    sessions = [summary for kind, summary in published if kind == "session"]
+    assert len(sessions) == 1
+    assert sessions[0].model == "mistral/small"
+    assert sessions[0].thinking_level == "max"
+    store.close()
+
+
+def test_plain_events_do_not_publish_a_session(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append(kind),
+    )
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    published.clear()
+    handler.handle("POST", "/v1/events", events_request([1]), 2000)
+    assert published == ["events"]
+    store.close()

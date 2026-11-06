@@ -20,6 +20,7 @@ from .contract import (
 from .events import EventsEnvelope, parse_events
 from .frames import ByeFrame, HeartbeatFrame, HelloFrame
 from .publishing import PublishCallback, publish_session
+from .session_changes import SESSION_CHANGE_TYPES
 from .read_model import EventView
 from .registry import PresenceRegistry, RegistryResult
 from .store import PiRemoteDB
@@ -112,6 +113,11 @@ class PiRemoteHandler:
                 for event in result.inserted
             )
             self.publish("events", (frame.session_id, frame.instance_id), events, None)
+            if any(event.type in SESSION_CHANGE_TYPES for event in result.inserted):
+                publish_session(
+                    self.store, self.registry, self.publish,
+                    frame.session_id, frame.instance_id, now,
+                )
         return events_ok(result.acked_seq)
 
     def _commands_poll(self, frame: CommandsPollFrame, now: int) -> JsonResponse:
