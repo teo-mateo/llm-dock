@@ -3,6 +3,7 @@ from dataclasses import replace
 
 import pytest
 
+from pi_remote.commands import CommandResult
 from pi_remote.contract import STALE_AFTER_MS
 from pi_remote.events import Event, EventsFrame
 from pi_remote.frames import HelloFrame, ModelRef
@@ -301,3 +302,102 @@ def test_stop_all_closes_subscriptions(supervisor):
     supervisor.stop_all()
     assert subscription.closed is True
     assert subscription.get(0.2) is None
+
+
+def _commands_poll_body(wait_ms=0):
+    return {
+        "protocol": 1,
+        "type": "commands_poll",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "wait_ms": wait_ms,
+    }
+
+
+def _command_results_body(results):
+    return {
+        "protocol": 1,
+        "type": "command_results",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "results": results,
+    }
+
+
+def test_send_command_offline(supervisor):
+    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    assert command_id is None
+    assert error == "pi_session_offline"
+
+
+def test_send_command_rate_limited_on_11th(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    for _ in range(10):
+        command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+        assert command_id is not None
+        assert error is None
+    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    assert command_id is None
+    assert error == "rate_limited"
+
+
+def test_send_command_unsupported_kind(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    command_id, error = supervisor.send_command(("s1", "i1"), "set_model", {})
+    assert command_id is None
+    assert error == "unsupported_command"
+
+
+def test_poll_delivers_and_results_resolve_await_command(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    assert error is None
+
+    poll = supervisor._handler.handle(
+        "POST", "/v1/commands/poll", _commands_poll_body(), 1000
+    )
+    assert poll.status == 200
+    assert poll.payload["commands"][0]["command_id"] == command_id
+    assert poll.payload["commands"][0]["kind"] == "abort"
+
+    result_body = _command_results_body([
+        {"command_id": command_id, "ok": True, "error": None},
+    ])
+    assert supervisor._handler.handle(
+        "POST", "/v1/command-results", result_body, 1000
+    ).status == 200
+    assert supervisor.await_command(command_id, 0.1) == CommandResult(command_id, True, None)
+    assert supervisor._store.get_command(command_id)["outcome"] == "done"
+
+
+def test_bye_drops_pending_commands_and_marks_dropped(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    assert error is None
+    assert supervisor._handler.handle(
+        "POST", "/v1/bye", _bye_body(), 1000
+    ).status == 200
+    row = supervisor._store.get_command(command_id)
+    assert row["outcome"] == "dropped"
+    assert row["completed_at"] == 1000
+
+
+def test_stale_expiry_drops_pending_commands(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    command_id, error = supervisor.send_command(("s1", "i1"), "abort", {})
+    assert error is None
+    supervisor._sweeper.sweep(1000 + STALE_AFTER_MS + 1)
+    assert supervisor._store.get_command(command_id)["outcome"] == "dropped"
+
+
+def test_audit_row_stores_a_digest_not_the_text(supervisor):
+    supervisor._handler.handle("POST", "/v1/hello", _hello_body(), 1000)
+    command_id, error = supervisor.send_command(
+        ("s1", "i1"), "send_message", {"text": "secret-text"}
+    )
+    assert error is None
+    row = supervisor._store.get_command(command_id)
+    assert row["outcome"] == "pending"
+    assert len(row["args_digest"]) == 64
+    assert row["args_digest"] != "secret-text"
+    assert "secret-text" not in str(row)

@@ -1,11 +1,14 @@
 import logging
 import threading
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 from .bus import BusMessage, EventBus, SessionKey, Subscription
+from .command_queue import CommandQueue
+from .commands import CommandResult
 from .contract import END_REASON_DASHBOARD_RESTART
 from .handler import PiRemoteHandler
+from .limits import RateLimiter
 from .listener import UdsListener
 from .read_model import (
     EventPage,
@@ -44,6 +47,8 @@ class PiRemoteSupervisor:
         self._handler: Optional[PiRemoteHandler] = None
         self._sweeper: Optional[StaleSweeper] = None
         self._bus: Optional[EventBus] = None
+        self._queue: Optional[CommandQueue] = None
+        self._rate_limiter = RateLimiter()
         self._startup_error: Optional[str] = None
 
     def configure(self, socket_path: Optional[str] = None, db_path: Optional[str] = None) -> None:
@@ -51,11 +56,12 @@ class PiRemoteSupervisor:
             resolved_socket = resolve_socket_path(socket_path)
             resolved_db = resolve_db_path(db_path)
             if resolved_socket != self._socket_path or resolved_db != self._db_path:
-                listener, sweeper, store, bus = (
+                listener, sweeper, store, bus, queue = (
                     self._listener,
                     self._sweeper,
                     self._store,
                     self._bus,
+                    self._queue,
                 )
                 self._listener = None
                 self._registry = None
@@ -63,7 +69,10 @@ class PiRemoteSupervisor:
                 self._handler = None
                 self._sweeper = None
                 self._bus = None
+                self._queue = None
                 self._startup_error = None
+                if queue is not None:
+                    queue.close()
                 if listener is not None:
                     listener.stop()
                 if sweeper is not None:
@@ -91,13 +100,22 @@ class PiRemoteSupervisor:
                 self._registry = PresenceRegistry()
             if self._bus is None:
                 self._bus = EventBus()
+            if self._queue is None:
+                self._queue = CommandQueue()
             if self._handler is None:
                 self._handler = PiRemoteHandler(
-                    self._registry, self._store, self._publish
+                    self._registry,
+                    self._store,
+                    publish=self._publish,
+                    queue=self._queue,
                 )
             if self._sweeper is None:
                 self._sweeper = StaleSweeper(
-                    self._registry, self._store, self._clock, publish=self._publish
+                    self._registry,
+                    self._store,
+                    self._clock,
+                    publish=self._publish,
+                    queue=self._queue,
                 )
             if self._listener is None:
                 handler = self._handler
@@ -121,11 +139,12 @@ class PiRemoteSupervisor:
 
     def stop_all(self) -> None:
         with self._lock:
-            listener, sweeper, store, bus = (
+            listener, sweeper, store, bus, queue = (
                 self._listener,
                 self._sweeper,
                 self._store,
                 self._bus,
+                self._queue,
             )
             self._listener = None
             self._registry = None
@@ -133,7 +152,10 @@ class PiRemoteSupervisor:
             self._handler = None
             self._sweeper = None
             self._bus = None
+            self._queue = None
             self._startup_error = None
+        if queue is not None:
+            queue.close()
         if listener is not None:
             listener.stop()
         if sweeper is not None:
@@ -204,6 +226,33 @@ class PiRemoteSupervisor:
         page_limit = clamp_limit(limit)
         rows = store.events_page(session_id, instance_id, after_seq, page_limit)
         return event_page(rows, after_seq, page_limit)
+
+    def send_command(
+        self, key: SessionKey, kind: str, args: Mapping[str, Any]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        with self._lock:
+            queue, registry, store = self._queue, self._registry, self._store
+            now = self._clock()
+        if queue is None or registry is None or store is None:
+            return None, "pi_session_offline"
+        if registry.get(key[0], key[1], now) is None:
+            return None, "pi_session_offline"
+        if kind not in ("send_message", "abort"):
+            return None, "unsupported_command"
+        if not self._rate_limiter.allow(key, now):
+            return None, "rate_limited"
+        command = queue.enqueue(key, kind, args, now)
+        if command is None:
+            return None, "queue_full"
+        store.record_command(command, key)
+        return command.command_id, None
+
+    def await_command(self, command_id: str, timeout_s: float) -> Optional[CommandResult]:
+        with self._lock:
+            queue = self._queue
+        if queue is None:
+            return None
+        return queue.wait_result(command_id, timeout_s)
 
     def status(self) -> dict:
         with self._lock:

@@ -38,6 +38,22 @@ CREATE TABLE IF NOT EXISTS pi_events (
 
 CREATE INDEX IF NOT EXISTS idx_pi_events_session_seq
     ON pi_events(session_id, instance_id, seq);
+
+CREATE TABLE IF NOT EXISTS pi_commands (
+    command_id   TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    instance_id  TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    args_digest  TEXT NOT NULL,
+    issued_at    INTEGER NOT NULL,
+    completed_at INTEGER,
+    ok           INTEGER,
+    error        TEXT,
+    outcome      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pi_commands_session
+    ON pi_commands(session_id, instance_id, issued_at);
 """
 
 UPSERT_SQL = """

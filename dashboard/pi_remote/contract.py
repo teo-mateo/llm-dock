@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
 
+from .commands import (
+    CommandResultsFrame,
+    CommandsPollFrame,
+    parse_command_results,
+    parse_commands_poll,
+)
 from .events import EventsEnvelope, parse_events_envelope
 from .frames import Frame, parse_bye, parse_hello, parse_heartbeat
 from .wire_types import is_int
@@ -18,17 +24,21 @@ PATHS = {
     "heartbeat": "/v1/heartbeat",
     "bye": "/v1/bye",
     "events": "/v1/events",
+    "commands_poll": "/v1/commands/poll",
+    "command_results": "/v1/command-results",
 }
 
 PATH_TO_TYPE = {path: kind for kind, path in PATHS.items()}
 
-FrameOrEnvelope = Union[Frame, EventsEnvelope]
+FrameOrEnvelope = Union[Frame, EventsEnvelope, CommandsPollFrame, CommandResultsFrame]
 
 PARSERS: Dict[str, Callable[[Dict[str, Any]], Optional[FrameOrEnvelope]]] = {
     "hello": parse_hello,
     "heartbeat": parse_heartbeat,
     "bye": parse_bye,
     "events": parse_events_envelope,
+    "commands_poll": parse_commands_poll,
+    "command_results": parse_command_results,
 }
 
 
@@ -88,6 +98,29 @@ def heartbeat_ok(now: int) -> JsonResponse:
 
 
 def bye_ok() -> JsonResponse:
+    return JsonResponse(HTTP_OK, {"ok": True, "protocol": PROTOCOL_VERSION})
+
+
+def commands_ok(commands: Iterable[Any]) -> JsonResponse:
+    return JsonResponse(
+        HTTP_OK,
+        {
+            "ok": True,
+            "protocol": PROTOCOL_VERSION,
+            "commands": [
+                {
+                    "command_id": command.command_id,
+                    "kind": command.kind,
+                    "args": dict(command.args),
+                    "issued_at": command.issued_at,
+                }
+                for command in commands
+            ],
+        },
+    )
+
+
+def command_results_ok() -> JsonResponse:
     return JsonResponse(HTTP_OK, {"ok": True, "protocol": PROTOCOL_VERSION})
 
 
