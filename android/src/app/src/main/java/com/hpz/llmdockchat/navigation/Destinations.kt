@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets
 
 /**
  * The app's destinations. The conversation list replaced the placeholder
-  * Home screen with the two-tab scaffold: [CHATS] and [MODELS] carry the
+  * Home screen with the tab scaffold: [CHATS], [MODELS] and [PI] carry the
  * bottom bar, [THREAD] and [NEW_CHAT] are pushed on top of it
  * without one.
  */
@@ -22,10 +22,6 @@ object Destinations {
     const val PI_SESSION = "pi/{sessionId}/{instanceId}"
     fun piSession(key: PiSessionKey): String =
         "pi/${encodePathSegment(key.sessionId)}/${encodePathSegment(key.instanceId)}"
-
-    /** Design-lab gallery (experiment, not a shipped feature) — cycles the
-     * `feature/designlab` mock screens the owner asked for. */
-    const val DESIGN = "design"
 
     /** The share-target picker, pushed on top of [TABS] without the bottom bar. */
     const val SHARE_PICKER = "share_picker"

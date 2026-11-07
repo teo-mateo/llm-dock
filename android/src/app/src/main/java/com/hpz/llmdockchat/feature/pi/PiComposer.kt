@@ -35,7 +35,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 
 @Composable
 fun PiComposer(
@@ -102,7 +102,7 @@ fun PiComposer(
             }
             if (working) {
                 PiActionButton(
-                    icon = DesignLabIcons.Stop,
+                    icon = AppIcons.Stop,
                     description = "Stop the run",
                     testTag = "pi_composer_stop",
                     enabled = !stopping,
@@ -111,7 +111,7 @@ fun PiComposer(
                 )
             }
             PiActionButton(
-                icon = DesignLabIcons.Send,
+                icon = AppIcons.Send,
                 description = "Send",
                 testTag = "pi_composer_send",
                 enabled = canSend,

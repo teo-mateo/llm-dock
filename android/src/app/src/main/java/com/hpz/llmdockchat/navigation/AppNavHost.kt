@@ -28,7 +28,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.hpz.llmdockchat.core.AppContainer
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.DesignLabGalleryScreen
 import com.hpz.llmdockchat.feature.account.AccountScreen
 import com.hpz.llmdockchat.feature.account.AccountViewModel
 import com.hpz.llmdockchat.feature.connect.ConnectScreen
@@ -208,10 +207,6 @@ fun AppNavHost(
                         onOpen = { key -> navController.navigate(Destinations.piSession(key)) },
                     )
                 }
-            }
-
-            composable(Destinations.DESIGN) {
-                TabScaffold(navController) { DesignLabGalleryScreen() }
             }
         }
 

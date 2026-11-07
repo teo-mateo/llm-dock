@@ -311,11 +311,13 @@ surfaces, text tiers, accent, and the four engine chip colours. Screens
 reference tokens, never literals. A screen that hardcodes a hex becomes a
 light-mode bug.
 
-### D12 · Navigation — Navigation Compose, two-tab scaffold
+### D12 · Navigation — Navigation Compose, tab scaffold
 
-Bottom bar on the two list screens; thread, model detail and logs are
-pushed destinations without it (F02-R7). Nav3 exists and is stable, but
-Navigation Compose 2.9.8 is better documented for a graph this simple.
+Bottom bar on the shipped list screens — Chats, Models and Pi — and nowhere
+else; thread, model detail and logs are pushed destinations without it
+(F02-R7). The bar carries shipped destinations only: a visual proposal or
+mock screen is not a tab. Nav3 exists and is stable, but Navigation Compose
+2.9.8 is better documented for a graph this simple.
 
 ---
 

@@ -250,7 +250,7 @@ is why `ik_llamacpp`, `tabbyapi`, `ds4` and OpenRouter send nothing.
   value in mono both coloured by state (muted unset, accent chosen, amber stranded), a
   trailing `ChevronDown`, the header's own ripple — and it sits in the action row beside
   the gear rather than under the title, which is what makes the pair read as one group.
-  The glyph is `DesignLabIcons.Brain`, drawn and rasterised at its shipped size rather
+  The glyph is `AppIcons.Brain`, drawn and rasterised at its shipped size rather
   than pulled from a dependency (this app vendors its icon set) and drawn at the cog's
   own 21 dp, so the two controls weigh the same in the row.
   Behaviour is untouched: same options, same order, same staleness rules, same

@@ -61,7 +61,7 @@ import com.hpz.llmdockchat.core.ui.NoticeDialog
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.account.AccountEntry
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.GpuState
 import com.hpz.llmdockchat.data.model.GpuSummary
@@ -341,7 +341,7 @@ fun ServiceActionDialog(
         is ServiceActionState.Confirming -> {
             val stopping = actionState.action == ServiceAction.STOP
             ConfirmDialog(
-                icon = if (stopping) DesignLabIcons.Power else DesignLabIcons.Play,
+                icon = if (stopping) AppIcons.Power else AppIcons.Play,
                 tint = if (stopping) colors.red else colors.green,
                 title = if (stopping) "Stop ${actionState.serviceName}?" else "Start ${actionState.serviceName}?",
                 message = if (stopping) {
@@ -363,7 +363,7 @@ fun ServiceActionDialog(
             )
         }
         is ServiceActionState.Failed -> NoticeDialog(
-            icon = DesignLabIcons.Power,
+            icon = AppIcons.Power,
             tint = colors.red,
             title = "Couldn't ${if (actionState.action == ServiceAction.STOP) "stop" else "start"} ${actionState.serviceName}",
             message = actionState.message,
@@ -439,7 +439,7 @@ private fun GpuCard(gpu: GpuSummary) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            DesignLabIcons.Chip,
+            AppIcons.Chip,
             contentDescription = null,
             tint = colors.accent,
             modifier = Modifier.size(17.dp),
@@ -583,7 +583,7 @@ private fun ServiceRow(
             // Offered only for a running, chat-capable service.
             if (onNewChatFromModel != null && service.isRunning && service.isChatCapable) {
                 RoundAction(
-                    icon = DesignLabIcons.ChatBubble,
+                    icon = AppIcons.ChatBubble,
                     description = "New chat with ${service.name}",
                     tint = colors.accent,
                     background = colors.accentSoft,
@@ -601,7 +601,7 @@ private fun ServiceRow(
                 }
             } else if (service.isRunning) {
                 RoundAction(
-                    icon = DesignLabIcons.Power,
+                    icon = AppIcons.Power,
                     description = "Stop ${service.name}",
                     tint = colors.red,
                     background = colors.red.copy(alpha = 0.12f),
@@ -610,7 +610,7 @@ private fun ServiceRow(
                 )
             } else {
                 RoundAction(
-                    icon = DesignLabIcons.Play,
+                    icon = AppIcons.Play,
                     description = "Start ${service.name}",
                     tint = colors.green,
                     background = colors.green.copy(alpha = 0.12f),
@@ -784,7 +784,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(DesignLabIcons.Search, contentDescription = null, tint = colors.subtle, modifier = Modifier.size(16.dp))
+        Icon(AppIcons.Search, contentDescription = null, tint = colors.subtle, modifier = Modifier.size(16.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
                 Text("Filter by name or port", color = colors.subtle, style = MaterialTheme.typography.bodyMedium)
@@ -800,7 +800,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         }
         if (query.isNotEmpty()) {
             Icon(
-                DesignLabIcons.Close,
+                AppIcons.Close,
                 contentDescription = "Clear filter",
                 tint = colors.muted,
                 modifier = Modifier.size(15.dp).clickable { onQueryChange("") },

@@ -47,7 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.feature.logs.LogsPane
 import com.hpz.llmdockchat.feature.logs.LogsViewModel
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -183,7 +183,7 @@ private fun DetailHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack, modifier = Modifier.testTag("model_detail_back")) {
-            Icon(DesignLabIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
             Text(
@@ -277,7 +277,7 @@ private fun DetailBody(
                     } else if (summary.isRunning) {
                         PowerButton(
                             label = "Stop",
-                            icon = DesignLabIcons.Power,
+                            icon = AppIcons.Power,
                             tint = colors.red,
                             onClick = onRequestStop,
                             testTag = "model_detail_stop",
@@ -285,7 +285,7 @@ private fun DetailBody(
                     } else {
                         PowerButton(
                             label = "Start",
-                            icon = DesignLabIcons.Play,
+                            icon = AppIcons.Play,
                             tint = colors.green,
                             onClick = onRequestStart,
                             testTag = "model_detail_start",

@@ -1,4 +1,4 @@
-package com.hpz.llmdockchat.feature.designlab.icons
+package com.hpz.llmdockchat.core.ui.icons
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-object DesignLabIcons {
+object AppIcons {
     private fun lineIcon(name: String, build: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(
             name = name,

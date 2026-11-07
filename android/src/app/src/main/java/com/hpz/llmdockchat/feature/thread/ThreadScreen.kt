@@ -74,7 +74,7 @@ import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.prefs.LocalChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.ConversationDetail
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -251,7 +251,7 @@ private fun ThreadContent(
                         if (loaded != null) {
                             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("thread_settings")) {
                                 Icon(
-                                    DesignLabIcons.Cog,
+                                    AppIcons.Cog,
                                     contentDescription = "Chat settings",
                                     tint = colors.fg,
                                     modifier = Modifier.size(21.dp),
@@ -423,7 +423,7 @@ private fun ThreadHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack, modifier = Modifier.testTag("thread_back")) {
-            Icon(DesignLabIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.ChevronLeft, contentDescription = "Back", tint = colors.fg, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
             Text(
@@ -733,7 +733,7 @@ private fun JumpToLatest(modifier: Modifier = Modifier, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         IconButton(onClick = onClick) {
-            Icon(DesignLabIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.onAccent, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.ChevronDown, contentDescription = "Jump to latest", tint = colors.onAccent, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -753,7 +753,7 @@ private fun EmptyThread(modelName: String) {
                 .background(colors.accentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(DesignLabIcons.ChatBubble, contentDescription = null, tint = colors.accent, modifier = Modifier.size(28.dp))
+            Icon(AppIcons.ChatBubble, contentDescription = null, tint = colors.accent, modifier = Modifier.size(28.dp))
         }
         Text(
             "Ask it anything",

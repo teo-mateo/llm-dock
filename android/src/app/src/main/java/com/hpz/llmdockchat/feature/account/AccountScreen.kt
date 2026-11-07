@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.ConfirmDialog
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 
 /**
  * The signed-in account screen: the server this phone talks to, and the
@@ -126,7 +126,7 @@ private fun AccountContent(
 
         if (confirming) {
             ConfirmDialog(
-                icon = DesignLabIcons.Power,
+                icon = AppIcons.Power,
                 title = "Sign out?",
                 message = "Clears the token and the saved password. The address stays.",
                 confirmLabel = "Sign out",
@@ -155,7 +155,7 @@ private fun AccountHeader(onBack: () -> Unit) {
             modifier = Modifier.testTag("account_back"),
         ) {
             Icon(
-                DesignLabIcons.ChevronLeft,
+                AppIcons.ChevronLeft,
                 contentDescription = "Back",
                 tint = colors.fg,
                 modifier = Modifier.size(22.dp),
