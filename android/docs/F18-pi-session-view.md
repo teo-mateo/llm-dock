@@ -53,16 +53,16 @@ retrying.
 
 ## F18-R4 · Response text size (Must)
 
-The session screen header carries an `Aa` control that opens an inline bar stepping the size of pi
+The session screen header carries an `Aa` button that toggles an inline bar stepping the size of pi
 answers only, from 70% to 140% in 10% steps, with the current percentage shown and a `Reset` that
-returns it to 100%. The choice is stored on the device (DataStore key `pi_response_text_scale`),
+returns it to 100%. The same `Aa` button closes the bar; there is no second dismiss control. The choice is stored on the device (DataStore key `pi_response_text_scale`),
 applied immediately to every answer on screen, and re-applied after navigation or a restart. Chrome —
 header, chips, list rows, composer — keeps the system text size.
 
 **Acceptance criteria**
 
-- [ ] `Aa` in the session header opens and closes the bar (`pi_text_size_bar`); sizes below 100% are
-      offered.
+- [ ] One `Aa` button in the session header opens the bar and closes it again (`pi_text_size_bar`);
+      sizes below 100% are offered.
 - [ ] Stepping re-renders the answers on screen with no navigation, reload or restart.
 - [ ] The bar reports the current size as a whole percentage and offers `Reset` only when it is not
       100%.

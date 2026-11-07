@@ -29,7 +29,7 @@ import com.hpz.llmdockchat.core.prefs.PiTextAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
 @Composable
-fun PiTextSizeBar(onClose: () -> Unit) {
+fun PiTextSizeBar() {
     val appearance = LocalPiTextAppearance.current
     val colors = LlmTheme.colors
     val scale by appearance.scale.collectAsState()
@@ -86,15 +86,6 @@ fun PiTextSizeBar(onClose: () -> Unit) {
                         .testTag("pi_text_size_reset"),
                 )
             }
-            Text(
-                "Done",
-                color = colors.muted,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier
-                    .clickable(onClick = onClose)
-                    .padding(horizontal = 4.dp, vertical = 12.dp)
-                    .testTag("pi_text_size_done"),
-            )
         }
         Text(
             "Only pi answers change size. Buttons, rows and the composer follow the system text size.",
