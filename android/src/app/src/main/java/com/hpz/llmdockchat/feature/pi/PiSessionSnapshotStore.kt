@@ -157,8 +157,11 @@ internal class PiSessionSnapshotStore(
         worker.cancelAndJoin()
     }
 
-    private fun isCurrent(generation: PiSnapshotGeneration): Boolean =
+    fun isCurrent(generation: PiSnapshotGeneration): Boolean = synchronized(lock) {
         generations[generation.identity] === generation
+    }
+
+    fun invalidate(identity: PiSnapshotIdentity) = synchronized(lock) { invalidateKey(identity) }
 
     private fun invalidateKey(identity: PiSnapshotIdentity) {
         generations.remove(identity)

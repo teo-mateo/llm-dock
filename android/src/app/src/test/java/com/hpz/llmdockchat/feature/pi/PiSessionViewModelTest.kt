@@ -5,7 +5,6 @@ import com.hpz.llmdockchat.core.error.AppError
 import com.hpz.llmdockchat.core.net.ApiException
 import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.data.PiCommandsRepository
-import com.hpz.llmdockchat.data.PiSessionEventsRepository
 import com.hpz.llmdockchat.data.model.PiCommandOutcome
 import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.data.model.Rejection
@@ -14,6 +13,9 @@ import com.hpz.llmdockchat.testing.FakePiCommandsRepository
 import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.MainDispatcherRule
 import com.hpz.llmdockchat.testing.ScriptedSseTransport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -24,10 +26,14 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class PiSessionViewModelTest {
     @get:Rule
     val mainDispatcher = MainDispatcherRule()
+
+    @get:Rule val temporary = TemporaryFolder()
+    private val cacheScopes = mutableListOf<CoroutineScope>()
 
     private val key = PiSessionKey("s1", "i1")
     private val viewModels = mutableListOf<PiSessionViewModel>()
@@ -36,6 +42,7 @@ class PiSessionViewModelTest {
     fun tearDown() {
         viewModels.forEach { it.viewModelScope.cancel() }
         viewModels.clear()
+        cacheScopes.forEach { it.cancel() }
     }
 
     private fun viewModel(
@@ -44,10 +51,12 @@ class PiSessionViewModelTest {
         clock: () -> Long = System::currentTimeMillis,
     ): PiSessionViewModel = PiSessionViewModel(
         key,
-        PiSessionEventsRepository(transport),
+        PiRuntimeFixture(temporary.newFolder(), CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also { cacheScopes += it }).runtime(transport),
         commands,
         clock,
     ).also { viewModels += it }
+
+    private fun connectedTransport() = FakeSseTransport().apply { payloads = listOf(piSummary()); stayOpen = true }
 
     private fun eventsFrame(): String = """
         {"type":"events","events":[
@@ -77,7 +86,7 @@ class PiSessionViewModelTest {
         assertEquals(2, loaded.transcript.items.size)
         assertTrue(loaded.transcript.items[0] is PiItem.User)
         assertTrue(loaded.transcript.items[1] is PiItem.Assistant)
-        assertFalse(loaded.stale)
+        assertEquals(PiSessionPhase.CATCHING_UP, loaded.phase)
     }
 
     @Test
@@ -125,7 +134,8 @@ class PiSessionViewModelTest {
     @Test
     fun `send clears draft on done`() {
         val commands = FakePiCommandsRepository()
-        val viewModel = viewModel(FakeSseTransport(), commands)
+        val viewModel = viewModel(connectedTransport(), commands)
+        viewModel.start()
         viewModel.onDraftChange("hello")
 
         viewModel.send()
@@ -140,7 +150,8 @@ class PiSessionViewModelTest {
     fun `send keeps draft and sets notice on rejection`() {
         val commands = FakePiCommandsRepository()
         commands.sendOutcome = PiCommandOutcome.Rejected(Rejection.OFFLINE)
-        val viewModel = viewModel(FakeSseTransport(), commands)
+        val viewModel = viewModel(connectedTransport(), commands)
+        viewModel.start()
         viewModel.onDraftChange("hello")
 
         viewModel.send()
@@ -153,7 +164,8 @@ class PiSessionViewModelTest {
     @Test
     fun `whitespace is not sent`() {
         val commands = FakePiCommandsRepository()
-        val viewModel = viewModel(FakeSseTransport(), commands)
+        val viewModel = viewModel(connectedTransport(), commands)
+        viewModel.start()
         viewModel.onDraftChange("   ")
 
         viewModel.send()
@@ -166,7 +178,8 @@ class PiSessionViewModelTest {
     @Test
     fun `stop records lastStopAt then aborts`() {
         val commands = FakePiCommandsRepository()
-        val viewModel = viewModel(FakeSseTransport(), commands, clock = { 1000L })
+        val viewModel = viewModel(connectedTransport(), commands, clock = { 1000L })
+        viewModel.start()
 
         viewModel.stop()
 

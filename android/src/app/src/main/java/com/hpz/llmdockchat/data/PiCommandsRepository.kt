@@ -3,6 +3,7 @@ package com.hpz.llmdockchat.data
 import com.hpz.llmdockchat.core.error.AppError
 import com.hpz.llmdockchat.core.net.ApiClient
 import com.hpz.llmdockchat.core.net.ApiException
+import com.hpz.llmdockchat.core.net.BaseUrl
 import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.Endpoints
 import com.hpz.llmdockchat.data.dto.PiCommandResponseDto
@@ -15,18 +16,20 @@ import kotlinx.serialization.encodeToString
 
 open class PiCommandsRepository(private val api: ApiClient) {
 
-    open suspend fun send(key: PiSessionKey, text: String): PiCommandOutcome = execute {
+    open suspend fun send(key: PiSessionKey, text: String, server: BaseUrl? = null): PiCommandOutcome = execute {
         api.request(
             method = "POST",
+            server = server,
             path = Endpoints.piSessionMessages(key.sessionId, key.instanceId),
             deserializer = PiCommandResponseDto.serializer(),
             body = ApiJson.encodeToString(PiMessageRequestDto(text)),
         )
     }
 
-    open suspend fun abort(key: PiSessionKey): PiCommandOutcome = execute {
+    open suspend fun abort(key: PiSessionKey, server: BaseUrl? = null): PiCommandOutcome = execute {
         api.request(
             method = "POST",
+            server = server,
             path = Endpoints.piSessionAbort(key.sessionId, key.instanceId),
             deserializer = PiCommandResponseDto.serializer(),
             body = "{}",

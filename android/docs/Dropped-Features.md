@@ -75,6 +75,12 @@ Caching the last N threads for reading without a connection. No web
 equivalent, and it creates a second source of truth for message content.
 Cut for v1.
 
+Pi sessions are a deliberately narrower exception: F18 now caches bounded transcript
+checkpoints for incremental replay and visibly stale/offline reading. The approved
+cache may outlive server retention and keeps committed files on sign-out, isolated
+by server and inaccessible through signed-out navigation. This does not restore the
+chat-thread offline cache above. Device verification of the Pi exception is pending.
+
 ### Whisper round-trip for voice input
 
 *Mockup: screen 06a.*

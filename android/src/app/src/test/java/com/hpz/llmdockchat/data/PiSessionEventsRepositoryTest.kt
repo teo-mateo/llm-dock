@@ -8,6 +8,7 @@ import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.testing.FakeSseTransport
 import com.hpz.llmdockchat.testing.ScriptedSseTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -136,7 +137,7 @@ class PiSessionEventsRepositoryTest {
         val repository = PiSessionEventsRepository(transport)
 
         val states = withTimeout(5_000) {
-            repository.stream(key, reconnectDelayMs = 60_000L).take(1).toList()
+            repository.stream(key, reconnectDelayMs = 60_000L).filter { it.appended.isNotEmpty() }.take(1).toList()
         }
 
         assertEquals(listOf(6L), states.single().appended.map { it.seq })

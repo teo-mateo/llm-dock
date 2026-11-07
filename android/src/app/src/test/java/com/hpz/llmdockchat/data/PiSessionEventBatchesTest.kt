@@ -9,6 +9,7 @@ import com.hpz.llmdockchat.testing.ScriptedSseTransport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -50,7 +51,7 @@ class PiSessionEventBatchesTest {
                 ScriptedSseTransport.Leg(payloads = listOf(batch(5), """{"type":"lagged","after":$hint}""")),
                 ScriptedSseTransport.Leg(payloads = listOf(batch(5, 9))),
             )
-            val states = PiSessionEventsRepository(transport).stream(key, 60_000L).take(2).toList()
+            val states = PiSessionEventsRepository(transport).stream(key, 60_000L).filter { it.appended.isNotEmpty() }.take(2).toList()
             assertEquals("5", transport.requests[1].query["after"])
             assertEquals(listOf(5L, 9L), states.flatMap { it.appended }.map { it.seq })
             assertEquals(0L, currentTime)

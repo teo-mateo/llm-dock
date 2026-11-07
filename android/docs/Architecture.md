@@ -48,7 +48,17 @@ wrong, the fix is a commit, not a conversation.
 messages, conversations, runs or services. The phone stores only: the
 server URL, the credential (encrypted), and a handful of UI preferences.
 
-**Why.** Three things converge on this. The offline reading cache was
+**Narrow Pi exception.** Pi session transcripts have a disposable, server-namespaced
+checkpoint cache in app-private `cacheDir/pi-sessions/` (excluded from Android backup).
+It holds at most eight entries, 8 MiB decompressed JSON each and 64 MiB committed files.
+Cached/offline reading is visibly checking or reconnecting; only a current post-replay
+summary enables commands. Cached history may survive server event retention. Sign-out
+stops work and invalidates pending writes but retains committed files behind the normal
+authenticated navigation boundary. This does not enable a chat-conversation database,
+chat offline cache, or separate at-rest encryption. See F18 for replay and lifecycle
+contracts; device timing/navigation/offline checks remain pending.
+
+**Why.** Three things converge on this. The chat-thread offline reading cache remains
 dropped (F09, Dropped-Features). `chat.db` is shared live with the web
 UI, so a local copy is stale the moment the desktop touches a thread.
 And — the decisive one — the client's own streamed text is *not*

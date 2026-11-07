@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * Deliberately a [StateFlow] rather than an event stream: a signal raised while
  * nothing is collecting must still be visible to whatever collects next.
  */
-class SessionState {
+class SessionState(private val onInvalidated: () -> Unit = {}) {
 
     private val _authenticationRequired = MutableStateFlow(false)
     val authenticationRequired: StateFlow<Boolean> = _authenticationRequired.asStateFlow()
@@ -37,6 +37,7 @@ class SessionState {
     fun requireAuthentication(reason: String? = null) {
         if (reason != null) _reason.value = reason
         _authenticationRequired.value = true
+        onInvalidated()
     }
 
     fun authenticated() {
@@ -48,5 +49,6 @@ class SessionState {
     fun signedOut() {
         _reason.value = null
         _authenticationRequired.value = true
+        onInvalidated()
     }
 }
