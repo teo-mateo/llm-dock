@@ -204,7 +204,7 @@ Mark completed features `[DONE]` in the Status column.
 | F15 | Per-conversation reasoning level | [F15-reasoning-level.md](F15-reasoning-level.md) | — | [DONE] — client-only feature, backend shipped in PR #128; no mockup, placement recorded as a deviation; two criteria outstanding, both recorded in its verification notes |
 | F16 | Models from configured providers | [F16-model-providers.md](F16-model-providers.md) | — | [DONE] — client-only, backend in PR #315/#317; R3 device-verified on a never-configured provider id, not a removed one, see the feature file |
 | F17 | Pi sessions list | [F17-pi-sessions-list.md](F17-pi-sessions-list.md) | Main | UI, read-only list |
-| F18 | Pi session view | [F18-pi-session-view.md](F18-pi-session-view.md) | PhoneSession | UI; composer and Stop added by F19 |
+| F18 | Pi session view | [F18-pi-session-view.md](F18-pi-session-view.md) | PhoneSession | UI; composer and Stop added by F19; R4 answer text size added in #393 |
 | F19 | Pi composer and Stop | [F19-pi-composer-and-stop.md](F19-pi-composer-and-stop.md) | PhoneSession footer | [WIP] — JVM/gates verified; AC5 session-screen screenshot outstanding because the dashboard still 404s `/api/pi/...` |
 | — | Dropped and deferred features | [Dropped-Features.md](Dropped-Features.md) | — | n/a |
 

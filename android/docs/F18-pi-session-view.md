@@ -4,7 +4,8 @@
 
 The session view is the read-only detail screen for one pi-remote session. It renders the
 session header and the event transcript; it does not send, steer, stop or change a run. Those
-controls belong to later features.
+controls belong to later features. The one control it does own is F18-R4, a display preference that
+changes how answers are drawn and touches no run state.
 
 ---
 
@@ -47,6 +48,27 @@ retrying.
 - [ ] `404 unknown_session` sets `unknown` and stops; the UI shows "no longer known".
 - [ ] A failure marks the state stale, keeps the last-known transcript, and recovers on retry.
 - [ ] Cancellation is rethrown and not retried.
+
+---
+
+## F18-R4 · Response text size (Must)
+
+The session screen header carries an `Aa` control that opens an inline bar stepping the size of pi
+answers only, from 70% to 140% in 10% steps, with the current percentage shown and a `Reset` that
+returns it to 100%. The choice is stored on the device (DataStore key `pi_response_text_scale`),
+applied immediately to every answer on screen, and re-applied after navigation or a restart. Chrome —
+header, chips, list rows, composer — keeps the system text size.
+
+**Acceptance criteria**
+
+- [ ] `Aa` in the session header opens and closes the bar (`pi_text_size_bar`); sizes below 100% are
+      offered.
+- [ ] Stepping re-renders the answers on screen with no navigation, reload or restart.
+- [ ] The bar reports the current size as a whole percentage and offers `Reset` only when it is not
+      100%.
+- [ ] The value survives navigating away and back, and a process restart.
+- [ ] Header, composer and control bounds are identical at every size; answer text scrolls and clips
+      normally instead of overflowing.
 
 ---
 

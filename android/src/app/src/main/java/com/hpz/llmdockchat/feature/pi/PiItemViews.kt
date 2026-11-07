@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
+import com.hpz.llmdockchat.core.prefs.LocalPiTextAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
@@ -58,12 +59,17 @@ private fun PiUserItem(item: PiItem.User) {
 @Composable
 private fun PiAssistantItem(item: PiItem.Assistant) {
     val colors = LlmTheme.colors
+    val appearance = LocalPiTextAppearance.current
+    val scale by appearance.scale.collectAsState()
+    val baseDensity = LocalDensity.current
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (item.thinking.isNotBlank()) ReasoningBlock(item.thinking)
-        if (item.text.isNotEmpty()) MarkdownBody(item.text, modifier = Modifier.testTag("pi_assistant_text"))
+        CompositionLocalProvider(LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * scale)) {
+            if (item.thinking.isNotBlank()) ReasoningBlock(item.thinking)
+            if (item.text.isNotEmpty()) MarkdownBody(item.text, modifier = Modifier.testTag("pi_assistant_text"))
+        }
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

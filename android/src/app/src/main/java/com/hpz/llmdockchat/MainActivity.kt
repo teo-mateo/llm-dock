@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.hpz.llmdockchat.core.prefs.LocalChatAppearance
+import com.hpz.llmdockchat.core.prefs.LocalPiTextAppearance
 import com.hpz.llmdockchat.core.AppContainer
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.valueOrNull
@@ -180,7 +181,10 @@ private fun AppRoot(container: AppContainer, modifier: Modifier = Modifier) {
         // Provided at the root, not per screen: the chat text size is one
         // app-wide setting, and every screen that reads it must see the same
         // instance or the value would reset on navigation.
-        CompositionLocalProvider(LocalChatAppearance provides container.chatAppearance) {
+        CompositionLocalProvider(
+            LocalChatAppearance provides container.chatAppearance,
+            LocalPiTextAppearance provides container.piTextAppearance,
+        ) {
             AppNavHost(
                 container = container,
                 startDestination = destination,

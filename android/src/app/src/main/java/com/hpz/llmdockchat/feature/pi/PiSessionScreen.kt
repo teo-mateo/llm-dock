@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,14 +22,20 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiState
@@ -46,13 +53,17 @@ fun PiSessionScreen(
 ) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionUiState.Loaded
+    var showTextSize by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
         Scaffold(
             modifier = Modifier.testTag("pi_session_screen"),
             containerColor = Color.Transparent,
             topBar = {
                 Column {
-                    PiSessionHeader(loaded?.summary, onBack)
+                    PiSessionHeader(loaded?.summary, onBack, onTextSize = { showTextSize = true })
+                    if (showTextSize) {
+                        PiTextSizeBar(onClose = { showTextSize = false })
+                    }
                     if (loaded?.stale == true) {
                         Text(
                             "Reconnecting…",
@@ -88,7 +99,7 @@ fun PiSessionScreen(
 }
 
 @Composable
-private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit) {
+private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, onTextSize: () -> Unit) {
     val colors = LlmTheme.colors
     Row(
         Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).height(64.dp).padding(horizontal = 4.dp),
@@ -138,6 +149,21 @@ private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        IconButton(
+            onClick = onTextSize,
+            modifier = Modifier
+                .size(width = 48.dp, height = 48.dp)
+                .semantics { contentDescription = "Response text size" }
+                .testTag("pi_text_size_button"),
+        ) {
+            Text(
+                "Aa",
+                color = colors.muted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }

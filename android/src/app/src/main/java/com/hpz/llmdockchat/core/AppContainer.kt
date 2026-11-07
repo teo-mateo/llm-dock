@@ -28,6 +28,8 @@ import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.prefs.DataStoreDraftStore
 import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreChatAppearance
+import com.hpz.llmdockchat.core.prefs.DataStorePiTextAppearance
+import com.hpz.llmdockchat.core.prefs.PiTextAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreEditStateStore
 import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
 import com.hpz.llmdockchat.core.prefs.DraftStore
@@ -142,6 +144,7 @@ class AppContainer(
     val newChatPreferences: NewChatPreferences = DataStoreNewChatPreferences(dataStore, appScope)
 
     val chatAppearance: ChatAppearance = DataStoreChatAppearance(dataStore, appScope)
+    val piTextAppearance: PiTextAppearance = DataStorePiTextAppearance(dataStore, appScope)
     val draftStore: DraftStore = DataStoreDraftStore(dataStore, appScope)
     val editStateStore: EditStateStore = DataStoreEditStateStore(dataStore, appScope)
 
