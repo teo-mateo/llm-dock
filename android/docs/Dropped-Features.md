@@ -79,7 +79,8 @@ Pi sessions are a deliberately narrower exception: F18 now caches bounded transc
 checkpoints for incremental replay and visibly stale/offline reading. The approved
 cache may outlive server retention and keeps committed files on sign-out, isolated
 by server and inaccessible through signed-out navigation. This does not restore the
-chat-thread offline cache above. Device verification of the Pi exception is pending.
+chat-thread offline cache above. F18 records controlled emulator verification of the Pi exception;
+this is not a physical-phone benchmark or full system-death restoration claim.
 
 ### Whisper round-trip for voice input
 

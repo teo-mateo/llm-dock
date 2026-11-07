@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from scenarios import NAMES, sessions
+from transcript import TranscriptFixture
+import transcript_http
 
 
 class FixtureState:
@@ -13,18 +15,34 @@ class FixtureState:
         self.condition = threading.Condition()
         self.name = "empty"
         self.version = 0
+        self._transcript = None
 
     def select(self, name):
         if name not in NAMES:
             raise ValueError("unknown scenario")
         with self.condition:
             self.name = name
-            self.version += 1
-            self.condition.notify_all()
+            if name == "cache":
+                if self._transcript is None:
+                    self._transcript = TranscriptFixture()
+                else:
+                    self._transcript.reset()
+            self.changed()
 
     def snapshot(self):
         with self.condition:
-            return self.version, sessions(self.name)
+            rows = self.transcript.rows() if self.name == "cache" else sessions(self.name)
+            return self.version, rows
+
+    @property
+    def transcript(self):
+        if self._transcript is None:
+            self._transcript = TranscriptFixture()
+        return self._transcript
+
+    def changed(self):
+        self.version += 1
+        self.condition.notify_all()
 
 
 class FixtureServer(ThreadingHTTPServer):
@@ -51,7 +69,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        path = urlsplit(self.path).path
+        target = urlsplit(self.path)
+        path = target.path
+        if transcript_http.get(self, path, target.query):
+            return
         if path == "/api/health":
             self.respond(200, {"status": "healthy"})
         elif path == "/api/auth/verify":
@@ -74,6 +95,8 @@ class Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(length)
             if path == "/api/auth/session":
                 self.respond(200, {"token": "fixture-only-token", "expires_in": 28800})
+            elif path == transcript_http.CONTROL_PATH:
+                transcript_http.post(self, path, json.loads(raw))
             elif path == "/__fixture/scenario":
                 self.server.state.select(json.loads(raw)["name"])
                 self.respond(200, {"scenario": self.server.state.name})
@@ -83,33 +106,49 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.respond(400, {"error": "invalid_fixture_request"})
 
+    def do_DELETE(self):
+        if not transcript_http.delete(self, urlsplit(self.path).path):
+            self.respond(404, {"error": "fixture_path_not_supported"})
+
     def send_frame(self, event, payload):
         raw = f"event: {event}\ndata: {json.dumps({'type': event, **payload})}\n\n".encode()
         self.wfile.write(f"{len(raw):x}\r\n".encode() + raw + b"\r\n")
         self.wfile.flush()
+        return len(raw)
 
-    def stream(self):
+    def start_stream(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+
+    def heartbeat(self):
+        raw = b": fixture heartbeat\n\n"
+        self.wfile.write(f"{len(raw):x}\r\n".encode() + raw + b"\r\n")
+        self.wfile.flush()
+
+    def stream(self):
+        self.start_stream()
         state = self.server.state
         version, rows = state.snapshot()
         try:
             self.send_frame("snapshot", {"sessions": rows})
+            known = {(row["session_id"], row["instance_id"]) for row in rows}
             while True:
                 with state.condition:
                     changed = state.condition.wait_for(lambda: state.version != version, timeout=2)
                     next_version, rows = state.snapshot()
                 if changed:
+                    current = {(row["session_id"], row["instance_id"]) for row in rows}
+                    for session_id, instance_id in sorted(known - current):
+                        self.send_frame("session_removed", {"session_id": session_id, "instance_id": instance_id})
+                    known = current
                     for row in rows:
                         self.send_frame("session", row)
                     version = next_version
                 else:
-                    raw = b": fixture heartbeat\n\n"
-                    self.wfile.write(f"{len(raw):x}\r\n".encode() + raw + b"\r\n")
-                    self.wfile.flush()
+                    self.heartbeat()
         except (BrokenPipeError, ConnectionResetError, OSError):
             return
 

@@ -147,9 +147,11 @@ published or enqueued. Explicit removal/404, list removal and successful local R
 invalidate the captured server/session key and reject late writes. Failed deletions preserve
 the cache. Namespace pinning also prevents an old cursor reconnecting to a newly selected server.
 
-JVM tests exercise these contracts; device gates remain pending: real-device cached first paint,
-back/reopen, background/resume, process restart, offline recovery and latency measurements.
-No phone timing improvement is claimed from JVM fixtures.
+JVM tests exercise these contracts. Reserved-emulator fixture verification in #422 covers cached
+paint before replay, back/reopen, surviving-process background, separate force-stop/relaunch,
+controlled stream-outage recovery, sign-out/reuse and actual deletion. Measurements include
+adb/UI-dump overhead; no physical-phone timing improvement or full Android system-death
+navigation restoration is claimed. [Detailed evidence](../../docs/pi-remote/android-cache-emulator-evidence.md).
 
 **Acceptance criteria**
 
@@ -187,7 +189,17 @@ start; `PiFormattingTest` covers `shouldFollow`; `PiSessionDestinationTest` cove
 segments. The screen is read-only: no composer, Stop or steering control; `MarkdownBody` and the
 now-`internal` thread `ReasoningBlock` are reused.
 
-Emulator check: the dashboard still answers `/api/pi/...` with 404 (no `llm-dock.service`
-restart), so no live session or session-screen screenshot was possible. The Pi tab screenshot
-`../../docs/pi-remote/screenshots/f18-pi-tab.png` shows the tab and empty/reconnecting state; the
-PO performs the live session check with the owner. No UI criteria are claimed as device-verified.
+Historical UI check (#362): at that time the dashboard answered `/api/pi/...` with 404, so no
+live session screenshot was possible. `../../docs/pi-remote/screenshots/f18-pi-tab.png` records
+the initial tab/empty state, not a current live-backend verification.
+
+Cache emulator check (#422): production application wiring from `ef4b6aa` was exercised with
+a 16,000-event / 8,347,855-byte synthetic transcript on the reserved, software-rendered emulator.
+The initial checkpoint contained 7,000 unique items and 2,000 tool calls. Held replay proved
+cached display independently from network replay; suffix requests used 16,000, 16,016, 16,032
+and 16,048 cursors rather than zero. Summary-gated recovery preserved the old committed cursor
+until validation. UI deletion was confirmed against both fixture state and physical cache-file
+absence. Original APK/private data/auth configuration were restored and the emulator released.
+See the linked evidence for screenshots, exact observed timings, failed measurement diagnosis,
+qualified JVM/build results and limitations. These are fixture cache checks, not live inference,
+a broad layout/text-size acceptance pass or a physical-phone benchmark.

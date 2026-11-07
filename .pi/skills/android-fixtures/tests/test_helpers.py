@@ -216,6 +216,13 @@ class UiTests(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertLessEqual(run.call_args.kwargs["timeout"], 5)
 
+    def test_wait_text_observes_label_without_tapping(self):
+        result = subprocess.CompletedProcess([], 0, '<hierarchy><node text="Connected" bounds="[0,0][100,50]"/></hierarchy>')
+        with patch.object(sys, "argv", ["ui.py", "--device", "emulator-5554", "wait-text", "Connected"]), \
+             patch.object(ui.subprocess, "run", return_value=result) as run, redirect_stdout(io.StringIO()):
+            ui.main()
+        self.assertEqual(run.call_count, 1)
+
     def test_empty_dump_is_retried_within_budget(self):
         empty = subprocess.CompletedProcess([], 0, "ERROR: could not get idle state.")
         good = subprocess.CompletedProcess([], 0, '<hierarchy><node resource-id="ready" bounds="[0,0][20,20]"/></hierarchy>')

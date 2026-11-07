@@ -1,0 +1,39 @@
+{
+  "fixture_helper_tests": {"tests": 29, "failures": 0, "duration_seconds": 7.544},
+  "selected_instrumentation": {
+    "recordOriginalWithoutLaunchingActivity": "OK (1 test)",
+    "prepareFixtureWithoutLaunchingOriginalServer": "OK (1 test)",
+    "verifyRestoredConfigurationWithoutLaunchingActivity": "OK (1 test)"
+  },
+  "focused_jvm": {"tests": 233, "failures": 0, "errors": 0, "skipped": 0},
+  "full_jvm": {
+    "tests": 962,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 0,
+    "failed_cases": [
+      "ThreadAutoSendTest > an early failure restores the prepared turn to the composer: expected prepared draft, observed null",
+      "ThreadToolsTest > openSettings fetches the registry and populates the sheet: 10000ms timeout"
+    ],
+    "aggregate_remains_red": true
+  },
+  "isolated_failed_classes": {"tests": 13, "failures": 0, "errors": 0, "skipped": 0},
+  "final_standalone_apk_builds": "passed; 67 tasks up-to-date; earlier builds installed for actual emulator checks",
+  "parent_process_cleanup_confirmed": {
+    "fixture_stopped": true,
+    "software_emulator_stopped": true,
+    "emulator_sigterm_exit": 0,
+    "reservation_released": true
+  },
+  "excluded_observation_failures": [
+    "Raw Markdown marker text did not match rendered label; raw checkpoint markers independently validated",
+    "Repeat zero-backlog hit waited for Catching-up despite no replay events; diagnosed from counters, helper corrected, failed timing sample excluded"
+  ],
+  "restoration_check_correction": "pm path returns exit1 for an absent uninstalled helper package; final absence and all restoration checks passed",
+  "not_claimed": [
+    "pure first-pixel latency or statistically attributable cache speedup",
+    "physical-phone or live-backend/model validation",
+    "full Android system-death navigation restoration",
+    "broad layout/text-size acceptance"
+  ]
+}

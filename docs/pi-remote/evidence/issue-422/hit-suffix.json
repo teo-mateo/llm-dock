@@ -1,0 +1,41 @@
+{
+  "case": "hit",
+  "device": "emulator-5554",
+  "method": "host monotonic tap-command start to UIAutomator-observed assistant/current labels; includes tag lookup, adb and dump overhead",
+  "tap_command_to_first_assistant_ms": 4553,
+  "tap_command_to_connected_ms": 10865,
+  "summary_release_to_connected_ms": 2090,
+  "gate_controlled": true,
+  "initial_event_count": 16016,
+  "event_json_bytes": 8356257,
+  "request": {
+    "id": 2,
+    "after": 16000,
+    "status": 200,
+    "started_monotonic": 49189.454926419,
+    "batches": [
+      {
+        "first": 16001,
+        "last": 16016,
+        "count": 16
+      }
+    ],
+    "sent_events": 16,
+    "sse_body_bytes": 8895,
+    "summary_sent": true,
+    "first_event_monotonic": 49193.129506837,
+    "last_event_monotonic": 49193.129507047,
+    "summary_monotonic": 49195.272517658
+  },
+  "checkpoint": {
+    "cursor": 16016,
+    "items": 7007,
+    "tools": 2002,
+    "compressed_bytes": 583665,
+    "json_bytes": 5467356,
+    "markers": {
+      "CACHE_BASELINE_END_1000": 1,
+      "CACHE_SUFFIX_1_END": 1
+    }
+  }
+}
