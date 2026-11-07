@@ -20,13 +20,17 @@ class FakePiCommandsRepository : PiCommandsRepository(
     var sendOutcome: PiCommandOutcome = PiCommandOutcome.Done
     var sentText: String? = null
     var abortCalled = false
+    var sentServer: BaseUrl? = null
+    var abortServer: BaseUrl? = null
 
-    override suspend fun send(key: PiSessionKey, text: String): PiCommandOutcome {
+    override suspend fun send(key: PiSessionKey, text: String, server: BaseUrl?): PiCommandOutcome {
+        sentServer = server
         sentText = text
         return sendOutcome
     }
 
-    override suspend fun abort(key: PiSessionKey): PiCommandOutcome {
+    override suspend fun abort(key: PiSessionKey, server: BaseUrl?): PiCommandOutcome {
+        abortServer = server
         abortCalled = true
         return PiCommandOutcome.Done
     }

@@ -7,6 +7,7 @@ data class StreamRequest(
     val method: String = "GET",
     val query: Map<String, String> = emptyMap(),
     val body: String? = null,
+    val expectedServer: BaseUrl? = null,
 )
 
 /**

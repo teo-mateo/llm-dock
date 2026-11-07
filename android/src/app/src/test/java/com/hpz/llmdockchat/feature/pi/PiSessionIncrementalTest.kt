@@ -1,7 +1,6 @@
 package com.hpz.llmdockchat.feature.pi
 
 import androidx.lifecycle.viewModelScope
-import com.hpz.llmdockchat.data.PiSessionEventsRepository
 import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.testing.FakePiCommandsRepository
@@ -19,11 +18,14 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PiSessionIncrementalTest {
     @get:Rule
     val mainDispatcher = MainDispatcherRule()
+
+    @get:Rule val temporary = TemporaryFolder()
 
     private val replay = """{"type":"events","events":[
         {"seq":1,"type":"assistant_delta","ts":1,"payload":{"text":"A"}},
@@ -61,8 +63,10 @@ class PiSessionIncrementalTest {
             ),
         )
         val viewModel = PiSessionViewModel(
-            PiSessionKey("s", "i"), PiSessionEventsRepository(transport), FakePiCommandsRepository(),
-            transcriptDispatcher = StandardTestDispatcher(testScheduler),
+            PiSessionKey("s", "i"),
+            PiRuntimeFixture(temporary.newFolder(), backgroundScope, StandardTestDispatcher(testScheduler))
+                .runtime(transport, PiSessionKey("s", "i")),
+            FakePiCommandsRepository(),
         )
         try {
             viewModel.start()
@@ -115,8 +119,10 @@ class PiSessionIncrementalTest {
             ScriptedSseTransport.Leg(payloads = listOf(replay)),
         )
         val viewModel = PiSessionViewModel(
-            PiSessionKey("s", "i"), PiSessionEventsRepository(transport), FakePiCommandsRepository(),
-            transcriptDispatcher = StandardTestDispatcher(testScheduler),
+            PiSessionKey("s", "i"),
+            PiRuntimeFixture(temporary.newFolder(), backgroundScope, StandardTestDispatcher(testScheduler))
+                .runtime(transport, PiSessionKey("s", "i")),
+            FakePiCommandsRepository(),
         )
         viewModel.start()
         viewModel.viewModelScope.cancel()
