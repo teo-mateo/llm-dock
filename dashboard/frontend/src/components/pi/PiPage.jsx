@@ -45,7 +45,11 @@ export default function PiPage() {
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-3 md:flex-row md:items-start">
+    <div
+      className={`flex w-full min-w-0 flex-col gap-3 md:flex-row md:items-start ${
+        selectedKey ? 'h-[calc(100dvh-5.5rem)] md:h-[calc(100vh-160px)]' : ''
+      }`}
+    >
       <aside className={`md:w-60 md:flex-none ${selectedKey ? 'hidden md:block' : ''}`}>
         <PiSessionList
           sessions={sessions}
@@ -77,7 +81,7 @@ export default function PiPage() {
               <div
                 data-testid="pi-prompt-stack"
                 aria-label={`${prompts.length} open question${prompts.length === 1 ? '' : 's'}`}
-                className="max-h-[45dvh] shrink-0 overflow-y-auto border-b border-border bg-app"
+                className="max-h-[45dvh] min-h-0 shrink overflow-y-auto border-b border-border bg-app"
               >
                 {prompts.length > 1 && (
                   <p className="sticky top-0 z-10 border-b border-border bg-app px-4 py-1.5 text-xs font-semibold text-fg-muted md:px-6">

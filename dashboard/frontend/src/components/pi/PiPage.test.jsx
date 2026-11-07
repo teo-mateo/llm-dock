@@ -209,7 +209,8 @@ describe('pi prompt cards', () => {
     renderPage('/pi/s1/i1')
     const stack = screen.getByTestId('pi-prompt-stack')
     expect(stack).toHaveClass('overflow-y-auto')
-    expect(stack).toHaveClass('shrink-0')
+    expect(stack).toHaveClass('shrink')
+    expect(stack).toHaveClass('min-h-0')
     expect(stack).toHaveTextContent('3 questions need an answer')
     expect(screen.getByText('Question a')).toBeInTheDocument()
     expect(screen.getByText('Question c')).toBeInTheDocument()
@@ -239,5 +240,15 @@ describe('list column layout', () => {
     expect(page.className).toContain('w-full')
     expect(page.className).not.toContain('max-w-6xl')
     expect(page.className).toContain('min-w-0')
+  })
+
+  it('pins the pane to the viewport once a session is open', () => {
+    renderPage('/pi')
+    expect(document.querySelector('aside').parentElement.className).not.toContain('100dvh')
+    cleanup()
+    renderPage('/pi/s1/i1')
+    const page = document.querySelector('section.pi-canvas').parentElement
+    expect(page.className).toContain('h-[calc(100dvh-5.5rem)]')
+    expect(page.className).toContain('md:h-[calc(100vh-160px)]')
   })
 })
