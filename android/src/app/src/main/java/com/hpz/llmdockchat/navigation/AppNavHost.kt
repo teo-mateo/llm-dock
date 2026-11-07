@@ -197,7 +197,12 @@ fun AppNavHost(
                 TabScaffold(navController) {
                     val viewModel: PiSessionsViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { PiSessionsViewModel(container.piSessionsRepository) }
+                            initializer {
+                                PiSessionsViewModel(
+                                    container.piSessionsRepository,
+                                    container.piSessionDeleteRepository,
+                                )
+                            }
                         },
                     )
                     val state by viewModel.state.collectAsState()
@@ -205,6 +210,8 @@ fun AppNavHost(
                     PiSessionsScreen(
                         state = state,
                         onOpen = { key -> navController.navigate(Destinations.piSession(key)) },
+                        onSwipeDelete = viewModel::deleteWithUndo,
+                        onUndoDelete = viewModel::undoDelete,
                     )
                 }
             }

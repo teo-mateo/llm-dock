@@ -16,6 +16,10 @@ COMMAND_ERROR_STATUS = {
     "queue_full": 503,
     "unsupported_command": 400,
 }
+DELETE_ERROR_STATUS = {
+    "pi_session_live": 409,
+    "unknown_session": 404,
+}
 
 
 def _stream_response(generator):
@@ -105,6 +109,18 @@ def session_prompt_answer(session_id, instance_id, prompt_id):
         client, (session_id, instance_id), prompt_id, request.get_json(silent=True)
     )
     return jsonify(payload), status
+
+
+@pi_remote_bp.route("/api/pi/sessions/<session_id>/<instance_id>", methods=["DELETE"])
+@require_auth
+def session_delete(session_id, instance_id):
+    client, unavailable = _client_or_503()
+    if unavailable is not None:
+        return unavailable
+    error = client.delete_session((session_id, instance_id))
+    if error is not None:
+        return jsonify({"error": error}), DELETE_ERROR_STATUS.get(error, 400)
+    return jsonify({"deleted": True}), 200
 
 
 @pi_remote_bp.route(

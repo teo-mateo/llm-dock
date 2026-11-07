@@ -47,6 +47,78 @@ def env():
         store.close()
 
 
+def _ended_session(env, instance_id="i1"):
+    frame = hello(instance_id)
+    env["store"].sessions.upsert(frame, 1000)
+    env["store"].sessions.end(frame.session_id, instance_id, "bye", 1200)
+
+
+def _capture(env, instance_id="i1"):
+    env["store"].events.ingest(
+        EventsFrame(
+            "s1",
+            instance_id,
+            (
+                Event(1, 1000, "state", {"state": "idle"}),
+                Event(
+                    2, 1001, "prompt_open",
+                    {
+                        "prompt_id": "p1", "kind": "approval", "title": "Approve?",
+                        "message": None, "options": [], "allow_free_text": False,
+                        "timeout_ms": None,
+                    },
+                ),
+            ),
+        ),
+        1000,
+    )
+
+
+def _count(store, table):
+    with store._connection() as conn:
+        return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+def test_delete_session_removes_the_session_and_everything_captured_for_it(env):
+    _ended_session(env)
+    _capture(env)
+    command = env["client"].queue.enqueue(("s1", "i1"), "abort", {}, 1100)
+    env["store"].commands.record(command, ("s1", "i1"))
+
+    assert env["client"].delete_session(("s1", "i1")) is None
+
+    assert env["store"].sessions.get("s1", "i1") is None
+    assert _count(env["store"], "pi_events") == 0
+    assert _count(env["store"], "pi_prompts") == 0
+    assert env["store"].commands.get(command.command_id) is None
+    assert env["client"].queue.take(("s1", "i1"), 1200, 0) == []
+
+
+def test_delete_session_refuses_while_the_extension_is_heartbeating(env):
+    frame = hello()
+    env["registry"].register(frame, 1000)
+    env["store"].sessions.upsert(frame, 1000)
+
+    assert env["client"].delete_session(("s1", "i1")) == "pi_session_live"
+    assert env["store"].sessions.get("s1", "i1") is not None
+
+
+def test_delete_session_reports_an_unknown_key(env):
+    assert env["client"].delete_session(("s1", "i1")) == "unknown_session"
+
+
+def test_delete_session_publishes_the_removal(env):
+    _ended_session(env)
+    subscription = env["client"].subscribe()
+
+    env["client"].delete_session(("s1", "i1"))
+
+    message = subscription.get(0.5)
+    assert message is not None
+    assert message.kind == "removed"
+    assert message.key == ("s1", "i1")
+
+
 def _hello_body():
     return {
         "protocol": 1,

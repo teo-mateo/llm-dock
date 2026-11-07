@@ -2,9 +2,8 @@
 
 **Mockup:** `../../docs/pi-remote/mockups/Main.dc.html` · **Depends on:** F01 · **Data layer:** #354
 
-The Pi tab is a read-only view of pi-remote sessions living on the dashboard. It lists sessions
-without sending, steering, stopping or opening a transcript; those controls belong to later
-features.
+The Pi tab is the phone's view of pi-remote sessions living on the dashboard. It lists them, and
+since F17-R5 it can remove one; sending, steering and opening a transcript came later (F18, F19).
 
 ---
 
@@ -57,6 +56,28 @@ new snapshot.
 - [ ] The last-known sessions stay on screen while reconnecting.
 - [ ] The indicator clears when the reconnect succeeds.
 
+## F17-R5 · Swipe a session away (Must)
+
+Swiping a session row right deletes it: the row leaves the list at once and a snackbar offers
+`Undo` for 3 s. Only when that window closes is anything sent to the dashboard, so undoing costs
+nothing. A second swipe commits the first rather than silently keeping it. A running session
+refuses — its next heartbeat would re-create the row — and says so.
+
+Deleting erases the dashboard's capture of that session (its row, its transcript events, its
+prompts and its commands), so it disappears from every client. It never touches pi's own session
+file: `pi --resume` still works.
+
+**Acceptance criteria**
+
+- [ ] Swiping an ended row right removes it from the list immediately, with a red `Delete`
+      background and no confirm dialog.
+- [ ] `Undo` inside the window brings the row back and sends nothing.
+- [ ] After the window the row is gone from the dashboard too — the web list loses it without a
+      reload.
+- [ ] Swiping a second row while the first is pending commits the first.
+- [ ] A running session cannot be swiped away; the reason is shown, and the row stays.
+- [ ] A failed delete brings the row back and names the failure once.
+
 ---
 
 ## Data layer (implemented in #354)
@@ -81,6 +102,7 @@ after the configured delay.
 | Method | Path |
 |---|---|
 | GET | `/api/pi/sessions/stream` |
+| DELETE | `/api/pi/sessions/<session_id>/<instance_id>` |
 
 ## Verification notes
 

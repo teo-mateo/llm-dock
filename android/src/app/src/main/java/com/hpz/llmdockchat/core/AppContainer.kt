@@ -43,6 +43,7 @@ import com.hpz.llmdockchat.data.HealthRepository
 import com.hpz.llmdockchat.data.McpServersRepository
 import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.PiCommandsRepository
+import com.hpz.llmdockchat.data.PiSessionDeleteRepository
 import com.hpz.llmdockchat.data.PiSessionEventsRepository
 import com.hpz.llmdockchat.data.PiSessionsRepository
 import com.hpz.llmdockchat.data.ProviderModelsRepository
@@ -135,6 +136,7 @@ class AppContainer(
     val piSessionsRepository = PiSessionsRepository(sseTransport)
     val piSessionEventsRepository = PiSessionEventsRepository(sseTransport)
     val piCommandsRepository = PiCommandsRepository(apiClient)
+    val piSessionDeleteRepository = PiSessionDeleteRepository(apiClient)
     val gpuStreamRepository = GpuStreamRepository(sseTransport)
     val logsStreamRepository = LogsStreamRepository(sseTransport)
     val promptsRepository = PromptsRepository(apiClient)

@@ -57,6 +57,8 @@ class _FakeClient:
         self.result = None
         self.command_calls = []
         self.await_calls = []
+        self.delete_calls = []
+        self.delete_error = None
 
     def subscribe(self, key=None):
         return self.bus.subscribe(key)
@@ -73,6 +75,10 @@ class _FakeClient:
     def events(self, session_id, instance_id, after_seq=0, limit=None):
         self.calls.append((session_id, instance_id, after_seq, limit))
         return self._page
+
+    def delete_session(self, key):
+        self.delete_calls.append(key)
+        return self.delete_error
 
     def send_command(self, key, kind, args):
         self.command_calls.append((key, kind, args))
@@ -124,6 +130,36 @@ def test_sessions_lists_summaries_in_supervisor_order(env):
 
     assert response.status_code == 200
     assert response.get_json() == {"sessions": [summary_json(first), summary_json(second)]}
+
+
+def test_delete_requires_auth(env):
+    assert env["client"].delete("/api/pi/sessions/s1/i1").status_code == 401
+
+
+def test_delete_session_returns_200(env):
+    response = env["client"].delete("/api/pi/sessions/s1/i1", headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json() == {"deleted": True}
+    assert env["fake"].client.delete_calls == [("s1", "i1")]
+
+
+def test_delete_live_session_is_409(env):
+    env["fake"].client.delete_error = "pi_session_live"
+
+    response = env["client"].delete("/api/pi/sessions/s1/i1", headers=_auth())
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "pi_session_live"}
+
+
+def test_delete_unknown_session_is_404(env):
+    env["fake"].client.delete_error = "unknown_session"
+
+    response = env["client"].delete("/api/pi/sessions/nope/i1", headers=_auth())
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "unknown_session"}
 
 
 def test_events_returns_page(env):

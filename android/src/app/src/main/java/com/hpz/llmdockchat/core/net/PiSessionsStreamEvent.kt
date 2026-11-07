@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 sealed interface PiSessionsStreamEvent {
     data class Snapshot(val sessions: List<PiSessionDto>) : PiSessionsStreamEvent
     data class Session(val session: PiSessionDto) : PiSessionsStreamEvent
+    data class Removed(val sessionId: String, val instanceId: String) : PiSessionsStreamEvent
     data object Lagged : PiSessionsStreamEvent
     data class Unknown(val raw: String) : PiSessionsStreamEvent
 }
@@ -32,6 +33,13 @@ fun parsePiSessionsStreamFrame(payload: String): PiSessionsStreamEvent {
                 PiSessionsJson.decodeFromJsonElement(PiSessionDto.serializer(), root)
             }.getOrNull() ?: return PiSessionsStreamEvent.Unknown(payload)
             PiSessionsStreamEvent.Session(session)
+        }
+        "session_removed" -> {
+            val sessionId = root.stringField("session_id")
+                ?: return PiSessionsStreamEvent.Unknown(payload)
+            val instanceId = root.stringField("instance_id")
+                ?: return PiSessionsStreamEvent.Unknown(payload)
+            PiSessionsStreamEvent.Removed(sessionId, instanceId)
         }
         "lagged" -> PiSessionsStreamEvent.Lagged
         else -> PiSessionsStreamEvent.Unknown(payload)
