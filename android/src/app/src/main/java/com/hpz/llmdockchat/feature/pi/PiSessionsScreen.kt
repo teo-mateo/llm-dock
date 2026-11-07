@@ -85,11 +85,7 @@ fun PiSessionsScreen(
                             Modifier.fillMaxWidth().weight(1f),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                "No pi sessions yet. Start pi with the pi-remote extension.",
-                                color = colors.muted,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                            PiSessionsEmptyState()
                         }
                     } else {
                         LazyColumn(
@@ -130,6 +126,24 @@ fun PiSessionsScreen(
                 shape = RoundedCornerShape(14.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun PiSessionsEmptyState() {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxWidth().padding(32.dp).testTag("pi_sessions_empty"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("No pi sessions yet", color = colors.fg, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Start pi with the pi-remote extension and it will appear here.",
+            color = colors.muted,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
