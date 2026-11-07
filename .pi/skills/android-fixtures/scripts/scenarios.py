@@ -8,18 +8,23 @@ PROMPT = {
 }
 
 
+def _now_ms():
+    import time
+    return int(time.time() * 1000)
+
+
 def sessions(name):
     if name not in NAMES:
         raise ValueError("unknown scenario")
     common = {
         "instance_id": "fixture-instance", "cwd": "/fixture/llm-dock", "model": "fixture/model",
-        "thinking_level": "low", "first_seen": 1000, "last_seen": 2000,
+        "thinking_level": "low", "first_seen": _now_ms() - 3_600_000, "last_seen": _now_ms() - 120_000,
         "ended_at": None, "end_reason": None, "live": True, "state": "idle", "context_percent": 12,
         "prompts": [],
     }
     live = {**deepcopy(common), "session_id": "fixture-live", "name": "Fixture live session"}
     ended = {**deepcopy(common), "session_id": "fixture-ended", "name": "Fixture ended session",
-             "live": False, "state": None, "ended_at": 2000, "end_reason": "shutdown"}
+             "live": False, "state": None, "ended_at": _now_ms() - 900_000, "end_reason": "shutdown"}
     if name == "waiting":
         live["prompts"] = [deepcopy(PROMPT)]
         ended["prompts"] = [deepcopy(PROMPT)]
@@ -27,7 +32,7 @@ def sessions(name):
         live.pop("prompts")
         ended.pop("prompts")
     if name == "offline":
-        live.update(live=False, state=None, ended_at=2000, end_reason="shutdown")
+        live.update(live=False, state=None, ended_at=_now_ms() - 600_000, end_reason="shutdown")
     if name == "stress":
         return [
             {**deepcopy(common), "session_id": "fixture-long-name", "state": "working", "context_percent": 71.4,
@@ -39,6 +44,6 @@ def sessions(name):
             {**deepcopy(common), "session_id": "fixture-ended-long", "name": "strata deepseek flash eval",
              "cwd": "/github/example/docs/plans/pi-remote/iterations",
              "model": "strata-deepseek-v41-flash/deepseek-v4.1-flash", "live": False, "state": None,
-             "ended_at": 2000, "end_reason": "shutdown", "prompts": [deepcopy(PROMPT)]},
+             "ended_at": _now_ms() - 1_800_000, "end_reason": "shutdown", "prompts": [deepcopy(PROMPT)]},
         ]
     return [live, ended]

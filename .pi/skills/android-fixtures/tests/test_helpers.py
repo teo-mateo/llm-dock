@@ -21,6 +21,7 @@ UI_PATH = SKILL.parent / "android-emulator/scripts/ui.py"
 spec = importlib.util.spec_from_file_location("android_ui", UI_PATH)
 ui = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ui)
+CONNECT_PATH = SKILL.parent / "android-emulator/scripts/connect.py"
 
 
 class FixtureTests(unittest.TestCase):
@@ -146,6 +147,25 @@ class UiTests(unittest.TestCase):
         xml = '<hierarchy><node resource-id="app:id/answer-10" bounds="[0,0][1,1]"/><node resource-id="app:id/answer-1" bounds="[10,20][30,40]"/></hierarchy>'
         self.assertEqual(ui.find_bounds(xml, "answer-1"), (10, 20, 30, 40))
         self.assertIsNone(ui.find_bounds(xml, "answer"))
+
+    def test_tags_lists_exact_ids_and_filters_by_substring(self):
+        xml = ('<hierarchy><node resource-id="app:id/pi_session_a" bounds="[0,0][1,1]"/>'
+               '<node resource-id="app:id/pi_needs_answer_a" bounds="[0,0][1,1]"/>'
+               '<node resource-id="app:id/nav_tab_pi" bounds="[0,0][1,1]"/></hierarchy>')
+        self.assertEqual(ui.find_tags(xml, "pi_"), ["pi_needs_answer_a", "pi_session_a"])
+        self.assertEqual(ui.find_tags(xml), ["nav_tab_pi", "pi_needs_answer_a", "pi_session_a"])
+
+    def test_connect_requires_env_password_and_emulator(self):
+        no_password = subprocess.run([sys.executable, str(CONNECT_PATH), "--device", "emulator-5554",
+                                      "--url", "http://127.0.0.1:3999"], capture_output=True, text=True,
+                                     env={"PATH": "/usr/bin:/bin"})
+        self.assertEqual(no_password.returncode, 2)
+        self.assertIn("LLMDOCK_TEST_PASSWORD", no_password.stderr)
+        phone = subprocess.run([sys.executable, str(CONNECT_PATH), "--device", "physical-phone",
+                                "--url", "http://127.0.0.1:3999"], capture_output=True, text=True,
+                               env={"PATH": "/usr/bin:/bin", "LLMDOCK_TEST_PASSWORD": "fixture"})
+        self.assertEqual(phone.returncode, 1)
+        self.assertIn("only emulator targets", phone.stderr)
 
     def test_dump_trailing_diagnostic_is_not_xml(self):
         raw = 'noise\n<?xml version="1.0"?><hierarchy></hierarchy>\nUI dumped to /dev/tty'
