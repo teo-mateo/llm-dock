@@ -28,14 +28,32 @@ def replace_text(device, tag, value, timeout):
         adb(device, "shell", "input", "text", value)
 
 
+def try_ui(device, timeout, *args):
+    try:
+        ui(device, timeout, *args)
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def dismiss_sign_out_confirmation(device, timeout):
+    """Compose tags inside a Dialog window never reach uiautomator, so the
+    confirmation is addressed by its exact button label instead."""
+    try:
+        ui(device, min(timeout, 8), "tap-text", "Sign out")
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
 def connect(device, url, password, timeout):
     if not device.startswith("emulator-"):
         raise ValueError("only emulator targets are permitted")
     if not url.startswith("http://"):
         raise ValueError("url must start with http:// (the app rejects anything else)")
-    ui(device, timeout, "tap", "nav_tab_chats")
-    ui(device, timeout, "tap", "account_entry")
-    ui(device, timeout, "tap", "account_sign_out")
+    if try_ui(device, 3, "tap", "nav_tab_chats") and try_ui(device, 3, "tap", "account_entry"):
+        if try_ui(device, 3, "tap", "account_sign_out"):
+            dismiss_sign_out_confirmation(device, timeout)
     ui(device, timeout, "tap", "connect_server")
     replace_text(device, "connect_server", url, timeout)
     ui(device, timeout, "tap", "connect_method_password")

@@ -26,6 +26,11 @@ instead of guessing one. Do not write inline XML regexes for discovery or measur
 wait for the containing screen; absence alone is not proof that the correct screen loaded.
 Errors report resource IDs only, never input values or the full hierarchy.
 
+**Compose tags inside a `Dialog` window never reach `uiautomator`** — the dump shows only
+`android:id/content`, however the dialog is tagged. Address dialog buttons by their exact label
+instead: `ui.py tap-text "Sign out"` / `absent-text "Sign out"`. Do not conclude a dialog is
+untagged in source, and do not add tags hoping they appear.
+
 The helper uses exact resource-id or the package-qualified `:id/` suffix, not substring matching.
 Compose tags must be exposed as resource IDs by the app. If a tag is missing, inspect the existing
 hierarchy/source rather than falling back to brittle guessed coordinates.
@@ -54,7 +59,9 @@ sleep 5
 adb shell input tap 680 2200
 ```
 
-If `wait` times out, inspect the screen/hierarchy and report why the expected tag was missing.
+A dump that comes back empty or wedged is retried inside the budget, so a single `wait` failure
+means the tag really is absent for the whole timeout. If `wait` times out, inspect the screen and
+report why the expected tag was missing.
 Do not simply increase a sleep. Use `bounds <actual-row-tag>` for row measurements rather than
 writing another regex/XML parser.
 

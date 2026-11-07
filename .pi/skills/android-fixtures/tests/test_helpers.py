@@ -167,6 +167,42 @@ class UiTests(unittest.TestCase):
         self.assertEqual(phone.returncode, 1)
         self.assertIn("only emulator targets", phone.stderr)
 
+    def test_connect_dismisses_sign_out_confirmation_when_present(self):
+        spec2 = importlib.util.spec_from_file_location("android_connect", CONNECT_PATH)
+        connect = importlib.util.module_from_spec(spec2)
+        spec2.loader.exec_module(connect)
+        calls = []
+        def fake_ui(device, timeout, *args):
+            calls.append(args)
+            if args == ("tap-text", "Sign out"):
+                raise subprocess.CalledProcessError(1, "ui.py")
+        with patch.object(connect, "ui", side_effect=fake_ui), \
+             patch.object(connect, "adb", return_value=subprocess.CompletedProcess([], 0, "")):
+            self.assertFalse(connect.dismiss_sign_out_confirmation("emulator-5554", 15))
+        self.assertEqual(calls, [("tap-text", "Sign out")])
+
+    def test_connect_taps_the_confirmation_before_the_connect_screen(self):
+        spec2 = importlib.util.spec_from_file_location("android_connect", CONNECT_PATH)
+        connect = importlib.util.module_from_spec(spec2)
+        spec2.loader.exec_module(connect)
+        calls = []
+        with patch.object(connect, "ui", side_effect=lambda d, t, *a: calls.append(a)), \
+             patch.object(connect, "try_ui", side_effect=lambda d, t, *a: calls.append(a) or True), \
+             patch.object(connect, "adb", return_value=subprocess.CompletedProcess([], 0, "")):
+            connect.connect("emulator-5554", "http://127.0.0.1:3999", "fixture", 15)
+        order = [a[1] for a in calls if a and a[0] in ("tap", "tap-text")]
+        self.assertLess(order.index("account_sign_out"), order.index("Sign out"))
+        self.assertLess(order.index("Sign out"), order.index("connect_server"))
+
+    def test_dialog_buttons_are_found_by_exact_label_not_tag(self):
+        xml = ('<hierarchy><node resource-id="android:id/content" bounds="[0,0][10,10]">'
+               '<node text="Cancel" clickable="true" bounds="[183,1340][527,1466]"/>'
+               '<node text="Sign out" clickable="true" bounds="[553,1340][897,1466]"/>'
+               '</node></hierarchy>')
+        self.assertEqual(ui.find_text_bounds(xml, "Sign out"), (553, 1340, 897, 1466))
+        self.assertIsNone(ui.find_text_bounds(xml, "Sign ou"))
+        self.assertIsNone(ui.find_bounds(xml, "confirm_dialog_confirm"))
+
     def test_dump_trailing_diagnostic_is_not_xml(self):
         raw = 'noise\n<?xml version="1.0"?><hierarchy></hierarchy>\nUI dumped to /dev/tty'
         self.assertEqual(ui.hierarchy(raw), '<?xml version="1.0"?><hierarchy></hierarchy>')
@@ -179,6 +215,15 @@ class UiTests(unittest.TestCase):
             ui.main()
         self.assertEqual(run.call_count, 2)
         self.assertLessEqual(run.call_args.kwargs["timeout"], 5)
+
+    def test_empty_dump_is_retried_within_budget(self):
+        empty = subprocess.CompletedProcess([], 0, "ERROR: could not get idle state.")
+        good = subprocess.CompletedProcess([], 0, '<hierarchy><node resource-id="ready" bounds="[0,0][20,20]"/></hierarchy>')
+        with patch.object(sys, "argv", ["ui.py", "--device", "emulator-5554", "wait", "ready"]), \
+             patch.object(ui.subprocess, "run", side_effect=[empty, good]) as run, \
+             patch.object(ui.time, "monotonic", side_effect=[0, 0.1, 0.4, 0.5]), redirect_stdout(io.StringIO()):
+            ui.main()
+        self.assertEqual(run.call_count, 2)
 
     def test_slow_dump_stops_at_deadline(self):
         with patch.object(sys, "argv", ["ui.py", "--device", "emulator-5554", "wait", "ready"]), \
