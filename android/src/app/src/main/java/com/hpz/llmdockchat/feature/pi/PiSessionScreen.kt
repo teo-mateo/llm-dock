@@ -60,10 +60,7 @@ fun PiSessionScreen(
             containerColor = Color.Transparent,
             topBar = {
                 Column {
-                    PiSessionHeader(loaded?.summary, onBack, textSizeOpen = showTextSize, onTextSize = { showTextSize = !showTextSize })
-                    if (showTextSize) {
-                        PiTextSizeBar()
-                    }
+                    PiSessionHeader(loaded?.summary, onBack, onTextSize = { showTextSize = true })
                     if (loaded?.stale == true) {
                         Text(
                             "Reconnecting…",
@@ -96,10 +93,13 @@ fun PiSessionScreen(
             }
         }
     }
+    if (showTextSize) {
+        PiTextSizeSheet(onDismiss = { showTextSize = false })
+    }
 }
 
 @Composable
-private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, textSizeOpen: Boolean, onTextSize: () -> Unit) {
+private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, onTextSize: () -> Unit) {
     val colors = LlmTheme.colors
     Row(
         Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).height(64.dp).padding(horizontal = 4.dp),
@@ -154,9 +154,7 @@ private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, textSizeOpe
             onClick = onTextSize,
             modifier = Modifier
                 .size(width = 48.dp, height = 48.dp)
-                .semantics {
-                    contentDescription = if (textSizeOpen) "Close answer text size" else "Answer text size"
-                }
+                .semantics { contentDescription = "Answer text size" }
                 .testTag("pi_text_size_button"),
         ) {
             Text(
