@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiState
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import kotlin.math.roundToInt
 
 @Composable
@@ -106,7 +106,7 @@ private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, onTextSize:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack, modifier = Modifier.testTag("pi_session_back")) {
-            Icon(DesignLabIcons.Back, contentDescription = "Back", tint = colors.fg)
+            Icon(AppIcons.Back, contentDescription = "Back", tint = colors.fg)
         }
         Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
             Row(

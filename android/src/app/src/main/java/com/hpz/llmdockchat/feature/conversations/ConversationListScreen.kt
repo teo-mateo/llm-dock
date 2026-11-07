@@ -78,7 +78,7 @@ import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.chipLabel
 import com.hpz.llmdockchat.feature.account.AccountEntry
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import java.time.Instant
 import java.time.ZoneId
 
@@ -205,7 +205,7 @@ private fun ConversationListContent(
                     shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.testTag("new_conversation_fab"),
                 ) {
-                    Icon(DesignLabIcons.Plus, contentDescription = "New chat")
+                    Icon(AppIcons.Plus, contentDescription = "New chat")
                 }
             }
         },
@@ -260,7 +260,7 @@ private fun ConversationListContent(
 
     pendingDelete?.let { target ->
         ConfirmDialog(
-            icon = DesignLabIcons.Trash,
+            icon = AppIcons.Trash,
             tint = colors.red,
             title = "Delete conversation?",
             message = "“${target.title}” will be deleted. This can't be undone.",
@@ -276,7 +276,7 @@ private fun ConversationListContent(
     if (pendingBatchDelete) {
         val count = loaded?.selection?.size ?: 0
         ConfirmDialog(
-            icon = DesignLabIcons.Trash,
+            icon = AppIcons.Trash,
             tint = colors.red,
             title = if (count == 1) "Delete this conversation?" else "Delete $count conversations?",
             message = "This can't be undone.",
@@ -389,7 +389,7 @@ private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Uni
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             IconButton(onClick = onClose, modifier = Modifier.testTag("selection_close")) {
-                Icon(DesignLabIcons.Close, contentDescription = "Cancel selection", tint = colors.fg, modifier = Modifier.size(20.dp))
+                Icon(AppIcons.Close, contentDescription = "Cancel selection", tint = colors.fg, modifier = Modifier.size(20.dp))
             }
             Text(
                 "$count selected",
@@ -409,7 +409,7 @@ private fun SelectionTopBar(count: Int, onClose: () -> Unit, onDelete: () -> Uni
                     .testTag("selection_delete"),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(DesignLabIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(18.dp))
+                Icon(AppIcons.Trash, contentDescription = "Delete selected", tint = colors.red, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -525,7 +525,7 @@ internal fun ConversationRowBody(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        DesignLabIcons.ChatBubble,
+                        AppIcons.ChatBubble,
                         contentDescription = null,
                         tint = if (item.isGenerating) colors.accent else colors.muted,
                         modifier = Modifier.size(19.dp),

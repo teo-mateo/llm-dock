@@ -43,7 +43,7 @@ import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import kotlin.math.roundToInt
 
 /**
@@ -103,7 +103,7 @@ fun ChatSettingsSheet(
             item { SectionLabel("Model") }
             item {
                 SettingRow(
-                    icon = DesignLabIcons.Chip,
+                    icon = AppIcons.Chip,
                     enabled = canSwitchModel,
                     onClick = onOpenModelPicker,
                     testTag = "settings_switch_model",
@@ -124,7 +124,7 @@ fun ChatSettingsSheet(
                         )
                     }
                     Icon(
-                        DesignLabIcons.ChevronRight,
+                        AppIcons.ChevronRight,
                         contentDescription = null,
                         tint = colors.subtle,
                         modifier = Modifier.size(16.dp),

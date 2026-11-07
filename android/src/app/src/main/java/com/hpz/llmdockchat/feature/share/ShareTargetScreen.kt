@@ -46,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.feature.conversations.ConversationRowBody
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.feature.thread.decodeDataUrl
 
 /**
@@ -115,7 +115,7 @@ private fun ShareTargetContent(
                 },
                 navigationIcon = {
                     IconButton(onClick = onDismiss, modifier = Modifier.testTag("share_target_back")) {
-                        Icon(DesignLabIcons.Close, contentDescription = "Cancel share", tint = colors.fg)
+                        Icon(AppIcons.Close, contentDescription = "Cancel share", tint = colors.fg)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -222,7 +222,7 @@ private fun NewChatEntry(onNewConversation: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                DesignLabIcons.Plus,
+                AppIcons.Plus,
                 contentDescription = null,
                 tint = colors.accent,
                 modifier = Modifier.size(19.dp),
@@ -294,7 +294,7 @@ private fun ShareHeader(share: StagedShare) {
             }
             error != null -> {
                 Icon(
-                    DesignLabIcons.Close,
+                    AppIcons.Close,
                     contentDescription = null,
                     tint = colors.red,
                     modifier = Modifier.size(22.dp),
@@ -342,7 +342,7 @@ private fun ShareHeader(share: StagedShare) {
             }
             snippet.isNotEmpty() -> {
                 Icon(
-                    DesignLabIcons.ChatBubble,
+                    AppIcons.ChatBubble,
                     contentDescription = null,
                     tint = colors.accent,
                     modifier = Modifier.size(22.dp),

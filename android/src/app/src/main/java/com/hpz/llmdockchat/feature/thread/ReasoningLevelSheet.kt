@@ -34,7 +34,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 
 
 data class ReasoningLevelOption(
@@ -185,7 +185,7 @@ fun ReasoningLevelChip(
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Icon(
-                DesignLabIcons.Brain,
+                AppIcons.Brain,
                 contentDescription = null,
                 tint = valueColor,
                 modifier = Modifier.size(21.dp),
@@ -200,7 +200,7 @@ fun ReasoningLevelChip(
                 modifier = Modifier.weight(1f, fill = false),
             )
             Icon(
-                DesignLabIcons.ChevronDown,
+                AppIcons.ChevronDown,
                 contentDescription = null,
                 tint = valueColor,
                 modifier = Modifier.size(11.dp),

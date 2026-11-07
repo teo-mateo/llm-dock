@@ -36,7 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
-import com.hpz.llmdockchat.feature.designlab.icons.DesignLabIcons
+import com.hpz.llmdockchat.core.ui.icons.AppIcons
 
 /**
  * Multi-line, five lines then internal scroll, Enter is a newline.
@@ -77,7 +77,7 @@ fun ComposerRow(
         // One button, not two. The composer is the width-starved part of the
         // screen and a second 44 dp circle bought nothing the sheet can't say
         // in words — which is also where file browsing will go.
-        CircleAction(DesignLabIcons.Paperclip, "Attach", "composer_attach", enabled) { showAttachSheet = true }
+        CircleAction(AppIcons.Paperclip, "Attach", "composer_attach", enabled) { showAttachSheet = true }
 
         Box(
             Modifier
@@ -121,7 +121,7 @@ fun ComposerRow(
 
         if (runActive) {
             SendButton(
-                icon = DesignLabIcons.Stop,
+                icon = AppIcons.Stop,
                 description = "Stop",
                 testTag = "composer_stop",
                 enabled = !stopping,
@@ -130,7 +130,7 @@ fun ComposerRow(
             )
         } else {
             SendButton(
-                icon = DesignLabIcons.Send,
+                icon = AppIcons.Send,
                 description = "Send",
                 testTag = "composer_send",
                 enabled = canSend,
@@ -171,8 +171,8 @@ private fun AttachSheet(onDismiss: () -> Unit, onPickImage: () -> Unit, onTakePh
         modifier = Modifier.testTag("composer_attach_sheet"),
     ) {
         Column(Modifier.fillMaxWidth().padding(bottom = 28.dp)) {
-            AttachSheetRow(DesignLabIcons.Image, "Photo library", "composer_pick_image", onPickImage)
-            AttachSheetRow(DesignLabIcons.Camera, "Take photo", "composer_take_photo", onTakePhoto)
+            AttachSheetRow(AppIcons.Image, "Photo library", "composer_pick_image", onPickImage)
+            AttachSheetRow(AppIcons.Camera, "Take photo", "composer_take_photo", onTakePhoto)
         }
     }
 }
