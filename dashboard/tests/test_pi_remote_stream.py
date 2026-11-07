@@ -197,3 +197,29 @@ def test_sessions_stream_snapshot_then_session_deltas_ignores_events():
     assert delta.startswith("event: session\n")
     source.bus.close()
     assert list(generator) == []
+
+
+def test_sessions_stream_reports_a_removed_session_and_keeps_running():
+    source = _FakeSource(summaries=[_summary()])
+    generator = sessions_stream(source, keepalive_s=0.01)
+    assert next(generator).startswith("event: snapshot\n")
+
+    source.bus.publish(BusMessage("removed", ("s1", "i1")))
+    frame = next(generator)
+    assert frame.startswith("event: session_removed\n")
+    assert '"session_id":"s1"' in frame
+    assert '"instance_id":"i1"' in frame
+
+    source.bus.publish(BusMessage("session", ("s2", "i2"), summary=_summary("s2")))
+    assert next(generator).startswith("event: session\n")
+    source.bus.close()
+
+
+def test_session_stream_ends_once_its_session_is_removed():
+    source = _FakeSource(summaries=[_summary()])
+    generator = session_stream(source, ("s1", "i1"), 0, keepalive_s=0.01)
+    assert next(generator).startswith("event: session\n")
+
+    source.bus.publish(BusMessage("removed", ("s1", "i1")))
+    assert next(generator).startswith("event: session_removed\n")
+    assert list(generator) == []

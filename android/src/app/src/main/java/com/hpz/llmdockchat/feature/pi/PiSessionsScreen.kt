@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
@@ -16,9 +17,35 @@ import androidx.compose.ui.unit.*
 import com.hpz.llmdockchat.core.ui.theme.*
 import com.hpz.llmdockchat.data.model.*
 @Composable
-fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
+fun PiSessionsScreen(
+    state: PiSessionsUiState,
+    onOpen: (PiSessionKey) -> Unit,
+    onSwipeDelete: (PiSession) -> Unit,
+    onUndoDelete: () -> Unit,
+) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionsUiState.Loaded
+    val snackbarHost = remember { SnackbarHostState() }
+
+    LaunchedEffect(loaded?.actionError) {
+        loaded?.actionError?.let { snackbarHost.showSnackbar(it) }
+    }
+
+    // Indefinite on purpose: the undo window is timed by the ViewModel, and when
+    // it expires pendingUndo goes null, this effect is cancelled, and the
+    // snackbar goes with it. A duration here would be a second clock to keep
+    // in sync with that one.
+    val pendingUndo = loaded?.pendingUndo
+    LaunchedEffect(pendingUndo?.key) {
+        val pending = pendingUndo ?: return@LaunchedEffect
+        val result = snackbarHost.showSnackbar(
+            message = "Deleted \u201c${pending.label}\u201d",
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndoDelete()
+    }
+
     Box(Modifier.fillMaxSize().background(colors.appGradient)) {
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)
@@ -53,16 +80,12 @@ fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                         )
                     }
-                    if (state.live.isEmpty() && state.ended.isEmpty()) {
+                    if (state.isEmpty) {
                         Box(
                             Modifier.fillMaxWidth().weight(1f),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                "No pi sessions yet. Start pi with the pi-remote extension.",
-                                color = colors.muted,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                            PiSessionsEmptyState()
                         }
                     } else {
                         LazyColumn(
@@ -70,20 +93,20 @@ fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
                         ) {
-                            if (state.live.isNotEmpty()) {
+                            if (state.visibleLive.isNotEmpty()) {
                                 item(key = "live_header") {
                                     Text("Live", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
-                                items(state.live, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionRow(it, onOpen)
+                                items(state.visibleLive, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
+                                    PiSessionSwipeRow(it, onOpen, onSwipeDelete)
                                 }
                             }
-                            if (state.ended.isNotEmpty()) {
+                            if (state.visibleEnded.isNotEmpty()) {
                                 item(key = "ended_header") {
                                     Text("Ended", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
-                                items(state.ended, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionRow(it, onOpen)
+                                items(state.visibleEnded, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
+                                    PiSessionSwipeRow(it, onOpen, onSwipeDelete)
                                 }
                             }
                         }
@@ -91,6 +114,73 @@ fun PiSessionsScreen(state: PiSessionsUiState, onOpen: (PiSessionKey) -> Unit) {
                 }
             }
         }
+        SnackbarHost(
+            snackbarHost,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        ) { data ->
+            Snackbar(
+                data,
+                containerColor = colors.surface,
+                contentColor = colors.fg,
+                actionColor = colors.accent,
+                shape = RoundedCornerShape(14.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PiSessionsEmptyState() {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxWidth().padding(32.dp).testTag("pi_sessions_empty"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("No pi sessions yet", color = colors.fg, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Start pi with the pi-remote extension and it will appear here.",
+            color = colors.muted,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PiSessionSwipeRow(
+    session: PiSession,
+    onOpen: (PiSessionKey) -> Unit,
+    onSwipeDelete: (PiSession) -> Unit,
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            // The library never commits: the row springs back and the ViewModel
+            // is what takes it out of the list, so an undo can put it back.
+            if (value != SwipeToDismissBoxValue.Settled) onSwipeDelete(session)
+            false
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = Modifier.testTag("pi_session_swipe_${session.key.sessionId}_${session.key.instanceId}"),
+        backgroundContent = { if (dismissState.progress < 1f) DeleteSwipeBackground() },
+    ) {
+        PiSessionRow(session, onOpen)
+    }
+}
+
+@Composable
+private fun DeleteSwipeBackground() {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LlmTheme.colors.red.copy(alpha = 0.85f))
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Delete", color = Color.White, fontFamily = FontFamily.Monospace)
     }
 }
 @Composable
@@ -106,9 +196,7 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
         PiState.IDLE -> colors.green
         PiState.ENDED -> colors.subtle
     }
-    val fallback = session.cwd.trimEnd('/').split('/').lastOrNull()?.takeIf { it.isNotBlank() }
-        ?: session.cwd
-    val name = session.name?.takeIf { it.isNotBlank() } ?: fallback
+    val name = piSessionTitle(session)
     val nowMs = remember { System.currentTimeMillis() }
     val emphasis = if (session.state == PiState.ENDED) 0.72f else 1f
     Column(

@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.feature.pi
 
+import com.hpz.llmdockchat.data.model.PiSession
+
 fun formatAgo(nowMs: Long, thenMs: Long): String {
     val elapsed = nowMs - thenMs
     return when {
@@ -9,6 +11,11 @@ fun formatAgo(nowMs: Long, thenMs: Long): String {
         else -> "${elapsed / 86_400_000L} d ago"
     }
 }
+
+fun piSessionTitle(session: PiSession): String =
+    session.name?.takeIf { it.isNotBlank() }
+        ?: session.cwd.trimEnd('/').split('/').lastOrNull()?.takeIf { it.isNotBlank() }
+        ?: session.cwd
 
 fun piSessionMetaHead(cwd: String, model: String?): String =
     listOfNotNull(cwd.takeIf { it.isNotBlank() }, model?.takeIf { it.isNotBlank() }).joinToString(" · ")

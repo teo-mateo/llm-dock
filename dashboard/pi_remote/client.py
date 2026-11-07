@@ -1,6 +1,6 @@
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
-from .bus import EventBus, SessionKey, Subscription
+from .bus import BusMessage, EventBus, SessionKey, Subscription
 from .command_queue import CommandQueue
 from .commands import CommandResult
 from .limits import RateLimiter
@@ -64,6 +64,24 @@ class PiRemoteClient:
         page_limit = clamp_limit(limit)
         rows = self.store.events.page(session_id, instance_id, after_seq, page_limit)
         return event_page(rows, after_seq, page_limit)
+
+    def delete_session(self, key: SessionKey) -> Optional[str]:
+        """Drops the captured session, or returns the reason it could not be dropped.
+
+        A session the extension is still heartbeating for is refused: the next
+        hello re-inserts the row, so accepting the delete would only hide a
+        session that is about to reappear.
+        """
+        now = self.clock()
+        if self.registry.get(key[0], key[1], now) is not None:
+            return "pi_session_live"
+        if self.store.sessions.get(key[0], key[1]) is None:
+            return "unknown_session"
+        pending = self.queue.drop_key(key)
+        self.store.commands.drop([command.command_id for command in pending], now)
+        self.store.sessions.delete(key[0], key[1])
+        self.bus.publish(BusMessage("removed", key))
+        return None
 
     def send_command(
         self, key: SessionKey, kind: str, args: Mapping[str, Any]

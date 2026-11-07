@@ -51,6 +51,19 @@ class SessionStore:
             )
             return cursor.rowcount
 
+    def delete(self, session_id: str, instance_id: str) -> bool:
+        with self.db._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM pi_sessions WHERE session_id = ? AND instance_id = ?",
+                (session_id, instance_id),
+            )
+            for table in ("pi_events", "pi_prompts", "pi_commands"):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE session_id = ? AND instance_id = ?",
+                    (session_id, instance_id),
+                )
+            return cursor.rowcount > 0
+
     def get(self, session_id: str, instance_id: str) -> Optional[Dict[str, Any]]:
         with self.db._connection() as conn:
             row = conn.execute(

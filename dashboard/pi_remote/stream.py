@@ -65,6 +65,12 @@ def session_stream(
                     return
                 yield KEEPALIVE
                 continue
+            if message.kind == "removed":
+                yield sse(
+                    "session_removed",
+                    {"session_id": message.key[0], "instance_id": message.key[1]},
+                )
+                return
             if message.kind == "events":
                 remaining = [event for event in message.events if event.seq > cursor]
                 if remaining:
@@ -100,7 +106,12 @@ def sessions_stream(
                     return
                 yield KEEPALIVE
                 continue
-            if message.kind == "session" and message.summary is not None:
+            if message.kind == "removed":
+                yield sse(
+                    "session_removed",
+                    {"session_id": message.key[0], "instance_id": message.key[1]},
+                )
+            elif message.kind == "session" and message.summary is not None:
                 yield sse("session", summary_json(message.summary))
     finally:
         subscription.close()

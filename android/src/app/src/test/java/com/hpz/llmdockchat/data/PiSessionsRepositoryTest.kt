@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.data
 
+import com.hpz.llmdockchat.core.net.PiSessionsStreamEvent
 import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.data.model.PiState
@@ -166,5 +167,40 @@ class PiSessionsRepositoryTest {
 
         assertTrue(transport.cancelled.isCompleted)
         assertEquals(1, transport.requests.size)
+    }
+
+    @Test
+    fun `a removed frame drops that session from the list`() {
+        val current = listOf(session("a"), session("b"))
+
+        val merged = mergePiSessionsEvent(current, PiSessionsStreamEvent.Removed("a", "i1"))
+
+        assertEquals(listOf("b"), merged.map { it.key.sessionId })
+    }
+
+    @Test
+    fun `a removed frame for another instance leaves the list alone`() {
+        val current = listOf(session("a"))
+
+        val merged = mergePiSessionsEvent(current, PiSessionsStreamEvent.Removed("a", "other"))
+
+        assertEquals(listOf("a"), merged.map { it.key.sessionId })
+    }
+
+    @Test
+    fun `a removed session does not come back on the next snapshot`() = runTest {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            """{"type":"snapshot","sessions":[{${sessionFields("a")}},{${sessionFields("b")}}]}""",
+            """{"type":"session_removed","session_id":"a","instance_id":"i1"}""",
+            """{"type":"session",${sessionFields("b", lastSeen = 5000)}}""",
+        )
+        val repository = PiSessionsRepository(transport)
+
+        val states = repository.streamWithStatus(reconnectDelayMs = 1L).take(3).toList()
+
+        assertEquals(listOf("a", "b"), states[0].sessions.map { it.key.sessionId })
+        assertEquals(listOf("b"), states[1].sessions.map { it.key.sessionId })
+        assertEquals(listOf("b"), states[2].sessions.map { it.key.sessionId })
     }
 }

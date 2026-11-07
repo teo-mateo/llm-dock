@@ -22,6 +22,9 @@ data class PiSessionDto(
 )
 
 @Serializable
+data class PiSessionDeletedResponseDto(val deleted: Boolean = false)
+
+@Serializable
 data class PiPromptDto(
     @SerialName("prompt_id") val promptId: String,
     val kind: String,

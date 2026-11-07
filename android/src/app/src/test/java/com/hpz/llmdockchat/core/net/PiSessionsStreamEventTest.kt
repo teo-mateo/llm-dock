@@ -126,4 +126,20 @@ class PiSessionsStreamEventTest {
         assertNull(session.contextPercent)
         assertTrue(session.live)
     }
+
+    @Test
+    fun `session_removed parses both halves of the key`() {
+        val payload = """{"type":"session_removed","session_id":"s1","instance_id":"i1"}"""
+
+        val event = parsePiSessionsStreamFrame(payload)
+
+        assertEquals(PiSessionsStreamEvent.Removed("s1", "i1"), event)
+    }
+
+    @Test
+    fun `session_removed missing an id is unknown, not a silent no-op`() {
+        val event = parsePiSessionsStreamFrame("""{"type":"session_removed","session_id":"s1"}""")
+
+        assertTrue(event is PiSessionsStreamEvent.Unknown)
+    }
 }

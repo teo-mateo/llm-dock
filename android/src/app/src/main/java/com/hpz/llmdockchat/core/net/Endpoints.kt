@@ -39,14 +39,17 @@ object Endpoints {
 
     const val PI_SESSIONS_STREAM = "/api/pi/sessions/stream"
 
+    fun piSession(sessionId: String, instanceId: String): String =
+        "/api/pi/sessions/${encodePathSegment(sessionId)}/${encodePathSegment(instanceId)}"
+
     fun piSessionStream(sessionId: String, instanceId: String): String =
-        "/api/pi/sessions/${encodePathSegment(sessionId)}/${encodePathSegment(instanceId)}/stream"
+        "${piSession(sessionId, instanceId)}/stream"
 
     fun piSessionMessages(sessionId: String, instanceId: String): String =
-        "/api/pi/sessions/${encodePathSegment(sessionId)}/${encodePathSegment(instanceId)}/messages"
+        "${piSession(sessionId, instanceId)}/messages"
 
     fun piSessionAbort(sessionId: String, instanceId: String): String =
-        "/api/pi/sessions/${encodePathSegment(sessionId)}/${encodePathSegment(instanceId)}/abort"
+        "${piSession(sessionId, instanceId)}/abort"
 
     /** The stored config for one service. 404 when Docker knows the
      * container but `services.json` does not. */

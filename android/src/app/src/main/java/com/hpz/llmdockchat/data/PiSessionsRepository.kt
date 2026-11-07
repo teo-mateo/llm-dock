@@ -64,6 +64,8 @@ fun mergePiSessionsEvent(
             current + session
         }
     }
+    is PiSessionsStreamEvent.Removed ->
+        current.filterNot { it.key.sessionId == event.sessionId && it.key.instanceId == event.instanceId }
     is PiSessionsStreamEvent.Lagged, is PiSessionsStreamEvent.Unknown -> current
 }
 
