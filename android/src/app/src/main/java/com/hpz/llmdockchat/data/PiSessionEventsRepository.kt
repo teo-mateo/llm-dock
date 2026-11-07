@@ -17,23 +17,26 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 data class PiSessionEventsState(
-    val events: List<PiEvent>,
+    val appended: List<PiEvent>,
+    val lastSeq: Long,
     val summary: PiSession?,
     val stale: Boolean,
     val unknown: Boolean,
 )
 
-private class LaggedSessionEventsSignal(val after: Long) : RuntimeException()
+private class LaggedSessionEventsSignal : RuntimeException()
+private class RemovedSessionEventsSignal : RuntimeException()
 
 class PiSessionEventsRepository(private val transport: SseTransport) {
 
     fun stream(
         key: PiSessionKey,
         reconnectDelayMs: Long = RECONNECT_DELAY_MS,
+        after: Long = 0L,
     ): Flow<PiSessionEventsState> = flow {
-        var events = emptyList<PiEvent>()
+        require(after >= 0L) { "Resume cursor must be non-negative" }
         var summary: PiSession? = null
-        var lastSeq = 0L
+        var lastSeq = after
         while (true) {
             var lagged = false
             try {
@@ -45,33 +48,43 @@ class PiSessionEventsRepository(private val transport: SseTransport) {
                 ).collect { payload ->
                     when (val event = parsePiSessionStreamFrame(payload)) {
                         is PiSessionStreamEvent.Events -> {
-                            events = mergePiSessionEvents(events, event.events.map { PiEvent(it.seq, it.type, it.ts, it.payload) })
-                            lastSeq = events.lastOrNull()?.seq ?: lastSeq
-                            emit(PiSessionEventsState(events, summary, stale = false, unknown = false))
+                            val appended = freshPiSessionEvents(
+                                lastSeq,
+                                event.events.map { PiEvent(it.seq, it.type, it.ts, it.payload) },
+                            )
+                            lastSeq = appended.lastOrNull()?.seq ?: lastSeq
+                            emit(PiSessionEventsState(appended, lastSeq, summary, stale = false, unknown = false))
                         }
                         is PiSessionStreamEvent.Session -> {
                             summary = event.session.toDomain()
-                            emit(PiSessionEventsState(events, summary, stale = false, unknown = false))
+                            emit(PiSessionEventsState(emptyList(), lastSeq, summary, stale = false, unknown = false))
                         }
                         is PiSessionStreamEvent.Lagged -> {
-                            lastSeq = maxOf(lastSeq, event.after)
                             lagged = true
-                            throw LaggedSessionEventsSignal(event.after)
+                            throw LaggedSessionEventsSignal()
+                        }
+                        is PiSessionStreamEvent.Removed -> {
+                            if (event.sessionId == key.sessionId && event.instanceId == key.instanceId) {
+                                throw RemovedSessionEventsSignal()
+                            }
                         }
                         is PiSessionStreamEvent.Unknown -> Unit
                     }
                 }
-                emit(PiSessionEventsState(events, summary, stale = true, unknown = false))
+                emit(PiSessionEventsState(emptyList(), lastSeq, summary, stale = true, unknown = false))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: LaggedSessionEventsSignal) {
+            } catch (e: RemovedSessionEventsSignal) {
+                emit(PiSessionEventsState(emptyList(), lastSeq, summary, stale = false, unknown = true))
+                return@flow
             } catch (e: Throwable) {
                 val error = e.appError
                 if (error is AppError.Http && error.status == 404) {
-                    emit(PiSessionEventsState(events, summary, stale = false, unknown = true))
+                    emit(PiSessionEventsState(emptyList(), lastSeq, summary, stale = false, unknown = true))
                     return@flow
                 }
-                emit(PiSessionEventsState(events, summary, stale = true, unknown = false))
+                emit(PiSessionEventsState(emptyList(), lastSeq, summary, stale = true, unknown = false))
             }
             if (!lagged) delay(reconnectDelayMs)
         }
@@ -82,11 +95,7 @@ class PiSessionEventsRepository(private val transport: SseTransport) {
     }
 }
 
-fun mergePiSessionEvents(current: List<PiEvent>, incoming: List<PiEvent>): List<PiEvent> {
-    val lastSeq = current.lastOrNull()?.seq ?: Long.MIN_VALUE
-    val fresh = incoming
-        .filter { it.seq > lastSeq }
-        .sortedBy { it.seq }
-        .distinctBy { it.seq }
-    return current + fresh
-}
+fun freshPiSessionEvents(after: Long, incoming: List<PiEvent>): List<PiEvent> = incoming
+    .filter { it.seq > after }
+    .sortedBy { it.seq }
+    .distinctBy { it.seq }

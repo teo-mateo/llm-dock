@@ -45,6 +45,25 @@ class PiSessionStreamEventTest {
     }
 
     @Test
+    fun `removed parses identity`() {
+        assertEquals(
+            PiSessionStreamEvent.Removed("s1", "i1"),
+            parsePiSessionStreamFrame("""{"type":"session_removed","session_id":"s1","instance_id":"i1"}"""),
+        )
+    }
+
+    @Test
+    fun `malformed removal is Unknown`() {
+        listOf(
+            """{"type":"session_removed"}""",
+            """{"type":"session_removed","session_id":"s1"}""",
+            """{"type":"session_removed","session_id":1,"instance_id":"i1"}""",
+        ).forEach { payload ->
+            assertEquals(PiSessionStreamEvent.Unknown(payload), parsePiSessionStreamFrame(payload))
+        }
+    }
+
+    @Test
     fun `unknown type is Unknown`() {
         val payload = """{"type":"future","events":[]}"""
         assertEquals(PiSessionStreamEvent.Unknown(payload), parsePiSessionStreamFrame(payload))

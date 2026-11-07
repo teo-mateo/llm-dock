@@ -52,7 +52,7 @@ class PiSessionEventsRepositoryTest {
         }
 
         assertFalse(states.single().stale)
-        assertEquals(listOf(1L), states.single().events.map { it.seq })
+        assertEquals(listOf(1L), states.single().appended.map { it.seq })
         assertEquals(Endpoints.piSessionStream("s1", "i1"), transport.requests[0].path)
         assertEquals("0", transport.requests[0].query["after"])
     }
@@ -72,10 +72,12 @@ class PiSessionEventsRepositoryTest {
         }
 
         assertFalse(states[0].stale)
-        assertEquals(listOf(1L, 2L), states[0].events.map { it.seq })
+        assertEquals(listOf(1L, 2L), states[0].appended.map { it.seq })
         assertTrue(states[1].stale)
         assertFalse(states[2].stale)
-        assertEquals(listOf(1L, 2L, 3L), states[2].events.map { it.seq })
+        assertEquals(listOf(3L), states[2].appended.map { it.seq })
+        assertTrue(states[1].appended.isEmpty())
+        assertEquals(listOf(2L, 2L, 3L), states.map { it.lastSeq })
         assertEquals("2", transport.requests[1].query["after"])
     }
 
@@ -96,14 +98,13 @@ class PiSessionEventsRepositoryTest {
             repository.stream(key, reconnectDelayMs = 1L).take(3).toList()
         }
 
-        assertEquals(listOf(1L, 2L, 3L, 4L), states[2].events.map { it.seq })
+        assertEquals(listOf(3L, 4L), states[2].appended.map { it.seq })
     }
 
     @Test
-    fun `merge drops duplicates and older seqs`() {
-        val current = listOf(event(1), event(2))
-        val incoming = listOf(event(2), event(3), event(1), event(4))
-        assertEquals(listOf(1L, 2L, 3L, 4L), mergePiSessionEvents(current, incoming).map { it.seq })
+    fun `fresh batch sorts and drops duplicates and older seqs`() {
+        val incoming = listOf(event(2), event(4), event(3), event(1), event(4))
+        assertEquals(listOf(3L, 4L), freshPiSessionEvents(2, incoming).map { it.seq })
     }
 
     @Test
@@ -117,13 +118,15 @@ class PiSessionEventsRepositoryTest {
         }
 
         assertNull(states[0].summary)
+        assertTrue(states[1].appended.isEmpty())
+        assertEquals(1L, states[1].lastSeq)
         assertEquals("llm-dock", states[1].summary?.name)
         assertEquals("mistral/small", states[1].summary?.model)
         assertEquals(22.5, states[1].summary?.contextPercent!!, 0.0)
     }
 
     @Test
-    fun `lagged reconnects without delay`() = runTest {
+    fun `lagged reconnects without delay and cannot skip unaccepted events`() = runTest {
         val transport = ScriptedSseTransport()
         transport.script(
             ScriptedSseTransport.Leg(payloads = listOf("""{"type":"lagged","after":5}""")),
@@ -136,9 +139,9 @@ class PiSessionEventsRepositoryTest {
             repository.stream(key, reconnectDelayMs = 60_000L).take(1).toList()
         }
 
-        assertEquals(listOf(6L), states.single().events.map { it.seq })
+        assertEquals(listOf(6L), states.single().appended.map { it.seq })
         assertEquals(2, transport.requests.size)
-        assertEquals("5", transport.requests[1].query["after"])
+        assertEquals("0", transport.requests[1].query["after"])
     }
 
     @Test
@@ -175,9 +178,9 @@ class PiSessionEventsRepositoryTest {
         }
 
         assertTrue(states[0].stale)
-        assertTrue(states[0].events.isEmpty())
+        assertTrue(states[0].appended.isEmpty())
         assertFalse(states[1].stale)
-        assertEquals(listOf(1L), states[1].events.map { it.seq })
+        assertEquals(listOf(1L), states[1].appended.map { it.seq })
     }
 
     @Test
