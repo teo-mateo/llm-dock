@@ -81,11 +81,23 @@ internal class PiSessionCache(
 
     fun release(lease: PiCacheLease) = synchronized(lock) { leases.remove(lease) }
 
+    fun invalidate(lease: PiCacheLease): Boolean = synchronized(lock) {
+        if (!current(lease)) return@synchronized false
+        invalidate()
+        true
+    }
+
     fun invalidate() = synchronized(lock) {
         epoch++
         store.invalidate()
         leases.toList().forEach { it.valid = false; it.invalidated(false) }
         leases.clear()
+    }
+
+    fun remove(lease: PiCacheLease): Boolean = synchronized(lock) {
+        if (!current(lease)) return@synchronized false
+        remove(lease.identity)
+        true
     }
 
     fun remove(server: BaseUrl, key: PiSessionKey) {

@@ -67,7 +67,7 @@ internal class PiSessionRuntime(
             if (!cache.current(active) && state.value !is PiSessionUiState.Unknown) mutableState.value = PiSessionUiState.Loading
             throw error
         } catch (error: ApiException) {
-            if (error.error == AppError.Unauthenticated) cache.invalidate() else throw error
+            if (error.error == AppError.Unauthenticated) cache.invalidate(active) else throw error
         } catch (_: PiWrongSummary) {
             fail(active, "The dashboard returned a different session. Reopen this session.")
         } finally {
@@ -96,7 +96,7 @@ internal class PiSessionRuntime(
                     .collect { update ->
                         if (!cache.current(active)) throw CancellationException("Pi session context changed")
                         if (update.unknown) {
-                            cache.remove(checkNotNull(BaseUrl.restore(active.identity.server)), key)
+                            cache.remove(active)
                             throw CancellationException("Pi session removed")
                         }
                         if (update.caughtUp && update.summary?.key != key) throw PiWrongSummary()
