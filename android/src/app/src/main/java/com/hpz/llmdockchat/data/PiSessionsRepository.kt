@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.data
 
+import com.hpz.llmdockchat.core.net.BaseUrl
+import com.hpz.llmdockchat.core.net.ServerUrlStore
 import com.hpz.llmdockchat.core.net.Endpoints
 import com.hpz.llmdockchat.core.net.PiSessionsStreamEvent
 import com.hpz.llmdockchat.core.net.SseTransport
@@ -7,6 +9,7 @@ import com.hpz.llmdockchat.core.net.StreamRequest
 import com.hpz.llmdockchat.core.net.parsePiSessionsStreamFrame
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.PiSession
+import com.hpz.llmdockchat.data.model.PiSessionKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -19,16 +22,24 @@ data class PiSessionsState(
 
 private class LaggedStreamSignal : RuntimeException()
 
-class PiSessionsRepository(private val transport: SseTransport) {
+class PiSessionsRepository(
+    private val transport: SseTransport,
+    private val serverUrlStore: ServerUrlStore? = null,
+    private val onRemoved: (BaseUrl, PiSessionKey) -> Unit = { _, _ -> },
+) {
 
     fun streamWithStatus(reconnectDelayMs: Long = RECONNECT_DELAY_MS): Flow<PiSessionsState> = flow {
+        val server = serverUrlStore?.current()
         var current = emptyList<PiSession>()
         while (true) {
             var lagged = false
             try {
-                transport.open(StreamRequest(path = Endpoints.PI_SESSIONS_STREAM))
+                transport.open(StreamRequest(path = Endpoints.PI_SESSIONS_STREAM, expectedServer = server))
                     .collect { payload ->
                         val event = parsePiSessionsStreamFrame(payload)
+                        if (event is PiSessionsStreamEvent.Removed && server != null) {
+                            onRemoved(server, PiSessionKey(event.sessionId, event.instanceId))
+                        }
                         if (event is PiSessionsStreamEvent.Lagged) {
                             lagged = true
                             throw LaggedStreamSignal()

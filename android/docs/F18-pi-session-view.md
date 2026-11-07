@@ -35,14 +35,15 @@ shows an editable composer in this phase.
 
 ## F18-R3 · Resume and unknown session (Must)
 
-The stream connects with `?after=<last seq>` (0 at first), reconnects from the last held seq
+The stream connects with `?after=<last seq>` (a validated local checkpoint cursor when
+available, otherwise 0), reconnects from the last held seq
 without gaps or duplicates, reconnects immediately on `lagged`, and stops with a "no longer
 known" state on `404 unknown_session`. Failures keep the last-known transcript visible while
 retrying.
 
 **Acceptance criteria**
 
-- [ ] The first connect sends `after=0`; every reconnect sends `after=<last held seq>`.
+- [ ] The first connect sends the restored cursor, or `after=0` on a miss; every reconnect sends `after=<last held seq>`.
 - [ ] Duplicate and older seqs are dropped and events stay ascending.
 - [ ] `lagged` reconnects without the normal delay.
 - [ ] `404 unknown_session` sets `unknown` and stops; the UI shows "no longer known".
@@ -91,11 +92,10 @@ Android `PiTranscriptTest` ports the web suite's 14 cases one to one and adds ma
 coverage. The same `TranscriptBuilder` now supports incremental application and checkpoint
 continuation: items, working state and an explicit open assistant id, including when notices
 trail that assistant. Restore rebuilds mappings for all tools, with the latest repeated call id
-winning. Published snapshots are not mutated by later updates. The ViewModel owns one builder
-on an injected worker dispatcher and reuses the transcript on metadata/stale updates. No disk
-cache is enabled.
+winning. Published snapshots are not mutated by later updates. The session runtime owns one
+builder on an injected worker dispatcher and reuses the transcript on metadata/stale updates.
 
-### Preparatory checkpoint storage
+### Checkpoint storage and resume
 
 `PiSessionSnapshot` / `PiSnapshotCodec` serialize those existing render models and the summary,
 with a required codec/reducer version, canonical server identity, session/instance key,
@@ -103,8 +103,8 @@ with a required codec/reducer version, canonical server identity, session/instan
 agree; invalid versions, continuations or content are misses. The summary is display data,
 not current command authorization or liveness.
 
-`PiSessionSnapshotStore` is not wired into the application yet. Its eventual owner must pass
-`cacheDir/pi-sessions/`, one store instance per directory and an app-lived coroutine scope.
+`AppContainer` owns one `PiSessionSnapshotStore` at app-private `cacheDir/pi-sessions/`,
+excluded from Android backup, with an app-lived coroutine scope.
 There is no separate encryption claim. SHA-256 filenames hash the serialized identity tuple,
 not user-authored path segments. Gzip input is bounded by the 64 MiB compressed-file/committed
 budget and 8 MiB decompressed JSON limit; output encoding is also bounded. Atomic same-directory
@@ -120,9 +120,36 @@ in-flight write. A full queue rejects a new key but still accepts replacement fo
 pending key. `enqueue` returns a deferred outcome: stored, skipped, superseded, invalidated,
 queue-full or an explicit IO failure. Callers capture a generation before scheduling work;
 `delete` and `clear` invalidate it before disk removal, including queued/in-flight writes.
-`invalidate` rejects unfinished work without deleting committed files, supporting the approved
-retention policy when lifecycle wiring is added. No sign-out, restore, throttling or UI wiring
-is enabled by this storage-only change.
+`invalidate` rejects unfinished work without deleting committed files. Sign-out retains those
+files, stops active session work and clears displayed content; cached display still requires
+the normal authenticated app boundary. Cached history may outlive server event retention.
+
+`PiSessionRuntime` restores on its worker dispatcher and publishes cached/checking content
+before opening the stream. The actual first request uses the restored cursor; misses use zero.
+The transport pins that request to the captured server, including reconnects. Events alone
+mean catching up, not current: only a post-replay `session` frame validates identity and
+marks connected. Cached summaries/prompts never enable send/stop. Failures keep the transcript
+visible and read-only with offline/reconnecting status.
+
+A changed `firstSeen` discards tentative suffix data, deletes the stale checkpoint and restarts
+once from zero. A second identity change stops with an explicit refresh failure. Checkpoints
+are eligible for writing only after identity validation and carry the exact cursor reduced
+into their immutable state. This marker does not detect arbitrary server database rollback.
+
+`PiCheckpointWriter` saves the first validated dirty state promptly, then a fixed trailing
+five-second throttle keeps the latest dirty state without debounce starvation. Navigation,
+background and failure trigger best-effort flushes; these can occur before the normal deadline.
+The app-lived store writer survives VM cancellation, but abrupt process death can lose recent
+progress. Reopening resumes the committed cursor, not a newer in-memory cursor.
+
+Synchronous auth/server boundary callbacks invalidate generations before old work can be
+published or enqueued. Explicit removal/404, list removal and successful local REST deletion
+invalidate the captured server/session key and reject late writes. Failed deletions preserve
+the cache. Namespace pinning also prevents an old cursor reconnecting to a newly selected server.
+
+JVM tests exercise these contracts; device gates remain pending: real-device cached first paint,
+back/reopen, background/resume, process restart, offline recovery and latency measurements.
+No phone timing improvement is claimed from JVM fixtures.
 
 **Acceptance criteria**
 
@@ -150,7 +177,9 @@ execution, exact incremental output, metadata/stale snapshot reuse, cancellation
 `PiSnapshotCodecTest`, `PiSessionSnapshotStoreTest`, `PiSnapshotEvictionTest` and
 `PiSnapshotWriterTest` cover roundtrips, exact byte boundaries, malformed/oversized files,
 interrupted replacement, access eviction, bounded coalescing and deterministic generation races
-using temporary directories and injected IO/time. The issues' Android JVM/build gates are
+using temporary directories and injected IO/time. Runtime resume, firstSeen, lifecycle/deletion
+races, fixed throttle and real outgoing pinned requests are covered by the Pi cache/runtime
+test suites. The issues' Android JVM/build gates are
 recorded in their PRs.
 
 UI (#362): `PiSessionViewModelTest` covers loading, first transcript, Unknown, stale and idempotent

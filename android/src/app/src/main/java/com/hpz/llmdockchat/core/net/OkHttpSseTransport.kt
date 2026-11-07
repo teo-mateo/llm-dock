@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.core.net
 
 import com.hpz.llmdockchat.core.error.AppError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -33,8 +34,12 @@ class OkHttpSseTransport(
 ) : SseTransport {
 
     override fun open(request: StreamRequest): Flow<String> = channelFlow {
-        val base = serverUrlStore.current()
+        val base = request.expectedServer ?: serverUrlStore.current()
             ?: throw ApiException(AppError.Unexpected(IllegalStateException("No server configured.")))
+
+        if (request.expectedServer != null && serverUrlStore.current() != base) {
+            throw CancellationException("Stream server changed")
+        }
 
         val httpRequest = Request.Builder()
             .url(base.resolve(request.path, request.query))
@@ -48,6 +53,9 @@ class OkHttpSseTransport(
         launch(ioDispatcher) {
             try {
                 val response = try {
+                    if (request.expectedServer != null && serverUrlStore.current() != base) {
+                        throw CancellationException("Stream server changed")
+                    }
                     call.execute()
                 } catch (e: ApiException) {
                     throw e

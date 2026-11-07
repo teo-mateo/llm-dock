@@ -3,28 +3,12 @@ package com.hpz.llmdockchat.feature.pi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hpz.llmdockchat.data.PiCommandsRepository
-import com.hpz.llmdockchat.data.PiSessionEventsRepository
 import com.hpz.llmdockchat.data.model.PiCommandOutcome
-import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiSessionKey
-import com.hpz.llmdockchat.feature.pi.transcript.PiTranscript
-import com.hpz.llmdockchat.feature.pi.transcript.TranscriptBuilder
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-sealed interface PiSessionUiState {
-    data object Loading : PiSessionUiState
-    data object Unknown : PiSessionUiState
-    data class Loaded(
-        val summary: PiSession?,
-        val transcript: PiTranscript,
-        val stale: Boolean,
-    ) : PiSessionUiState
-}
 
 data class PiComposerState(
     val draft: String = "",
@@ -34,41 +18,22 @@ data class PiComposerState(
     val lastStopAt: Long? = null,
 )
 
-class PiSessionViewModel(
+internal class PiSessionViewModel(
     private val key: PiSessionKey,
-    private val repository: PiSessionEventsRepository,
+    private val runtime: PiSessionRuntime,
     private val commandsRepository: PiCommandsRepository,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val transcriptDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
-    private val _state = MutableStateFlow<PiSessionUiState>(PiSessionUiState.Loading)
-    val state: StateFlow<PiSessionUiState> = _state.asStateFlow()
+    val state = runtime.state
     private val _composerState = MutableStateFlow(PiComposerState())
     val composerState: StateFlow<PiComposerState> = _composerState.asStateFlow()
-    private var started = false
 
-    fun start() {
-        if (started) return
-        started = true
-        viewModelScope.launch(transcriptDispatcher) {
-            val builder = TranscriptBuilder()
-            var transcript = builder.transcript()
-            repository.stream(key).collect { update ->
-                if (update.unknown) {
-                    _state.value = PiSessionUiState.Unknown
-                } else {
-                    if (update.appended.isNotEmpty()) {
-                        update.appended.forEach { builder.apply(it) }
-                        transcript = builder.transcript()
-                    }
-                    _state.value = PiSessionUiState.Loaded(
-                        summary = update.summary,
-                        transcript = transcript,
-                        stale = update.stale,
-                    )
-                }
-            }
-        }
+    fun start() = runtime.start(viewModelScope)
+    fun flush() = runtime.flush()
+
+    override fun onCleared() {
+        runtime.stop()
+        super.onCleared()
     }
 
     fun onDraftChange(value: String) {
@@ -76,35 +41,41 @@ class PiSessionViewModel(
     }
 
     fun send() {
+        val server = runtime.commandServer() ?: return
         val current = _composerState.value
         if (current.draft.isBlank() || current.sending) return
         _composerState.value = current.copy(sending = true)
         viewModelScope.launch {
-            val outcome = commandsRepository.send(key, current.draft)
-            val message = outcomeMessage(outcome)
-            _composerState.value = _composerState.value.copy(
-                draft = if (outcome == PiCommandOutcome.Done || outcome == PiCommandOutcome.Pending) {
-                    ""
-                } else {
-                    _composerState.value.draft
-                },
-                notice = if (outcome == PiCommandOutcome.Done || outcome == PiCommandOutcome.Pending) {
-                    null
-                } else {
-                    message
-                },
-                sending = false,
-            )
+            try {
+                val outcome = commandsRepository.send(key, current.draft, server)
+                if (runtime.commandServer() != server) return@launch
+                val message = outcomeMessage(outcome)
+                _composerState.value = _composerState.value.copy(
+                    draft = if (outcome == PiCommandOutcome.Done || outcome == PiCommandOutcome.Pending) {
+                        ""
+                    } else {
+                        _composerState.value.draft
+                    },
+                    notice = if (outcome == PiCommandOutcome.Done || outcome == PiCommandOutcome.Pending) {
+                        null
+                    } else {
+                        message
+                    },
+                )
+            } finally {
+                _composerState.value = _composerState.value.copy(sending = false)
+            }
         }
     }
 
     fun stop() {
+        val server = runtime.commandServer() ?: return
         val current = _composerState.value
         if (current.stopping) return
         _composerState.value = current.copy(stopping = true, lastStopAt = clock())
         viewModelScope.launch {
             try {
-                commandsRepository.abort(key)
+                commandsRepository.abort(key, server)
             } finally {
                 _composerState.value = _composerState.value.copy(stopping = false)
             }

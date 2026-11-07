@@ -30,7 +30,9 @@ class SessionManagerTest {
     private val tokenStore = FakeTokenStore()
     private val credentials = FakeCredentialStore()
     private val serverUrlStore = FakeServerUrlStore()
-    private val sessionState = SessionState()
+    private var invalidations = 0
+    private var sessionChanges = 0
+    private val sessionState = SessionState { invalidations++ }
 
     @Before
     fun setUp() {
@@ -51,6 +53,7 @@ class SessionManagerTest {
             credentials = credentials,
             sessionState = sessionState,
             authService = authService,
+            onSessionChanging = { sessionChanges++ },
             reauthenticator = CredentialReauthenticator(
                 credentials = credentials,
                 sessionState = sessionState,
@@ -75,6 +78,7 @@ class SessionManagerTest {
         val result = manager.signInWithPassword(serverUrl, "hunter2")
 
         assertTrue(result.isSuccess)
+        assertEquals(1, sessionChanges)
         assertEquals("totp-fresh", tokenStore.current())
         assertEquals(Credential.Password("hunter2"), credentials.current())
         assertFalse(sessionState.authenticationRequired.value)
@@ -87,6 +91,7 @@ class SessionManagerTest {
         val result = manager.signInWithPassword(serverUrl, "wrong")
 
         assertTrue(result.isFailure)
+        assertEquals(0, sessionChanges)
         assertNull(tokenStore.current())
         assertNull(credentials.current())
     }
@@ -102,6 +107,7 @@ class SessionManagerTest {
         val result = manager.signInWithTotpCode(serverUrl, "419283")
 
         assertTrue(result.isSuccess)
+        assertEquals(1, sessionChanges)
         assertEquals("totp-fresh", tokenStore.current())
         assertNull(credentials.current())
     }
@@ -123,6 +129,7 @@ class SessionManagerTest {
         val address = serverUrlStore.current()
 
         manager.signOut()
+        assertEquals(1, invalidations)
 
         assertNull(tokenStore.current())
         assertNull(credentials.current())

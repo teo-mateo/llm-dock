@@ -61,9 +61,9 @@ fun PiSessionScreen(
             topBar = {
                 Column {
                     PiSessionHeader(loaded?.summary, onBack, onTextSize = { showTextSize = true })
-                    if (loaded?.stale == true) {
+                    if (loaded != null) {
                         Text(
-                            "Reconnecting…",
+                            loaded.failure ?: loaded.phase.label,
                             color = colors.amber,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
@@ -183,7 +183,13 @@ private fun PiSessionLoaded(
             composerState.lastStopAt,
             Modifier.weight(1f),
         )
-        if (summary != null) {
+        if (state.stale) {
+            Text(
+                "Read only until the session is current",
+                color = LlmTheme.colors.muted,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else if (summary != null) {
             PiComposer(
                 live = summary.live,
                 working = state.transcript.working,

@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -227,7 +231,7 @@ fun AppNavHost(
                     initializer {
                         PiSessionViewModel(
                             key = key,
-                            repository = container.piSessionEventsRepository,
+                            runtime = container.piSessionRuntime(key),
                             commandsRepository = container.piCommandsRepository,
                         )
                     }
@@ -235,6 +239,17 @@ fun AppNavHost(
             )
             val state by viewModel.state.collectAsState()
             val composerState by viewModel.composerState.collectAsState()
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(viewModel, lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_STOP) viewModel.flush()
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    viewModel.flush()
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
             LaunchedEffect(Unit) { viewModel.start() }
             PiSessionScreen(
                 state = state,

@@ -32,6 +32,12 @@ import com.hpz.llmdockchat.core.prefs.DataStorePiTextAppearance
 import com.hpz.llmdockchat.core.prefs.PiTextAppearance
 import com.hpz.llmdockchat.core.prefs.DataStoreEditStateStore
 import com.hpz.llmdockchat.core.prefs.DataStoreNewChatPreferences
+import com.hpz.llmdockchat.core.prefs.valueOrNull
+import com.hpz.llmdockchat.core.prefs.Stored
+import com.hpz.llmdockchat.feature.pi.PiSessionCache
+import com.hpz.llmdockchat.feature.pi.PiSessionSnapshotStore
+import com.hpz.llmdockchat.feature.pi.PiSessionRuntime
+import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.EditStateStore
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences
@@ -87,8 +93,8 @@ class AppContainer(
     val appScope = CoroutineScope(SupervisorJob() + dispatchers.io)
     private val dataStore = context.applicationContext.llmDockDataStore
 
-    val sessionState = SessionState()
-    val serverUrlStore: ServerUrlStore = DataStoreServerUrlStore(dataStore, appScope)
+    val sessionState: SessionState = SessionState(onInvalidated = { piSessionCache.invalidate() })
+    val serverUrlStore: ServerUrlStore = DataStoreServerUrlStore(dataStore, appScope, onChanged = { piSessionCache.invalidate() })
     val tokenStore: TokenStore = DataStoreTokenStore(dataStore, appScope, cipher, serverUrlStore)
     val credentialStore: CredentialStore = DataStoreCredentialStore(dataStore, appScope, cipher, serverUrlStore)
 
@@ -133,10 +139,23 @@ class AppContainer(
     val chatRepository = ChatRepository(apiClient, sseTransport)
     val servicesRepository = ServicesRepository(apiClient)
     val servicesStreamRepository = ServicesStreamRepository(sseTransport)
-    val piSessionsRepository = PiSessionsRepository(sseTransport)
+    private val piSnapshotStore = PiSessionSnapshotStore(
+        File(context.applicationContext.cacheDir, "pi-sessions"), appScope, dispatchers.io,
+    )
+    internal val piSessionCache: PiSessionCache = PiSessionCache(
+        piSnapshotStore, appScope,
+        server = { serverUrlStore.baseUrl.value.valueOrNull },
+        authorized = {
+            val server = serverUrlStore.baseUrl.value.valueOrNull
+            !sessionState.authenticationRequired.value && server != null &&
+                tokenStore.token.value !is Stored.Loading && credentialStore.hasCredential.value !is Stored.Loading &&
+                (tokenStore.current(server) != null || credentialStore.current(server) != null)
+        },
+    )
+    val piSessionsRepository = PiSessionsRepository(sseTransport, serverUrlStore, piSessionCache::remove)
     val piSessionEventsRepository = PiSessionEventsRepository(sseTransport)
     val piCommandsRepository = PiCommandsRepository(apiClient)
-    val piSessionDeleteRepository = PiSessionDeleteRepository(apiClient)
+    val piSessionDeleteRepository = PiSessionDeleteRepository(apiClient, serverUrlStore, piSessionCache::remove, dispatchers.io)
     val gpuStreamRepository = GpuStreamRepository(sseTransport)
     val logsStreamRepository = LogsStreamRepository(sseTransport)
     val promptsRepository = PromptsRepository(apiClient)
@@ -199,6 +218,11 @@ class AppContainer(
         sessionState = sessionState,
         authService = authService,
         reauthenticator = reauthenticator,
+        onSessionChanging = piSessionCache::invalidate,
+    )
+
+    internal fun piSessionRuntime(key: PiSessionKey) = PiSessionRuntime(
+        key, piSessionEventsRepository, piSessionCache, dispatchers.default,
     )
 
     init {

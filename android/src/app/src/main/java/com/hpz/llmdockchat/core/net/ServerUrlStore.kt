@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.prefs.ValuePreference
+import com.hpz.llmdockchat.core.prefs.valueOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 
@@ -25,6 +26,7 @@ interface ServerUrlStore {
 class DataStoreServerUrlStore(
     dataStore: DataStore<Preferences>,
     scope: CoroutineScope,
+    private val onChanged: () -> Unit = {},
 ) : ServerUrlStore {
 
     private val lock = Any()
@@ -39,8 +41,15 @@ class DataStoreServerUrlStore(
 
     override val baseUrl: StateFlow<Stored<BaseUrl>> get() = pref.flow
     override fun current(): BaseUrl? = pref.get()
-    override fun set(url: BaseUrl) = synchronized(lock) { pref.set(url) }
-    override fun clear() = synchronized(lock) { pref.clear() }
+    override fun set(url: BaseUrl) = synchronized(lock) {
+        val changed = pref.flow.value.valueOrNull != url
+        pref.set(url)
+        if (changed) onChanged()
+    }
+    override fun clear() = synchronized(lock) {
+        pref.clear()
+        onChanged()
+    }
     override fun ifCurrent(url: BaseUrl, action: () -> Unit): Boolean = synchronized(lock) {
         if (pref.get() != url) return@synchronized false
         action()

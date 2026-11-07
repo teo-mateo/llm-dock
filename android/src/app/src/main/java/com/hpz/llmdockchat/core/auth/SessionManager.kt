@@ -15,6 +15,7 @@ class SessionManager(
     private val sessionState: SessionState,
     private val authService: AuthService,
     private val reauthenticator: CredentialReauthenticator,
+    private val onSessionChanging: () -> Unit = {},
 ) {
 
     /**
@@ -36,10 +37,10 @@ class SessionManager(
 
     /** Sign-out. The address stays; the token and the credential do not. */
     fun signOut() {
+        sessionState.signedOut()
         tokenStore.clear()
         credentials.clear()
         reauthenticator.reset()
-        sessionState.signedOut()
     }
 
     private suspend fun signIn(
@@ -48,6 +49,7 @@ class SessionManager(
         login: suspend () -> Result<String>,
     ): Result<Unit> {
         return login().map { token ->
+            onSessionChanging()
             tokenStore.clear()
             credentials.clear()
             serverUrlStore.set(server)
