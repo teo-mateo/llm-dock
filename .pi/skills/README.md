@@ -10,7 +10,8 @@ android-development/          entry: ownership, code/docs, hand-back
 android-testing/              SDK/JDK + targeted/full JVM gates
   scripts/check.sh
 android-emulator/             reserved-device interaction + screenshots
-  scripts/ui.py               exact Compose tag wait/tap/bounds/absence
+  scripts/ui.py               exact Compose tag wait/tap/bounds/absence/tags
+  scripts/connect.py          tag-driven Connect-screen switch (password from env)
 android-fixtures/             deterministic Pi session-list + SSE evidence
   scripts/server.py           loopback-only mock dashboard
   scripts/scenarios.py        absent/empty/waiting/offline data
@@ -34,6 +35,16 @@ The kit removes setup rediscovery and the per-task fixture/parser rewrite. It do
 acceptance criteria or claim fixture evidence proves the deployed backend works. There is no
 physical-phone automation, credential copying, production API proxy, or automatic sign-out.
 Emulator connection/restoration remains an explicit, observable step.
+
+## Audit of the #394 run (2026-11-07, PO)
+
+Read: `android-development`, `android-testing`, then `android-fixtures` only after a failed login.
+Used: `ui.py` 21×, `check.sh` 12×, `scenario.py` 6×, `setup.py` 3× (once it existed).
+Gaps the run exposed, now fixed: a nonexistent example tag (`pi_sessions_screen`); no way to list
+real tags, so seven inline XML-regex blocks re-derived them; no helper for the Connect screen, so
+sign-out → URL → password → submit was hand-written four times; fixture timestamps read
+`20763 d ago` in screenshots. Noncompliance rather than a gap: three standalone `sleep` turns
+(covered by the examples in `android-testing`) — the checkout predated that merge.
 
 ## Validate
 

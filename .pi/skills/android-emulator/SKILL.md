@@ -13,11 +13,15 @@ Use `scripts/ui.py` instead of writing another UI XML/coordinate parser:
 ```bash
 python3 scripts/ui.py --device emulator-5554 wait nav_tab_pi
 python3 scripts/ui.py --device emulator-5554 tap nav_tab_pi
-python3 scripts/ui.py --device emulator-5554 bounds pi_sessions_screen
-python3 scripts/ui.py --device emulator-5554 absent needs_answer_fixture-a
+python3 scripts/ui.py --device emulator-5554 tags pi_
+python3 scripts/ui.py --device emulator-5554 bounds pi_session_fixture-live_fixture-instance
+python3 scripts/ui.py --device emulator-5554 absent pi_needs_answer_fixture-ended_fixture-instance
 ```
 
 Use actual tags from source/hierarchy; example indicator tags are not API guarantees.
+`tags <substring>` lists the resource IDs currently on screen, which is how you find the real tag
+instead of guessing one. Do not write inline XML regexes for discovery or measurement: `tags` and
+`bounds` cover both.
 `wait`/`tap` use bounded retries for presence. `absent` checks the current hierarchy once, so first
 wait for the containing screen; absence alone is not proof that the correct screen loaded.
 Errors report resource IDs only, never input values or the full hierarchy.
@@ -53,6 +57,25 @@ adb shell input tap 680 2200
 If `wait` times out, inspect the screen/hierarchy and report why the expected tag was missing.
 Do not simply increase a sleep. Use `bounds <actual-row-tag>` for row measurements rather than
 writing another regex/XML parser.
+
+## Example: point the app at a URL
+
+Good — one tag-driven command, password from the environment, bounded waits:
+
+```bash
+LLMDOCK_TEST_PASSWORD=fixture python3 scripts/connect.py --device emulator-5554 --url http://127.0.0.1:3999
+```
+
+Bad — hand-repeating sign-out, field clearing and submit in ad-hoc shell, with sleeps between taps.
+That sequence was re-derived four times in one session; the helper exists so it is not.
+
+## Example: read a measurement instead of parsing XML
+
+Good: `python3 scripts/ui.py --device emulator-5554 bounds pi_session_fixture-live_fixture-instance`
+prints `bounds: <tag> (x1, y1, x2, y2)`; subtract y values for a row height.
+
+Bad: an inline `python3 - <<EOF` block that dumps `uiautomator` and regexes `<node>` tags. Use
+`tags` to discover IDs and `bounds` to measure; report the number, not the parser.
 
 Use `../android-fixtures/SKILL.md` for deterministic session-list states. Restore the prior
 connection/configuration and remove only your own adb reverse mapping when done. Do not print

@@ -20,6 +20,19 @@ def find_bounds(xml, tag):
     return None
 
 
+def find_tags(xml, needle=""):
+    root = ET.fromstring(xml)
+    tags = set()
+    for node in root.iter("node"):
+        resource = node.get("resource-id", "")
+        if not resource:
+            continue
+        tag = resource.rsplit(":id/", 1)[-1]
+        if needle in tag:
+            tags.add(tag)
+    return sorted(tags)
+
+
 def hierarchy(raw):
     start = raw.find("<?xml")
     if start < 0:
@@ -34,17 +47,19 @@ def main():
     parser = argparse.ArgumentParser(description="Find/tap exact Compose tags on a reserved emulator")
     parser.add_argument("--device", required=True)
     parser.add_argument("--timeout", type=float, default=15)
-    parser.add_argument("action", choices=["wait", "tap", "bounds", "absent"])
-    parser.add_argument("tag")
+    parser.add_argument("action", choices=["wait", "tap", "bounds", "absent", "tags"])
+    parser.add_argument("tag", nargs="?", default="", help="exact tag, or a substring filter for tags")
     args = parser.parse_args()
     if not args.device.startswith("emulator-"):
         parser.error("only emulator targets are permitted")
     if not 0 < args.timeout <= 120:
         parser.error("timeout must be in (0, 120]")
+    if args.action != "tags" and not args.tag:
+        parser.error(f"{args.action} needs a tag")
     sdk = Path(os.environ.get("ANDROID_SDK_ROOT", os.environ.get("ANDROID_HOME", str(Path.home() / "Android/Sdk"))))
     adb = str(sdk / "platform-tools/adb")
     command = [adb, "-s", args.device]
-    deadline = time.monotonic() + args.timeout
+    deadline = time.monotonic() + (args.timeout if args.action != "tags" else 10)
     while True:
         remaining = max(0.1, deadline - time.monotonic())
         try:
@@ -55,6 +70,10 @@ def main():
                 raise ValueError(f"UI dump timed out waiting for tag: {args.tag}") from None
             continue
         xml = hierarchy(result.stdout)
+        if args.action == "tags":
+            for tag in find_tags(xml, args.tag):
+                print(tag)
+            return
         bounds = find_bounds(xml, args.tag)
         if args.action == "absent":
             if bounds is not None:
@@ -71,8 +90,8 @@ def main():
             print(f"{args.action}: {args.tag} {bounds}")
             return
         if time.monotonic() >= deadline:
-            ids = sorted({node.get("resource-id", "") for node in ET.fromstring(xml).iter("node")})
-            raise ValueError(f"tag not found: {args.tag}; resource IDs: {', '.join(filter(None, ids))}")
+            ids = find_tags(xml)
+            raise ValueError(f"tag not found: {args.tag}; resource IDs: {', '.join(ids)}")
         time.sleep(min(0.3, max(0, deadline - time.monotonic())))
 
 
