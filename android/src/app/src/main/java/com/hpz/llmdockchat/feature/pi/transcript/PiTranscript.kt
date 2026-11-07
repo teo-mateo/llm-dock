@@ -11,16 +11,34 @@ sealed interface PiItem {
 }
 enum class ToolStatus { RUNNING, DONE, ERROR }
 data class PiTranscript(val items: List<PiItem>, val working: Boolean)
+data class PiTranscriptCheckpoint(
+    val items: List<PiItem>,
+    val working: Boolean,
+    val openAssistantId: String?,
+)
 fun buildPiTranscript(events: List<PiEvent>): PiTranscript {
     val builder = TranscriptBuilder()
     events.forEach { builder.apply(it) }
-    return PiTranscript(builder.items.toList(), builder.working)
+    return builder.transcript()
 }
-private class TranscriptBuilder {
-    val items = mutableListOf<PiItem>()
-    var working = false
-    private var openIndex: Int? = null
-    private val toolIndexes = mutableMapOf<String, Int>()
+class TranscriptBuilder(checkpoint: PiTranscriptCheckpoint = PiTranscriptCheckpoint(emptyList(), false, null)) {
+    private val items = checkpoint.items.toMutableList()
+    private var working = checkpoint.working
+    private var openIndex: Int? = checkpoint.openAssistantId?.let { id ->
+        items.indexOfFirst { it.id == id && it is PiItem.Assistant && it.streaming }
+            .also { require(it >= 0) { "Open assistant must identify a streaming assistant" } }
+    }
+    private val toolIndexes = mutableMapOf<String, Int>().apply {
+        items.forEachIndexed { index, item ->
+            if (item is PiItem.Tool) put(item.callId, index)
+        }
+    }
+
+    fun checkpoint(): PiTranscriptCheckpoint =
+        PiTranscriptCheckpoint(items.toList(), working, openIndex?.let { items[it].id })
+
+    fun transcript(): PiTranscript = PiTranscript(items.toList(), working)
+
     fun apply(event: PiEvent) {
         when (event.type) {
             "state" -> working = event.payload.str("state") == "working"

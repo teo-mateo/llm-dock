@@ -12,6 +12,7 @@ sealed interface PiSessionStreamEvent {
     data class Events(val events: List<PiEventDto>) : PiSessionStreamEvent
     data class Session(val session: PiSessionDto) : PiSessionStreamEvent
     data class Lagged(val after: Long) : PiSessionStreamEvent
+    data class Removed(val sessionId: String, val instanceId: String) : PiSessionStreamEvent
     data class Unknown(val raw: String) : PiSessionStreamEvent
 }
 
@@ -34,6 +35,13 @@ fun parsePiSessionStreamFrame(payload: String): PiSessionStreamEvent {
                 PiSessionJson.decodeFromJsonElement(PiSessionDto.serializer(), root)
             }.getOrNull() ?: return PiSessionStreamEvent.Unknown(payload)
             PiSessionStreamEvent.Session(session)
+        }
+        "session_removed" -> {
+            val sessionId = root.stringField("session_id")
+                ?: return PiSessionStreamEvent.Unknown(payload)
+            val instanceId = root.stringField("instance_id")
+                ?: return PiSessionStreamEvent.Unknown(payload)
+            PiSessionStreamEvent.Removed(sessionId, instanceId)
         }
         "lagged" -> {
             val after = root.longField("after") ?: return PiSessionStreamEvent.Unknown(payload)

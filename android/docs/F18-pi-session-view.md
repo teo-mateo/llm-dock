@@ -77,15 +77,23 @@ size.
 ## Data layer (implemented in #358)
 
 `PiSessionEventsRepository.stream(key)` reads `/api/pi/sessions/<session_id>/<instance_id>/stream`
-through `SseTransport`, sending `after=<lastSeq>` on every connection. It parses total frames into
-`PiSessionStreamEvent`, keeps a `PiSession` summary and ordered `PiEvent` list, merges only seqs
-greater than the last held seq, reconnects immediately on `lagged`, marks failures stale and
-retries, and stops with `unknown = true` on `404 unknown_session`.
+through `SseTransport`, sending `after=<lastSeq>` on every connection. The optional named `after`
+seed follows the existing positional reconnect-delay argument. It parses frames into
+`PiSessionStreamEvent` and emits lossless fresh `appended` batches with `lastSeq`, summary and
+status, without retaining raw history. Summary/stale emissions have empty batches. Incoming
+seqs are sorted, deduplicated and filtered above the accepted cursor; seqs need not be contiguous.
+`lagged` reconnects immediately without advancing beyond accepted events. Failures mark stale
+and retry; `404 unknown_session` or a matching `session_removed` frame terminates as Unknown.
 
 The transcript rules are shared with the web client: `dashboard/frontend/src/utils/piTranscript.js`
 and Android `feature/pi/transcript/PiTranscript.kt` implement the same rules, item kinds and ids.
 Android `PiTranscriptTest` ports the web suite's 14 cases one to one and adds malformed-payload
-coverage.
+coverage. The same `TranscriptBuilder` now supports incremental application and checkpoint
+continuation: items, working state and an explicit open assistant id, including when notices
+trail that assistant. Restore rebuilds mappings for all tools, with the latest repeated call id
+winning. Published snapshots are not mutated by later updates. The ViewModel owns one builder
+on an injected worker dispatcher and reuses the transcript on metadata/stale updates. No disk
+cache is enabled.
 
 **Acceptance criteria**
 
@@ -105,7 +113,12 @@ coverage.
 ## Verification notes
 
 Data layer and transcript: JVM tests `PiSessionStreamEventTest`, `PiSessionEventsRepositoryTest` and
-`PiTranscriptTest` pass; `assembleDebug` builds.
+`PiTranscriptTest` cover the original stream/reducer contracts. `PiTranscriptContinuationTest`
+checks every fixture split, trailing notices, tool restoration, invalid continuations and prior
+snapshot stability. `PiSessionEventBatchesTest` covers seeded replay, slow collectors, accepted
+cursors, terminal removal/404 and cancellation. `PiSessionIncrementalTest` checks queued worker
+execution, exact incremental output, metadata/stale snapshot reuse, cancellation and removal.
+The issue's Android JVM/build gates are recorded in its PR.
 
 UI (#362): `PiSessionViewModelTest` covers loading, first transcript, Unknown, stale and idempotent
 start; `PiFormattingTest` covers `shouldFollow`; `PiSessionDestinationTest` covers encoded route

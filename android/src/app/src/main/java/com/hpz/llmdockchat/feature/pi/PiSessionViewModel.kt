@@ -8,13 +8,13 @@ import com.hpz.llmdockchat.data.model.PiCommandOutcome
 import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.feature.pi.transcript.PiTranscript
-import com.hpz.llmdockchat.feature.pi.transcript.buildPiTranscript
+import com.hpz.llmdockchat.feature.pi.transcript.TranscriptBuilder
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 sealed interface PiSessionUiState {
     data object Loading : PiSessionUiState
@@ -39,6 +39,7 @@ class PiSessionViewModel(
     private val repository: PiSessionEventsRepository,
     private val commandsRepository: PiCommandsRepository,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val transcriptDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val _state = MutableStateFlow<PiSessionUiState>(PiSessionUiState.Loading)
     val state: StateFlow<PiSessionUiState> = _state.asStateFlow()
@@ -49,13 +50,16 @@ class PiSessionViewModel(
     fun start() {
         if (started) return
         started = true
-        viewModelScope.launch {
+        viewModelScope.launch(transcriptDispatcher) {
+            val builder = TranscriptBuilder()
+            var transcript = builder.transcript()
             repository.stream(key).collect { update ->
                 if (update.unknown) {
                     _state.value = PiSessionUiState.Unknown
                 } else {
-                    val transcript = withContext(Dispatchers.Default) {
-                        buildPiTranscript(update.events)
+                    if (update.appended.isNotEmpty()) {
+                        update.appended.forEach { builder.apply(it) }
+                        transcript = builder.transcript()
                     }
                     _state.value = PiSessionUiState.Loaded(
                         summary = update.summary,
