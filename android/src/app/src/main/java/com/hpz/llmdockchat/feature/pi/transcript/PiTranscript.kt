@@ -1,16 +1,31 @@
 package com.hpz.llmdockchat.feature.pi.transcript
 import com.hpz.llmdockchat.data.model.PiEvent
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+@Serializable
 sealed interface PiItem {
     val id: String
+    @Serializable
+    @SerialName("user")
     data class User(override val id: String, val text: String, val imageCount: Int, val fromPhone: Boolean, val ts: Long) : PiItem
+    @Serializable
+    @SerialName("assistant")
     data class Assistant(override val id: String, val text: String, val thinking: String, val streaming: Boolean, val model: String?, val outputTokens: Long?, val stopReason: String?, val ts: Long) : PiItem
+    @Serializable
+    @SerialName("tool")
     data class Tool(override val id: String, val callId: String, val name: String, val args: String?, val output: String?, val status: ToolStatus, val durationMs: Long?, val truncated: Boolean, val ts: Long) : PiItem
+    @Serializable
+    @SerialName("notice")
     data class Notice(override val id: String, val text: String, val ts: Long) : PiItem
+    @Serializable
+    @SerialName("run_end")
     data class RunEnd(override val id: String, val outcome: String, val ts: Long) : PiItem
 }
+@Serializable
 enum class ToolStatus { RUNNING, DONE, ERROR }
 data class PiTranscript(val items: List<PiItem>, val working: Boolean)
+@Serializable
 data class PiTranscriptCheckpoint(
     val items: List<PiItem>,
     val working: Boolean,

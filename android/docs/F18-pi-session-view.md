@@ -95,6 +95,35 @@ winning. Published snapshots are not mutated by later updates. The ViewModel own
 on an injected worker dispatcher and reuses the transcript on metadata/stale updates. No disk
 cache is enabled.
 
+### Preparatory checkpoint storage
+
+`PiSessionSnapshot` / `PiSnapshotCodec` serialize those existing render models and the summary,
+with a required codec/reducer version, canonical server identity, session/instance key,
+`firstSeen`, accepted cursor and save timestamp. Payload identity and summary identity must
+agree; invalid versions, continuations or content are misses. The summary is display data,
+not current command authorization or liveness.
+
+`PiSessionSnapshotStore` is not wired into the application yet. Its eventual owner must pass
+`cacheDir/pi-sessions/`, one store instance per directory and an app-lived coroutine scope.
+There is no separate encryption claim. SHA-256 filenames hash the serialized identity tuple,
+not user-authored path segments. Gzip input is bounded by the 64 MiB compressed-file/committed
+budget and 8 MiB decompressed JSON limit; output encoding is also bounded. Atomic same-directory
+replacement preserves the old target until commit; startup removes only owned orphan temps.
+
+The store keeps at most eight committed entries. Successful reads and commits update file
+modification time using the injected clock; that persisted access time drives LRU, with hash
+filename as a deterministic tie-breaker. Save timestamps remain diagnostic payload fields.
+Entry count and compressed-byte quotas are enforced before replacement.
+
+One IO worker retains at most eight latest pending checkpoints (one per key), plus its single
+in-flight write. A full queue rejects a new key but still accepts replacement for an existing
+pending key. `enqueue` returns a deferred outcome: stored, skipped, superseded, invalidated,
+queue-full or an explicit IO failure. Callers capture a generation before scheduling work;
+`delete` and `clear` invalidate it before disk removal, including queued/in-flight writes.
+`invalidate` rejects unfinished work without deleting committed files, supporting the approved
+retention policy when lifecycle wiring is added. No sign-out, restore, throttling or UI wiring
+is enabled by this storage-only change.
+
 **Acceptance criteria**
 
 - [x] `PiSessionStreamEventTest` covers events order, session, lagged after, unknown type and
@@ -118,7 +147,11 @@ checks every fixture split, trailing notices, tool restoration, invalid continua
 snapshot stability. `PiSessionEventBatchesTest` covers seeded replay, slow collectors, accepted
 cursors, terminal removal/404 and cancellation. `PiSessionIncrementalTest` checks queued worker
 execution, exact incremental output, metadata/stale snapshot reuse, cancellation and removal.
-The issue's Android JVM/build gates are recorded in its PR.
+`PiSnapshotCodecTest`, `PiSessionSnapshotStoreTest`, `PiSnapshotEvictionTest` and
+`PiSnapshotWriterTest` cover roundtrips, exact byte boundaries, malformed/oversized files,
+interrupted replacement, access eviction, bounded coalescing and deterministic generation races
+using temporary directories and injected IO/time. The issues' Android JVM/build gates are
+recorded in their PRs.
 
 UI (#362): `PiSessionViewModelTest` covers loading, first transcript, Unknown, stale and idempotent
 start; `PiFormattingTest` covers `shouldFollow`; `PiSessionDestinationTest` covers encoded route
