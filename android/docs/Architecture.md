@@ -56,7 +56,8 @@ summary enables commands. Cached history may survive server event retention. Sig
 stops work and invalidates pending writes but retains committed files behind the normal
 authenticated navigation boundary. This does not enable a chat-conversation database,
 chat offline cache, or separate at-rest encryption. See F18 for replay and lifecycle
-contracts; device timing/navigation/offline checks remain pending.
+contracts and #422's controlled emulator cache/navigation/stream-outage evidence. Physical-phone
+performance and full system-death restoration are not claimed.
 
 **Why.** Three things converge on this. The chat-thread offline reading cache remains
 dropped (F09, Dropped-Features). `chat.db` is shared live with the web

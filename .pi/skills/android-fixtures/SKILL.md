@@ -4,8 +4,9 @@ description: Exercise Android Pi session-list states with a reusable local dashb
 ---
 # Android fixtures
 
-This fixture covers the Pi sessions list only, not transcript, inference, or answer endpoints.
-It serves mock health/auth and session snapshots/updates. Never claim its evidence is live validation.
+This fixture covers Pi session lists and a controlled cache-transcript scenario, not inference
+or answer endpoints. It serves mock health/auth, snapshots/updates and transcript replay.
+Never claim its evidence is live validation.
 Use it when the deployed backend lacks the feature or a reproducible state is needed.
 
 ## Run
@@ -85,6 +86,46 @@ if it reports an adb problem, fix device authorization/forwarding before returni
 Bad: host curl succeeds, but the app says connection failed, so repeatedly change passwords or
 try TOTP. Host reachability does not imply emulator reachability. The setup helper verifies the
 forwarding prerequisite; it does not claim a real app request succeeded.
+
+## Cache transcript verification
+
+`scenario.py cache` selects one deterministic session (`fixture-cache` / `fixture-instance`):
+16,000 events, 8,347,855 event-JSON bytes, including long assistant/thinking text, source/tool
+outputs and test results. The production checkpoint is about 5.46 MB decompressed (below 8 MiB).
+The default replay pages at 500 events and follows replay with a `session` summary.
+
+```bash
+python3 scripts/scenario.py cache
+python3 scripts/cache.py stats
+python3 scripts/cache.py gate --gate replay
+python3 scripts/cache.py gate --gate summary
+python3 scripts/cache.py gate --gate open
+python3 scripts/cache.py append
+python3 scripts/cache.py offline
+python3 scripts/cache.py online
+python3 scripts/cache.py end
+```
+
+Controls are GET/POST `/__fixture/transcript`; `append` adds exactly 16 new events. `replay`
+holds events and summary; `summary` permits events but withholds the post-replay boundary.
+A zero-backlog cached open stays checking until summary, not catching-up. `offline` terminates
+detail streams and returns 503 on retry; it does not toggle device networking or stop the list.
+`end` makes the fixture eligible for the real DELETE route; `remove` publishes remote removal.
+`reset` or reselecting `cache` changes firstSeen and clears counters. Request history is bounded
+to 100 entries and records after/cursor ranges, sent event counts and SSE body bytes (not HTTP
+chunk overhead or proof of client consumption). Unsupported paths still return 404.
+
+After safely preserving the emulator's prior configuration, use the existing setup/connect
+helpers with dummy credentials. `measure_cache.py miss|hit --device emulator-5554 --output FILE`
+starts on the Pi list. It composes the shared UI helper, validates real cursor/batch counters,
+and inspects only the isolated fixture checkpoint for cardinality and duplicate markers/tools.
+For a suffix-hit sample, return to the list and **wait for the row before appending**, so an old
+live view cannot consume/commit the suffix first. A zero-suffix hit is also supported.
+
+Reported durations start before the tap command and include Python/adb/tag lookup/UI dump
+latency; they are observer bounds, not pure first-paint latency or a physical-phone benchmark.
+The gated hit's total time includes deliberate waits; compare its release-to-current separately.
+See `docs/pi-remote/android-cache-emulator-evidence.md` for the measured run and restoration.
 
 ## Coverage boundary
 

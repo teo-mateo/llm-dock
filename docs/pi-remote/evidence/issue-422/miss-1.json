@@ -1,0 +1,195 @@
+{
+  "case": "miss",
+  "device": "emulator-5554",
+  "method": "host monotonic tap-command start to UIAutomator-observed assistant/current labels; includes tag lookup, adb and dump overhead",
+  "tap_command_to_first_assistant_ms": 7370,
+  "tap_command_to_connected_ms": 9437,
+  "summary_release_to_connected_ms": null,
+  "gate_controlled": false,
+  "initial_event_count": 16000,
+  "event_json_bytes": 8347855,
+  "request": {
+    "id": 1,
+    "after": 0,
+    "status": 200,
+    "started_monotonic": 49143.851354977,
+    "batches": [
+      {
+        "first": 1,
+        "last": 500,
+        "count": 500
+      },
+      {
+        "first": 501,
+        "last": 1000,
+        "count": 500
+      },
+      {
+        "first": 1001,
+        "last": 1500,
+        "count": 500
+      },
+      {
+        "first": 1501,
+        "last": 2000,
+        "count": 500
+      },
+      {
+        "first": 2001,
+        "last": 2500,
+        "count": 500
+      },
+      {
+        "first": 2501,
+        "last": 3000,
+        "count": 500
+      },
+      {
+        "first": 3001,
+        "last": 3500,
+        "count": 500
+      },
+      {
+        "first": 3501,
+        "last": 4000,
+        "count": 500
+      },
+      {
+        "first": 4001,
+        "last": 4500,
+        "count": 500
+      },
+      {
+        "first": 4501,
+        "last": 5000,
+        "count": 500
+      },
+      {
+        "first": 5001,
+        "last": 5500,
+        "count": 500
+      },
+      {
+        "first": 5501,
+        "last": 6000,
+        "count": 500
+      },
+      {
+        "first": 6001,
+        "last": 6500,
+        "count": 500
+      },
+      {
+        "first": 6501,
+        "last": 7000,
+        "count": 500
+      },
+      {
+        "first": 7001,
+        "last": 7500,
+        "count": 500
+      },
+      {
+        "first": 7501,
+        "last": 8000,
+        "count": 500
+      },
+      {
+        "first": 8001,
+        "last": 8500,
+        "count": 500
+      },
+      {
+        "first": 8501,
+        "last": 9000,
+        "count": 500
+      },
+      {
+        "first": 9001,
+        "last": 9500,
+        "count": 500
+      },
+      {
+        "first": 9501,
+        "last": 10000,
+        "count": 500
+      },
+      {
+        "first": 10001,
+        "last": 10500,
+        "count": 500
+      },
+      {
+        "first": 10501,
+        "last": 11000,
+        "count": 500
+      },
+      {
+        "first": 11001,
+        "last": 11500,
+        "count": 500
+      },
+      {
+        "first": 11501,
+        "last": 12000,
+        "count": 500
+      },
+      {
+        "first": 12001,
+        "last": 12500,
+        "count": 500
+      },
+      {
+        "first": 12501,
+        "last": 13000,
+        "count": 500
+      },
+      {
+        "first": 13001,
+        "last": 13500,
+        "count": 500
+      },
+      {
+        "first": 13501,
+        "last": 14000,
+        "count": 500
+      },
+      {
+        "first": 14001,
+        "last": 14500,
+        "count": 500
+      },
+      {
+        "first": 14501,
+        "last": 15000,
+        "count": 500
+      },
+      {
+        "first": 15001,
+        "last": 15500,
+        "count": 500
+      },
+      {
+        "first": 15501,
+        "last": 16000,
+        "count": 500
+      }
+    ],
+    "sent_events": 16000,
+    "sse_body_bytes": 8381928,
+    "summary_sent": true,
+    "first_event_monotonic": 49143.855991225,
+    "last_event_monotonic": 49143.956917848,
+    "summary_monotonic": 49143.957787577
+  },
+  "checkpoint": {
+    "cursor": 16000,
+    "items": 7000,
+    "tools": 2000,
+    "compressed_bytes": 583041,
+    "json_bytes": 5461852,
+    "markers": {
+      "CACHE_BASELINE_END_1000": 1
+    }
+  }
+}

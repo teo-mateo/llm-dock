@@ -1,0 +1,255 @@
+{
+  "tentative_catchup": {
+    "request": {
+      "id": 7,
+      "after": 16016,
+      "status": 200,
+      "started_monotonic": 49343.639862724,
+      "batches": [
+        {
+          "first": 16017,
+          "last": 16032,
+          "count": 16
+        }
+      ],
+      "sent_events": 16,
+      "sse_body_bytes": 8488,
+      "summary_sent": false,
+      "first_event_monotonic": 49343.641336658,
+      "last_event_monotonic": 49343.641337548
+    },
+    "committed_before_validation": {
+      "cursor": 16016,
+      "items": 7007,
+      "tools": 2002,
+      "compressed_bytes": 583665,
+      "json_bytes": 5467356,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1
+      }
+    },
+    "fixture_latest": 16032
+  },
+  "recovered": {
+    "checkpoint": {
+      "cursor": 16032,
+      "items": 7014,
+      "tools": 2004,
+      "compressed_bytes": 584266,
+      "json_bytes": 5472861,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1
+      }
+    },
+    "request": {
+      "id": 7,
+      "after": 16016,
+      "status": 200,
+      "started_monotonic": 49343.639862724,
+      "batches": [
+        {
+          "first": 16017,
+          "last": 16032,
+          "count": 16
+        }
+      ],
+      "sent_events": 16,
+      "sse_body_bytes": 8897,
+      "summary_sent": true,
+      "first_event_monotonic": 49343.641336658,
+      "last_event_monotonic": 49343.641337548,
+      "summary_monotonic": 49360.918989058
+    }
+  },
+  "force_stop": {
+    "method": "explicit app force-stop, not Android system death",
+    "pid_before": "4881",
+    "launch_monotonic": 49392.406471726,
+    "pid_after": "5740",
+    "request": {
+      "id": 8,
+      "after": 16032,
+      "status": 200,
+      "started_monotonic": 49399.757534096,
+      "batches": [],
+      "sent_events": 0,
+      "sse_body_bytes": 0,
+      "summary_sent": false
+    },
+    "checkpoint": {
+      "cursor": 16032,
+      "items": 7014,
+      "tools": 2004,
+      "compressed_bytes": 584266,
+      "json_bytes": 5472861,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1
+      }
+    }
+  },
+  "background": {
+    "method": "Home/background with surviving process, not restart",
+    "pid_before": "5740",
+    "pid_after": "5740",
+    "requests_before": 8,
+    "requests_after": 8,
+    "checkpoint": {
+      "cursor": 16048,
+      "items": 7021,
+      "tools": 2006,
+      "compressed_bytes": 584857,
+      "json_bytes": 5478366,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1,
+        "CACHE_SUFFIX_3_END": 1
+      }
+    },
+    "request": {
+      "id": 8,
+      "after": 16032,
+      "status": 200,
+      "started_monotonic": 49399.757534096,
+      "batches": [
+        {
+          "first": 16033,
+          "last": 16048,
+          "count": 16
+        }
+      ],
+      "sent_events": 16,
+      "sse_body_bytes": 9306,
+      "summary_sent": true,
+      "summary_monotonic": 49403.841495955,
+      "first_event_monotonic": 49426.638540095,
+      "last_event_monotonic": 49426.638540905
+    }
+  },
+  "signed_out": {
+    "checkpoint": {
+      "cursor": 16048,
+      "items": 7021,
+      "tools": 2006,
+      "compressed_bytes": 584857,
+      "json_bytes": 5478366,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1,
+        "CACHE_SUFFIX_3_END": 1
+      }
+    },
+    "compressed_sha256": "424320ce4602277619c3ca5514391198d79db2146cac295f767e21e0658d8e72"
+  },
+  "signed_in_reuse": {
+    "request": {
+      "id": 9,
+      "after": 16048,
+      "status": 200,
+      "started_monotonic": 49516.28724334,
+      "batches": [],
+      "sent_events": 0,
+      "sse_body_bytes": 0,
+      "summary_sent": false
+    },
+    "checkpoint": {
+      "cursor": 16048,
+      "items": 7021,
+      "tools": 2006,
+      "compressed_bytes": 584857,
+      "json_bytes": 5478366,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1,
+        "CACHE_SUFFIX_3_END": 1
+      }
+    }
+  },
+  "deleted": {
+    "fixture_deleted": true,
+    "cache_file_count": 0,
+    "last_cursor": 16048,
+    "method": "UI swipe of ended row; waited for server deletion and physical cache absence"
+  },
+  "restoration": {
+    "original_apk_restored": true,
+    "uid_unchanged": true,
+    "original_private_files_bit_identical": 3,
+    "original_url_and_keystore_presence_verified_without_activity": true,
+    "test_package_removed": true,
+    "original_reverse_mapping_restored": true,
+    "global_network_and_font_unchanged": true,
+    "app_stopped_as_original": true,
+    "no_original_pi_cache_existed": true
+  },
+  "repeat_timeout_diagnosis": {
+    "requested_after": 16016,
+    "latest_seq": 16016,
+    "sent_events": 0,
+    "summary_sent": false,
+    "gate": "summary",
+    "observed_ui": "Cached \u00b7 checking\u2026",
+    "cause": "suffix already committed by the old live view before Back completed; a zero-backlog replay has no event-triggered Catching-up transition",
+    "measurement_excluded": true,
+    "correction": "measurement waits for Catching-up only when latest_seq > after"
+  },
+  "environment": {
+    "avd": "Medium_Phone_API_36.1",
+    "serial": "emulator-5554",
+    "renderer": "swiftshader_indirect",
+    "headless": true,
+    "resolution": "1080x2400",
+    "production_source_baseline": "ef4b6aa16f23c5b544d86b1652841f524fe8a306",
+    "tested_debug_apk_sha256": "95cfe6bf4093ba69a191ea5635d14835433ac4d5cda36917f97980fb0c920ca7",
+    "fixture": true,
+    "live_dashboard_or_model_requests": false,
+    "physical_phone": false
+  },
+  "before_sign_out": {
+    "checkpoint": {
+      "cursor": 16048,
+      "items": 7021,
+      "tools": 2006,
+      "compressed_bytes": 584857,
+      "json_bytes": 5478366,
+      "markers": {
+        "CACHE_BASELINE_END_1000": 1,
+        "CACHE_SUFFIX_1_END": 1,
+        "CACHE_SUFFIX_2_END": 1,
+        "CACHE_SUFFIX_3_END": 1
+      }
+    },
+    "compressed_sha256": "424320ce4602277619c3ca5514391198d79db2146cac295f767e21e0658d8e72"
+  },
+  "sign_out_same_committed_bytes": true,
+  "offline": {
+    "offline": true,
+    "requests": [
+      {
+        "after": 16016,
+        "status": 503,
+        "sent_events": 0,
+        "summary_sent": false
+      },
+      {
+        "after": 16016,
+        "status": 503,
+        "sent_events": 0,
+        "summary_sent": false
+      },
+      {
+        "after": 16016,
+        "status": 503,
+        "sent_events": 0,
+        "summary_sent": false
+      }
+    ]
+  }
+}

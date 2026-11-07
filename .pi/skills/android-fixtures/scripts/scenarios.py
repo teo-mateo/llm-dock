@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-NAMES = ("empty", "waiting", "absent", "offline", "stress")
+NAMES = ("empty", "waiting", "absent", "offline", "stress", "cache")
 PROMPT = {
     "prompt_id": "fixture-prompt-1", "kind": "select", "title": "Which check should run?",
     "message": "Fixture question, not a real request.", "options": ["Unit tests", "UI check"],
@@ -16,6 +16,9 @@ def _now_ms():
 def sessions(name):
     if name not in NAMES:
         raise ValueError("unknown scenario")
+    if name == "cache":
+        from transcript import summary
+        return [summary()]
     common = {
         "instance_id": "fixture-instance", "cwd": "/fixture/llm-dock", "model": "fixture/model",
         "thinking_level": "low", "first_seen": _now_ms() - 3_600_000, "last_seen": _now_ms() - 120_000,

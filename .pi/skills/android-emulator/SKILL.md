@@ -16,6 +16,7 @@ python3 scripts/ui.py --device emulator-5554 tap nav_tab_pi
 python3 scripts/ui.py --device emulator-5554 tags pi_
 python3 scripts/ui.py --device emulator-5554 bounds pi_session_fixture-live_fixture-instance
 python3 scripts/ui.py --device emulator-5554 absent pi_needs_answer_fixture-ended_fixture-instance
+python3 scripts/ui.py --device emulator-5554 wait-text "Connected"
 ```
 
 Use actual tags from source/hierarchy; example indicator tags are not API guarantees.
@@ -24,7 +25,10 @@ instead of guessing one. Do not write inline XML regexes for discovery or measur
 `bounds` cover both.
 `wait`/`tap` use bounded retries for presence. `absent` checks the current hierarchy once, so first
 wait for the containing screen; absence alone is not proof that the correct screen loaded.
-Errors report resource IDs only, never input values or the full hierarchy.
+Errors report resource IDs only, never input values or the full hierarchy. `wait-text` observes
+an exact display label without tapping; Markdown syntax in source text may not be the rendered
+label. Timings around these commands include adb/tag lookup and hierarchy-dump overhead, not
+just app rendering.
 
 **Compose tags inside a `Dialog` window never reach `uiautomator`** — the dump shows only
 `android:id/content`, however the dialog is tagged. Address dialog buttons by their exact label

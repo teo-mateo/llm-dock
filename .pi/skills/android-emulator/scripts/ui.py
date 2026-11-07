@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description="Find/tap exact Compose tags on a reserved emulator")
     parser.add_argument("--device", required=True)
     parser.add_argument("--timeout", type=float, default=15)
-    parser.add_argument("action", choices=["wait", "tap", "bounds", "absent", "tags", "tap-text", "absent-text"])
+    parser.add_argument("action", choices=["wait", "tap", "bounds", "absent", "tags", "tap-text", "wait-text", "absent-text"])
     parser.add_argument("tag", nargs="?", default="", help="exact tag, exact label for *-text, or a substring filter for tags")
     args = parser.parse_args()
     if not args.device.startswith("emulator-"):
@@ -97,7 +97,7 @@ def main():
             for tag in find_tags(xml, args.tag):
                 print(tag)
             return
-        if args.action in ("tap-text", "absent-text"):
+        if args.action in ("tap-text", "wait-text", "absent-text"):
             bounds = find_text_bounds(xml, args.tag)
             if args.action == "absent-text":
                 if bounds is not None:
@@ -105,6 +105,9 @@ def main():
                 print(f"absent-text: {args.tag}")
                 return
             if bounds is not None:
+                if args.action == "wait-text":
+                    print(f"wait-text: {args.tag} {bounds}")
+                    return
                 x1, y1, x2, y2 = bounds
                 subprocess.run(command + ["shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2)],
                                check=True, capture_output=True, timeout=10)
