@@ -1,5 +1,8 @@
 package com.hpz.llmdockchat.feature.pi.transcript.tools
 
+import com.hpz.llmdockchat.feature.pi.transcript.int
+import com.hpz.llmdockchat.feature.pi.transcript.obj
+import com.hpz.llmdockchat.feature.pi.transcript.str
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

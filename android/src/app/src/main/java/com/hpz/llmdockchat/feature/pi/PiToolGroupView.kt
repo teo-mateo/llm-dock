@@ -33,9 +33,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.feature.pi.tools.PiToolBody
-import com.hpz.llmdockchat.feature.pi.tools.statusColor
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
+import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.moreLabel
 import com.hpz.llmdockchat.feature.pi.transcript.tools.toolStatusText
 import com.hpz.llmdockchat.feature.pi.transcript.tools.toolSummary
@@ -118,6 +118,13 @@ private fun PiToolRow(item: PiItem.Tool) {
         )
     }
     if (open) PiToolDetails(item)
+}
+
+@Composable
+private fun statusColor(status: ToolStatus) = when (status) {
+    ToolStatus.RUNNING -> LlmTheme.colors.amber
+    ToolStatus.DONE -> LlmTheme.colors.green
+    ToolStatus.ERROR -> LlmTheme.colors.red
 }
 
 @Composable

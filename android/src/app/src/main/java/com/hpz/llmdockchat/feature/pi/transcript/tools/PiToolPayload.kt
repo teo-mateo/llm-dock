@@ -1,5 +1,9 @@
 package com.hpz.llmdockchat.feature.pi.transcript.tools
 
+import com.hpz.llmdockchat.feature.pi.transcript.arr
+import com.hpz.llmdockchat.feature.pi.transcript.bool
+import com.hpz.llmdockchat.feature.pi.transcript.obj
+import com.hpz.llmdockchat.feature.pi.transcript.str
 import java.util.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -30,25 +34,12 @@ fun parseToolResult(raw: String?): ToolResult? {
     }
 }
 
-fun JsonObject.str(key: String): String? =
-    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-fun JsonObject.int(key: String): Int? =
-    (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toIntOrNull()
-
-fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
-
-fun JsonObject.arr(key: String): JsonArray? = this[key] as? JsonArray
-
 fun ToolImage.byteSize(): Int =
     runCatching { Base64.getDecoder().decode(base64).size }.getOrDefault(0)
 
-internal fun JsonObject.bool(key: String): Boolean =
-    (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull() ?: false
-
 private fun verbatim(raw: String) = ToolResult(raw, emptyList(), null, null, false)
 
-private fun envelope(obj: JsonObject, content: JsonArray): ToolResult {
+private fun envelope(root: JsonObject, content: JsonArray): ToolResult {
     val text = content.mapNotNull { part ->
         val entry = part as? JsonObject ?: return@mapNotNull null
         if (entry.str("type") != "text") return@mapNotNull null
@@ -60,5 +51,5 @@ private fun envelope(obj: JsonObject, content: JsonArray): ToolResult {
         val data = entry.str("data") ?: return@mapNotNull null
         ToolImage(entry.str("mimeType") ?: "image/png", data)
     }
-    return ToolResult(text, images, obj.obj("details"), obj.obj("structuredContent"), obj.bool("isError"))
+    return ToolResult(text, images, root.obj("details"), root.obj("structuredContent"), root.bool("isError"))
 }
