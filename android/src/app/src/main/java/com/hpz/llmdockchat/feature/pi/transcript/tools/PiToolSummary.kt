@@ -8,7 +8,8 @@ fun toolSummary(item: PiItem.Tool): String = when (classifyTool(item.name)) {
     ToolKind.EDIT -> editSummary(item)
     ToolKind.READ -> readSummary(item)
     ToolKind.WRITE -> writeSummary(item)
-    ToolKind.PROCESS,
+    ToolKind.PROCESS -> processSummary(item)
+    ToolKind.CHATTERBOX_SEND,
     ToolKind.CHATTERBOX_SEND,
     ToolKind.CHATTERBOX_LOOK,
     ToolKind.CHATTERBOX_JOIN,
