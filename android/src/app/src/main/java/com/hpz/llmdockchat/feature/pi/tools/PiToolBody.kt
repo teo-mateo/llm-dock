@@ -45,7 +45,7 @@ fun PiToolBody(item: PiItem.Tool) {
             RawToolBody(item)
         } else {
             when (classifyTool(item.name)) {
-                ToolKind.BASH,
+                ToolKind.BASH -> BashToolBody(item, args, result)
                 ToolKind.EDIT,
                 ToolKind.READ,
                 ToolKind.WRITE,
