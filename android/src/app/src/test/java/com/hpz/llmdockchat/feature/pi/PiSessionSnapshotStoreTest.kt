@@ -103,7 +103,7 @@ class PiSessionSnapshotStoreTest {
             file.writeBytes(bytes)
             assertNull(store.read(identity))
         }
-        RandomAccessFile(file, "rw").use { it.setLength(PiSnapshotLimits().committedBytes + 1) }
+        RandomAccessFile(file, "rw").use { it.setLength(PiSnapshotLimits().fileBytes + 1) }
         assertNull(store.read(identity))
         store.close()
     }

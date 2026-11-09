@@ -66,7 +66,7 @@ class PiSnapshotWriterTest {
         assertEquals(PiSnapshotWriteResult.Stored, first.await())
         assertEquals(PiSnapshotWriteResult.Stored, replacement.await())
         pending.drop(1).forEach { assertEquals(PiSnapshotWriteResult.Stored, it.await()) }
-        assertEquals(8, directory.listFiles()!!.size)
+        assertEquals(9, directory.listFiles()!!.size)
         assertEquals(1, files.maxPreparations)
         assertNull(store.read(snapshots[8].identity))
         store.close()

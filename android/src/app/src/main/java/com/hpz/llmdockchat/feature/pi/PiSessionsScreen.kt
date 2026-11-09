@@ -22,6 +22,7 @@ fun PiSessionsScreen(
     onOpen: (PiSessionKey) -> Unit,
     onSwipeDelete: (PiSession) -> Unit,
     onUndoDelete: () -> Unit,
+    cacheLabels: PiCacheLabels = PiCacheLabels(),
 ) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionsUiState.Loaded
@@ -64,6 +65,17 @@ fun PiSessionsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+            cacheLabels.warning?.let {
+                Text(
+                    it,
+                    color = colors.amber,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 10.dp).fillMaxWidth()
+                        .background(colors.amber.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .testTag("pi_cache_warning"),
+                )
+            }
             when (state) {
                 is PiSessionsUiState.Loading -> Box(
                     Modifier.fillMaxWidth().weight(1f),
@@ -98,7 +110,7 @@ fun PiSessionsScreen(
                                     Text("Live", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
                                 items(state.visibleLive, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionSwipeRow(it, onOpen, onSwipeDelete)
+                                    PiSessionSwipeRow(it, cacheLabels.sizes[it.key], onOpen, onSwipeDelete)
                                 }
                             }
                             if (state.visibleEnded.isNotEmpty()) {
@@ -106,7 +118,7 @@ fun PiSessionsScreen(
                                     Text("Ended", color = colors.muted, style = MaterialTheme.typography.labelMedium)
                                 }
                                 items(state.visibleEnded, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionSwipeRow(it, onOpen, onSwipeDelete)
+                                    PiSessionSwipeRow(it, cacheLabels.sizes[it.key], onOpen, onSwipeDelete)
                                 }
                             }
                         }
@@ -151,6 +163,7 @@ private fun PiSessionsEmptyState() {
 @Composable
 private fun PiSessionSwipeRow(
     session: PiSession,
+    cachedSize: String?,
     onOpen: (PiSessionKey) -> Unit,
     onSwipeDelete: (PiSession) -> Unit,
 ) {
@@ -167,7 +180,7 @@ private fun PiSessionSwipeRow(
         modifier = Modifier.testTag("pi_session_swipe_${session.key.sessionId}_${session.key.instanceId}"),
         backgroundContent = { if (dismissState.progress < 1f) DeleteSwipeBackground() },
     ) {
-        PiSessionRow(session, onOpen)
+        PiSessionRow(session, onOpen, cachedSize)
     }
 }
 
@@ -184,7 +197,7 @@ private fun DeleteSwipeBackground() {
     }
 }
 @Composable
-fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
+fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit, cachedSize: String? = null) {
     val colors = LlmTheme.colors
     val status = when (session.state) {
         PiState.WORKING -> "working"
@@ -251,6 +264,16 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            cachedSize?.let {
+                Text(
+                    it,
+                    color = colors.subtle,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    modifier = Modifier.testTag("pi_cached_size_${session.key.sessionId}_${session.key.instanceId}"),
+                )
+            }
             piContextLabel(session.contextPercent)?.let {
                 Text(it, color = colors.muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }

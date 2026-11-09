@@ -8,6 +8,13 @@ import org.junit.Test
 
 class PiFormattingTest {
     @Test
+    fun `cache bytes use KB below a megabyte and MB above`() {
+        assertEquals("1 KB", formatCacheBytes(1))
+        assertEquals("200 KB", formatCacheBytes(200L * 1024))
+        assertEquals("8.4 MB", formatCacheBytes((8.4 * 1024 * 1024).toLong()))
+    }
+
+    @Test
     fun `now under a minute`() {
         assertEquals("now", formatAgo(100_000_000L, 99_970_000L))
     }

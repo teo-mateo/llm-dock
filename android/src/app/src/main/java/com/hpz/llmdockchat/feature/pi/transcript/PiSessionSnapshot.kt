@@ -44,11 +44,12 @@ internal data class PiSessionSnapshot(
 }
 
 internal data class PiSnapshotLimits(
-    val entries: Int = 8,
-    val jsonBytes: Int = 8 * 1024 * 1024,
-    val committedBytes: Long = 64L * 1024 * 1024,
+    val pendingWrites: Int = 8,
+    val jsonBytes: Int = 25 * 1024 * 1024,
+    val fileBytes: Long = jsonBytes.toLong(),
+    val warningBytes: Long = 500L * 1024 * 1024,
 ) {
     init {
-        require(entries > 0 && jsonBytes > 0 && committedBytes > 0)
+        require(pendingWrites > 0 && jsonBytes > 0 && fileBytes > 0 && warningBytes > 0)
     }
 }

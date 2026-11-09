@@ -35,8 +35,6 @@ internal open class PiSnapshotFiles(private val directory: File) {
         Files.move(temporary(name).toPath(), File(directory, name).toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
     }
 
-    fun temporarySize(name: String): Long = temporary(name).length()
-
     fun discard(name: String) = remove(temporary(name).name)
 
     fun touch(name: String, timestamp: Long) {

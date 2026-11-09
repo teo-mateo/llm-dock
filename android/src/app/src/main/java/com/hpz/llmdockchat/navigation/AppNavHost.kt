@@ -205,14 +205,18 @@ fun AppNavHost(
                                 PiSessionsViewModel(
                                     container.piSessionsRepository,
                                     container.piSessionDeleteRepository,
+                                    cacheUsage = container.piSessionCache.usage,
+                                    cachedBytes = container.piSessionCache::cachedBytes,
                                 )
                             }
                         },
                     )
                     val state by viewModel.state.collectAsState()
+                    val cacheLabels by viewModel.cacheLabels.collectAsState()
                     LaunchedEffect(Unit) { viewModel.start() }
                     PiSessionsScreen(
                         state = state,
+                        cacheLabels = cacheLabels,
                         onOpen = { key -> navController.navigate(Destinations.piSession(key)) },
                         onSwipeDelete = viewModel::deleteWithUndo,
                         onUndoDelete = viewModel::undoDelete,

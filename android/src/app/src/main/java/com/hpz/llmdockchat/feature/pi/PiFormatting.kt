@@ -12,6 +12,12 @@ fun formatAgo(nowMs: Long, thenMs: Long): String {
     }
 }
 
+fun formatCacheBytes(bytes: Long): String {
+    val kib = 1024.0
+    val mib = kib * 1024
+    return if (bytes < mib) "${Math.ceil(bytes / kib).toLong()} KB" else "%.1f MB".format(bytes / mib)
+}
+
 fun piSessionTitle(session: PiSession): String =
     session.name?.takeIf { it.isNotBlank() }
         ?: session.cwd.trimEnd('/').split('/').lastOrNull()?.takeIf { it.isNotBlank() }

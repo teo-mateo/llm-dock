@@ -9,6 +9,7 @@ import java.util.logging.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 internal class PiCacheLease(
@@ -32,6 +33,11 @@ internal class PiSessionCache(
     private var epoch = 0L
     private val leases = mutableSetOf<PiCacheLease>()
     private val deletions = mutableMapOf<PiSnapshotIdentity, Deferred<Boolean>>()
+
+    val usage: StateFlow<PiCacheUsage> get() = store.usage
+
+    fun cachedBytes(usage: PiCacheUsage, key: PiSessionKey): Long? =
+        server()?.let { usage.bytesFor(PiSnapshotIdentity(it.value, key)) }
 
     suspend fun open(key: PiSessionKey, invalidated: (Boolean) -> Unit): PiCacheLease? {
         val identity = server()?.let { PiSnapshotIdentity(it.value, key) } ?: return null

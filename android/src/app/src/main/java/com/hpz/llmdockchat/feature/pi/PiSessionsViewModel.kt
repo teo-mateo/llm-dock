@@ -12,8 +12,11 @@ import com.hpz.llmdockchat.data.model.PiSessionKey
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed interface PiSessionsUiState {
@@ -39,16 +42,37 @@ sealed interface PiSessionsUiState {
     data class PendingUndo(val key: PiSessionKey, val label: String)
 }
 
+data class PiCacheLabels(
+    val warning: String? = null,
+    val sizes: Map<PiSessionKey, String> = emptyMap(),
+)
+
+internal fun piCacheLabels(usage: PiCacheUsage, sessions: List<PiSession>, cachedBytes: (PiSessionKey) -> Long?) =
+    PiCacheLabels(
+        warning = if (usage.overWarning) {
+            "Pi cache uses ${formatCacheBytes(usage.totalBytes)} on this phone (warning above ${formatCacheBytes(usage.warningBytes)})"
+        } else {
+            null
+        },
+        sizes = sessions.mapNotNull { session -> cachedBytes(session.key)?.let { session.key to formatCacheBytes(it) } }.toMap(),
+    )
+
 fun List<PiSession>.splitByLive(): Pair<List<PiSession>, List<PiSession>> =
     filter { it.live } to filterNot { it.live }
 
-class PiSessionsViewModel(
+internal class PiSessionsViewModel(
     private val repository: PiSessionsRepository,
     private val deleteRepository: PiSessionDeleteRepository,
     private val undoWindowMs: Long = UNDO_WINDOW_MS,
+    cacheUsage: StateFlow<PiCacheUsage> = MutableStateFlow(PiCacheUsage()),
+    cachedBytes: (PiCacheUsage, PiSessionKey) -> Long? = { _, _ -> null },
 ) : ViewModel() {
     private val _state = MutableStateFlow<PiSessionsUiState>(PiSessionsUiState.Loading)
     val state: StateFlow<PiSessionsUiState> = _state.asStateFlow()
+    val cacheLabels: StateFlow<PiCacheLabels> = combine(_state, cacheUsage) { state, usage ->
+        val sessions = (state as? PiSessionsUiState.Loaded)?.let { it.live + it.ended }.orEmpty()
+        piCacheLabels(usage, sessions) { cachedBytes(usage, it) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PiCacheLabels())
     private var started = false
     private var undoJob: Job? = null
 

@@ -107,7 +107,7 @@ class PiSnapshotCodecTest {
         val overhead = snapshotJson.encodeToString(empty).toByteArray().size
         val exact = snapshot(text = "x".repeat(limit - overhead))
         val raw = snapshotJson.encodeToString(exact).toByteArray()
-        assertEquals(8 * 1024 * 1024, raw.size)
+        assertEquals(25 * 1024 * 1024, raw.size)
         val output = ByteArrayOutputStream()
         codec.write(exact, output)
         assertEquals(exact, codec.read(output.toByteArray().inputStream(), exact.identity))
@@ -120,10 +120,10 @@ class PiSnapshotCodecTest {
     fun `compressed input and output are independently bounded`() {
         val original = snapshot()
         val bytes = encodedSnapshot(original)
-        val limited = PiSnapshotCodec(PiSnapshotLimits(committedBytes = bytes.size.toLong() - 1))
+        val limited = PiSnapshotCodec(PiSnapshotLimits(fileBytes = bytes.size.toLong() - 1))
         assertNull(limited.read(bytes.inputStream(), original.identity))
         assertTrue(runCatching { limited.write(original, ByteArrayOutputStream()) }.exceptionOrNull() is PiSnapshotTooLarge)
-        assertTrue(PiSnapshotCodec(PiSnapshotLimits(committedBytes = bytes.size.toLong()))
+        assertTrue(PiSnapshotCodec(PiSnapshotLimits(fileBytes = bytes.size.toLong()))
             .read(bytes.inputStream(), original.identity) != null)
     }
 

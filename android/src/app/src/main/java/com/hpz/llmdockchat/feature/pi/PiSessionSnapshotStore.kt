@@ -17,10 +17,23 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal class PiSnapshotGeneration internal constructor(val identity: PiSnapshotIdentity)
+
+internal data class PiCacheUsage(
+    val files: Map<String, Long> = emptyMap(),
+    val warningBytes: Long = Long.MAX_VALUE,
+) {
+    val totalBytes: Long get() = files.values.sum()
+    val overWarning: Boolean get() = totalBytes > warningBytes
+
+    fun bytesFor(identity: PiSnapshotIdentity): Long? = files[identity.fileName()]
+}
 
 internal sealed interface PiSnapshotWriteResult {
     data object Stored : PiSnapshotWriteResult
@@ -53,10 +66,12 @@ internal class PiSessionSnapshotStore(
     private val codec = PiSnapshotCodec(limits)
     private var closed = false
     private var failure: IOException? = null
+    private val mutableUsage = MutableStateFlow(PiCacheUsage(warningBytes = limits.warningBytes))
+    val usage: StateFlow<PiCacheUsage> = mutableUsage.asStateFlow()
     private val worker = scope.launch(ioDispatcher) {
         try {
             files.initialize()
-            synchronized(lock) { evict() }
+            synchronized(lock) { refreshUsage() }
             ready.complete(Unit)
             for (signal in wake) {
                 while (true) {
@@ -97,7 +112,7 @@ internal class PiSessionSnapshotStore(
                 failure != null -> result.complete(PiSnapshotWriteResult.Failed(failure!!))
                 closed || !isCurrent(generation) || snapshot.identity != generation.identity ->
                     result.complete(PiSnapshotWriteResult.Invalidated)
-                snapshot.identity !in pending && pending.size >= limits.entries ->
+                snapshot.identity !in pending && pending.size >= limits.pendingWrites ->
                     result.complete(PiSnapshotWriteResult.QueueFull)
                 else -> {
                     val next = Pending(generation, snapshot.frozen(), result)
@@ -116,7 +131,7 @@ internal class PiSessionSnapshotStore(
         return withContext(ioDispatcher) {
             try {
                 ready.await()
-                val snapshot = files.open(identity.fileName(), limits.committedBytes)?.use { codec.read(it, identity) }
+                val snapshot = files.open(identity.fileName(), limits.fileBytes)?.use { codec.read(it, identity) }
                     ?: return@withContext null
                 synchronized(lock) {
                     if (!isCurrent(generation)) return@synchronized null
@@ -133,7 +148,10 @@ internal class PiSessionSnapshotStore(
         synchronized(lock) { invalidateKey(identity) }
         withContext(ioDispatcher) {
             ready.await()
-            synchronized(lock) { files.remove(identity.fileName()) }
+            synchronized(lock) {
+                files.remove(identity.fileName())
+                refreshUsage()
+            }
         }
     }
 
@@ -145,7 +163,10 @@ internal class PiSessionSnapshotStore(
         invalidate()
         withContext(ioDispatcher) {
             ready.await()
-            synchronized(lock) { files.entries().forEach { files.remove(it.name) } }
+            synchronized(lock) {
+                files.entries().forEach { files.remove(it.name) }
+                refreshUsage()
+            }
         }
     }
 
@@ -178,9 +199,9 @@ internal class PiSessionSnapshotStore(
                 currentCoroutineContext().ensureActive()
                 synchronized(lock) {
                     if (isCurrent(next.generation)) {
-                        evict(name, files.temporarySize(name))
                         files.commit(name)
                         files.touch(name, clock())
+                        refreshUsage()
                         result = PiSnapshotWriteResult.Stored
                     }
                 }
@@ -203,17 +224,7 @@ internal class PiSessionSnapshotStore(
         }
     }
 
-    private fun evict(replacement: String? = null, replacementBytes: Long = 0L) {
-        val entries = files.entries().filter { it.name != replacement }
-            .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
-        var bytes = entries.sumOf { it.length() } + replacementBytes
-        var count = entries.size + if (replacement == null) 0 else 1
-        for (entry in entries) {
-            if (count <= limits.entries && bytes <= limits.committedBytes) break
-            val size = entry.length()
-            files.remove(entry.name)
-            count--
-            bytes -= size
-        }
+    private fun refreshUsage() {
+        mutableUsage.value = mutableUsage.value.copy(files = files.entries().associate { it.name to it.length() })
     }
 }

@@ -23,13 +23,13 @@ internal class PiSnapshotCodec(private val limits: PiSnapshotLimits = PiSnapshot
         val sink = object : FilterOutputStream(output) {
             override fun close() = flush()
         }
-        GZIPOutputStream(LimitedOutput(sink, limits.committedBytes)).use { gzip ->
+        GZIPOutputStream(LimitedOutput(sink, limits.fileBytes)).use { gzip ->
             json.encodeToStream(snapshot, LimitedOutput(gzip, limits.jsonBytes.toLong()))
         }
     }
 
     fun read(input: InputStream, expected: PiSnapshotIdentity): PiSessionSnapshot? = try {
-        GZIPInputStream(LimitedInput(input, limits.committedBytes)).use { gzip ->
+        GZIPInputStream(LimitedInput(input, limits.fileBytes)).use { gzip ->
             val bytes = readJson(gzip)
             val snapshot = json.decodeFromString<PiSessionSnapshot>(bytes.decodeToString(throwOnInvalidSequence = true))
             snapshot.takeIf { it.isValidFor(expected) }
