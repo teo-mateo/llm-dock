@@ -13,6 +13,7 @@ fun toolSummary(item: PiItem.Tool): String = when (classifyTool(item.name)) {
     ToolKind.CHATTERBOX_LOOK,
     ToolKind.CHATTERBOX_JOIN,
     ToolKind.CHATTERBOX_LEAVE,
+        -> chatterboxSummary(item)
     ToolKind.GENERIC,
     -> argsSummary(item.args)
 }

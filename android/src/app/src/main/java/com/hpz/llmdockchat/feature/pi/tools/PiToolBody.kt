@@ -41,8 +41,8 @@ fun PiToolBody(item: PiItem.Tool) {
                 ToolKind.READ -> ReadToolBody(item, args, result)
                 ToolKind.WRITE -> WriteToolBody(item, args, result)
                 ToolKind.PROCESS -> ProcessToolBody(item, args, result)
-                ToolKind.CHATTERBOX_SEND,
-                ToolKind.CHATTERBOX_LOOK,
+                ToolKind.CHATTERBOX_SEND -> ChatterboxSendBody(item, args, result)
+                ToolKind.CHATTERBOX_LOOK -> ChatterboxLookBody(item, args, result)
                 ToolKind.CHATTERBOX_JOIN,
                 ToolKind.CHATTERBOX_LEAVE,
                 ToolKind.GENERIC,
