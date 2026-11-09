@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
-import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.str
 import com.hpz.llmdockchat.feature.pi.transcript.tools.DiffKind
 import com.hpz.llmdockchat.feature.pi.transcript.tools.DiffLine
@@ -32,16 +31,8 @@ internal fun EditToolBody(item: PiItem.Tool, args: JsonObject?, result: ToolResu
     val patch = result?.details?.str("patch")?.takeIf { it.isNotEmpty() }
     val diff = remember(patch, args) { if (patch != null) parsePatch(patch) else fallbackDiff(args) }
     val body = diff.filter { it.kind != DiffKind.HEADER && it.kind != DiffKind.META }
-    val error = item.status == ToolStatus.ERROR || result?.isError == true
-    val message = result?.text?.trim().orEmpty()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (message.isNotEmpty()) {
-            Text(
-                message,
-                color = if (error) colors.red else colors.muted,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
+        ToolResultMessage(item, result)
         val path = args?.str("path")
         if (path != null) PathHeader(path)
         if (body.isNotEmpty()) {

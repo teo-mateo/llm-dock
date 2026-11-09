@@ -6,8 +6,8 @@ import com.hpz.llmdockchat.feature.pi.transcript.argsSummary
 fun toolSummary(item: PiItem.Tool): String = when (classifyTool(item.name)) {
     ToolKind.BASH -> bashSummary(item)
     ToolKind.EDIT -> editSummary(item)
-    ToolKind.READ,
-    ToolKind.WRITE,
+    ToolKind.READ -> readSummary(item)
+    ToolKind.WRITE -> writeSummary(item)
     ToolKind.PROCESS,
     ToolKind.CHATTERBOX_SEND,
     ToolKind.CHATTERBOX_LOOK,
