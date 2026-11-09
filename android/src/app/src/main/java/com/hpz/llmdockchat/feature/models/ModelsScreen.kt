@@ -60,6 +60,7 @@ import com.hpz.llmdockchat.core.ui.BrandMark
 import com.hpz.llmdockchat.core.ui.NoticeDialog
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.account.AccountEntry
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.data.model.Engine
@@ -702,7 +703,7 @@ private fun EngineChip(engine: Engine, isRunning: Boolean, modifier: Modifier = 
                     color = chip.foreground,
                     fontSize = chipFontSize(lines),
                     lineHeight = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = MonoFontFamily,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     softWrap = false,

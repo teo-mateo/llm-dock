@@ -28,6 +28,7 @@ import com.hpz.llmdockchat.core.prefs.Stored
 import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 /**
  * Legacy placeholder, no longer reachable from navigation. It doubles as a
@@ -142,7 +143,7 @@ private fun LogLine(text: String, color: Color) {
     Text(
         text,
         style = MaterialTheme.typography.bodyMedium,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = MonoFontFamily,
         color = color,
     )
 }

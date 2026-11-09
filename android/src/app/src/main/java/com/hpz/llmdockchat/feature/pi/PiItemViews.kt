@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import com.hpz.llmdockchat.core.prefs.LocalPiTextAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.thread.MarkdownBody
@@ -39,7 +40,7 @@ private fun PiUserItem(item: PiItem.User) {
             Text(
                 item.text,
                 color = colors.fg,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

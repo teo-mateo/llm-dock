@@ -43,18 +43,31 @@ class PiFormattingTest {
     }
 
     @Test
-    fun `session meta head joins cwd and model`() {
+    fun `session meta head leads with the model and shortens the cwd`() {
         assertEquals(
-            "/forgejo/tubevault · llm-dock/pennyroyal-qwen3-8-flash-next",
+            "llm-dock/pennyroyal-qwen3-8-flash-next · forgejo/tubevault",
             piSessionMetaHead("/forgejo/tubevault", "llm-dock/pennyroyal-qwen3-8-flash-next"),
         )
     }
 
     @Test
+    fun `session meta head keeps only the last two cwd segments`() {
+        assertEquals(
+            "mistral-vibe/mistral-large-4 · teo-mateo/llm-dock",
+            piSessionMetaHead("/github/teo-mateo/llm-dock", "mistral-vibe/mistral-large-4"),
+        )
+        assertEquals(
+            "mistral-vibe/mistral-large-4 · teo-mateo/llm-dock",
+            piSessionMetaHead("/github/teo-mateo/llm-dock/", "mistral-vibe/mistral-large-4"),
+        )
+    }
+
+    @Test
     fun `session meta head omits an unknown model instead of faking one`() {
-        assertEquals("/repo", piSessionMetaHead("/repo", null))
-        assertEquals("/repo", piSessionMetaHead("/repo", "  "))
+        assertEquals("repo", piSessionMetaHead("/repo", null))
+        assertEquals("repo", piSessionMetaHead("/repo", "  "))
         assertEquals("", piSessionMetaHead("", null))
+        assertEquals("model", piSessionMetaHead("", "model"))
     }
 
     @Test

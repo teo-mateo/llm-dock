@@ -72,6 +72,7 @@ import com.hpz.llmdockchat.core.ui.theme.ChipColors
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.ActiveRun
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.Engine
@@ -464,7 +465,7 @@ private fun DeleteSwipeBackground() {
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Delete", color = Color.White, fontFamily = FontFamily.Monospace)
+        Text("Delete", color = Color.White, fontFamily = MonoFontFamily)
     }
 }
 
@@ -591,7 +592,7 @@ private fun EngineChip(modelRef: ModelRef, engine: Engine, modifier: Modifier = 
             modelRef.chipLabel(),
             color = chip.foreground,
             style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = MonoFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

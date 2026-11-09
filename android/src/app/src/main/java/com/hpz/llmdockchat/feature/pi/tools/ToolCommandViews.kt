@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 @Composable
 internal fun WorkingDirectoryChip(dir: String) {
@@ -19,7 +20,7 @@ internal fun WorkingDirectoryChip(dir: String) {
         "in $dir",
         color = colors.muted,
         style = MaterialTheme.typography.labelSmall,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = MonoFontFamily,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(colors.surface)

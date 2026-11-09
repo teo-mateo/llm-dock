@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.logs.LogsPane
 import com.hpz.llmdockchat.feature.logs.LogsViewModel
 import com.hpz.llmdockchat.data.model.ServiceSummary
@@ -406,7 +407,7 @@ private fun DetailRow(label: String, value: String, mono: Boolean = false, last:
                 value,
                 color = colors.fg,
                 style = MaterialTheme.typography.labelMedium,
-                fontFamily = if (mono) FontFamily.Monospace else null,
+                fontFamily = if (mono) MonoFontFamily else null,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -440,7 +441,7 @@ private fun FlagRow(flag: String, value: String) {
             color = colors.accent,
             fontSize = 11.sp,
             lineHeight = 15.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = MonoFontFamily,
         )
         if (value.isNotEmpty()) {
             Text(
@@ -448,7 +449,7 @@ private fun FlagRow(flag: String, value: String) {
                 color = colors.muted,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 modifier = Modifier.weight(1f),
             )
         }

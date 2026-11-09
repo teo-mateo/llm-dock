@@ -49,6 +49,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.Image
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.MessageRole
@@ -114,7 +115,7 @@ private fun UserBubble(message: ChatMessage, selectable: Boolean, modifier: Modi
                     Text(
                         message.content,
                         color = colors.fg,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = MonoFontFamily,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -246,7 +247,7 @@ private fun ToolCallCard(name: String, serverId: String?, arguments: String?, re
             Text(
                 serverId?.let { "$it · $name" } ?: name,
                 color = colors.muted,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f),
             )
@@ -265,7 +266,7 @@ private fun MonoBlock(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, color = colors.subtle, style = MaterialTheme.typography.labelSmall)
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            Text(value, color = colors.fg, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            Text(value, color = colors.fg, fontFamily = MonoFontFamily, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LLMDockChatTheme
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 /**
  * · Connect. Both ways in are on the one screen, as the dashboard's
@@ -321,7 +322,7 @@ private fun CodeField(state: ConnectUiState, onCodeChange: (String) -> Unit) {
             "AUTHENTICATOR CODE",
             style = MaterialTheme.typography.labelSmall,
             color = colors.subtle,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = MonoFontFamily,
         )
         Spacer(Modifier.height(12.dp))
         BasicTextField(

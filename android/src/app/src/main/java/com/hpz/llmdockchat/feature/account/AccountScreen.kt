@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.ConfirmDialog
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 /**
  * The signed-in account screen: the server this phone talks to, and the
@@ -107,7 +108,7 @@ private fun AccountContent(
                     state.server ?: "Not set",
                     color = colors.fg,
                     style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = MonoFontFamily,
                     modifier = Modifier.fillMaxWidth().testTag("account_server"),
                 )
                 Box(
