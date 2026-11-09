@@ -38,8 +38,8 @@ fun PiToolBody(item: PiItem.Tool) {
             when (classifyTool(item.name)) {
                 ToolKind.BASH -> BashToolBody(item, args, result)
                 ToolKind.EDIT -> EditToolBody(item, args, result)
-                ToolKind.READ,
-                ToolKind.WRITE,
+                ToolKind.READ -> ReadToolBody(item, args, result)
+                ToolKind.WRITE -> WriteToolBody(item, args, result)
                 ToolKind.PROCESS,
                 ToolKind.CHATTERBOX_SEND,
                 ToolKind.CHATTERBOX_LOOK,
