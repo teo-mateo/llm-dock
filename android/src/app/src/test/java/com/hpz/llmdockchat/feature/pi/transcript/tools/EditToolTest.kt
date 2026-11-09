@@ -164,6 +164,27 @@ class EditToolTest {
         assertEquals(1 to 1, editStats(lines))
     }
 
+    @Test
+    fun `keeps every hunk header`() {
+        val inner = """
+            --- a/x
+            +++ b/x
+            @@ -1,2 +1,2 @@
+            -one
+            +two
+            @@ -10,2 +10,2 @@
+            -three
+            +four
+        """.trimIndent()
+        val lines = parsePatch(inner)
+        assertEquals(
+            listOf(DiffKind.HEADER, DiffKind.HEADER, DiffKind.HUNK, DiffKind.REMOVE, DiffKind.ADD, DiffKind.HUNK, DiffKind.REMOVE, DiffKind.ADD),
+            lines.map { it.kind },
+        )
+        assertEquals("@@ -10,2 +10,2 @@", lines[5].text)
+        assertEquals(2 to 2, editStats(lines))
+    }
+
     private fun jsonString(value: String): String =
         "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 }

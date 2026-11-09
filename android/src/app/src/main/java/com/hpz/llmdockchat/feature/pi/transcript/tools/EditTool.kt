@@ -18,11 +18,11 @@ fun parsePatch(patch: String): List<DiffLine> {
         val line = raw.removeSuffix("\r")
         when {
             line.startsWith("\\") -> DiffLine(DiffKind.META, line)
-            inHunk -> hunkLine(line)
             line.startsWith("@@") -> {
                 inHunk = true
                 DiffLine(DiffKind.HUNK, line)
             }
+            inHunk -> hunkLine(line)
             line.startsWith("---") || line.startsWith("+++") -> DiffLine(DiffKind.HEADER, line)
             else -> hunkLine(line)
         }
