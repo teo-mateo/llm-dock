@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
-import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.int
 import com.hpz.llmdockchat.feature.pi.transcript.str
 import com.hpz.llmdockchat.feature.pi.transcript.tools.ToolResult
@@ -22,15 +21,12 @@ import kotlinx.serialization.json.JsonObject
 @Composable
 internal fun ReadToolBody(item: PiItem.Tool, args: JsonObject?, result: ToolResult?) {
     val colors = LlmTheme.colors
-    val error = item.status == ToolStatus.ERROR || result?.isError == true
-    val message = result?.text?.trim().orEmpty()
+    val error = isToolError(item, result)
     val path = args?.str("path")
     val offset = args?.int("offset")
     val limit = args?.int("limit")
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (error && message.isNotEmpty()) {
-            Text(message, color = colors.red, style = MaterialTheme.typography.labelSmall)
-        }
+        ToolResultMessage(item, result, ToolResultMode.ERRORS_ONLY)
         if (path != null) PathHeader(path)
         if (offset != null || limit != null) {
             Text(
@@ -43,7 +39,7 @@ internal fun ReadToolBody(item: PiItem.Tool, args: JsonObject?, result: ToolResu
         val images = result?.images.orEmpty()
         if (images.isNotEmpty()) {
             images.forEach { ToolImageView(it) }
-        } else {
+        } else if (!error) {
             val lines = remember(result?.text, offset) { numberLines(result?.text.orEmpty(), offset ?: 1) }
             if (lines.isNotEmpty()) NumberedText(item.id, "read_content", lines, 20)
         }

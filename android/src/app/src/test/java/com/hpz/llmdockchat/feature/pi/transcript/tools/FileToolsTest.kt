@@ -80,6 +80,24 @@ class FileToolsTest {
     }
 
     @Test
+    fun `downsamples an image larger than the target`() {
+        assertEquals(2, imageSampleSize(2000, 1000, 1000))
+        assertEquals(4, imageSampleSize(4000, 3000, 1000))
+    }
+
+    @Test
+    fun `keeps the original size at the target`() {
+        assertEquals(1, imageSampleSize(1000, 1000, 1000))
+        assertEquals(2, imageSampleSize(1025, 1000, 1000))
+    }
+
+    @Test
+    fun `treats invalid dimensions as one`() {
+        assertEquals(1, imageSampleSize(0, 1000, 1000))
+        assertEquals(1, imageSampleSize(1000, 1000, 0))
+    }
+
+    @Test
     fun `write summary falls back without a path`() {
         val item = tool("write", """{"content":"a"}""")
         assertEquals("content=a", writeSummary(item))

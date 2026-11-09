@@ -33,3 +33,10 @@ fun writeSummary(item: PiItem.Tool): String {
     val content = args.str("content").orEmpty()
     return "$name · ${numberLines(content, 1).size} lines"
 }
+
+fun imageSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+    if (width <= 0 || height <= 0 || maxDimension <= 0) return 1
+    var sample = 1
+    while (width / sample > maxDimension || height / sample > maxDimension) sample *= 2
+    return sample
+}
