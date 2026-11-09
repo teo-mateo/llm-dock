@@ -10,7 +10,6 @@ fun toolSummary(item: PiItem.Tool): String = when (classifyTool(item.name)) {
     ToolKind.WRITE -> writeSummary(item)
     ToolKind.PROCESS -> processSummary(item)
     ToolKind.CHATTERBOX_SEND,
-    ToolKind.CHATTERBOX_SEND,
     ToolKind.CHATTERBOX_LOOK,
     ToolKind.CHATTERBOX_JOIN,
     ToolKind.CHATTERBOX_LEAVE,
