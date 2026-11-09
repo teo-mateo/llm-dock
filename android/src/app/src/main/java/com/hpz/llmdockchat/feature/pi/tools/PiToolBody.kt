@@ -1,9 +1,7 @@
 package com.hpz.llmdockchat.feature.pi.tools
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
@@ -33,14 +30,7 @@ fun PiToolBody(item: PiItem.Tool) {
     val result = remember(item.output) { parseToolResult(item.output) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (item.args != null || item.output != null) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(
-                    if (raw) "Formatted" else "Raw",
-                    color = colors.accent,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.clickable { raw = !raw }.testTag("pi_tool_raw_toggle"),
-                )
-            }
+            ToolToggleLabel(if (raw) "Formatted" else "Raw", onClick = { raw = !raw }, tag = "pi_tool_raw_toggle")
         }
         if (raw) {
             RawToolBody(item)

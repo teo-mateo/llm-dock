@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,8 +51,10 @@ internal fun ToolTextCard(
     var wrap by rememberSaveable(itemId, slot, "wrap") { mutableStateOf(wrapByDefault) }
     val lines = text.lines()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Box(
+        Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.surface).padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Top,
         ) {
             Text(
                 if (showAll) text else lines.take(maxLines).joinToString("\n"),
@@ -61,24 +63,23 @@ internal fun ToolTextCard(
                 style = style,
                 softWrap = wrap,
                 modifier = if (wrap) {
-                    Modifier.fillMaxWidth().padding(end = 24.dp)
+                    Modifier.weight(1f)
                 } else {
-                    Modifier.horizontalScroll(rememberScrollState()).padding(end = 24.dp)
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState())
                 },
             )
             Icon(
                 AppIcons.WrapText,
                 contentDescription = if (wrap) "Turn off word wrap" else "Turn on word wrap",
                 tint = if (wrap) colors.accent else colors.muted,
-                modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { wrap = !wrap }.testTag("pi_tool_wrap_$slot"),
+                modifier = Modifier.size(20.dp).clickable { wrap = !wrap }.testTag("pi_tool_wrap_$slot"),
             )
         }
         if (lines.size > maxLines) {
-            Text(
+            ToolToggleLabel(
                 if (showAll) "Show less" else toggleLabel(lines.size),
-                color = colors.accent,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.clickable { showAll = !showAll }.testTag(toggleTag),
+                onClick = { showAll = !showAll },
+                tag = toggleTag,
             )
         }
     }
