@@ -32,14 +32,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.feature.pi.tools.PiToolBody
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
-import com.hpz.llmdockchat.feature.pi.transcript.argsSummary
 import com.hpz.llmdockchat.feature.pi.transcript.moreLabel
+import com.hpz.llmdockchat.feature.pi.transcript.tools.toolStatusText
+import com.hpz.llmdockchat.feature.pi.transcript.tools.toolSummary
 import com.hpz.llmdockchat.feature.pi.transcript.visibleTools
-
-private const val MAX_OUTPUT_LINES = 20
 
 @Composable
 fun PiToolGroupView(group: PiDisplayItem.ToolGroup) {
@@ -102,7 +102,7 @@ private fun PiToolRow(item: PiItem.Tool) {
             maxLines = 1,
         )
         Text(
-            argsSummary(item.args),
+            toolSummary(item),
             color = colors.muted,
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.labelSmall,
@@ -111,49 +111,13 @@ private fun PiToolRow(item: PiItem.Tool) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            "Details",
-            color = colors.accent,
-            fontWeight = FontWeight.SemiBold,
+            toolStatusText(item),
+            color = colors.muted,
             style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
         )
     }
     if (open) PiToolDetails(item)
-}
-
-@Composable
-private fun PiToolDetails(item: PiItem.Tool) {
-    val colors = LlmTheme.colors
-    var showAll by rememberSaveable(item.id) { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().background(colors.sunken).padding(12.dp).testTag("pi_tool_details"),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(toolStatusText(item), color = statusColor(item.status), style = MaterialTheme.typography.labelSmall)
-        if (item.args != null) {
-            Text(item.args, color = colors.muted, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-        }
-        if (item.output != null) {
-            val lines = item.output.lines()
-            Text(
-                if (showAll) item.output else lines.take(MAX_OUTPUT_LINES).joinToString("\n"),
-                color = colors.muted,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.surface).padding(10.dp),
-            )
-            if (lines.size > MAX_OUTPUT_LINES) {
-                Text(
-                    if (showAll) "Show less" else "Show all",
-                    color = colors.accent,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.clickable { showAll = !showAll }.testTag("pi_tool_output_toggle"),
-                )
-            }
-        }
-        if (item.truncated) {
-            Text("output truncated by pi-remote", color = colors.amber, style = MaterialTheme.typography.labelSmall)
-        }
-    }
 }
 
 @Composable
@@ -163,8 +127,13 @@ private fun statusColor(status: ToolStatus) = when (status) {
     ToolStatus.ERROR -> LlmTheme.colors.red
 }
 
-internal fun toolStatusText(item: PiItem.Tool): String = when (item.status) {
-    ToolStatus.RUNNING -> "running…"
-    ToolStatus.DONE -> item.durationMs?.let { "done · ${String.format(java.util.Locale.ROOT, "%.1f", it / 1000.0)} s" } ?: "done"
-    ToolStatus.ERROR -> "error"
+@Composable
+private fun PiToolDetails(item: PiItem.Tool) {
+    val colors = LlmTheme.colors
+    Column(
+        Modifier.fillMaxWidth().background(colors.sunken).padding(12.dp).testTag("pi_tool_details"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PiToolBody(item)
+    }
 }

@@ -350,6 +350,20 @@ object AppIcons {
         }
     }
 
+    val WrapText: ImageVector by lazy {
+        lineIcon("WrapText") {
+            moveTo(20f, 5f)
+            lineTo(4f, 5f)
+            moveTo(20f, 10f)
+            lineTo(4f, 10f)
+            moveTo(13f, 15f)
+            lineTo(4f, 15f)
+            moveTo(13f, 12f)
+            lineTo(10f, 15f)
+            lineTo(13f, 18f)
+        }
+    }
+
     val Sparkle: ImageVector by lazy {
         fillIcon("Sparkle") {
             moveTo(19.46f, 8f)
