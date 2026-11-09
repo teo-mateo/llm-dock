@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 
 data class ReasoningLevelOption(
@@ -136,7 +137,7 @@ private fun ReasoningOptionRow(
                 else -> colors.fg
             },
             style = MaterialTheme.typography.bodyMedium,
-            fontFamily = if (option.id != null) FontFamily.Monospace else FontFamily.Default,
+            fontFamily = if (option.id != null) MonoFontFamily else FontFamily.Default,
             modifier = Modifier.weight(1f),
         )
         if (option.stale) {
@@ -194,7 +195,7 @@ fun ReasoningLevelChip(
                 level ?: "default",
                 color = valueColor,
                 style = MaterialTheme.typography.labelMedium,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),

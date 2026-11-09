@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 private const val DEFAULT_MAX_LINES = 20
 
@@ -42,11 +43,12 @@ internal fun ToolTextCard(
     maxLines: Int = DEFAULT_MAX_LINES,
     toggleLabel: (Int) -> String = { "Show all" },
     style: TextStyle = MaterialTheme.typography.bodySmall,
-    fontFamily: FontFamily = FontFamily.Monospace,
+    fontFamily: FontFamily = MonoFontFamily,
+    wrapByDefault: Boolean = true,
 ) {
     val colors = LlmTheme.colors
     var showAll by rememberSaveable(itemId, slot) { mutableStateOf(false) }
-    var wrap by rememberSaveable(itemId, slot, "wrap") { mutableStateOf(true) }
+    var wrap by rememberSaveable(itemId, slot, "wrap") { mutableStateOf(wrapByDefault) }
     val lines = text.lines()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Box(

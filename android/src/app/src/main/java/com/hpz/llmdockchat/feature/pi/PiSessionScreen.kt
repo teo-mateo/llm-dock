@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiState
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
@@ -62,12 +63,17 @@ fun PiSessionScreen(
                 Column {
                     PiSessionHeader(loaded?.summary, onBack, onTextSize = { showTextSize = true })
                     if (loaded != null) {
-                        Text(
-                            loaded.failure ?: loaded.phase.label,
-                            color = colors.amber,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-                        )
+                        val phase = loaded.phase
+                        val failure = loaded.failure
+                        if (failure != null || phase != PiSessionPhase.CONNECTED) {
+                            val warn = failure != null || phase == PiSessionPhase.RECONNECTING || phase == PiSessionPhase.FAILED
+                            Text(
+                                failure ?: phase.label,
+                                color = if (warn) colors.amber else colors.muted,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                            )
+                        }
                     }
                 }
             },
@@ -160,7 +166,7 @@ private fun PiSessionHeader(summary: PiSession?, onBack: () -> Unit, onTextSize:
             Text(
                 "Aa",
                 color = colors.muted,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )

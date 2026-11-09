@@ -32,11 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.tools.PiToolBody
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.moreLabel
+import com.hpz.llmdockchat.feature.pi.transcript.tools.toolStatusDescription
 import com.hpz.llmdockchat.feature.pi.transcript.tools.toolStatusText
 import com.hpz.llmdockchat.feature.pi.transcript.tools.toolSummary
 import com.hpz.llmdockchat.feature.pi.transcript.visibleTools
@@ -83,6 +85,7 @@ fun PiToolGroupView(group: PiDisplayItem.ToolGroup) {
 private fun PiToolRow(item: PiItem.Tool) {
     val colors = LlmTheme.colors
     var open by rememberSaveable(item.id) { mutableStateOf(false) }
+    val statusText = toolStatusText(item)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 34.dp).clickable { open = !open }
             .padding(horizontal = 12.dp).testTag("pi_tool_${item.callId}"),
@@ -91,31 +94,33 @@ private fun PiToolRow(item: PiItem.Tool) {
     ) {
         Box(
             Modifier.size(8.dp).clip(CircleShape).background(statusColor(item.status))
-                .semantics { contentDescription = toolStatusText(item) },
+                .semantics { contentDescription = toolStatusDescription(item) },
         )
         Text(
             item.name,
-            color = colors.fg,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelMedium,
+            color = colors.muted,
+            fontFamily = MonoFontFamily,
+            fontWeight = FontWeight.Normal,
+            style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
         )
         Text(
             toolSummary(item),
-            color = colors.muted,
-            fontFamily = FontFamily.Monospace,
+            color = colors.fg,
+            fontFamily = MonoFontFamily,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            toolStatusText(item),
-            color = colors.muted,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
+        if (statusText.isNotEmpty()) {
+            Text(
+                statusText,
+                color = colors.muted,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
     }
     if (open) PiToolDetails(item)
 }

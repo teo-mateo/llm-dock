@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.prefs.LocalPiTextAppearance
 import com.hpz.llmdockchat.core.prefs.PiTextAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,7 +91,7 @@ fun PiTextSizeSheet(onDismiss: () -> Unit) {
                         Text(
                             PiTextAppearance.label(scale),
                             color = colors.muted,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = MonoFontFamily,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f).testTag("pi_text_size_value"),
                         )

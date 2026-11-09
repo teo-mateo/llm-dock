@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.tools.ToolKind
 import com.hpz.llmdockchat.feature.pi.transcript.tools.classifyTool
@@ -71,7 +72,7 @@ private fun RawToolBody(item: PiItem.Tool) {
     val output = item.output
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (args != null) {
-            Text(args, color = colors.muted, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            Text(args, color = colors.muted, fontFamily = MonoFontFamily, style = MaterialTheme.typography.bodySmall)
         }
         if (output != null) {
             ToolTextCard(item.id, "raw_output", output, colors.muted, "pi_tool_output_toggle")

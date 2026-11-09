@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.prefs.ChatAppearance
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.McpServerInfo
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
@@ -112,7 +113,7 @@ fun ChatSettingsSheet(
                         Text(
                             modelName,
                             color = if (canSwitchModel) colors.fg else colors.subtle,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = MonoFontFamily,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

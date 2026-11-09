@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 
 /**
  * A hand-rolled block-level Markdown renderer. No third-party
@@ -440,12 +441,12 @@ private fun findInlineMathClose(raw: String, from: Int): Int {
 }
 
 private fun codeSpanStyle(colors: LlmColors) = SpanStyle(
-    fontFamily = FontFamily.Monospace,
+    fontFamily = MonoFontFamily,
     background = colors.sunken,
 )
 
 private fun mathSpanStyle(colors: LlmColors) = SpanStyle(
-    fontFamily = FontFamily.Monospace,
+    fontFamily = MonoFontFamily,
     color = colors.muted,
 )
 

@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.ToolStatus
 import com.hpz.llmdockchat.feature.pi.transcript.tools.ToolImage
@@ -38,7 +39,7 @@ internal fun GenericFormattedBody(item: PiItem.Tool, args: JsonObject?, result: 
                 Text(
                     imageLabel(image),
                     color = colors.muted,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = MonoFontFamily,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

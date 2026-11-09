@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.Engine
 import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
@@ -158,7 +159,7 @@ private fun LocalServiceRow(service: ServiceSummary, selected: Boolean, onClick:
             Text(
                 service.name,
                 color = colors.fg,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -199,7 +200,7 @@ private fun HostedModelRow(
             Text(
                 modelId,
                 color = colors.subtle,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

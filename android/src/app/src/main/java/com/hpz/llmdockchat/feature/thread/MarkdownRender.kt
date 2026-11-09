@@ -59,6 +59,7 @@ import com.hpz.llmdockchat.core.markdown.parseMdBlock
 import com.hpz.llmdockchat.core.markdown.splitMdBlocks
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.ArtifactRecord
 import kotlin.math.max
 import kotlin.math.min
@@ -130,7 +131,7 @@ private fun MdBlockView(block: MdBlock, colors: LlmColors) {
         is MdBlock.MathBlock -> Text(
             block.source,
             color = colors.muted,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = MonoFontFamily,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
                 .fillMaxWidth()
@@ -197,7 +198,7 @@ private fun CodeBlockView(block: MdBlock.CodeBlock, colors: LlmColors) {
             Text(
                 block.language?.uppercase() ?: "CODE",
                 color = colors.subtle,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f),
             )
@@ -223,7 +224,7 @@ private fun CodeBlockView(block: MdBlock.CodeBlock, colors: LlmColors) {
             Text(
                 block.code,
                 color = colors.fg,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = MonoFontFamily,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -373,7 +374,7 @@ fun ArtifactCard(artifact: ArtifactRecord, modifier: Modifier = Modifier) {
             "svg" -> SvgArtifactBody(artifact, colors)
             "image" -> ImageArtifactBody(artifact, colors)
             "code" -> Box(Modifier.fillMaxWidth().padding(10.dp).horizontalScroll(rememberScrollState())) {
-                Text(artifact.content, color = colors.fg, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
+                Text(artifact.content, color = colors.fg, fontFamily = MonoFontFamily, style = MaterialTheme.typography.bodyMedium)
             }
             "html" -> HtmlArtifactPlaceholder(colors)
             else -> HtmlArtifactPlaceholder(colors)

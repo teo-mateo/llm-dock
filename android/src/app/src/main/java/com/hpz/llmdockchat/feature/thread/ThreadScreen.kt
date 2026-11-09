@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -443,7 +444,7 @@ private fun ThreadHeader(
                 Text(
                     model,
                     color = colors.subtle,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = MonoFontFamily,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

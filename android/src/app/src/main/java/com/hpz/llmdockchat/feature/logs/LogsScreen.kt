@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hpz.llmdockchat.core.ui.theme.LlmColors
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.LogLevel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -314,7 +315,7 @@ private fun LogRow(text: String, color: Color, fontSize: Float, wrap: Boolean) {
         // chat text scale, which would be the wrong knob for a log.
         fontSize = fontSize.sp,
         lineHeight = (fontSize * 1.34f).sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = MonoFontFamily,
         softWrap = wrap,
         maxLines = if (wrap) Int.MAX_VALUE else 1,
         modifier = Modifier

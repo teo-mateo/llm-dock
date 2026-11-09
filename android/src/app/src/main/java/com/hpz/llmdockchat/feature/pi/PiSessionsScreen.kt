@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import com.hpz.llmdockchat.core.ui.theme.*
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.*
 @Composable
 fun PiSessionsScreen(
@@ -193,7 +194,7 @@ private fun DeleteSwipeBackground() {
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Delete", color = Color.White, fontFamily = FontFamily.Monospace)
+        Text("Delete", color = Color.White, fontFamily = MonoFontFamily)
     }
 }
 @Composable

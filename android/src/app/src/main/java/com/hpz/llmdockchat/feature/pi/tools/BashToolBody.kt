@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
+import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
 import com.hpz.llmdockchat.feature.pi.transcript.int
 import com.hpz.llmdockchat.feature.pi.transcript.str
@@ -46,10 +47,11 @@ internal fun BashToolBody(item: PiItem.Tool, args: JsonObject?, result: ToolResu
                 toggleTag = "pi_tool_output_toggle",
                 maxLines = OUTPUT_LINES,
                 toggleLabel = { n -> "Show all $n lines" },
+                wrapByDefault = false,
             )
         }
         if (exit != null && exit != 0) {
-            Text("exit $exit", color = colors.red, style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace)
+            Text("exit $exit", color = colors.red, style = MaterialTheme.typography.labelMedium, fontFamily = MonoFontFamily)
         }
     }
 }
