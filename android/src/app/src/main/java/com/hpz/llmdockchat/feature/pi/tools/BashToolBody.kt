@@ -1,16 +1,12 @@
 package com.hpz.llmdockchat.feature.pi.tools
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
@@ -34,26 +30,8 @@ internal fun BashToolBody(item: PiItem.Tool, args: JsonObject?, result: ToolResu
     val output = bashOutput(result)
     val exit = bashExitCode(result)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        parsed.dir?.let { dir ->
-            Text(
-                "in $dir",
-                color = colors.muted,
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.surface)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
-        }
-        ToolTextCard(
-            itemId = item.id,
-            slot = "bash_command",
-            text = "$ ${parsed.command}",
-            color = colors.fg,
-            toggleTag = "pi_tool_command_toggle",
-            maxLines = Int.MAX_VALUE,
-        )
+        parsed.dir?.let { WorkingDirectoryChip(it) }
+        ShellCommandCard(item.id, "bash_command", parsed.command)
         if (timeout != null) {
             Text("timeout $timeout s", color = colors.muted, style = MaterialTheme.typography.labelSmall)
         }
