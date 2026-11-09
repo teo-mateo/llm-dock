@@ -40,7 +40,7 @@ fun PiToolBody(item: PiItem.Tool) {
                 ToolKind.EDIT -> EditToolBody(item, args, result)
                 ToolKind.READ -> ReadToolBody(item, args, result)
                 ToolKind.WRITE -> WriteToolBody(item, args, result)
-                ToolKind.PROCESS,
+                ToolKind.PROCESS -> ProcessToolBody(item, args, result)
                 ToolKind.CHATTERBOX_SEND,
                 ToolKind.CHATTERBOX_LOOK,
                 ToolKind.CHATTERBOX_JOIN,
