@@ -72,7 +72,6 @@ fun processSummary(item: PiItem.Tool): String {
     }
 }
 
-private val WHITESPACE = Regex("\\s+")
 
 private fun firstCommandLine(command: String): String =
-    splitCdPrefix(command).command.lineSequence().firstOrNull().orEmpty().replace(WHITESPACE, " ").trim()
+    firstCollapsedLine(splitCdPrefix(command).command)

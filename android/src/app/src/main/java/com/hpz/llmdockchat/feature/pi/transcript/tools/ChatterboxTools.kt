@@ -18,7 +18,6 @@ data class ChatLine(
     val toYou: Boolean,
 )
 
-private val WHITESPACE = Regex("\\s+")
 
 fun sendTarget(args: JsonObject?): String {
     return when (args?.str("audience")) {
@@ -64,7 +63,7 @@ private fun sendSummary(item: PiItem.Tool): String {
     val target = sendTarget(args)
     val text = args?.str("text")
     if (target.isEmpty() || text == null) return argsSummary(item.args)
-    val firstLine = text.lineSequence().firstOrNull().orEmpty().replace(WHITESPACE, " ").trim()
+    val firstLine = firstCollapsedLine(text)
     val outcome = parseToolResult(item.output)?.details?.str("outcome")
     return buildString {
         append("$target: $firstLine")

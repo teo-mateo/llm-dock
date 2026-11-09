@@ -8,7 +8,6 @@ import com.hpz.llmdockchat.feature.pi.transcript.str
 data class BashCommand(val dir: String?, val command: String)
 
 private val CD_PREFIX = Regex("""^cd[ \t]+(?:"([^"]*)"|'([^']*)'|([^\s;&]+))[ \t]*(?:&&|;)[ \t]*""")
-private val WHITESPACE = Regex("\\s+")
 
 fun splitCdPrefix(command: String): BashCommand {
     val match = CD_PREFIX.find(command) ?: return BashCommand(null, command)
@@ -23,7 +22,7 @@ fun bashExitCode(result: ToolResult?): Int? = result?.structured?.int("exit_code
 fun bashSummary(item: PiItem.Tool): String {
     val command = parseToolArgs(item.args)?.str("command") ?: item.args.orEmpty()
     val result = parseToolResult(item.output)
-    val first = splitCdPrefix(command).command.lineSequence().firstOrNull().orEmpty().replace(WHITESPACE, " ").trim()
+    val first = firstCollapsedLine(splitCdPrefix(command).command)
     val exit = bashExitCode(result)
     val timedOut = item.status == ToolStatus.ERROR && result?.text?.contains("timed out") == true
     return buildString {
