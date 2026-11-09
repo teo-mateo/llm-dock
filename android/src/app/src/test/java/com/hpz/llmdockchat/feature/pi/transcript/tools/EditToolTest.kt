@@ -119,6 +119,51 @@ class EditToolTest {
         assertTrue(fallbackDiff(null).isEmpty())
     }
 
+    @Test
+    fun `classifies marker-prefixed content inside a hunk`() {
+        val inner = """
+            --- a/notes
+            +++ b/notes
+            @@ -1,4 +1,4 @@
+            --- stays in JMAP;
+            +++ added plus line
+             context
+        """.trimIndent()
+        val lines = parsePatch(inner)
+        assertEquals(DiffKind.REMOVE, lines[3].kind)
+        assertEquals("-- stays in JMAP;", lines[3].text)
+        assertEquals(DiffKind.ADD, lines[4].kind)
+        assertEquals("++ added plus line", lines[4].text)
+        assertEquals(1 to 1, editStats(lines))
+    }
+
+    @Test
+    fun `the no-newline marker is meta and does not count`() {
+        val inner = """
+            --- a/notes
+            +++ b/notes
+            @@ -1,2 +1,2 @@
+             context
+            \ No newline at end of file
+        """.trimIndent()
+        val lines = parsePatch(inner)
+        assertEquals(DiffKind.META, lines.last().kind)
+        assertEquals(0 to 0, editStats(lines))
+    }
+
+    @Test
+    fun `handles carriage returns`() {
+        val inner = "--- a/x\r\n+++ b/x\r\n@@ -1,2 +1,2 @@\r\n-old\r\n+new"
+        val lines = parsePatch(inner)
+        assertEquals(
+            listOf(DiffKind.HEADER, DiffKind.HEADER, DiffKind.HUNK, DiffKind.REMOVE, DiffKind.ADD),
+            lines.map { it.kind },
+        )
+        assertEquals("old", lines[3].text)
+        assertEquals("new", lines[4].text)
+        assertEquals(1 to 1, editStats(lines))
+    }
+
     private fun jsonString(value: String): String =
         "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 }

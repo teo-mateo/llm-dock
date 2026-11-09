@@ -7,21 +7,32 @@ import com.hpz.llmdockchat.feature.pi.transcript.arr
 import com.hpz.llmdockchat.feature.pi.transcript.str
 import kotlinx.serialization.json.JsonObject
 
-enum class DiffKind { HEADER, HUNK, ADD, REMOVE, CONTEXT }
+enum class DiffKind { HEADER, HUNK, ADD, REMOVE, CONTEXT, META }
 
 data class DiffLine(val kind: DiffKind, val text: String)
 
 fun parsePatch(patch: String): List<DiffLine> {
     if (patch.isEmpty()) return emptyList()
-    return patch.lines().map { line ->
+    var inHunk = false
+    return patch.lines().map { raw ->
+        val line = raw.removeSuffix("\r")
         when {
+            line.startsWith("\\") -> DiffLine(DiffKind.META, line)
+            inHunk -> hunkLine(line)
+            line.startsWith("@@") -> {
+                inHunk = true
+                DiffLine(DiffKind.HUNK, line)
+            }
             line.startsWith("---") || line.startsWith("+++") -> DiffLine(DiffKind.HEADER, line)
-            line.startsWith("@@") -> DiffLine(DiffKind.HUNK, line)
-            line.startsWith("+") -> DiffLine(DiffKind.ADD, line.substring(1))
-            line.startsWith("-") -> DiffLine(DiffKind.REMOVE, line.substring(1))
-            else -> DiffLine(DiffKind.CONTEXT, line.removePrefix(" "))
+            else -> hunkLine(line)
         }
     }
+}
+
+private fun hunkLine(line: String): DiffLine = when {
+    line.startsWith("+") -> DiffLine(DiffKind.ADD, line.substring(1))
+    line.startsWith("-") -> DiffLine(DiffKind.REMOVE, line.substring(1))
+    else -> DiffLine(DiffKind.CONTEXT, line.removePrefix(" "))
 }
 
 fun editStats(lines: List<DiffLine>): Pair<Int, Int> =
