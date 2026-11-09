@@ -6,7 +6,10 @@ enum class ToolKind {
     READ,
     WRITE,
     PROCESS,
-    CHATTERBOX,
+    CHATTERBOX_SEND,
+    CHATTERBOX_LOOK,
+    CHATTERBOX_JOIN,
+    CHATTERBOX_LEAVE,
     GENERIC,
 }
 
@@ -16,6 +19,9 @@ fun classifyTool(name: String): ToolKind = when (name) {
     "read" -> ToolKind.READ
     "write" -> ToolKind.WRITE
     "process" -> ToolKind.PROCESS
-    "chatterbox_send", "chatterbox_look", "chatterbox_join", "chatterbox_leave" -> ToolKind.CHATTERBOX
+    "chatterbox_send" -> ToolKind.CHATTERBOX_SEND
+    "chatterbox_look" -> ToolKind.CHATTERBOX_LOOK
+    "chatterbox_join" -> ToolKind.CHATTERBOX_JOIN
+    "chatterbox_leave" -> ToolKind.CHATTERBOX_LEAVE
     else -> ToolKind.GENERIC
 }

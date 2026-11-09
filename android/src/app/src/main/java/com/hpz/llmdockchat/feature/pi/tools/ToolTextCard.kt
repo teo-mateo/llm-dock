@@ -24,15 +24,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 
-private const val MAX_LINES = 20
+private const val DEFAULT_MAX_LINES = 20
 
 @Composable
-internal fun ToolTextCard(itemId: String, slot: String, text: String, color: Color, toggleTag: String) {
+internal fun ToolTextCard(
+    itemId: String,
+    slot: String,
+    text: String,
+    color: Color,
+    toggleTag: String,
+    maxLines: Int = DEFAULT_MAX_LINES,
+    toggleLabel: (Int) -> String = { "Show all" },
+    style: TextStyle = MaterialTheme.typography.bodySmall,
+    fontFamily: FontFamily = FontFamily.Monospace,
+) {
     val colors = LlmTheme.colors
     var showAll by rememberSaveable(itemId, slot) { mutableStateOf(false) }
     var wrap by rememberSaveable(itemId, slot, "wrap") { mutableStateOf(true) }
@@ -42,10 +53,10 @@ internal fun ToolTextCard(itemId: String, slot: String, text: String, color: Col
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.surface).padding(8.dp),
         ) {
             Text(
-                if (showAll) text else lines.take(MAX_LINES).joinToString("\n"),
+                if (showAll) text else lines.take(maxLines).joinToString("\n"),
                 color = color,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
+                fontFamily = fontFamily,
+                style = style,
                 softWrap = wrap,
                 modifier = if (wrap) {
                     Modifier.fillMaxWidth().padding(end = 24.dp)
@@ -60,9 +71,9 @@ internal fun ToolTextCard(itemId: String, slot: String, text: String, color: Col
                 modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { wrap = !wrap }.testTag("pi_tool_wrap_$slot"),
             )
         }
-        if (lines.size > MAX_LINES) {
+        if (lines.size > maxLines) {
             Text(
-                if (showAll) "Show less" else "Show all",
+                if (showAll) "Show less" else toggleLabel(lines.size),
                 color = colors.accent,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.clickable { showAll = !showAll }.testTag(toggleTag),

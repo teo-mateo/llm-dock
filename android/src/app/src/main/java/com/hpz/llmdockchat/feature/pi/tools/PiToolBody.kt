@@ -45,8 +45,17 @@ fun PiToolBody(item: PiItem.Tool) {
             RawToolBody(item)
         } else {
             when (classifyTool(item.name)) {
-                ToolKind.BASH, ToolKind.EDIT, ToolKind.READ, ToolKind.WRITE, ToolKind.PROCESS, ToolKind.CHATTERBOX, ToolKind.GENERIC ->
-                    GenericFormattedBody(item, args, result)
+                ToolKind.BASH,
+                ToolKind.EDIT,
+                ToolKind.READ,
+                ToolKind.WRITE,
+                ToolKind.PROCESS,
+                ToolKind.CHATTERBOX_SEND,
+                ToolKind.CHATTERBOX_LOOK,
+                ToolKind.CHATTERBOX_JOIN,
+                ToolKind.CHATTERBOX_LEAVE,
+                ToolKind.GENERIC,
+                -> GenericFormattedBody(item, args, result)
             }
         }
         if (item.truncated) {

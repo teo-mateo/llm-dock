@@ -14,17 +14,18 @@ class ToolKindTest {
     }
 
     @Test
-    fun `chatterbox tools share one kind`() {
-        assertEquals(ToolKind.CHATTERBOX, classifyTool("chatterbox_send"))
-        assertEquals(ToolKind.CHATTERBOX, classifyTool("chatterbox_look"))
-        assertEquals(ToolKind.CHATTERBOX, classifyTool("chatterbox_join"))
-        assertEquals(ToolKind.CHATTERBOX, classifyTool("chatterbox_leave"))
+    fun `each chatterbox tool has its own kind`() {
+        assertEquals(ToolKind.CHATTERBOX_SEND, classifyTool("chatterbox_send"))
+        assertEquals(ToolKind.CHATTERBOX_LOOK, classifyTool("chatterbox_look"))
+        assertEquals(ToolKind.CHATTERBOX_JOIN, classifyTool("chatterbox_join"))
+        assertEquals(ToolKind.CHATTERBOX_LEAVE, classifyTool("chatterbox_leave"))
     }
 
     @Test
     fun `unknown names map to generic`() {
         assertEquals(ToolKind.GENERIC, classifyTool("bash="))
         assertEquals(ToolKind.GENERIC, classifyTool("codemode"))
+        assertEquals(ToolKind.GENERIC, classifyTool("chatterbox"))
         assertEquals(ToolKind.GENERIC, classifyTool(""))
     }
 }
