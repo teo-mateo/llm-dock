@@ -19,7 +19,7 @@ from . import conversation_policy, http, openrouter, openrouter_catalog, run_con
 from .outcomes import PolicyError
 from .blueprint import chat_bp
 from .bootstrap import init_chat  # noqa: F401
-from .deps import deps
+from .app_deps import deps
 from reasoning_levels import parse_levels
 import sampling_params as sampling
 

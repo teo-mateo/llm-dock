@@ -16,7 +16,7 @@ from flask import jsonify, request
 from auth import require_auth
 from . import mcp_config
 from .mcp_registry import MCP_SERVERS as BUILTIN
-from .deps import deps
+from .app_deps import deps
 from .blueprint import chat_bp
 
 logger = logging.getLogger(__name__)

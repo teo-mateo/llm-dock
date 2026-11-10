@@ -2,7 +2,8 @@ import logging
 import os
 
 from .db import ChatDB
-from .deps import default_services, install
+from .app_deps import install
+from .deps import default_services
 from .event_bus import EventBus
 from .project_files import configure_max_content_length
 from .prompt_seed import seed_default_prompts

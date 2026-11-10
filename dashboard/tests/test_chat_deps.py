@@ -10,7 +10,8 @@ from flask import Flask
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import deps as deps_module
-from chat.deps import ChatDeps, deps, deps_for, install, replace_deps
+from chat.app_deps import deps, deps_for, install, replace_deps
+from chat.deps import ChatDeps
 from tests.chat_support import chat_parts
 
 CHAT_DIR = Path(__file__).resolve().parent.parent / "chat"

@@ -112,7 +112,7 @@ def make_client(tmp_path, monkeypatch):
         app.config["DASHBOARD_TOKEN"] = TOKEN
         if manager is not _NO_MANAGER:
             from chat.db import ChatDB
-            from chat.deps import install
+            from chat.app_deps import install
             from tests.chat_support import chat_parts
             install(app, **chat_parts(ChatDB(":memory:"), mcp=manager))
         app.register_blueprint(chat_bp)
