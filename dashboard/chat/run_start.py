@@ -59,8 +59,8 @@ def start_run(
     user_msg,
     is_first: bool,
     first_user_content: str,
+    services: Callable[[], list],
     delete_from_seq: int | None = None,
-    services=None,
 ) -> Started | PolicyError:
     """Snapshot the run's configuration, atomically persist the user message and
     a queued run (rejecting a second run while one is active), and start the

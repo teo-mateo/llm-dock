@@ -437,7 +437,7 @@ def get_sampling_fields():
     endpoint exists to prevent.
     """
     service = request.args.get("service") or ""
-    engine = run_config.service_engine(service)
+    engine = run_config.service_engine(service, deps().services)
     return jsonify({
         "service": service,
         "engine": engine,
@@ -451,12 +451,14 @@ def get_sampling_fields():
 @require_auth
 def create_conversation():
     data = request.get_json() or {}
-    db = deps().db
+    d = deps()
+    db = d.db
     outcome = conversation_policy.resolve_new_conversation(
         data,
         get_prompt=db.get_prompt,
         get_project=db.get_project,
         default_prompt=settings_store.get_main_system_prompt,
+        services=d.services,
     )
     if isinstance(outcome, PolicyError):
         return http.error_response(outcome)
@@ -517,13 +519,15 @@ def get_conversation(conv_id):
 @require_auth
 def update_conversation(conv_id):
     data = request.get_json() or {}
-    db = deps().db
+    d = deps()
+    db = d.db
     fields = conversation_policy.resolve_conversation_update(
         data,
         conv_id=conv_id,
         get_conversation=db.get_conversation,
         get_prompt=db.get_prompt,
         get_project=db.get_project,
+        services=d.services,
     )
     if isinstance(fields, PolicyError):
         return http.error_response(fields)

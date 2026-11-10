@@ -12,12 +12,6 @@ logger = logging.getLogger(__name__)
 ServiceLookup = Callable[[], list]
 
 
-def default_services() -> list:
-    from docker_utils import get_docker_services
-
-    return get_docker_services()
-
-
 def effective_project_id(conv, resolve_project_id):
     """The conversation's effective project. Membership is root-only: a
     spin-off keeps project_id NULL and follows its root ancestor.
@@ -34,7 +28,7 @@ def effective_project_id(conv, resolve_project_id):
     return None
 
 
-def service_reasoning_levels(service_name, services: ServiceLookup | None = None):
+def service_reasoning_levels(service_name, services: ServiceLookup):
     """Levels a service currently declares, as parsed dicts ([] when none).
 
     Reads the same payload the chat picker uses, so the ladder offered and the
@@ -48,7 +42,7 @@ def service_reasoning_levels(service_name, services: ServiceLookup | None = None
     if providers.is_provider_service(service_name):
         return []
     try:
-        payload = (services or default_services)()
+        payload = services()
     except Exception:
         logger.exception("reasoning-level lookup failed for service %s", service_name)
         return []
@@ -63,7 +57,7 @@ def service_reasoning_levels(service_name, services: ServiceLookup | None = None
 INVALID_LEVEL_CODE = "invalid_reasoning_level"
 
 
-def reasoning_level_error(main_service, reasoning_level, services: ServiceLookup | None = None):
+def reasoning_level_error(main_service, reasoning_level, services: ServiceLookup):
     """Rejection message for a level the service does not offer, else None.
 
     `null` is always accepted: it means "say nothing to the model".
@@ -81,7 +75,7 @@ def reasoning_level_error(main_service, reasoning_level, services: ServiceLookup
     return None
 
 
-def effective_reasoning_level(conv, services: ServiceLookup | None = None):
+def effective_reasoning_level(conv, services: ServiceLookup):
     """(level to apply, note) for a run — the second enforcement point.
 
     The service can have lost a stored level since the write path checked it, so
@@ -106,7 +100,7 @@ def effective_reasoning_level(conv, services: ServiceLookup | None = None):
 INVALID_SAMPLING_CODE = "invalid_sampling_params"
 
 
-def service_engine(service_name, services: ServiceLookup | None = None):
+def service_engine(service_name, services: ServiceLookup):
     """Engine (``template_type``) a service runs on, None when it is unknown.
 
     Reads the same service payload the chat picker uses, so what the composer
@@ -120,7 +114,7 @@ def service_engine(service_name, services: ServiceLookup | None = None):
     if providers.is_provider_service(service_name):
         return ENGINE_PROVIDER
     try:
-        payload = (services or default_services)()
+        payload = services()
     except Exception:
         logger.exception("engine lookup failed for service %s", service_name)
         return None
@@ -142,7 +136,7 @@ def sampling_params_error(value):
     return "; ".join(errors)
 
 
-def effective_sampling_params(conv, services: ServiceLookup | None = None):
+def effective_sampling_params(conv, services: ServiceLookup):
     """(params to apply, note) for a run — the second enforcement point.
 
     The engine can have changed under a stored set since the write path checked
@@ -189,7 +183,7 @@ class RunConfig:
         return extra
 
 
-def _once(lookup: ServiceLookup | None) -> ServiceLookup:
+def _once(lookup: ServiceLookup) -> ServiceLookup:
     """One docker payload per run, resolved on first use so a remote-only
     conversation still never asks docker."""
     outcome = []
@@ -197,7 +191,7 @@ def _once(lookup: ServiceLookup | None) -> ServiceLookup:
     def resolve():
         if not outcome:
             try:
-                outcome.append((True, (lookup or default_services)()))
+                outcome.append((True, lookup()))
             except Exception as e:
                 outcome.append((False, e))
         ok, value = outcome[0]
@@ -208,7 +202,7 @@ def _once(lookup: ServiceLookup | None) -> ServiceLookup:
     return resolve
 
 
-def prepare_run_config(conv, resolve_project_id, services: ServiceLookup | None = None) -> RunConfig:
+def prepare_run_config(conv, resolve_project_id, services: ServiceLookup) -> RunConfig:
     catalog = _once(services)
     reasoning_level, reasoning_note = effective_reasoning_level(conv, catalog)
     sampling_params, sampling_note = effective_sampling_params(conv, catalog)

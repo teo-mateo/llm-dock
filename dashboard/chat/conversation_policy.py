@@ -93,7 +93,7 @@ def resolve_new_conversation(
     get_prompt: Callable,
     get_project: Callable,
     default_prompt: Callable[[], str],
-    services=None,
+    services: Callable[[], list],
 ) -> NewConversation | PolicyError:
     """Validate a create body and resolve the fields that carry policy.
 
@@ -143,7 +143,7 @@ def resolve_conversation_update(
     get_conversation: Callable,
     get_prompt: Callable,
     get_project: Callable,
-    services=None,
+    services: Callable[[], list],
 ) -> dict | PolicyError:
     """Validate an update body and return the fields to store.
 
