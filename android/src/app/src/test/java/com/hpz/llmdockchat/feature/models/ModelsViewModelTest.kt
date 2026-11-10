@@ -32,6 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.io.IOException
 
 /**
  * Grouping and initial load (via [ModelsUiState.Loaded]), the
@@ -184,7 +185,7 @@ class ModelsViewModelTest {
                         {"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301,"favorite":false}
                     ],"total":1,"running":1,"stopped":0}}""",
                 ),
-                failWith = RuntimeException("connection reset"),
+                failWith = IOException("connection reset"),
             ),
         )
         servicesStreamTransport.whenScriptRunsOut = { ScriptedSseTransport.Leg(park = true) }

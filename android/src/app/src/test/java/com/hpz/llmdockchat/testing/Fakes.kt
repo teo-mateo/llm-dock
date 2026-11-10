@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.Collections
@@ -176,6 +177,22 @@ class FakeSseTransport : SseTransport {
         } else {
             parked.complete(Unit)
         }
+    }
+}
+
+/**
+ * Records the virtual-clock time of every `open()`, so a retry schedule can be
+ * asserted without waiting for it. Every attempt fails with [failWith].
+ */
+class TimingSseTransport(
+    private val scheduler: TestCoroutineScheduler,
+    private val failWith: Throwable,
+) : SseTransport {
+    val opens = mutableListOf<Long>()
+
+    override fun open(request: StreamRequest): Flow<String> = flow {
+        opens += scheduler.currentTime
+        throw failWith
     }
 }
 

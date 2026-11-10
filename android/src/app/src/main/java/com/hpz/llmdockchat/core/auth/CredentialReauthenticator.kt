@@ -123,6 +123,12 @@ class CredentialReauthenticator(
     private fun isCurrent(server: BaseUrl?): Boolean =
         serverUrlStore == null || (server != null && serverUrlStore.current() == server)
 
+    /**
+     * Narrower than `!isTransient()` on purpose: this decides whether to
+     * discard the stored credential, not whether to retry. A parse failure or
+     * an unexpected throw is not evidence the password is wrong, and clearing
+     * on one would sign the user out over a malformed response.
+     */
     private fun AppError?.isRejection(): Boolean = when (this) {
         AppError.Unauthenticated -> true
         // `/api/auth/session` answers 400 when the Authorization header is

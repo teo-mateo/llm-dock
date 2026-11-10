@@ -14,7 +14,7 @@ class RetryPolicyTest {
 
     @Test
     fun `a rate limit or a server failure is retried`() {
-        listOf(429, 500, 501, 502, 503, 504).forEach { status ->
+        listOf(408, 429, 500, 501, 502, 503, 504).forEach { status ->
             assertTrue("$status must be retried", http(status).isTransient())
         }
     }
