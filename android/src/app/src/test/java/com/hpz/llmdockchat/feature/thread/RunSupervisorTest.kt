@@ -62,7 +62,8 @@ class RunSupervisorTest {
         runId: String? = null,
         sawAnyFrame: Boolean = false,
         sawTerminal: Boolean = false,
-    ) = RunAttempt(error, runId, null, sawAnyFrame, sawTerminal)
+        madeProgress: Boolean = sawAnyFrame,
+    ) = RunAttempt(error, runId, null, sawAnyFrame, sawTerminal, madeProgress)
 
     private fun conversation(activeRun: ActiveRun? = null) = ConversationDetail(
         id = "c1",
@@ -225,6 +226,41 @@ class RunSupervisorTest {
             39_000L,
             testScheduler.currentTime,
         )
+    }
+
+    @Test
+    fun `a clean EOF carrying only the run_started handshake still hits the ceiling, with backoff`() = runTest {
+        val live = conversation(ActiveRun("r1", "running", null, null))
+        val harness = Harness(
+            attempts = List(20) { attempt(sawAnyFrame = true, madeProgress = false) },
+            loads = List(20) { Result.success(live) },
+        )
+
+        val supervision = withTimeout(120_000) {
+            harness.supervisor.supervise(emptyFlow(), initialRunId = "r1")
+        }
+
+        assertNull(supervision.error)
+        assertSame(live, supervision.refetch?.getOrNull())
+        assertEquals("run_started alone is not progress: eight cycles, then the ceiling", 8, harness.attemptCalls)
+        assertEquals(7, harness.reattached.size)
+        assertEquals("every resubscribe waited on the backoff", 39_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun `a transient failure right after the run_started handshake backs off and ends at the ceiling`() = runTest {
+        val harness = Harness(
+            attempts = List(20) { attempt(error = transient(), sawAnyFrame = true, madeProgress = false) },
+        )
+
+        val supervision = withTimeout(120_000) {
+            harness.supervisor.supervise(emptyFlow(), initialRunId = "r1")
+        }
+
+        assertTrue(supervision.error is IOException)
+        assertEquals(8, harness.attemptCalls)
+        assertEquals(7, harness.reattached.size)
+        assertEquals("the backoff was never reset, so the waits grew to the cap", 39_000L, testScheduler.currentTime)
     }
 
     @Test

@@ -29,9 +29,12 @@ import kotlinx.coroutines.flow.flow
  * no frame (a dropped stream, a refused load — both count), because a server
  * that keeps failing is a verdict about the run, not an outage to wait out. Any
  * frame, or a refetch that shows a different run now live, starts the count
- * over — a dashboard restart survives, a persistent 5xx does not. A server that
- * delivers one frame per connection is never cut off; that is the price of
- * never cutting off a live run.
+ * over — a dashboard restart survives, a persistent 5xx does not. Progress
+ * means a frame that shows the run advancing: a heartbeat, a delta, anything
+ * except the `run_started` handshake the server resends on every subscribe, so
+ * a proxy that passes only that frame and closes still counts as a miss. A
+ * server that delivers real frames per connection is never cut off; that is
+ * the price of never cutting off a live run.
  */
 internal class RunSupervisor(
     private val reattach: suspend (String) -> Flow<RunEvent>,
@@ -97,7 +100,7 @@ internal class RunSupervisor(
     }
 
     private fun decide(attempt: RunAttempt, runId: String?): Step {
-        if (attempt.sawAnyFrame) {
+        if (attempt.madeProgress) {
             backoff.reset()
             budget.recordProgress()
         } else {
@@ -130,7 +133,7 @@ internal class RunSupervisor(
         if (conversation == null) return Step.End(refetch = reconciled)
         val active = conversation.activeRun?.takeIf { conversation.isGenerating }
         if (active == null) return Step.End(refetch = reconciled)
-        if (active.id != runId || attempt.sawAnyFrame) {
+        if (active.id != runId || attempt.madeProgress) {
             backoff.reset()
             budget.recordProgress()
             return Step.Reattach(active.id, wait = false)
@@ -218,10 +221,17 @@ internal class RunSupervision(
     val refetch: Result<ConversationDetail>?,
 )
 
+/**
+ * One collection attempt's verdict. [sawAnyFrame] counts every frame including
+ * the `run_started` handshake and feeds the early-failure rule in `finishRun`;
+ * [madeProgress] counts only frames that show the run advancing and feeds the
+ * frameless ceiling.
+ */
 internal class RunAttempt(
     val error: Throwable?,
     val runId: String?,
     val failureMessage: String?,
     val sawAnyFrame: Boolean,
     val sawTerminal: Boolean,
+    val madeProgress: Boolean,
 )

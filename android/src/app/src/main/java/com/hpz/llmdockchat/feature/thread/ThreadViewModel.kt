@@ -747,6 +747,7 @@ class ThreadViewModel(
         val error: Throwable? = try {
             source.collect { event ->
                 accumulator.sawFrame()
+                if (event !is RunEvent.RunStarted) accumulator.sawProgress()
                 when (event) {
                     is RunEvent.Delta -> {
                         accumulator.append(event)
@@ -794,6 +795,7 @@ class ThreadViewModel(
             failureMessage = failureMessage,
             sawAnyFrame = accumulator.sawAnyFrame,
             sawTerminal = terminal,
+            madeProgress = accumulator.madeProgress,
         )
     }
 
@@ -922,8 +924,15 @@ private class TurnAccumulator(
     var sawAnyFrame = false
         private set
 
+    var madeProgress = false
+        private set
+
     fun sawFrame() {
         sawAnyFrame = true
+    }
+
+    fun sawProgress() {
+        madeProgress = true
     }
 
     fun markDirty() {
