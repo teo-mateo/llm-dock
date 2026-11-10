@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Callable
-
-from flask import current_app
 
 from . import project_files as pf
 
@@ -12,9 +10,6 @@ if TYPE_CHECKING:
     from .event_bus import EventBus
     from .mcp_client import MCPClientManager
     from .run_manager import ChatRunManager
-
-DEPS_KEY = "CHAT_DEPS"
-
 
 def default_services() -> list:
     from docker_utils import get_docker_services
@@ -47,23 +42,3 @@ class ChatDeps:
 
     def storage_root(self) -> str:
         return self.project_files_dir or pf.default_storage_root()
-
-
-def deps_for(app) -> ChatDeps:
-    return app.config[DEPS_KEY]
-
-
-def deps() -> ChatDeps:
-    return deps_for(current_app)
-
-
-def install(app, **parts) -> ChatDeps:
-    chat_deps = ChatDeps(**parts)
-    app.config[DEPS_KEY] = chat_deps
-    return chat_deps
-
-
-def replace_deps(app, **parts) -> ChatDeps:
-    chat_deps = replace(deps_for(app), **parts)
-    app.config[DEPS_KEY] = chat_deps
-    return chat_deps
