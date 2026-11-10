@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -151,6 +152,21 @@ def test_page_access_table():
     assert page_access("/v2/assets/index.js", authenticated=False) is PageAccess.UNAUTHORIZED
     assert page_access("/", authenticated=True) is PageAccess.ALLOW
     assert page_access("/v2/assets/index.js", authenticated=True) is PageAccess.ALLOW
+
+
+def _token_key(text):
+    match = re.search(r"TOKEN_KEY\s*=\s*['\"]([^'\"]+)['\"]", text)
+    assert match, text
+    return match.group(1)
+
+
+def test_login_page_token_key_matches_frontend():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "static", "login.html"), encoding="utf-8") as f:
+        login_html = f.read()
+    with open(os.path.join(root, "frontend", "src", "api.js"), encoding="utf-8") as f:
+        frontend_api = f.read()
+    assert _token_key(login_html) == _token_key(frontend_api) == "dashboard_token"
 
 
 def test_every_non_api_route_is_guarded(app, client):
