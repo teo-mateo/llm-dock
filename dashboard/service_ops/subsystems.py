@@ -1,7 +1,7 @@
 import logging
 from typing import Callable
 
-from .hooks import DeleteContext, RenameContext, ServiceHook
+from .hooks import DeleteContext, PublicPortContext, RenameContext, ServiceHook
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,9 @@ class InspectorHook(ServiceHook):
         self._sync()
 
     def after_delete(self, ctx: DeleteContext) -> None:
+        self._sync()
+
+    def after_public_port(self, ctx: PublicPortContext) -> None:
         self._sync()
 
 

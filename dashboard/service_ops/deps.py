@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Collection, Mapping, Protocol, Sequence
 
 from .hooks import ServiceHook
 
@@ -16,6 +16,10 @@ class ComposeStore(Protocol):
     def rename_service(self, old_name: str, new_name: str) -> None: ...
 
     def remove_service_from_db(self, name: str) -> None: ...
+
+    def update_service_in_db(self, name: str, config: dict) -> None: ...
+
+    def get_used_ports(self) -> Collection[int]: ...
 
     def rebuild_compose_file(self) -> None: ...
 
@@ -43,3 +47,10 @@ class RenameDeps:
 class DeleteDeps:
     infra: Infra
     stop_container: Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class SetPublicPortDeps:
+    infra: Infra
+    next_free_port: Callable[[Mapping[str, Any], Collection[int]], int]
+    recreate_if_running: Callable[[str], dict]

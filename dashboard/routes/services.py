@@ -21,11 +21,11 @@ from flag_metadata import (
     MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
     FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
-from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+from port_conflicts import find_port_owner, port_in_use_body
 import service_ops
 from service_ops import wiring
-from service_ops.outcomes import OpError
-from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
+from service_ops.outcomes import AlreadyPublic, OpError
+from service_recreate import NOT_FOUND, apply_update_effects, recreate
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -48,9 +48,7 @@ _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
 
 
 def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
-    container = get_service_container(service_name)
-    status = container.status if container else "not-created"
-    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish)
+    return wiring.recreate_if_running(COMPOSE_FILE, service_name, rebuild, finish)
 
 
 def _rebuild_and_restart(compose_mgr, service_name):
@@ -556,80 +554,26 @@ def set_public_port(service_name):
     If another service is using 3301, reassign it to the lowest free 33XX port.
     """
     try:
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check if service exists
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Check if service is already on the public slot
-        current_port = service_config.get("port")
-        if current_port == PUBLIC_SLOT_PORT:
+        outcome = service_ops.set_public_port(
+            wiring.set_public_port_deps(COMPOSE_FILE), service_name, PUBLIC_SLOT_PORT
+        )
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
+        if isinstance(outcome, AlreadyPublic):
             return jsonify(
                 {
                     "success": True,
-                    "message": f'Service "{service_name}" is already on port {PUBLIC_SLOT_PORT}',
+                    "message": f'Service "{outcome.name}" is already on port {outcome.port}',
                     "no_change": True,
                 }
             ), 200
 
-        all_services = compose_mgr.list_services_in_db()
-        displaced = [
-            name
-            for name, cfg in all_services.items()
-            if name != service_name and cfg.get("port") == PUBLIC_SLOT_PORT
-        ]
-
-        updates_made = []
-
-        for displaced_name in displaced:
-            new_port = next_free_port(
-                all_services, compose_mgr.get_used_ports(), start=3300, end=3399
-            )
-            all_services[displaced_name]["port"] = new_port
-            compose_mgr.update_service_in_db(displaced_name, all_services[displaced_name])
-
-            updates_made.append(
-                {
-                    "service": displaced_name,
-                    "old_port": PUBLIC_SLOT_PORT,
-                    "new_port": new_port,
-                }
-            )
-
-        # Set requested service to the public slot
-        service_config["port"] = PUBLIC_SLOT_PORT
-        compose_mgr.update_service_in_db(service_name, service_config)
-
-        updates_made.append(
-            {"service": service_name, "old_port": current_port, "new_port": PUBLIC_SLOT_PORT}
-        )
-
-        # Rebuild compose file and restart affected services
-        compose_mgr.rebuild_compose_file()
-
-        services_to_restart = [service_name, *displaced]
-
-        restart_results = []
-        for svc in services_to_restart:
-            try:
-                restart_results.append({"service": svc, **_recreate_if_running(svc)})
-            except Exception as e:
-                restart_results.append(
-                    {"service": svc, "restarted": False, "error": str(e)}
-                )
-
-        # The public port moved; rebound proxies for any inspected service
-        # (both the moved one and the displaced one) reconcile here.
-        proxy_supervisor.sync()
-
         return jsonify(
             {
                 "success": True,
-                "message": f'Service "{service_name}" now on port {PUBLIC_SLOT_PORT}',
-                "updates": updates_made,
-                "restarts": restart_results,
+                "message": f'Service "{outcome.name}" now on port {outcome.port}',
+                "updates": outcome.updates,
+                "restarts": outcome.restarts,
             }
         ), 200
 

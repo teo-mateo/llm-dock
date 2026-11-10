@@ -259,7 +259,8 @@ class TestWritePathSync:
         assert rows[0]["listen_port"] == port
 
     def test_set_public_port_rebinds_both_proxies(self, env, monkeypatch):
-        monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "recreate_if_running", lambda *a, **k: {"restarted": False})
 
         public_port = _free_port()
         monkeypatch.setattr(services_route, "PUBLIC_SLOT_PORT", public_port)
@@ -268,7 +269,7 @@ class TestWritePathSync:
         # 3300-3399 against declared and compose ports only, which knows nothing
         # about host listeners (Open WebUI sits on 3300 on this machine).
         displaced_port = _free_port()
-        monkeypatch.setattr(services_route, "next_free_port", lambda *a, **kw: displaced_port)
+        monkeypatch.setattr(wiring, "next_free_port", lambda *a, **kw: displaced_port)
 
         other_port = _free_port()
         _write_services(

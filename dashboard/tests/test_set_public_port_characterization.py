@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import routes.services as services_route
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
+from service_ops import wiring
 
 TOKEN = "test-token-public-port"
 PUBLIC = 3301
@@ -65,13 +66,13 @@ def seams(tmp_path, monkeypatch):
         seams.step("next_free_port", sorted(used), start, end)
         return next(seams.free_ports)
 
-    monkeypatch.setattr(services_route, "next_free_port", pick)
+    monkeypatch.setattr(wiring, "next_free_port", pick)
 
-    def recreate(name):
+    def recreate(compose_file, name, *args, **kwargs):
         seams.step("recreate", name)
         return seams.restarts.get(name, {"restarted": False})
 
-    monkeypatch.setattr(services_route, "_recreate_if_running", recreate)
+    monkeypatch.setattr(wiring, "recreate_if_running", recreate)
     monkeypatch.setattr(proxy_supervisor, "sync", lambda: seams.step("proxy_sync"))
 
     from app import create_app

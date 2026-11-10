@@ -19,3 +19,17 @@ class Renamed:
 @dataclass(frozen=True)
 class Deleted:
     name: str
+
+
+@dataclass(frozen=True)
+class AlreadyPublic:
+    name: str
+    port: int
+
+
+@dataclass(frozen=True)
+class PublicPortSet:
+    name: str
+    port: int
+    updates: list
+    restarts: list

@@ -10,6 +10,7 @@ class Phase(Enum):
     BEFORE_RENAME = "before_rename"
     AFTER_RENAME = "after_rename"
     AFTER_DELETE = "after_delete"
+    AFTER_PUBLIC_PORT = "after_public_port"
 
 
 class HookContext:
@@ -42,6 +43,17 @@ class DeleteContext(HookContext):
         return self.name
 
 
+@dataclass
+class PublicPortContext(HookContext):
+    name: str
+    displaced: list
+    state: dict = field(default_factory=dict)
+
+    @property
+    def subject(self) -> str:
+        return self.name
+
+
 class ServiceHook:
     """A subsystem that keeps per-service state and follows a rename or delete.
 
@@ -63,6 +75,9 @@ class ServiceHook:
         pass
 
     def after_delete(self, ctx: DeleteContext) -> None:
+        pass
+
+    def after_public_port(self, ctx: PublicPortContext) -> None:
         pass
 
 
