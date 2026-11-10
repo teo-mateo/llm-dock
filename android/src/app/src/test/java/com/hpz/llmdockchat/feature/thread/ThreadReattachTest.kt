@@ -36,6 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -691,6 +692,97 @@ class ThreadReattachTest {
         }
         val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
         assertNull("the refused reconciliation must not surface as an error", settled.actionError)
+    }
+
+    /**
+     * A reattach that opens with a 5xx is the same "not yet" as a network drop:
+     * the dashboard is restarting, not the run. Ending the turn there would
+     * report a failure for a run that is still going.
+     */
+    @Test
+    fun `a reattach refused with a server error is retried instead of ending the turn`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+            ScriptedSseTransport.Leg(
+                failWith = ApiException(AppError.Http(503, "dashboard is restarting", fromServer = true)),
+            ),
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an answer"), DONE, MESSAGE_SAVED)),
+        )
+        conversation("conversation_active_run.json")
+        conversation("conversation_completed.json")
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        val settled = viewModel.awaitState("the settled thread") { it.thread.streaming == null && !it.runActive }
+        assertNull("a retried reattach must not surface as an error", settled.actionError)
+        assertEquals("the answer arrived exactly once", "hello there", settled.thread.messages.last().content)
+        val streams = transport.requests.filter { it.path.contains("/stream") }
+        assertEquals("the refused reattach was retried", 2, streams.size)
+    }
+
+    /**
+     * A conversation deleted by another client answers 404 on every attempt.
+     * That is the server's final word, not a slow one, so the turn stops
+     * reconnecting and says so instead of polling for a row that is gone.
+     */
+    @Test
+    fun `a close whose conversation is gone ends the turn instead of polling`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+        )
+        server.enqueue(
+            MockResponse.Builder().code(404).body("""{"error": "Conversation not found"}""").build(),
+        )
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        val settled = viewModel.awaitState("the terminal outcome") { it.actionError != null }
+        assertEquals("Conversation not found", settled.actionError)
+        assertFalse("the turn is over", settled.runActive)
+        assertFalse("reconnecting must be over", settled.thread.streaming?.reconnecting == true)
+        delay(100)
+        assertEquals("load plus one reconcile, never a retry", 2, server.requestCount)
+    }
+
+    /**
+     * Cancellation is the one exit that must not be mistaken for a failure: the
+     * reconcile loop holds no catch, so the scope going away ends it outright.
+     */
+    @Test
+    fun `cancelling the view model stops reconciliation polling`() = threadTest {
+        conversation("conversation_completed.json")
+        transport.script(
+            ScriptedSseTransport.Leg(payloads = listOf(RUN_STARTED, delta("half an"))),
+        )
+        repeat(200) { server.enqueue(MockResponse.Builder().code(503).build()) }
+
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+        viewModel.onComposerChange("Write 2000 words on the history of Rome")
+        viewModel.send()
+
+        viewModel.awaitState("reconnecting") { it.thread.streaming?.reconnecting == true }
+        withTimeout(TIMEOUT_MS) {
+            while (server.requestCount < 3) delay(5)
+        }
+
+        store.clear()
+        delay(100)
+        val settled = server.requestCount
+        delay(200)
+
+        assertEquals("cancellation stops the loop", settled, server.requestCount)
     }
 
     /**
