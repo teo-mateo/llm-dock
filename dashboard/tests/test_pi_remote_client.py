@@ -26,6 +26,7 @@ def hello(instance_id="i1"):
         thinking_level="high",
         reason="startup",
         previous_session_id=None,
+        parent_session_id=None,
         pi_version="1.0.4",
         ext_version="0.1.0",
     )

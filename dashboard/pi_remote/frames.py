@@ -31,6 +31,7 @@ class HelloFrame:
     thinking_level: Optional[str]
     reason: str
     previous_session_id: Optional[str]
+    parent_session_id: Optional[str]
     pi_version: Optional[str]
     ext_version: str
 
@@ -95,7 +96,14 @@ def parse_hello(body: Dict[str, Any]) -> Optional[HelloFrame]:
         return None
     if not isinstance(body.get("ext_version"), str):
         return None
-    for key in ("session_file", "name", "thinking_level", "previous_session_id", "pi_version"):
+    for key in (
+        "session_file",
+        "name",
+        "thinking_level",
+        "previous_session_id",
+        "parent_session_id",
+        "pi_version",
+    ):
         if not is_nullable_str(body.get(key)):
             return None
     model = _parse_model(body)
@@ -112,6 +120,7 @@ def parse_hello(body: Dict[str, Any]) -> Optional[HelloFrame]:
         thinking_level=body.get("thinking_level"),
         reason=body["reason"],
         previous_session_id=body.get("previous_session_id"),
+        parent_session_id=body.get("parent_session_id"),
         pi_version=body.get("pi_version"),
         ext_version=body["ext_version"],
     )

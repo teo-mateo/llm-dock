@@ -108,3 +108,23 @@ def test_bye_returns_a_typed_frame():
     assert code is None
     assert isinstance(frame, ByeFrame)
     assert frame.reason == "shutdown"
+
+
+def test_hello_parent_session_id_is_optional_and_nullable():
+    status, _, frame = validate_request("POST", "/v1/hello", dict(HELLO, parent_session_id="s0"))
+    assert status == 200
+    assert frame.parent_session_id == "s0"
+
+    status, _, frame = validate_request("POST", "/v1/hello", dict(HELLO, parent_session_id=None))
+    assert status == 200
+    assert frame.parent_session_id is None
+
+    status, _, frame = validate_request("POST", "/v1/hello", HELLO)
+    assert status == 200
+    assert frame.parent_session_id is None
+
+
+def test_hello_rejects_a_non_string_parent_session_id():
+    for value in (42, {}, [], True):
+        body = dict(HELLO, parent_session_id=value)
+        assert validate_request("POST", "/v1/hello", body) == (400, ErrorCode.BAD_FRAME, None)

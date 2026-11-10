@@ -19,7 +19,7 @@ class SessionStore:
             model.provider if model is not None else None,
             model.id if model is not None else None,
             frame.thinking_level, frame.reason, frame.previous_session_id,
-            frame.pi_version, frame.ext_version, now, now,
+            frame.parent_session_id, frame.pi_version, frame.ext_version, now, now,
         ]
         with self.db._connection() as conn:
             conn.execute(UPSERT_SQL, values)

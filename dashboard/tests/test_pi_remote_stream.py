@@ -20,6 +20,8 @@ def _summary(session_id="s1", instance_id="i1", live=True):
         live=live,
         state="idle" if live else None,
         context_percent=None,
+        parent_session_id=None,
+        project="tmp",
     )
 
 
@@ -222,4 +224,36 @@ def test_session_stream_ends_once_its_session_is_removed():
 
     source.bus.publish(BusMessage("removed", ("s1", "i1")))
     assert next(generator).startswith("event: session_removed\n")
+    assert list(generator) == []
+
+
+def test_session_frames_carry_parent_and_project():
+    child = SessionSummary(
+        session_id="s2",
+        instance_id="i2",
+        name=None,
+        cwd="/github/teo-mateo/llm-dock",
+        model=None,
+        thinking_level=None,
+        first_seen=1000,
+        last_seen=2000,
+        ended_at=None,
+        end_reason=None,
+        live=True,
+        state="idle",
+        context_percent=None,
+        parent_session_id="s1",
+        project="teo-mateo/llm-dock",
+    )
+    source = _FakeSource(summaries=[child])
+    generator = sessions_stream(source, keepalive_s=0.01)
+    snapshot = next(generator)
+    assert '"parent_session_id":"s1"' in snapshot
+    assert '"project":"teo-mateo/llm-dock"' in snapshot
+
+    source.bus.publish(BusMessage("session", ("s2", "i2"), summary=child))
+    delta = next(generator)
+    assert delta.startswith("event: session\n")
+    assert '"parent_session_id":"s1"' in delta
+    source.bus.close()
     assert list(generator) == []

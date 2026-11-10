@@ -21,6 +21,8 @@ class SessionSummary:
     live: bool
     state: Optional[str]
     context_percent: Optional[float]
+    parent_session_id: Optional[str]
+    project: str
     prompts: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -37,6 +39,11 @@ class EventPage:
     events: List[EventView]
     next_after: int
     has_more: bool
+
+
+def project_label(cwd: str) -> str:
+    segments = [segment for segment in cwd.replace("\\", "/").split("/") if segment]
+    return "/".join(segments[-2:]) if segments else "/"
 
 
 def session_summary(
@@ -63,6 +70,8 @@ def session_summary(
         live=live,
         state=presence.state if presence is not None else None,
         context_percent=context.percent if context is not None else None,
+        parent_session_id=row.get("parent_session_id"),
+        project=project_label(row["cwd"]),
         prompts=[prompt.question() for prompt in prompts if prompt.status == "open"],
     )
 

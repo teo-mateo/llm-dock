@@ -298,15 +298,15 @@ differs, and keeping it apart avoids touching chat migrations. Precedent:
 
 | Table | Holds |
 |---|---|
-| `pi_sessions` | session_id, instance_id, cwd, name, session_file, model, first/last seen, ended_at, end_reason, previous_session_id, persisted `acked_seq` |
+| `pi_sessions` | session_id, instance_id, cwd, name, session_file, model, first/last seen, ended_at, end_reason, previous_session_id, parent_session_id, persisted `acked_seq` |
 | `pi_events` | (session_id, instance_id, seq) PK, type, ts, payload_json, gap_from, gap_to, received_at — dedup on retry; indexed by session and seq |
 | `pi_prompts` | prompt_id, session, kind, question, options, status, answered_by, value, opened/closed |
 | `pi_commands` | audit log: command_id, session, type, payload digest, client token kind, IP, ts, result |
 | `pi_attachments` | uploaded images/audio, size-capped, by id |
 
 Histories survive pi exit because they are the event log. `PiRemoteDB._init_db` migrates
-the #331 `pi_sessions` table by adding `acked_seq`, and adds `gap_from`/`gap_to` to an
-existing `pi_events` table. Retention bound: events
+the #331 `pi_sessions` table by adding `acked_seq` and `parent_session_id`, and adds
+`gap_from`/`gap_to` to an existing `pi_events` table. Retention bound: events
 older than **30 days** (`received_at`) are deleted; ended sessions' events are kept
 until that bound, not deleted at `bye`. The sweeper alone owns the purge: its first
 sweep after listener start purges, then at most once per hour. It does not purge on
@@ -366,6 +366,7 @@ path constants are owned by `pi-extension/src/protocol.ts` (`PATHS`, builders,
 | `thinking_level` | string | yes | pi thinking level |
 | `reason` | enum | no | `startup` \| `reload` \| `new` \| `resume` \| `fork` |
 | `previous_session_id` | string | yes | set for new/resume/fork |
+| `parent_session_id` | string | yes | pi session id of the session that launched this subagent run; null for root sessions and for extensions that predate the field |
 | `pi_version` | string | yes | null when not obtainable |
 | `ext_version` | string | no | extension package version |
 

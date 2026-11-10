@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS pi_sessions (
     thinking_level      TEXT,
     reason              TEXT NOT NULL,
     previous_session_id TEXT,
+    parent_session_id   TEXT,
     pi_version          TEXT,
     ext_version         TEXT NOT NULL,
     first_seen          INTEGER NOT NULL,
@@ -116,9 +117,9 @@ UPSERT_SQL = """
 INSERT INTO pi_sessions (
     session_id, instance_id, session_file, cwd, name, pid,
     model_provider, model_id, thinking_level, reason,
-    previous_session_id, pi_version, ext_version,
+    previous_session_id, parent_session_id, pi_version, ext_version,
     first_seen, last_seen, ended_at, end_reason, acked_seq
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
 ON CONFLICT(session_id, instance_id) DO UPDATE SET
     session_file = excluded.session_file,
     cwd = excluded.cwd,
@@ -129,6 +130,7 @@ ON CONFLICT(session_id, instance_id) DO UPDATE SET
     thinking_level = excluded.thinking_level,
     reason = excluded.reason,
     previous_session_id = excluded.previous_session_id,
+    parent_session_id = excluded.parent_session_id,
     pi_version = excluded.pi_version,
     ext_version = excluded.ext_version,
     last_seen = excluded.last_seen,

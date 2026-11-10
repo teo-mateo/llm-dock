@@ -1,6 +1,6 @@
 from pi_remote.events import StoredEvent
 from pi_remote.frames import ContextUsage, HelloFrame, ModelRef
-from pi_remote.read_model import clamp_limit, event_page, session_summary
+from pi_remote.read_model import clamp_limit, event_page, project_label, session_summary
 from pi_remote.registry import PresenceEntry
 
 
@@ -16,6 +16,7 @@ def _hello():
         thinking_level="high",
         reason="startup",
         previous_session_id=None,
+        parent_session_id=None,
         pi_version=None,
         ext_version="0.1.0",
     )
@@ -34,6 +35,7 @@ def _row(**overrides):
         "last_seen": 2000,
         "ended_at": None,
         "end_reason": None,
+        "parent_session_id": None,
     }
     row.update(overrides)
     return row
@@ -101,3 +103,31 @@ def test_clamp_limit_default_min_max():
     assert clamp_limit(0) == 1
     assert clamp_limit(1000) == 500
     assert clamp_limit(50) == 50
+
+
+def test_project_label_uses_the_last_two_segments():
+    assert project_label("/github/teo-mateo/llm-dock") == "teo-mateo/llm-dock"
+    assert project_label("/github/teo-mateo/llm-dock/") == "teo-mateo/llm-dock"
+    assert project_label("/repo") == "repo"
+    assert project_label("/home/teodor") == "home/teodor"
+    assert project_label("/") == "/"
+    assert project_label("") == "/"
+    assert project_label("C:\\Users\\teo\\proj") == "teo/proj"
+
+
+def test_project_label_collides_for_equal_tails():
+    assert project_label("/a/x/y") == project_label("/b/x/y") == "x/y"
+
+
+def test_summary_carries_parent_and_project():
+    summary = session_summary(
+        _row(parent_session_id="root", cwd="/github/teo-mateo/llm-dock"), None
+    )
+    assert summary.parent_session_id == "root"
+    assert summary.project == "teo-mateo/llm-dock"
+
+
+def test_summary_of_a_root_session_has_no_parent():
+    summary = session_summary(_row(), None)
+    assert summary.parent_session_id is None
+    assert summary.project == "tmp"
