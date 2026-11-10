@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi sessions — delete</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  .stage { position: relative; }
+  .mini { width: 300px; height: 470px; padding: 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--app); position: relative; display: flex; flex-direction: column; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="board">
+  <header>
+    <h1>Deleting an ended pi session from the web</h1>
+    <p>Same contract and behaviour as the phone's swipe-to-delete (<span class="mono">docs/plans/pi-session-swipe-delete.md</span>): only ended sessions offer it, the row leaves at once, the <span class="mono">DELETE</span> waits out a 3-second undo window, a failure puts the row back and says why. Builds on the project tree (<span class="mono">session-tree.html</span>).</p>
+  </header>
+
+  <section>
+    <p class="frame-title">A · Desktop — where the control lives</p>
+    <div class="frames">
+      <div class="desktop" style="height:520px">
+        <aside class="list">
+          <div class="list-head"><h2>Sessions</h2></div>
+          <div class="section-label">Live</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">1</span></div>
+          <div class="row"><span class="dot working"></span><span class="title">product-owner</span><span class="state working">working</span></div>
+          <div class="section-label">Ended</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">3</span></div>
+          <div class="row hover"><span class="dot ended"></span><span class="title">headless-developer</span><span class="icon-btn hot" title="Delete session">🗑</span></div>
+          <div class="child-wrap">
+            <div class="row child"><span class="glyph">↳</span><span class="dot ended"></span><span class="title">run vitest</span><span class="state ended">ended</span></div>
+          </div>
+          <div class="row selected"><span class="dot ended"></span><span class="title">survey tool shapes</span><span class="state ended">ended</span></div>
+        </aside>
+        <section class="canvas">
+          <div class="sess-head">
+            <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+              <span class="t">survey tool shapes</span>
+              <span class="meta">ended 2 h ago · qwen3.8-27b</span>
+            </div>
+            <span class="btn danger">Delete</span>
+          </div>
+          <div class="transcript">
+            <div class="user-msg">List every tool name in pi_events.</div>
+            <div class="assistant">Nine tool names appear…</div>
+          </div>
+          <div class="composer"><div class="input">This session has ended.</div></div>
+        </section>
+      </div>
+      <div class="note">
+        <span class="callout">TWO ENTRY POINTS</span>
+        <ol>
+          <li><b>List row</b>: on hover or keyboard focus of an <i>ended</i> row, the status word is replaced by a 24px trash button (<span class="mono">aria-label="Delete session &lt;name&gt;"</span>). It turns red on hover. Clicking it must not open the session.</li>
+          <li><b>Session header</b>: a quiet red-outline <i>Delete</i> button, shown only when the open session has ended.</li>
+        </ol>
+        <span class="callout">NOT OFFERED</span>
+        <ul>
+          <li>Live sessions get no control at all — the server answers 409 for them, and ending a session is Stop's job.</li>
+          <li>No confirm dialog: the undo window is the safety net.</li>
+          <li>Deleting a parent deletes only that row; its subagents move up and show as roots.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">B · Undo window, then the two failure cases</p>
+    <div class="frames">
+      <div>
+        <p class="frame-title" style="color:var(--fg-muted)">1 · just deleted (0–3 s)</p>
+        <div class="mini">
+          <div class="section-label">Ended</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">2</span></div>
+          <div class="row"><span class="dot ended"></span><span class="title">run vitest</span><span class="state ended">ended</span></div>
+          <div class="row selected"><span class="dot ended"></span><span class="title">survey tool shapes</span><span class="state ended">ended</span></div>
+          <div class="toast" style="left:14px;right:14px;bottom:14px">
+            <span style="flex:1">Deleted <b>headless-developer</b></span><span class="btn link">Undo</span>
+            <span class="bar" style="width:62%"></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="frame-title" style="color:var(--fg-muted)">2 · became live again → 409</p>
+        <div class="mini">
+          <div class="section-label">Live</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">1</span></div>
+          <div class="row"><span class="dot idle"></span><span class="title">headless-developer</span><span class="state idle">idle</span></div>
+          <div class="section-label">Ended</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">2</span></div>
+          <div class="row"><span class="dot ended"></span><span class="title">run vitest</span><span class="state ended">ended</span></div>
+          <div class="toast err" style="left:14px;right:14px;bottom:14px">
+            <span style="color:var(--danger-fg)">●</span><span style="flex:1">A running session can't be deleted.</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="frame-title" style="color:var(--fg-muted)">3 · network / 5xx</p>
+        <div class="mini">
+          <div class="section-label">Ended</div>
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">3</span></div>
+          <div class="row"><span class="dot ended"></span><span class="title">headless-developer</span><span class="state ended">ended</span></div>
+          <div class="row"><span class="dot ended"></span><span class="title">run vitest</span><span class="state ended">ended</span></div>
+          <div class="toast err" style="left:14px;right:14px;bottom:14px">
+            <span style="color:var(--danger-fg)">●</span><span style="flex:1">Couldn't delete headless-developer: dashboard unreachable.</span>
+          </div>
+        </div>
+      </div>
+      <div class="note">
+        <span class="callout">FLOW</span>
+        <ol>
+          <li>Click: the row leaves the list at once (its project count drops; an emptied project disappears). If it was open, navigate to <span class="mono">/pi</span>.</li>
+          <li>A toast at the bottom of the list column: <i>Deleted &lt;name&gt; · Undo</i>, with a thin bar draining over <b>3 s</b>. Undo restores the row; nothing was sent.</li>
+          <li>When the window expires, send <span class="mono">DELETE /api/pi/sessions/&lt;sid&gt;/&lt;iid&gt;</span>. 200 or 404 → done, silently.</li>
+          <li><b>409</b> (pi reconnected meanwhile): row comes back, toast <i>A running session can't be deleted.</i></li>
+          <li>Any other failure: row comes back, toast names the session and the error. Never show the raw code (<span class="mono">pi_session_live</span>).</li>
+          <li>A second delete during the window commits the first one immediately — one pending delete at a time, like the phone.</li>
+          <li>A stream update during the window must not bring the pending row back.</li>
+        </ol>
+        <span class="callout">ALSO</span>
+        <ul><li>The sessions stream already sends <span class="mono">session_removed</span>; the web ignores it today, so a session deleted from the phone stays on the web until reload. Apply it: drop the row, and if it is the open session show the existing <i>no longer known</i> state.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">C · Phone (&lt; 768px)</p>
+    <div class="frames">
+      <div class="phone" style="height:440px;position:relative">
+        <div class="list" style="width:auto;gap:6px">
+          <div class="list-head"><h2>Sessions</h2></div>
+          <div class="section-label">Ended</div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">3</span></div>
+          <div class="row" style="min-height:44px"><span class="dot ended"></span><span class="title">headless-developer</span><span class="state ended">ended</span><span class="icon-btn" style="width:36px;height:36px">🗑</span></div>
+          <div class="child-wrap">
+            <div class="row child" style="min-height:44px"><span class="glyph">↳</span><span class="dot ended"></span><span class="title">run vitest</span><span class="state ended">ended</span><span class="icon-btn" style="width:36px;height:36px">🗑</span></div>
+          </div>
+          <div class="row" style="min-height:44px"><span class="dot ended"></span><span class="title">survey tool shapes</span><span class="state ended">ended</span><span class="icon-btn" style="width:36px;height:36px">🗑</span></div>
+        </div>
+        <div class="toast" style="left:12px;right:12px;bottom:14px"><span style="flex:1">Deleted <b>pi-extension</b></span><span class="btn link">Undo</span><span class="bar" style="width:30%"></span></div>
+      </div>
+      <div class="note">
+        <span class="callout">PHONE</span>
+        <ul>
+          <li>No hover, so the trash button is always visible on ended rows, after the status word, as a 36px target inside the 44px row.</li>
+          <li>Toast spans the screen width above the bottom edge; the Undo target is at least 44px wide.</li>
+          <li>Swipe gestures are not needed on the web.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
