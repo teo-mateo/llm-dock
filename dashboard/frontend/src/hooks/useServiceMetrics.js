@@ -61,7 +61,8 @@ function normalizeMetrics(raw, engine) {
 }
 
 export default function useServiceMetrics({ serviceName, enabled }) {
-  const { byType } = useEngineCatalogue()
+  const { status: catalogueStatus, error: catalogueError, byType } = useEngineCatalogue()
+  const catalogueReady = catalogueStatus === 'ready'
   const byTypeRef = useRef(byType)
   byTypeRef.current = byType
   const [metrics, setMetrics] = useState({})
@@ -93,8 +94,15 @@ export default function useServiceMetrics({ serviceName, enabled }) {
 
     if (!enabled) return
 
-     
+    // Whether /slots applies is the catalogue's call, so no poll runs (and no
+    // counter baseline is seeded) before it has loaded.
+    if (catalogueStatus === 'error') {
+      setLoading(false)
+      setError(`Couldn't load the engine list: ${catalogueError}`)
+      return
+    }
     setLoading(true)
+    if (!catalogueReady) return
     let pollActive = true
     let inFlight = false
 
@@ -277,7 +285,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
       mountedRef.current = false
       clearInterval(id)
     }
-  }, [serviceName, enabled])
+  }, [serviceName, enabled, catalogueReady, catalogueStatus, catalogueError])
 
   return { metrics, history, loading, error, lastScraped, engine }
 }

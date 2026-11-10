@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request, Response, stream_with_context
 from auth import require_auth
 from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
+import tabby_keys
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
@@ -496,15 +497,12 @@ def delete_service(service_name):
         # deleting them is a deliberate action in the Inspector UI.
         proxy_supervisor.sync()
 
-        # Drop the TabbyAPI per-service key file (secrets) so a deleted service
-        # does not leave api/admin keys on disk.
-        if service_config.get("template_type") == "tabbyapi":
-            try:
-                import tabby_keys
-
-                tabby_keys.remove(service_name)
-            except Exception as e:
-                logger.warning(f"Failed to remove TabbyAPI key file for '{service_name}': {e}")
+        # A service that never had a key file (every engine but TabbyAPI) is a no-op;
+        # one that did must not leave its api/admin keys on disk.
+        try:
+            tabby_keys.remove(service_name)
+        except Exception as e:
+            logger.warning(f"Failed to remove key file for '{service_name}': {e}")
 
         from services import event_manager
         event_manager.emit({
