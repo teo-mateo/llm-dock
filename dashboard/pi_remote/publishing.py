@@ -31,18 +31,32 @@ def publish_session(
     instance_id: str,
     now: int,
 ) -> None:
+    row = store.sessions.get(session_id, instance_id)
+    if row is None:
+        return
+    parents = resolve_parent(store.sessions.list())
+    presence = registry.get(session_id, instance_id, now)
+    prompts = store.prompts.open_for(session_id, instance_id)
+    publish(
+        "session",
+        (session_id, instance_id),
+        (),
+        session_summary(row, presence, prompts, parents),
+    )
+    publish_children(store, registry, publish, session_id, now)
+
+
+def publish_children(
+    store: PiRemoteDB,
+    registry: PresenceRegistry,
+    publish: PublishCallback,
+    session_id: str,
+    now: int,
+) -> None:
     rows = store.sessions.list()
     by_key = {row_key(row): row for row in rows}
-    key = (session_id, instance_id)
-    if key not in by_key:
-        return
     parents = resolve_parent(rows)
-    keys = [key]
-    for child in children_to_republish(rows, session_id):
-        if child not in keys:
-            keys.append(child)
-    for each in keys:
-        presence = registry.get(each[0], each[1], now)
-        prompts = store.prompts.open_for(each[0], each[1])
-        summary = session_summary(by_key[each], presence, prompts, parents)
-        publish("session", each, (), summary)
+    for key in children_to_republish(rows, session_id):
+        presence = registry.get(key[0], key[1], now)
+        prompts = store.prompts.open_for(key[0], key[1])
+        publish("session", key, (), session_summary(by_key[key], presence, prompts, parents))

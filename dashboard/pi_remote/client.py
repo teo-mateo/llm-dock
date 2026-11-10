@@ -4,6 +4,7 @@ from .bus import BusMessage, EventBus, SessionKey, Subscription
 from .command_queue import CommandQueue
 from .commands import CommandResult
 from .limits import RateLimiter
+from .publishing import bus_publisher, publish_children
 from .read_model import (
     EventPage,
     SessionSummary,
@@ -92,6 +93,7 @@ class PiRemoteClient:
         self.store.commands.drop([command.command_id for command in pending], now)
         self.store.sessions.delete(key[0], key[1])
         self.bus.publish(BusMessage("removed", key))
+        publish_children(self.store, self.registry, bus_publisher(self.bus), key[0], now)
         return None
 
     def send_command(
