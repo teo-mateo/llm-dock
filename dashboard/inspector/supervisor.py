@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 import config
 from compose_manager import ComposeManager
+from port_conflicts import duplicate_ports
 
 from .db import InspectorDB
 from .proxy import ServiceProxy
@@ -63,10 +64,26 @@ class ProxySupervisor:
                 logger.debug("Inspector sync: compose file not found; nothing to reconcile")
                 return
 
+            contested = {
+                port: names
+                for port, names in duplicate_ports(
+                    {n: {"port": c.get("port")} for n, c in services.items()}
+                ).items()
+            }
+            running = self._running_services() if contested else set()
+
             desired: Dict[str, dict] = {}
             for name, cfg in services.items():
                 if not cfg.get("inspect"):
                     continue
+                if cfg.get("port") is not None and int(cfg["port"]) in contested:
+                    if name not in running:
+                        logger.warning(
+                            "Inspector: port %s is claimed by %s; not holding it for "
+                            "stopped service '%s'",
+                            cfg["port"], contested[int(cfg["port"])], name,
+                        )
+                        continue
                 port = cfg.get("port")
                 upstream = cfg.get("inspect_upstream_port")
                 if not port or not upstream:
@@ -104,6 +121,15 @@ class ProxySupervisor:
             for name, spec in desired.items():
                 if name not in self._proxies:
                     self._start(name, spec)
+
+    def _running_services(self) -> set:
+        from docker_utils import get_docker_services
+
+        try:
+            return {s["name"] for s in get_docker_services() if s["status"] == "running"}
+        except Exception as e:
+            logger.warning("Inspector: could not read container status: %s", e)
+            return set()
 
     def _start(self, name: str, spec: dict) -> ServiceProxy:
         proxy = ServiceProxy(

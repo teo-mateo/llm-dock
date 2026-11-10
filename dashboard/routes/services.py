@@ -21,6 +21,7 @@ from flag_metadata import (
     get_flag_metadata,
     MANDATORY_FIELDS,
 )
+from port_conflicts import find_port_owner, next_free_port, port_in_use_body, start_blocker
 from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.ports import allocate_upstream_port
@@ -38,6 +39,7 @@ services_bp = Blueprint("services", __name__)
 # Module constant so tests can pin a free port instead of colliding with the
 # live 3301 slot on the machine the suite runs on.
 PUBLIC_SLOT_PORT = 3301
+DASHBOARD_PORT = 3399
 
 # Shared across all blueprints — see db_lock.py. Aliased to preserve the
 # existing private-looking names used throughout this module.
@@ -127,6 +129,17 @@ def get_service(service_name):
 # ============================================
 
 
+def _start_port_conflict(service_name: str) -> dict | None:
+    services = ComposeManager(COMPOSE_FILE).list_services_in_db()
+    if service_name not in services:
+        return None
+    statuses = {s["name"]: s["status"] for s in get_docker_services()}
+    owner = start_blocker(services, service_name, lambda n: statuses.get(n) == "running")
+    if owner is None:
+        return None
+    return port_in_use_body(services[service_name]["port"], owner)
+
+
 @services_bp.route("/api/services/<service_name>/start", methods=["POST"])
 @require_auth
 @_serialize_db
@@ -138,6 +151,10 @@ def start_service(service_name):
     the just-revoked key (rotation only stops the containers it snapshotted
     as running, so such a container would otherwise be missed).
     """
+    blocked = _start_port_conflict(service_name)
+    if blocked:
+        return jsonify({"success": False, **blocked}), 400
+
     result = control_service(service_name, "start")
 
     if result["success"]:
@@ -303,10 +320,12 @@ def create_service():
         if compose_mgr.get_service_from_db(service_name):
             return jsonify({"error": f'Service "{service_name}" already exists'}), 409
 
-        # Check port availability
         port = int(data["port"])
-        if port in compose_mgr.get_used_ports():
-            return jsonify({"error": f"Port {port} is already in use"}), 409
+        owner = find_port_owner(
+            compose_mgr.list_services_in_db(), port, compose_ports=compose_mgr.get_used_ports()
+        )
+        if owner:
+            return jsonify(port_in_use_body(port, owner)), 400
 
         # Add to database and rebuild
         compose_mgr.add_service_to_db(service_name, data)
@@ -381,10 +400,15 @@ def update_service(service_name):
 
         # Check port if changed
         if "port" in data and int(data["port"]) != int(existing.get("port", 0)):
-            used_ports = compose_mgr.get_used_ports()
             new_port = int(data["port"])
-            if new_port in used_ports:
-                return jsonify({"error": f"Port {new_port} is already in use"}), 409
+            owner = find_port_owner(
+                compose_mgr.list_services_in_db(),
+                new_port,
+                exclude=service_name,
+                compose_ports=compose_mgr.get_used_ports(),
+            )
+            if owner:
+                return jsonify(port_in_use_body(new_port, owner)), 400
 
         # Update in database — merge into existing to preserve fields not
         # sent by the client (favorite, etc.)
@@ -695,6 +719,13 @@ def set_public_port(service_name):
             new_port = compose_mgr.get_next_available_port(
                 start_port=3300, end_port=3399
             )
+            if find_port_owner(all_services, new_port, exclude=conflicting_service_name):
+                new_port = next_free_port(
+                    all_services,
+                    compose_mgr.get_used_ports() | {DASHBOARD_PORT},
+                    start=3300,
+                    end=3399,
+                )
             conflicting_service["port"] = new_port
             compose_mgr.update_service_in_db(
                 conflicting_service_name, conflicting_service
