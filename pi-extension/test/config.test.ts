@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { DEFAULT_SOCKET_PATH, resolveConfig } from "../src/config.ts";
+import { DEFAULT_SOCKET_PATH, readExtVersion, resolveConfig } from "../src/config.ts";
 
 const home = "/home/tester";
 const fileSocket = "/run/file.sock";
@@ -72,4 +76,32 @@ test("malformed file is ignored", () => {
   assert.equal(config.enabled, true);
   assert.equal(config.socketPath, `${home}/.cache/pi-remote/pi-remote.sock`);
   assert.equal(config.configPath, `${home}/.pi/agent/pi-remote.json`);
+});
+
+function scratch(): string {
+  return mkdtempSync(join(tmpdir(), "pi-ext-version-"));
+}
+
+test("reads the version when the extension is loaded through a symlink", () => {
+  const root = scratch();
+  try {
+    const real = join(root, "real");
+    mkdirSync(join(real, "src"), { recursive: true });
+    writeFileSync(join(real, "package.json"), JSON.stringify({ version: "9.9.9" }));
+    writeFileSync(join(real, "src", "index.ts"), "");
+    symlinkSync(join(real, "src"), join(root, "link"), "dir");
+    assert.equal(readExtVersion(pathToFileURL(join(root, "link", "index.ts"))), "9.9.9");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("falls back to 0.0.0 when the package file is missing", () => {
+  const root = scratch();
+  try {
+    writeFileSync(join(root, "index.ts"), "");
+    assert.equal(readExtVersion(pathToFileURL(join(root, "index.ts"))), "0.0.0");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

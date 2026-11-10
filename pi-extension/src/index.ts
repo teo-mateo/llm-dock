@@ -13,7 +13,7 @@ import { registerEventSubscriptions } from "./subscriptions.ts";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
-  const extVersion = readExtVersion(new URL("../package.json", import.meta.url));
+  const extVersion = readExtVersion(import.meta.url);
   const piVersion = detectPiVersion();
   const parentSessionId = parentSessionIdFrom(process.env);
   const activity = createActivity();

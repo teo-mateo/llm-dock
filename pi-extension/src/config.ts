@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const DEFAULT_SOCKET_PATH = "~/.cache/pi-remote/pi-remote.sock";
 export const CONFIG_FILE = "~/.pi/agent/pi-remote.json";
@@ -63,9 +64,10 @@ export function resolveConfig(input: ConfigInput = {}): RemoteConfig {
   };
 }
 
-export function readExtVersion(packageUrl: URL | string): string {
+export function readExtVersion(moduleUrl: URL | string): string {
   try {
-    const parsed = JSON.parse(readFileSync(packageUrl, "utf8"));
+    const modulePath = realpathSync(fileURLToPath(moduleUrl));
+    const parsed = JSON.parse(readFileSync(join(dirname(modulePath), "..", "package.json"), "utf8"));
     return typeof parsed.version === "string" ? parsed.version : "0.0.0";
   } catch {
     return "0.0.0";
