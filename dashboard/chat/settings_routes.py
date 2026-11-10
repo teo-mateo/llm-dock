@@ -1,4 +1,4 @@
-"""HTTP surface for MCP server listing and the default system prompt setting."""
+"""HTTP surface for the default main system prompt setting."""
 
 import logging
 
@@ -6,37 +6,11 @@ from flask import jsonify, request
 
 from auth import require_auth
 
-from . import settings_store, url_retrieval
-from .app_deps import deps
+from . import settings_store
 from .blueprint import chat_bp
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT
-from .mcp_registry import list_available_servers
 
 logger = logging.getLogger(__name__)
-
-
-@chat_bp.route("/api/chat/mcp-servers", methods=["GET"])
-@require_auth
-def get_mcp_servers():
-    servers = list_available_servers()
-    if request.args.get(url_retrieval.PROBE_PARAM) == url_retrieval.URL_FETCH_PROBE:
-        return jsonify({"servers": servers, "url_fetch": _url_fetch_probe(servers)})
-    return jsonify({"servers": servers})
-
-
-def _url_fetch_probe(servers: list) -> dict:
-    """`url_fetch` payload for `?probe=url-fetch` — see chat/url_retrieval.py."""
-    try:
-        manager = deps().mcp
-    except LookupError:
-        manager = None
-
-    def discover(server_id: str) -> list:
-        if manager is None:
-            raise RuntimeError("MCP manager not initialised")
-        return manager.discover_bounded(server_id, url_retrieval.PROBE_TIMEOUT)
-
-    return url_retrieval.probe(servers, discover)
 
 
 # -- Settings: editable default main system prompt --
