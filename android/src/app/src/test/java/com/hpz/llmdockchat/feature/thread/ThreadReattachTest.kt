@@ -534,6 +534,25 @@ class ThreadReattachTest {
         assertTrue("every retry is a reattach", transport.requests.all { it.method == "GET" })
     }
 
+    /**
+     * `run_started` is the handshake every subscribe gets, so a stream carrying
+     * only it and then closing is not progress — the ceiling must still end the
+     * loop instead of hot-looping load + reattach forever.
+     */
+    @Test
+    fun `a stream that only ever resends run_started still hits the ceiling`() = threadTest {
+        val runStarted = """{"type": "run_started", "run_id": "2ace573e-6084-4f28-b154-fe052082fc6c"}"""
+        repeat(9) { conversation("conversation_active_run.json") }
+        repeat(8) { transport.script(ScriptedSseTransport.Leg(payloads = listOf(runStarted))) }
+
+        val viewModel = viewModel()
+        viewModel.load()
+
+        viewModel.awaitState("the turn gives up at the ceiling") { it.thread.streaming == null }
+        assertEquals("one subscribe plus seven backed-off reattaches", 8, transport.requests.size)
+        assertTrue("every retry is a reattach", transport.requests.all { it.method == "GET" })
+    }
+
     /** The second criterion. A send that never reaches the server loses nothing. */
     @Test
     fun `a send with no network keeps the text in the composer and says why`() = threadTest {
