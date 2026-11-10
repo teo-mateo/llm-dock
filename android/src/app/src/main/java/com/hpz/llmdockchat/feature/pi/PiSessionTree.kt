@@ -26,8 +26,8 @@ data class PiSessionTree(val live: List<PiProjectGroup>, val ended: List<PiProje
 }
 
 fun buildPiSessionTree(sessions: List<PiSession>): PiSessionTree {
-    val bySessionId = sessions.groupBy { it.key.sessionId }
-    val parentOf = sessions.associate { it.key to parentRow(it, bySessionId) }
+    val byKey = sessions.associateBy { it.key }
+    val parentOf = sessions.associate { it.key to parentRow(it, byKey) }
     val roots = mutableListOf<PiSession>()
     val childrenByRoot = mutableMapOf<PiSessionKey, MutableList<PiSession>>()
     for (session in sessions) {
@@ -53,17 +53,11 @@ private val nodeOrder = compareByDescending<PiSessionNode> { it.session.lastSeen
     .thenBy { it.session.key.sessionId }
     .thenBy { it.session.key.instanceId }
 
-private val parentOrder = compareByDescending<PiSession> { it.live }
-    .thenByDescending { it.lastSeen }
-    .thenByDescending { it.firstSeen }
-    .thenBy { it.key.instanceId }
-
-private fun parentRow(session: PiSession, bySessionId: Map<String, List<PiSession>>): PiSession? {
-    val parentId = session.parentSessionId ?: return null
-    return bySessionId[parentId]
-        ?.filterNot { it.key == session.key }
-        ?.sortedWith(parentOrder)
-        ?.firstOrNull()
+private fun parentRow(session: PiSession, byKey: Map<PiSessionKey, PiSession>): PiSession? {
+    val parentSessionId = session.parentSessionId ?: return null
+    val parentInstanceId = session.parentInstanceId ?: return null
+    val parent = byKey[PiSessionKey(parentSessionId, parentInstanceId)] ?: return null
+    return parent.takeIf { it.key != session.key }
 }
 
 private fun topAncestor(

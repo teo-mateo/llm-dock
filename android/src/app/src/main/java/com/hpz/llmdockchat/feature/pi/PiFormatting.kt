@@ -24,13 +24,9 @@ fun piSessionTitle(session: PiSession): String =
         ?: session.cwd.trimEnd('/').split('/').lastOrNull()?.takeIf { it.isNotBlank() }
         ?: session.cwd
 
-fun piSessionMetaHead(cwd: String, model: String?): String =
-    listOfNotNull(model?.takeIf { it.isNotBlank() }, shortCwd(cwd)).joinToString(" · ")
-
-private fun shortCwd(cwd: String): String? {
-    val segments = cwd.trimEnd('/').split('/').filter { it.isNotBlank() }
-    return segments.takeLast(2).joinToString("/").takeIf { it.isNotBlank() }
-}
+fun piSessionMetaHead(project: String?, model: String?): String =
+    listOfNotNull(model?.takeIf { it.isNotBlank() }, project?.takeIf { it.isNotBlank() })
+        .joinToString(" · ")
 
 fun piContextLabel(contextPercent: Double?): String? = contextPercent?.let { "ctx ${Math.round(it)}%" }
 

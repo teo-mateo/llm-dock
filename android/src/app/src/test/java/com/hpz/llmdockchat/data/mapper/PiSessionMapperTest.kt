@@ -16,6 +16,7 @@ class PiSessionMapperTest {
         state: String? = "idle",
         prompts: List<PiPromptDto> = emptyList(),
         parentSessionId: String? = null,
+        parentInstanceId: String? = null,
         project: String? = null,
     ) = PiSessionDto(
         sessionId = "s1",
@@ -32,6 +33,7 @@ class PiSessionMapperTest {
         state = state,
         contextPercent = 22.5,
         parentSessionId = parentSessionId,
+        parentInstanceId = parentInstanceId,
         project = project,
         prompts = prompts,
     )
@@ -89,10 +91,15 @@ class PiSessionMapperTest {
     }
 
     @Test
-    fun `parent session and project map through`() {
-        val session = dto(parentSessionId = "root", project = "teo-mateo/llm-dock").toDomain()
+    fun `parent session, parent instance and project map through`() {
+        val session = dto(
+            parentSessionId = "root",
+            parentInstanceId = "i9",
+            project = "teo-mateo/llm-dock",
+        ).toDomain()
 
         assertEquals("root", session.parentSessionId)
+        assertEquals("i9", session.parentInstanceId)
         assertEquals("teo-mateo/llm-dock", session.project)
     }
 
@@ -101,6 +108,7 @@ class PiSessionMapperTest {
         val session = dto().toDomain()
 
         assertNull(session.parentSessionId)
+        assertNull(session.parentInstanceId)
         assertNull(session.project)
     }
 }

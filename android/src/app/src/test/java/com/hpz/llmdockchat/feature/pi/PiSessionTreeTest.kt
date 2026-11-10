@@ -15,6 +15,7 @@ class PiSessionTreeTest {
         instance: String = "i1",
         live: Boolean = true,
         parent: String? = null,
+        parentInstance: String? = "i1",
         project: String? = "repo",
         firstSeen: Long = 0,
         lastSeen: Long = 0,
@@ -32,6 +33,7 @@ class PiSessionTreeTest {
         state = if (live) PiState.IDLE else PiState.ENDED,
         contextPercent = null,
         parentSessionId = parent,
+        parentInstanceId = if (parent == null) null else parentInstance,
         project = project,
     )
 
@@ -128,12 +130,25 @@ class PiSessionTreeTest {
     }
 
     @Test
-    fun `a reloaded session resolves to its live row`() {
+    fun `a parent without a resolved instance is promoted to top level`() {
+        val tree = buildPiSessionTree(
+            listOf(
+                session("root"),
+                session("run", parent = "root", parentInstance = null),
+            ),
+        )
+
+        assertEquals(listOf("root", "run"), ids(tree.live).sorted())
+        assertTrue(tree.live.single().roots.all { it.children.isEmpty() })
+    }
+
+    @Test
+    fun `a resolved parent instance links the row even when a sibling row shares the session id`() {
         val tree = buildPiSessionTree(
             listOf(
                 session("root", instance = "old", live = false, lastSeen = 1),
                 session("root", instance = "new", live = true, lastSeen = 2),
-                session("run", parent = "root"),
+                session("run", parent = "root", parentInstance = "new"),
             ),
         )
 

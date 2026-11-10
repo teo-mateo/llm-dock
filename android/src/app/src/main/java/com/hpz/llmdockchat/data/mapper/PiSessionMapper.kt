@@ -31,6 +31,7 @@ fun PiSessionDto.toDomain(): PiSession = PiSession(
     },
     contextPercent = contextPercent,
     parentSessionId = parentSessionId,
+    parentInstanceId = parentInstanceId,
     project = project,
     prompts = prompts.map { it.toDomain() },
 )

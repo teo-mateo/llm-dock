@@ -29,6 +29,7 @@ class PiSessionsViewModelTest {
         lastSeen: Long,
         contextPercent: Double?,
         parent: String? = null,
+        parentInstance: String? = null,
         project: String? = null,
     ): String = """
         "session_id":"$id","instance_id":"i1","name":"$name","cwd":"$cwd",
@@ -36,6 +37,7 @@ class PiSessionsViewModelTest {
         "ended_at":null,"end_reason":null,"live":$live,"state":"idle",
         "context_percent":$contextPercent
         ${parent?.let { ",\"parent_session_id\":\"$it\"" } ?: ""}
+        ${parentInstance?.let { ",\"parent_instance_id\":\"$it\"" } ?: ""}
         ${project?.let { ",\"project\":\"$it\"" } ?: ""}
     """.trimIndent()
 
@@ -225,7 +227,7 @@ class PiSessionsViewModelTest {
             """
                 {"type":"snapshot","sessions":[
                     {${sessionFields("root", "root", "/repo", false, 1000, null, project = "repo/one")}},
-                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", project = "repo/one")}}
+                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", parentInstance = "i1", project = "repo/one")}}
                 ]}
             """.trimIndent(),
         )
@@ -247,7 +249,7 @@ class PiSessionsViewModelTest {
             """
                 {"type":"snapshot","sessions":[
                     {${sessionFields("root", "root", "/repo", true, 1000, null, project = "repo/one")}},
-                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", project = "repo/one")}}
+                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", parentInstance = "i1", project = "repo/one")}}
                 ]}
             """.trimIndent(),
         )
