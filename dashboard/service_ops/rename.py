@@ -1,12 +1,24 @@
 import logging
+from dataclasses import dataclass
 
 from service_names import validate_rename
 
-from .deps import RenameDeps
+from .deps import Infra
+from .errors import ErrorKind, OpError, service_not_found
 from .hooks import Phase, RenameContext, run_phase
-from .outcomes import OpError, Renamed
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RenameDeps:
+    infra: Infra
+
+
+@dataclass(frozen=True)
+class Renamed:
+    old_name: str
+    new_name: str
 
 
 def rename(deps: RenameDeps, name: str, new_name: str) -> Renamed | OpError:
@@ -18,15 +30,15 @@ def rename(deps: RenameDeps, name: str, new_name: str) -> Renamed | OpError:
     compose = infra.compose()
     config = compose.get_service_from_db(name)
     if not config:
-        return OpError(404, f'Service "{name}" not found')
+        return service_not_found(name)
 
     container = infra.get_container(name)
     if container and container.status == "running":
-        return OpError(409, "Service must be stopped before renaming")
+        return OpError(ErrorKind.CONFLICT, "Service must be stopped before renaming")
 
     refusal = validate_rename(name, new_name, compose.list_services_in_db())
     if refusal:
-        return OpError(400, refusal)
+        return OpError(ErrorKind.INVALID, refusal)
 
     ctx = RenameContext(name, new_name, config)
     run_phase(infra.hooks, Phase.BEFORE_RENAME, ctx)
@@ -40,7 +52,7 @@ def rename(deps: RenameDeps, name: str, new_name: str) -> Renamed | OpError:
     try:
         compose.rename_service(name, new_name)
     except ValueError as e:
-        return OpError(400, str(e))
+        return OpError(ErrorKind.INVALID, str(e))
 
     run_phase(infra.hooks, Phase.AFTER_RENAME, ctx)
     logger.info(f"Service renamed: {name} -> {new_name}")

@@ -14,7 +14,9 @@ from service_ops.hooks import (
     ServicesChangedContext,
     run_phase,
 )
-from service_ops.outcomes import Deleted, OpError, Renamed
+from service_ops.delete import Deleted
+from service_ops.errors import ErrorKind, OpError, service_not_found
+from service_ops.rename import Renamed
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 
@@ -73,7 +75,8 @@ def test_a_phase_a_hook_does_not_implement_is_a_no_op():
 
 
 def test_the_outcomes_are_plain_values():
-    assert OpError(409, "busy").body() == {"error": "busy"}
+    assert OpError(ErrorKind.CONFLICT, "busy").body() == {"error": "busy"}
+    assert service_not_found("x") == OpError(ErrorKind.NOT_FOUND, 'Service "x" not found')
     assert Renamed("a", "b") != Renamed("a", "c")
     assert Deleted("a") == Deleted("a")
 

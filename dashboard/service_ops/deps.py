@@ -38,39 +38,3 @@ class Infra:
     emit: Callable[[dict], None]
     now: Callable[[], float]
     hooks: Sequence[ServiceHook]
-
-
-@dataclass(frozen=True)
-class RenameDeps:
-    infra: Infra
-
-
-@dataclass(frozen=True)
-class DeleteDeps:
-    infra: Infra
-    stop_container: Callable[[str], None]
-
-
-@dataclass(frozen=True)
-class SetPublicPortDeps:
-    infra: Infra
-    next_free_port: Callable[[Mapping[str, Any], Collection[int]], int]
-    recreate_if_running: Callable[[str], dict]
-
-
-@dataclass(frozen=True)
-class SetInspectDeps:
-    infra: Infra
-    allocate_upstream_port: Callable[[Mapping[str, Any], str], int]
-    recreate_if_running: Callable[[str], dict]
-    proxy_status: Callable[[], Sequence[Mapping[str, Any]]]
-
-
-@dataclass(frozen=True)
-class RotateKeyDeps:
-    infra: Infra
-    affected_state: Callable[[], tuple[Sequence[str], Sequence[str], Sequence[str]]]
-    generate_key: Callable[[], str]
-    rotate_in_db: Callable[[ComposeStore, str], dict]
-    commit_key: Callable[[str], None]
-    stop_service: Callable[[str], dict]

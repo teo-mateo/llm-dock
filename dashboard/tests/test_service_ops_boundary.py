@@ -52,3 +52,23 @@ def test_only_the_wiring_module_imports_the_real_singletons():
             offenders += [f"{path.name}: {n}" for n in names if n.split(".")[0] in singletons]
 
     assert offenders == []
+
+
+def test_the_shared_deps_module_holds_only_infra_and_the_protocols():
+    tree = ast.parse((SERVICE_OPS / "deps.py").read_text())
+
+    assert [node.name for node in tree.body if isinstance(node, ast.ClassDef)] == [
+        "Container", "ComposeStore", "Infra",
+    ]
+    assert not (SERVICE_OPS / "outcomes.py").exists()
+
+
+def test_every_error_kind_has_an_http_status_in_the_route():
+    sys.path.insert(0, str(ROOT))
+    import routes.services as services_route
+    from service_ops.errors import ErrorKind
+
+    assert set(services_route._OP_ERROR_STATUS) == set(ErrorKind)
+    assert services_route._OP_ERROR_STATUS == {
+        ErrorKind.NOT_FOUND: 404, ErrorKind.CONFLICT: 409, ErrorKind.INVALID: 400,
+    }

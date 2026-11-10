@@ -1,9 +1,20 @@
-def affected_services(db_names, docker_services) -> tuple[list, list, list]:
-    """Return (db_service_names, running, openwebui_registered), each sorted.
+from dataclasses import dataclass
 
-    Only services present in services.json are affected by a rotation; infra
+
+@dataclass(frozen=True)
+class AffectedState:
+    """What a default-key rotation touches: every service in services.json,
+    which of them run, and which are registered with Open WebUI."""
+
+    services: list
+    running: list
+    openwebui_registered: list
+
+
+def affected_services(db_names, docker_services) -> AffectedState:
+    """Only services present in services.json are affected by a rotation; infra
     containers like open-webui are never in services.json so they are
-    excluded naturally."""
+    excluded naturally. Every list is sorted."""
     db_services = set(db_names)
     running = []
     openwebui_registered = []
@@ -16,4 +27,4 @@ def affected_services(db_names, docker_services) -> tuple[list, list, list]:
         if svc.get("openwebui_registered"):
             openwebui_registered.append(name)
 
-    return sorted(db_services), sorted(running), sorted(openwebui_registered)
+    return AffectedState(sorted(db_services), sorted(running), sorted(openwebui_registered))

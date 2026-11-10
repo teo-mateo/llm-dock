@@ -1,10 +1,23 @@
 import logging
+from dataclasses import dataclass
+from typing import Callable
 
-from .deps import DeleteDeps
+from .deps import Infra
+from .errors import OpError, service_not_found
 from .hooks import Cause, Phase, ServicesChangedContext, run_phase
-from .outcomes import Deleted, OpError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DeleteDeps:
+    infra: Infra
+    stop_container: Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class Deleted:
+    name: str
 
 
 def delete(deps: DeleteDeps, name: str) -> Deleted | OpError:
@@ -16,7 +29,7 @@ def delete(deps: DeleteDeps, name: str) -> Deleted | OpError:
     compose = infra.compose()
     config = compose.get_service_from_db(name)
     if not config:
-        return OpError(404, f'Service "{name}" not found')
+        return service_not_found(name)
 
     try:
         deps.stop_container(name)

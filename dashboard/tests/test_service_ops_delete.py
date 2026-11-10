@@ -6,8 +6,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import delete
-from service_ops.deps import DeleteDeps, Infra
-from service_ops.outcomes import Deleted, OpError
+from service_ops.delete import DeleteDeps, Deleted
+from service_ops.deps import Infra
+from service_ops.errors import service_not_found
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 
@@ -81,7 +82,7 @@ def test_the_full_delete_order_through_the_hook_list_ends_with_the_event():
 def test_an_unknown_service_is_a_404_before_anything_runs():
     harness = Harness(config={})
 
-    assert delete(harness.deps(), "svc") == OpError(404, 'Service "svc" not found')
+    assert delete(harness.deps(), "svc") == service_not_found("svc")
     assert harness.log == []
 
 

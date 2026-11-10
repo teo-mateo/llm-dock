@@ -7,8 +7,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import rename
-from service_ops.deps import Infra, RenameDeps
-from service_ops.outcomes import OpError, Renamed
+from service_ops.deps import Infra
+from service_ops.errors import ErrorKind, OpError, service_not_found
+from service_ops.rename import RenameDeps, Renamed
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 CONFIG = {"template_type": "llamacpp", "port": 3301, "api_key": "k"}
@@ -98,27 +99,27 @@ def test_a_refused_name_is_a_400_with_no_hook_and_no_container_removal(new_name,
 
     outcome = rename(harness.deps(), "old", new_name)
 
-    assert outcome == OpError(400, message)
+    assert outcome == OpError(ErrorKind.INVALID, message)
     assert harness.log == []
 
 
 def test_a_running_service_is_refused_before_the_name_is_checked():
     harness = Harness(container=SimpleNamespace(status="running"))
 
-    assert rename(harness.deps(), "old", "bad name!") == OpError(409, "Service must be stopped before renaming")
+    assert rename(harness.deps(), "old", "bad name!") == OpError(ErrorKind.CONFLICT, "Service must be stopped before renaming")
 
 
 def test_an_unknown_service_is_a_404_before_anything_runs():
     harness = Harness(config=None)
 
-    assert rename(harness.deps(), "old", "new") == OpError(404, 'Service "old" not found')
+    assert rename(harness.deps(), "old", "new") == service_not_found("old")
     assert harness.log == []
 
 
 def test_a_running_service_is_a_409_before_anything_runs():
     harness = Harness(container=SimpleNamespace(status="running"))
 
-    assert rename(harness.deps(), "old", "new") == OpError(409, "Service must be stopped before renaming")
+    assert rename(harness.deps(), "old", "new") == OpError(ErrorKind.CONFLICT, "Service must be stopped before renaming")
     assert harness.log == []
 
 
@@ -147,7 +148,7 @@ def test_a_taken_or_invalid_name_is_a_400_with_the_compose_dbs_text_and_no_after
 
     outcome = rename(harness.deps(), "old", "new")
 
-    assert outcome == OpError(400, "already exists")
+    assert outcome == OpError(ErrorKind.INVALID, "already exists")
     assert harness.names() == ["owu_check", "db_rename"]
 
 

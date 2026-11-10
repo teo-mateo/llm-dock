@@ -6,9 +6,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import set_inspect
-from service_ops.deps import Infra, SetInspectDeps
+from service_ops.deps import Infra
+from service_ops.errors import service_not_found
 from service_ops.hooks import Cause, ServiceHook
-from service_ops.outcomes import InspectSet, OpError
+from service_ops.set_inspect import InspectSet, SetInspectDeps
 from service_ops.subsystems import InspectorHook
 
 
@@ -73,7 +74,7 @@ class Harness:
 def test_an_unknown_service_is_a_404_and_touches_nothing():
     harness = Harness()
 
-    assert set_inspect(harness.deps(), "ghost", True) == OpError(404, 'Service "ghost" not found')
+    assert set_inspect(harness.deps(), "ghost", True) == service_not_found("ghost")
     assert harness.log == []
 
 

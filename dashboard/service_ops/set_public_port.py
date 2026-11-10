@@ -1,10 +1,33 @@
 import logging
+from dataclasses import dataclass
+from typing import Any, Callable, Collection, Mapping
 
-from .deps import SetPublicPortDeps
+from .deps import Infra
+from .errors import OpError, service_not_found
 from .hooks import Cause, Phase, ServicesChangedContext, run_phase
-from .outcomes import AlreadyPublic, OpError, PublicPortSet
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SetPublicPortDeps:
+    infra: Infra
+    next_free_port: Callable[[Mapping[str, Any], Collection[int]], int]
+    recreate_if_running: Callable[[str], dict]
+
+
+@dataclass(frozen=True)
+class AlreadyPublic:
+    name: str
+    port: int
+
+
+@dataclass(frozen=True)
+class PublicPortSet:
+    name: str
+    port: int
+    updates: list
+    restarts: list
 
 
 def set_public_port(deps: SetPublicPortDeps, name: str, public_port: int) -> PublicPortSet | AlreadyPublic | OpError:
@@ -17,7 +40,7 @@ def set_public_port(deps: SetPublicPortDeps, name: str, public_port: int) -> Pub
     compose = infra.compose()
     config = compose.get_service_from_db(name)
     if not config:
-        return OpError(404, f'Service "{name}" not found')
+        return service_not_found(name)
 
     current_port = config.get("port")
     if current_port == public_port:

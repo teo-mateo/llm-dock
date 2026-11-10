@@ -1,10 +1,42 @@
 import logging
+from dataclasses import dataclass
+from typing import Any, Callable, Mapping, Sequence
 
-from .deps import SetInspectDeps
+from .deps import Infra
+from .errors import OpError, service_not_found
 from .hooks import Cause, Phase, ServicesChangedContext, run_phase
-from .outcomes import InspectSet, OpError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SetInspectDeps:
+    infra: Infra
+    allocate_upstream_port: Callable[[Mapping[str, Any], str], int]
+    recreate_if_running: Callable[[str], dict]
+    proxy_status: Callable[[], Sequence[Mapping[str, Any]]]
+
+
+@dataclass(frozen=True)
+class InspectSet:
+    service: str
+    enabled: bool
+    port: int | None
+    upstream_port: int | None
+    proxy_running: bool
+    restarted: bool
+    error: str | None
+
+    def body(self) -> dict:
+        return {
+            "service": self.service,
+            "enabled": self.enabled,
+            "port": self.port,
+            "upstream_port": self.upstream_port,
+            "proxy_running": self.proxy_running,
+            "restarted": self.restarted,
+            "error": self.error,
+        }
 
 
 def set_inspect(deps: SetInspectDeps, name: str, enabled: bool) -> InspectSet | OpError:
@@ -21,7 +53,7 @@ def set_inspect(deps: SetInspectDeps, name: str, enabled: bool) -> InspectSet | 
     compose = infra.compose()
     config = compose.get_service_from_db(name)
     if not config:
-        return OpError(404, f'Service "{name}" not found')
+        return service_not_found(name)
 
     current = bool(config.get("inspect", False))
     restarted = False
