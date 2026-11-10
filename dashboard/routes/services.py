@@ -30,7 +30,6 @@ from service_recreate import NOT_FOUND, apply_update_effects, recreate
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
-from inspector.ports import allocate_upstream_port
 from inspector.supervisor import proxy_supervisor
 
 logger = logging.getLogger(__name__)
@@ -631,59 +630,10 @@ def set_inspect(service_name):
             return jsonify({"error": "'enabled' must be a boolean"}), 400
         enabled = data["enabled"]
 
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        current = bool(service_config.get("inspect", False))
-        restarted = False
-
-        if enabled and not current:
-            # Order matters: the container must release the public port
-            # before the proxy claims it.
-            service_config["inspect_upstream_port"] = allocate_upstream_port(
-                compose_mgr.list_services_in_db(), service_name
-            )
-            service_config["inspect"] = True
-            compose_mgr.update_service_in_db(service_name, service_config)
-            compose_mgr.rebuild_compose_file()
-            restarted = _recreate_if_running(service_name).get("restarted", False)
-            proxy_supervisor.sync()
-        elif not enabled and current:
-            # Backwards: the proxy releases the port before the container
-            # takes it back. The upstream port is kept so the allocation does
-            # not drift across toggles — re-enabling a running service
-            # recreates its container either way.
-            service_config["inspect"] = False
-            compose_mgr.update_service_in_db(service_name, service_config)
-            proxy_supervisor.sync()
-            compose_mgr.rebuild_compose_file()
-            restarted = _recreate_if_running(service_name).get("restarted", False)
-
-        from services import event_manager
-        event_manager.emit({
-            "service_name": service_name,
-            "action": "metadata-changed",
-            "status": None,
-            "container_id": None,
-            "metadata": {"inspect": bool(service_config.get("inspect", False))},
-            "timestamp": time.time(),
-        })
-
-        status_row = next(
-            (row for row in proxy_supervisor.status() if row["service"] == service_name),
-            None,
-        )
-        return jsonify({
-            "service": service_name,
-            "enabled": bool(service_config.get("inspect", False)),
-            "port": service_config.get("port"),
-            "upstream_port": service_config.get("inspect_upstream_port"),
-            "proxy_running": bool(status_row and status_row["running"]),
-            "restarted": restarted,
-            "error": status_row["error"] if status_row else None,
-        }), 200
+        outcome = service_ops.set_inspect(wiring.set_inspect_deps(COMPOSE_FILE), service_name, enabled)
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
+        return jsonify(outcome.body()), 200
 
     except Exception as e:
         logger.error(f"Failed to set inspect on service: {e}", exc_info=True)

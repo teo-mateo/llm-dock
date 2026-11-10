@@ -62,7 +62,7 @@ def env(tmp_path, monkeypatch):
         ComposeManager, "rebuild_compose_file", lambda self: None
     )
     monkeypatch.setattr(
-        services_route, "_recreate_if_running", lambda name: {"restarted": False}
+        wiring, "recreate_if_running", lambda compose_file, name, *a, **kw: {"restarted": False}
     )
 
     os.environ["DASHBOARD_TOKEN"] = "test-token"
@@ -107,7 +107,7 @@ class TestToggleEndpoint:
         port = _free_port()
         upstream_port = _free_port()
         monkeypatch.setattr(
-            services_route, "allocate_upstream_port",
+            wiring, "allocate_upstream_port",
             lambda services, name: upstream_port,
         )
         _write_services(env, {"svc-a": _llamacpp_service(port)})
