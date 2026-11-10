@@ -5,11 +5,12 @@ import requests
 from flask import Blueprint, jsonify
 
 from auth import require_auth
-from metrics_catalogue import CURATED_METRICS
+from metrics_catalogue import CURATED_METRICS, SLOTS_ENGINES
 
 logger = logging.getLogger(__name__)
 
 metrics_bp = Blueprint("metrics", __name__)
+
 
 def _get_service_config(service_name: str):
     from config import COMPOSE_FILE
@@ -184,7 +185,7 @@ def get_service_slots(service_name):
     if not config:
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
-    if config.get("template_type") != "llamacpp":
+    if config.get("template_type") not in SLOTS_ENGINES:
         return jsonify({"error": "Slots endpoint is only available for llamacpp services"}), 400
 
     host_port = config.get("port")

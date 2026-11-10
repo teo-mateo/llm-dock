@@ -78,3 +78,6 @@ CURATED_METRICS = {
 }
 
 METRICS_ENGINES = frozenset(CURATED_METRICS)
+
+# Engines whose server answers /slots with live per-slot generation state.
+SLOTS_ENGINES = frozenset({"llamacpp"})

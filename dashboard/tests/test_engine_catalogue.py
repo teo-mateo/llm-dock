@@ -12,8 +12,8 @@ from metrics_catalogue import CURATED_METRICS, METRICS_ENGINES
 
 TOKEN = "test-token-engine-catalogue"
 FIELDS = {
-    "type", "label", "hint", "model_source", "placeholder", "gguf_picker",
-    "metrics", "benchmark", "name_prefix",
+    "type", "label", "badge_label", "hint", "model_source", "placeholder", "gguf_picker",
+    "metrics", "benchmark", "slots", "web_ui", "name_prefix",
 }
 COMPOSE = "services:\n  # <<<<<<< BEGIN DYNAMIC\n  # >>>>>>> END DYNAMIC\n\nnetworks:\n  llm-network:\n    driver: bridge\n"
 

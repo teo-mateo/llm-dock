@@ -5,6 +5,7 @@ import re
 
 import requests
 
+from flag_metadata import MODEL_FIELD_ENGINES
 from reasoning_levels import ENGINE_OPENROUTER, ENGINE_PROVIDER, find_level, parse_levels, request_fields
 import sampling_params as sampling
 
@@ -100,7 +101,7 @@ def request_model(svc: dict) -> str | None:
     """
     if svc.get("model"):
         return svc["model"]
-    if svc.get("template_type") in ("ninfer", "sglang"):
+    if svc.get("template_type") in MODEL_FIELD_ENGINES:
         return svc.get("alias") or None
     return None
 
