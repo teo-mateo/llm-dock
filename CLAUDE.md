@@ -125,6 +125,8 @@ llm-dock/
 │   │   ├── settings_store.py    # Chat settings singleton (chat_settings.json)
 │   │   ├── openrouter.py        # OpenRouter model resolution
 │   │   ├── openrouter_catalog.py # Proxied + TTL-cached OpenRouter model catalog
+│   │   ├── deps.py              # ChatDeps (db, mcp, run manager, bus, project dir, service catalog) + deps()/install()
+│   │   ├── bootstrap.py         # init_chat: builds the collaborators and installs ChatDeps
 │   │   ├── run_config.py        # Effective run configuration (reasoning, sampling, project), no Flask
 │   │   ├── conversation_policy.py # Create/update policy: prompt precedence, project rules, validation
 │   │   ├── run_start.py         # start_run: config snapshot, MCP scope, atomic create, subscribe, start
