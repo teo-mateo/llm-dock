@@ -321,6 +321,22 @@ class SharedDraftStoreTest {
         )
     }
 
+    /**
+     * [com.hpz.llmdockchat.core.attachment.ConversationAttachments.clear] drops
+     * the claim too: sending a thread or leaving it spends the prepared turn.
+     */
+    @Test
+    fun `clear drops the attachments and the auto-send claim together`() {
+        store.stage(StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")))
+        assertTrue(reassign("conv-1", FakeDraftStore()).isSuccess)
+        assertTrue(runBlocking { store.stageForAutoSend("conv-1", "summarise it") }.isSuccess)
+
+        store.clear("conv-1")
+
+        assertTrue("the images are gone", attachments("conv-1").isEmpty())
+        assertNull("the claim is gone too", runBlocking { store.takeAutoSend("conv-1") })
+    }
+
     @Test
     fun `a share staged during a pick survives it`() {
         store.stage(StagedShare(text = "first"))

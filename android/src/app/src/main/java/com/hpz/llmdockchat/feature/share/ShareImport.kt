@@ -4,6 +4,8 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.hpz.llmdockchat.core.attachment.AttachmentReader
+import com.hpz.llmdockchat.core.attachment.FILE_UNREADABLE
+import com.hpz.llmdockchat.core.attachment.IMAGE_UNREADABLE
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -57,9 +59,6 @@ sealed interface ShareImportPlan {
  * bytes behind `EXTRA_STREAM` are read later, on [io].
  */
 object ShareImport {
-    const val IMAGE_UNREADABLE = "That image could not be read."
-    const val PHOTO_UNREADABLE = "That photo could not be read."
-    const val FILE_UNREADABLE = "That file could not be read."
 
     fun plan(request: ShareRequest): ShareImportPlan {
         if (SharedKindParser.readFor(request.action, request.mimeType, request.text) != SharedRead.None) {

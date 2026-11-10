@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.testing
 
+import com.hpz.llmdockchat.core.attachment.AutoSendClaimStore
+import com.hpz.llmdockchat.core.attachment.ConversationAttachments
 import com.hpz.llmdockchat.core.auth.Credential
 import com.hpz.llmdockchat.core.auth.CredentialStore
 import com.hpz.llmdockchat.core.auth.SecretCipher
@@ -252,3 +254,15 @@ fun readFixture(name: String): String =
     checkNotNull(object {}.javaClass.getResourceAsStream("/fixtures/$name")) {
         "missing fixture: $name"
     }.bufferedReader().readText()
+
+/** No staged images: the composer's attachment list is always empty. */
+class NoOpConversationAttachments : ConversationAttachments {
+    override suspend fun attachments(conversationId: String): List<String> = emptyList()
+    override fun removeAttachment(conversationId: String, index: Int) = Unit
+    override fun clear(conversationId: String) = Unit
+}
+
+/** No prepared turn is ever owed to a conversation. */
+class NoOpAutoSendClaims : AutoSendClaimStore {
+    override suspend fun takeAutoSend(conversationId: String): String? = null
+}

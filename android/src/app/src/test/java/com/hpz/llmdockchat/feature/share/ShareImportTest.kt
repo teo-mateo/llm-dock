@@ -12,6 +12,8 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.runBlocking
 import com.hpz.llmdockchat.core.attachment.AttachmentReader
+import com.hpz.llmdockchat.core.attachment.FILE_UNREADABLE
+import com.hpz.llmdockchat.core.attachment.IMAGE_UNREADABLE
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -67,7 +69,7 @@ class ShareImportTest {
 
         coordinator.submit("tok", textWithoutStream)
 
-        assertEquals(ShareImport.FILE_UNREADABLE, store.pending.value?.error)
+        assertEquals(FILE_UNREADABLE, store.pending.value?.error)
         assertFalse("the record on disk is the failure, not a stuck placeholder", isStuckPlaceholder(dir))
     }
 
@@ -107,21 +109,21 @@ class ShareImportTest {
     fun `a read that fails is the share that says so`() = runBlocking {
         val share = ShareImport.resolve(image, FakeReader(), Dispatchers.Unconfined)
 
-        assertEquals(ShareImport.IMAGE_UNREADABLE, share.error)
+        assertEquals(IMAGE_UNREADABLE, share.error)
     }
 
     @Test
     fun `a provider that throws is the share that says so`() = runBlocking {
         val reader = FakeReader(images = mapOf(imageUri to imageData), throws = setOf(imageUri))
 
-        assertEquals(ShareImport.IMAGE_UNREADABLE, ShareImport.resolve(image, reader, Dispatchers.Unconfined).error)
+        assertEquals(IMAGE_UNREADABLE, ShareImport.resolve(image, reader, Dispatchers.Unconfined).error)
     }
 
     @Test
     fun `a text read that fails says so too`() = runBlocking {
         val reader = FakeReader(texts = mapOf(fileUri to "contents"), throws = setOf(fileUri))
 
-        assertEquals(ShareImport.FILE_UNREADABLE, ShareImport.resolve(file, reader, Dispatchers.Unconfined).error)
+        assertEquals(FILE_UNREADABLE, ShareImport.resolve(file, reader, Dispatchers.Unconfined).error)
     }
 
     @Test

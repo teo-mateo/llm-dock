@@ -20,6 +20,8 @@ import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.data.model.ModelRef
+import com.hpz.llmdockchat.testing.NoOpConversationAttachments
+import com.hpz.llmdockchat.testing.NoOpAutoSendClaims
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -134,6 +136,8 @@ class ThreadSettingsWriteGateTest {
                     conversationId = CONVERSATION_ID,
                     repository = repository,
                     drafts = drafts,
+                    conversationAttachments = NoOpConversationAttachments(),
+                    autoSendClaims = NoOpAutoSendClaims(),
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,

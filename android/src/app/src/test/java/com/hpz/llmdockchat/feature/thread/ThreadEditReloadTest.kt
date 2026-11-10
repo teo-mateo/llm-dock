@@ -22,6 +22,8 @@ import com.hpz.llmdockchat.data.ServicesStreamRepository
 import com.hpz.llmdockchat.data.model.ChatMessage
 import com.hpz.llmdockchat.data.model.MessageRole
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.testing.NoOpConversationAttachments
+import com.hpz.llmdockchat.testing.NoOpAutoSendClaims
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeEditStateStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
@@ -132,8 +134,8 @@ class ThreadEditReloadTest {
                     conversationId = CONVERSATION_ID,
                     repository = repository,
                     drafts = drafts,
-                    conversationAttachments = attachmentStore,
-                    autoSendClaims = attachmentStore,
+                    conversationAttachments = attachmentStore ?: NoOpConversationAttachments(),
+                    autoSendClaims = attachmentStore ?: NoOpAutoSendClaims(),
                     editStates = editStates,
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,

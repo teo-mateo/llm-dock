@@ -11,6 +11,15 @@ interface ConversationAttachments {
 
     fun removeAttachment(conversationId: String, index: Int)
 
+    /**
+     * Drops everything staged for the conversation: the attachments *and* the
+     * auto-send claim, because a claim is a message for a thread that is being
+     * sent or left. A caller that only wants the images gone uses
+     * [removeAttachment].
+     *
+     * The write side — staging attachments, filing a share, claiming a turn — is
+     * deliberately not on this contract yet; it arrives with #435.
+     */
     fun clear(conversationId: String)
 }
 

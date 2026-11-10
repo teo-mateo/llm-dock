@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.MAX_INLINE_BYTES
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -38,12 +39,12 @@ class SharedInlineFormatterTest {
 
     @Test
     fun `a file over the inline cap is truncated with the web's marker`() {
-        val big = "x".repeat(SharedKindParser.MAX_INLINE_BYTES + 100)
+        val big = "x".repeat(MAX_INLINE_BYTES + 100)
         val out = SharedInlineFormatter.inlineFile("big.log", big)
-        assertTrue(out.contains(" (truncated to ${SharedKindParser.MAX_INLINE_BYTES} bytes)"))
+        assertTrue(out.contains(" (truncated to ${MAX_INLINE_BYTES} bytes)"))
         // The content itself is capped at MAX_INLINE_BYTES chars, like the web.
         val content = out.substringAfter("\n\n").substringAfter("\n").substringBeforeLast("\n")
-        assertEquals(SharedKindParser.MAX_INLINE_BYTES, content.length)
+        assertEquals(MAX_INLINE_BYTES, content.length)
     }
 
     @Test
