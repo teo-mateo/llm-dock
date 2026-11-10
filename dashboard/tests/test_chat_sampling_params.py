@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-sp-chat")
 
+from chat.deps import replace_deps
+from chat.deps import install
 from chat.db import ChatDB
 from chat.models import Conversation
 from chat import run_config
@@ -46,7 +48,7 @@ def client(monkeypatch):
                         lambda svc, services=None, _e=ENGINES: _e.get(svc))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, db=ChatDB(":memory:"))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()
@@ -82,8 +84,8 @@ def test_stored_blob_is_one_column_of_json(client):
     shape a client that reads the column directly (Android, a future export) sees."""
     conv = _create(client, sampling_params={"seed": 7, "temperature": 0.5})
     with client.application.app_context():
-        from chat.routes import _get_db
-        stored = _get_db().get_conversation(conv["id"]).sampling_params_json
+        from chat.deps import deps
+        stored = deps().db.get_conversation(conv["id"]).sampling_params_json
     assert stored == '{"temperature":0.5,"seed":7}'
 
 
@@ -246,8 +248,7 @@ def test_run_started_frame_carries_the_applied_params(client, monkeypatch):
             calls["observe_extra"] = run_started_extra
             return iter([b""])
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
+    replace_deps(client.application, run_manager=_Mgr())
 
     conv = _create(client, sampling_params={"temperature": 0.6})
     r = client.post(f"{CONVERSATIONS_PATH}/{conv['id']}/messages",
@@ -273,8 +274,7 @@ def test_run_started_frame_reports_a_drop(client, monkeypatch):
             calls["observe_extra"] = run_started_extra
             return iter([b""])
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
+    replace_deps(client.application, run_manager=_Mgr())
 
     body = {"main_service": "ds4-c", "sampling_params": {"temperature": 0.6}}
     conv = client.post(CONVERSATIONS_PATH, json=body, headers=_auth()).get_json()
@@ -298,8 +298,7 @@ def test_the_column_is_left_alone_after_a_drop(client, monkeypatch):
         def observe(self, run_id, q, run_started_extra=None):
             return iter([b""])
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
+    replace_deps(client.application, run_manager=_Mgr())
 
     body = {"main_service": "ds4-c", "sampling_params": {"temperature": 0.6}}
     conv = client.post(CONVERSATIONS_PATH, json=body, headers=_auth()).get_json()

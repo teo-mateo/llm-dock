@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-conv-prompt-ref")
 
+from chat.deps import install
 from chat.db import ChatDB
 from chat.models import Conversation
 from chat.routes import chat_bp
@@ -33,7 +34,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_DOCK_CHAT_SETTINGS_FILE", str(tmp_path / "chat_settings.json"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, db=ChatDB(":memory:"))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

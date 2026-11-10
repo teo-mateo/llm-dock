@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-msg-routes")
 
+from chat.deps import install
 from chat.db import ChatDB
 from chat.models import (Conversation, Message, ChatRun, Critique, Artifact,
                          DeleteMessageOutcome)
@@ -47,7 +48,7 @@ def ctx(tmp_path):
     db = ChatDB(str(tmp_path / "chat.db"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = db
+    install(app, db=db)
     app.register_blueprint(chat_bp)
     app.testing = True
     try:

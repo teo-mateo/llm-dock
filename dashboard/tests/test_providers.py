@@ -10,6 +10,7 @@ from flask import Flask
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import llm_proxy, providers
+from chat.deps import install
 from chat.db import ChatDB
 from chat.routes import chat_bp
 from reasoning_levels import ENGINE_PROVIDER
@@ -84,7 +85,7 @@ def upstream(monkeypatch):
 def client():
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, db=ChatDB(":memory:"))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()
@@ -240,8 +241,8 @@ def test_models_route_lists_enabled_providers(client, upstream):
 
 def test_engine_and_levels_for_provider_services():
     from chat import run_config
-    assert run_config.service_engine("mistral:m") == ENGINE_PROVIDER
-    assert run_config.service_reasoning_levels("mistral:m") == []
+    assert run_config.service_engine("mistral:m", lambda: []) == ENGINE_PROVIDER
+    assert run_config.service_reasoning_levels("mistral:m", lambda: []) == []
 
 
 class _Stream:

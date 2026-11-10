@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-project-files")
 
 from chat import project_files as pf
+from chat.deps import install
 from chat.db import ChatDB
 from chat.routes import chat_bp
 
@@ -409,8 +410,7 @@ class TestOps:
 def client(tmp_path):
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
-    app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
+    install(app, db=ChatDB(":memory:"), project_files_dir=str(tmp_path / "storage"))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

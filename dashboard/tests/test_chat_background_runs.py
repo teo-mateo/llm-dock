@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-bg-runs")
 
 from chat import runtime
+from chat.deps import install
 from chat.db import ChatDB
 from chat.event_bus import EventBus
 from chat.run_manager import ChatRunManager
@@ -54,12 +55,9 @@ def ctx(tmp_path):
     db = ChatDB(str(tmp_path / "chat.db"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = db
     bus = EventBus()
     manager = ChatRunManager(db, bus, max_workers=2)
-    app.config["CHAT_EVENT_BUS"] = bus
-    app.config["CHAT_RUN_MANAGER"] = manager
-    app.config["MCP_MANAGER"] = _FakeMCPManager()
+    install(app, db=db, bus=bus, run_manager=manager, mcp=_FakeMCPManager())
     app.register_blueprint(chat_bp)
     app.testing = True
     try:
