@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, request, current_app, Response, stream_wit
 
 from auth import require_auth
 from .db import ChatDB
-from .models import (Conversation, Message, Critique, ChatRun, Project,
+from .models import (Conversation, Message, Critique, Project,
                      DeleteMessageOutcome)
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
 from .llm_proxy import stream_chat_completion
@@ -18,8 +18,8 @@ from .mcp_registry import list_available_servers
 from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
-from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
+from .runs import TERMINAL_STATUSES
+from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, run_start, settings_store, url_retrieval
 from .outcomes import PolicyError
 from .prompt_seed import seed_default_prompts
 from reasoning_levels import parse_levels
@@ -76,40 +76,6 @@ def _get_mcp():
 
 def _get_run_manager():
     return current_app.config["CHAT_RUN_MANAGER"]
-
-
-def _mcp_for_conversation(conv, enabled_servers, project_id):
-    """MCP manager for a run, or None when the turn has no tools.
-
-    project_id is the pre-resolved effective project (see
-    run_config.effective_project_id). Project conversations always get a manager —
-    the project-files server is auto-enabled for them (see
-    runtime._build_stream) — wrapped so its subprocess spawns learn the
-    project's directory via the environment.
-    """
-    from . import project_files as pf
-    from .project_files_mcp import ProjectScopedMCPManager
-
-    if not (enabled_servers or project_id):
-        return None
-    manager = _get_mcp()
-    if project_id:
-        storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
-        db = _get_db()
-
-        def _revalidate():
-            # Commit point for MCP writes, mirroring _revalidate_or_cleanup:
-            # the run snapshotted its project at start, so a write tool can
-            # land after the user deletes the project — its directory would
-            # be recreated as an orphan the UI can never show. Runs on the
-            # runner thread after every project-files call (values captured
-            # here; no app context there).
-            if db.get_project(project_id) is None:
-                pf.delete_project_root(storage_root, project_id)
-
-        manager = ProjectScopedMCPManager(
-            manager, pf.project_root(storage_root, project_id), revalidate=_revalidate)
-    return manager
 
 
 @chat_bp.route("/api/chat/mcp-servers", methods=["GET"])
@@ -728,43 +694,23 @@ def reorder_prompts():
 # -- Messages --
 
 
-def _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first,
-                        first_user_content, delete_from_seq=None):
-    """Atomically persist the user message + a queued run (rejecting a second
-    run while one is active), start the background job, and return an SSE
-    Response that observes it.
+def _start_run(conv, user_msg, *, is_first, first_user_content, delete_from_seq=None):
+    from . import project_files as pf
 
-    The HTTP response is only an observer (event_bus): if the client
-    disconnects, the run keeps going on the worker pool and the assistant
-    reply is persisted regardless. We subscribe to the bus BEFORE starting the
-    job so no early events are missed.
-
-    Returns a 409 response tuple when an active run already exists for the
-    conversation (the user message — and any edit truncation — is rolled back).
-    """
-    run = ChatRun(
-        id=str(uuid.uuid4()),
-        conversation_id=conv.id,
-        status=ChatRunStatus.QUEUED,
-        user_message_id=user_msg.id,
+    result = run_start.start_run(
+        db=_get_db(),
+        run_manager=_get_run_manager(),
+        get_mcp=_get_mcp,
+        storage_root=current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root(),
+        conv=conv,
+        user_msg=user_msg,
+        is_first=is_first,
+        first_user_content=first_user_content,
+        delete_from_seq=delete_from_seq,
     )
-    created = db.create_run_with_user_message(user_msg, run, delete_from_seq=delete_from_seq)
-    if created is None:
-        return jsonify({"error": "A run is already active for this conversation"}), 409
-
-    manager = _get_run_manager()
-    q = manager.subscribe(run.id)
-    manager.start(conv, run, mcp_manager=mcp_manager, is_first=is_first,
-                  first_user_content=first_user_content,
-                  effective_project_id=cfg.project_id,
-                  reasoning_level=cfg.reasoning_level,
-                  sampling_params=cfg.sampling_params)
-
-    return Response(
-        stream_with_context(manager.observe(run.id, q, run_started_extra=cfg.started_extra())),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    if isinstance(result, PolicyError):
+        return http.error_response(result)
+    return http.sse_response(result.observer)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages", methods=["POST"])
@@ -798,11 +744,7 @@ def send_message(conv_id):
         seq=0,  # assigned atomically inside create_run_with_user_message
     )
 
-    enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
-    mcp_manager = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
-
-    return _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first, content)
+    return _start_run(conv, user_msg, is_first=is_first, first_user_content=content)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["PUT"])
@@ -827,10 +769,6 @@ def edit_message(conv_id, msg_id):
 
     images_json = json.dumps(images) if images else None
 
-    enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
-    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
-
     new_msg = Message(
         id=str(uuid.uuid4()),
         conversation_id=conv_id,
@@ -843,8 +781,8 @@ def edit_message(conv_id, msg_id):
     # The truncate-from-seq and re-send happen in one transaction (with the
     # active-run guard), so a rejected edit doesn't destroy the tail. An edit
     # replaces an existing turn, so it never triggers auto-title.
-    return _start_run_response(db, conv, new_msg, mcp_mgr, cfg, is_first=False,
-                               first_user_content=content, delete_from_seq=msg.seq)
+    return _start_run(conv, new_msg, is_first=False, first_user_content=content,
+                      delete_from_seq=msg.seq)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["DELETE"])

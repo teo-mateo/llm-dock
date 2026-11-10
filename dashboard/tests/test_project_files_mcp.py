@@ -6,7 +6,7 @@ Three layers:
      tmp directory — listing, reading, searching, and the unscoped /
      traversal error paths.
   2. The glue: ProjectScopedMCPManager env injection, with_project_files,
-     runtime._build_stream auto-enable, and routes._mcp_for_conversation.
+     runtime._build_stream auto-enable, and run_start.mcp_for_conversation.
   3. One end-to-end call through a real MCPClientManager, spawning the
      actual server subprocess with the env injected — proves the
      stdio env plumbing works against the installed MCP SDK.
@@ -17,7 +17,6 @@ import os
 import sys
 
 import pytest
-from flask import Flask
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -655,42 +654,53 @@ class TestSnapshotThreading:
         assert msg is not None and msg.content == "ok"
 
 
-class TestRoutesHelper:
-    @pytest.fixture
-    def app(self, tmp_path):
+class _McpEnv:
+    def __init__(self, tmp_path):
         from chat.db import ChatDB
-        app = Flask(__name__)
-        app.config["MCP_MANAGER"] = FakeManager()
-        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
-        # _mcp_for_conversation builds the deleted-project revalidation
-        # closure over the DB.
-        app.config["CHAT_DB"] = ChatDB(":memory:")
-        return app
+        self.manager = FakeManager()
+        self.storage_root = str(tmp_path / "storage")
+        self.db = ChatDB(":memory:")
 
-    def test_none_without_servers_or_project(self, app):
-        from chat.routes import _mcp_for_conversation
-        with app.app_context():
-            assert _mcp_for_conversation(_conv(), [], None) is None
+    def build(self, conv, enabled, project_id):
+        from chat.run_start import mcp_for_conversation
+        return mcp_for_conversation(
+            conv, enabled, project_id,
+            db=self.db, get_mcp=lambda: self.manager, storage_root=self.storage_root,
+        )
 
-    def test_plain_manager_for_toggled_non_project_conversation(self, app):
-        from chat.routes import _mcp_for_conversation
-        with app.app_context():
-            mgr = _mcp_for_conversation(_conv(), ["sympy-math"], None)
-        assert mgr is app.config["MCP_MANAGER"]
 
-    def test_scoped_manager_for_project_conversation(self, app, tmp_path):
+class TestRunStartMcpScope:
+    @pytest.fixture
+    def env(self, tmp_path):
+        return _McpEnv(tmp_path)
+
+    def test_none_without_servers_or_project(self, env):
+        assert env.build(_conv(), [], None) is None
+
+    def test_the_manager_is_not_asked_for_when_the_turn_has_no_tools(self, env):
+        from chat.run_start import mcp_for_conversation
+
+        def never():
+            raise AssertionError("no manager needed")
+
+        assert mcp_for_conversation(
+            _conv(), [], None, db=env.db, get_mcp=never, storage_root=env.storage_root
+        ) is None
+
+    def test_plain_manager_for_toggled_non_project_conversation(self, env):
+        assert env.build(_conv(), ["sympy-math"], None) is env.manager
+
+    def test_scoped_manager_for_project_conversation(self, env, tmp_path):
         # NOTE: import the class inside the test, not at module top —
         # test_mcp_admin_routes purges chat.* from sys.modules and
         # re-imports, so the top-level binding can be a different class
-        # object than the one chat.routes instantiates (isinstance against
+        # object than the one chat.run_start instantiates (isinstance against
         # it fails on suite ordering, not on behavior).
-        from chat.routes import _mcp_for_conversation
         from chat.project_files_mcp import ProjectScopedMCPManager as CurrentScoped
-        with app.app_context():
-            mgr = _mcp_for_conversation(_conv(project_id="p1"), [], "p1")
+        mgr = env.build(_conv(project_id="p1"), [], "p1")
         assert isinstance(mgr, CurrentScoped)
         mgr.call_tool(SERVER_ID, "list_files", {})
-        call = app.config["MCP_MANAGER"].calls[-1]
+        call = env.manager.calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
 
 
@@ -704,23 +714,15 @@ class TestDeletedProjectSweep:
 
     @pytest.fixture
     def app(self, tmp_path):
-        from chat.db import ChatDB
-        app = Flask(__name__)
-        app.config["MCP_MANAGER"] = FakeManager()
-        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
-        app.config["CHAT_DB"] = ChatDB(":memory:")
-        return app
+        return _McpEnv(tmp_path)
 
     def _make_project(self, app):
         from chat.models import Project
         import uuid
-        return app.config["CHAT_DB"].create_project(
-            Project(id=str(uuid.uuid4()), name="P")).id
+        return app.db.create_project(Project(id=str(uuid.uuid4()), name="P")).id
 
     def _scoped_manager(self, app, pid):
-        from chat.routes import _mcp_for_conversation
-        with app.app_context():
-            return _mcp_for_conversation(_conv(project_id=pid), [], pid)
+        return app.build(_conv(project_id=pid), [], pid)
 
     class _WritingInner:
         """Stands in for the real subprocess spawn: the call itself
@@ -747,7 +749,7 @@ class TestDeletedProjectSweep:
         # The user deletes the project: directory pass + row + sweep,
         # like the delete route.
         pf.delete_project_root(str(tmp_path / "storage"), pid)
-        app.config["CHAT_DB"].delete_project(pid)
+        app.db.delete_project(pid)
         pf.delete_project_root(str(tmp_path / "storage"), pid)
 
         text, _ = mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
@@ -769,7 +771,7 @@ class TestDeletedProjectSweep:
         mgr = self._scoped_manager(app, pid)
         root = str(tmp_path / "storage" / pid)
         mgr._inner = self._WritingInner(root, raise_after_write=True)
-        app.config["CHAT_DB"].delete_project(pid)
+        app.db.delete_project(pid)
         with pytest.raises(RuntimeError):
             mgr.call_tool(SERVER_ID, "create_file", {"path": "late.md", "content": "x"})
         assert not os.path.exists(root)
@@ -827,20 +829,19 @@ class TestSpinoffInheritance:
             assert effective_project_id(db.get_conversation(conv_id), db.resolve_project_id) == expected
 
     def test_routes_scope_spinoff_to_root_project(self, db, tmp_path):
-        from chat.routes import _mcp_for_conversation
         from chat.run_config import effective_project_id
-        app = Flask(__name__)
-        app.config["MCP_MANAGER"] = FakeManager()
-        app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
-        app.config["CHAT_DB"] = db
+        from chat.run_start import mcp_for_conversation
+        manager = FakeManager()
         child = db.get_conversation("child")
         assert child.project_id is None  # root-only membership held
-        with app.app_context():
-            project_id = effective_project_id(child, db.resolve_project_id)
-            mgr = _mcp_for_conversation(child, [], project_id)
+        project_id = effective_project_id(child, db.resolve_project_id)
+        mgr = mcp_for_conversation(
+            child, [], project_id,
+            db=db, get_mcp=lambda: manager, storage_root=str(tmp_path / "storage"),
+        )
         assert mgr is not None
         mgr.call_tool(SERVER_ID, "list_files", {})
-        call = app.config["MCP_MANAGER"].calls[-1]
+        call = manager.calls[-1]
         assert call[4] == {PROJECT_ROOT_ENV: str(tmp_path / "storage" / "p1")}
 
     def test_runtime_auto_enables_for_spinoff_snapshot(self, db):
