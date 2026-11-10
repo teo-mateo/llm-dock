@@ -8,6 +8,7 @@ import pyotp
 
 from auth import require_auth, _totp_sessions, TOTP_TOKEN_EXPIRY_SECONDS, _cleanup_sessions
 from docker_utils import check_docker, check_nvidia_smi, get_image_info
+from engine_catalogue import build_catalogue
 from flag_metadata import ENGINE_IMAGES
 from model_discovery import discover_all_models, get_disk_usage
 
@@ -102,6 +103,12 @@ def get_images_metadata():
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
     )
+
+
+@system_bp.route("/api/engines", methods=["GET"])
+@require_auth
+def get_engines():
+    return jsonify({"engines": build_catalogue()})
 
 
 @system_bp.route("/api/system/info", methods=["GET"])

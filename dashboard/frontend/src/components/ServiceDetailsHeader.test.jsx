@@ -193,3 +193,18 @@ describe('Recreate confirmation while pending', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })
+
+describe('Engine badge', () => {
+  it('labels a known engine with its short name', () => {
+    renderHeader({ onFetch: vi.fn(), config: { template_type: 'vllm', port: 3336 } })
+
+    expect(screen.getByText('vLLM')).toBeTruthy()
+  })
+
+  it('gives an engine the SPA has no styling for a neutral badge labelled with its type', () => {
+    renderHeader({ onFetch: vi.fn(), config: { template_type: 'future_engine', port: 3336 } })
+
+    const badge = screen.getByText('future_engine')
+    expect(badge.className).toMatch(/badge-neutral/)
+  })
+})

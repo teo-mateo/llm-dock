@@ -282,6 +282,24 @@ function queueLlamaCpp({ metrics, slots }) {
   })
 }
 
+describe('useServiceMetrics for an engine without a rename table', () => {
+  it('renders the raw fields of an engine absent from the renames, without crashing', async () => {
+    mockFetchAPI.mockResolvedValue({
+      engine: 'future_engine',
+      metrics: { 'future:tokens_total': { '{}': 10 }, 'vllm:num_requests_running': { '{}': 2 } },
+      scraped_at: '2026-01-01T00:00:00Z',
+    })
+
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'test', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(100) })
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.metrics['future:tokens_total']).toEqual({ '{}': 10 })
+    expect(result.current.metrics['vllm:num_requests_running']).toEqual({ '{}': 2 })
+    expect(result.current.history.length).toBe(1)
+  })
+})
+
 describe('useServiceMetrics llama.cpp slots', () => {
   it('derives live generation rate from slot n_decoded deltas', async () => {
     queueLlamaCpp({

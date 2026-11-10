@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import yaml
 
 from compose_manager import ComposeManager
-from flag_metadata import effective_image
+from flag_metadata import BENCHMARK_ENGINES, effective_image
 
 from .db import BenchmarkDB
 from .models import BenchmarkRun
@@ -113,7 +113,7 @@ class BenchmarkExecutor:
         if not config:
             raise LookupError("not found in services.json (or the file is unreadable)")
         template_type = config.get("template_type")
-        if template_type != "llamacpp":
+        if template_type not in BENCHMARK_ENGINES:
             raise ValueError(f"benchmarking supports llamacpp services, not '{template_type}'")
         return effective_image(template_type, config)
 

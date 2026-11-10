@@ -2330,6 +2330,9 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
 
 SERVICE_ENGINES = tuple(name for name in FLAG_METADATA_BY_TYPE if name != "llamacpp_bench")
 
+# Engines the benchmark runner supports (llama-bench ships only in the llama.cpp image).
+BENCHMARK_ENGINES = frozenset({"llamacpp"})
+
 
 def _choices_message(names) -> str:
     quoted = [f'"{name}"' for name in names]

@@ -3,26 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { fetchAPI } from '../api'
 import { generateServiceName, aliasFromModelName } from '../utils/serviceNaming'
 import { renderCommandPreview } from './commandPreview'
+import useEngineCatalogue from '../hooks/useEngineCatalogue'
 import ParameterReference from './ParameterReference'
-
-const ENGINES = [
-  { type: 'llamacpp', label: 'llama.cpp', hint: 'GGUF file' },
-  { type: 'ik_llamacpp', label: 'ik llama.cpp', hint: 'GGUF file (ik fork)' },
-  { type: 'vllm', label: 'vLLM', hint: 'HuggingFace org/name' },
-  { type: 'ds4', label: 'ds4', hint: 'DeepSeek V4 Flash file' },
-  { type: 'tabbyapi', label: 'TabbyAPI', hint: 'EXL3 model directory' },
-  { type: 'ninfer', label: 'NInfer', hint: '.ninfer artifact' },
-  { type: 'sglang', label: 'SGLang / Pennyroyal', hint: 'RTX PRO 6000 model directory' },
-  { type: 'maya', label: 'Project Maya', hint: 'Maya pack directory' },
-]
-
-// Engines whose model is a file on disk rather than a HuggingFace repo id.
-const FILE_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4', 'tabbyapi', 'ninfer', 'sglang', 'maya'])
-
-// Engines for which the discovered-file picker is meaningful; TabbyAPI wants a
-// model directory and NInfer wants .ninfer artifacts, neither of which
-// discovery scans.
-const GGUF_PICKER_ENGINES = new Set(['llamacpp', 'ik_llamacpp', 'ds4'])
 
 const PORT_FIRST = 3301
 const PORT_LAST = 3399
@@ -86,7 +68,8 @@ function KeyCopy({ value }) {
 
 export default function CreateServiceModal({ services, onClose, onCreated }) {
   const navigate = useNavigate()
-  const [templateType, setTemplateType] = useState('llamacpp')
+  const { status: catalogueStatus, engines, byType, error: catalogueError, retry: retryCatalogue } = useEngineCatalogue()
+  const [chosenType, setTemplateType] = useState('')
   const [alias, setAlias] = useState('')
   const [modelPath, setModelPath] = useState('')
   const [modelName, setModelName] = useState('')
@@ -103,7 +86,9 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
   const [errorDetails, setErrorDetails] = useState([])
   const [result, setResult] = useState(null)
 
-  const isFileEngine = FILE_ENGINES.has(templateType)
+  const templateType = chosenType || engines[0]?.type || ''
+  const engine = byType[templateType]
+  const isFileEngine = engine ? engine.model_source !== 'repo' : true
 
   // Flag metadata per engine, same fetch the details page runs for its
   // ParameterReference; the generation guard drops stale responses from a
@@ -204,11 +189,11 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
     }
   }, [isFileEngine])
 
-  const serviceNamePreview = alias.trim() ? generateServiceName(templateType, alias) : ''
+  const serviceNamePreview = alias.trim() ? generateServiceName(templateType, alias, engine?.name_prefix) : ''
 
   const portValid = /^\d+$/.test(port) && Number(port) >= 1024 && Number(port) <= 65535
   const modelFilled = isFileEngine ? modelPath.trim() : modelName.trim()
-  const canSubmit = !submitting && !!alias.trim() && portValid && !!modelFilled
+  const canSubmit = !submitting && !!engine && !!alias.trim() && portValid && !!modelFilled
 
   // Escape closes the modal on both views; the modal is the only dialog on
   // the page while mounted, so no open-state guard is needed.
@@ -305,31 +290,55 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
               {/* Engine */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-fg-muted">Engine *</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {ENGINES.map(engine => (
-                    <label
-                      key={engine.type}
-                      className={`flex items-start gap-2 rounded border px-3 py-2 cursor-pointer transition-colors ${
-                        templateType === engine.type
-                          ? 'border-accent bg-surface-strong'
-                          : 'border-border hover:bg-surface-muted'
-                      }`}
+                {catalogueStatus === 'loading' && (
+                  <p role="status" className="text-sm text-fg-muted">
+                    <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading engines…
+                  </p>
+                )}
+                {catalogueStatus === 'error' && (
+                  <div role="alert" className="rounded border border-danger bg-danger-subtle px-3 py-2 text-sm text-danger-fg flex items-center justify-between gap-3">
+                    <span>Couldn&apos;t load the engine list: {catalogueError}</span>
+                    <button
+                      type="button"
+                      onClick={retryCatalogue}
+                      className="shrink-0 px-3 py-1 rounded bg-surface-muted hover:bg-surface-strong text-fg text-xs font-medium cursor-pointer"
                     >
-                      <input
-                        type="radio"
-                        name="create-engine"
-                        value={engine.type}
-                        checked={templateType === engine.type}
-                        onChange={() => setTemplateType(engine.type)}
-                        className="mt-0.5"
-                      />
-                      <span>
-                        <span className="block text-sm text-fg">{engine.label}</span>
-                        <span className="block text-xs text-fg-subtle">{engine.hint}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {catalogueStatus === 'ready' && engines.length === 0 && (
+                  <p role="alert" className="text-sm text-danger-fg">
+                    The server reported no engines, so a service cannot be created.
+                  </p>
+                )}
+                {engines.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {engines.map(entry => (
+                      <label
+                        key={entry.type}
+                        className={`flex items-start gap-2 rounded border px-3 py-2 cursor-pointer transition-colors ${
+                          templateType === entry.type
+                            ? 'border-accent bg-surface-strong'
+                            : 'border-border hover:bg-surface-muted'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="create-engine"
+                          value={entry.type}
+                          checked={templateType === entry.type}
+                          onChange={() => setTemplateType(entry.type)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="block text-sm text-fg">{entry.label}</span>
+                          <span className="block text-xs text-fg-subtle">{entry.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Model */}
@@ -339,7 +348,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                     <label className="block text-sm font-medium mb-2 text-fg-muted" htmlFor="create-model-path">
                       Model path (container) *
                     </label>
-                    {GGUF_PICKER_ENGINES.has(templateType) && (
+                    {engine?.gguf_picker && (
                       <select
                         aria-label="Pick a discovered file"
                         value=""
@@ -363,11 +372,7 @@ export default function CreateServiceModal({ services, onClose, onCreated }) {
                       type="text"
                       value={modelPath}
                       onChange={e => setModelPath(e.target.value)}
-                      placeholder={templateType === 'maya'
-                        ? '~/.cache/maya/<model>/<pack> (absolute host path)'
-                        : (templateType === 'tabbyapi' || templateType === 'sglang')
-                        ? '/hf-cache/… or /local-models/… (model directory)'
-                        : '/hf-cache/… or /local-models/…'}
+                      placeholder={engine?.placeholder}
                       className={`${inputClass} font-mono text-sm`}
                     />
                     <p className="mt-1 text-xs text-fg-subtle">

@@ -29,9 +29,13 @@ describe('generateServiceName', () => {
     expect(generateServiceName('vllm', 'qwen')).toBe('vllm-qwen')
   })
 
-  it('applies the prefix overrides', () => {
-    expect(generateServiceName('ik_llamacpp', 'qwen3-8b')).toBe('ik-qwen3-8b')
-    expect(generateServiceName('tabbyapi', 'qwen3-8b')).toBe('exl3-qwen3-8b')
+  it('uses the prefix the catalogue supplies', () => {
+    expect(generateServiceName('some_engine', 'qwen3-8b', 'se')).toBe('se-qwen3-8b')
+  })
+
+  it('falls back to the type when the catalogue has no prefix', () => {
+    expect(generateServiceName('some_engine', 'qwen3-8b', undefined)).toBe('some-engine-qwen3-8b')
+    expect(generateServiceName('some_engine', 'qwen3-8b', '')).toBe('some-engine-qwen3-8b')
   })
 
   it('sanitizes the composed name', () => {
