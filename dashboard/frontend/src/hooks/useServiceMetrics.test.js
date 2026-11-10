@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import useServiceMetrics from './useServiceMetrics'
+import { SAMPLE_ENGINES } from '../test/engineCatalogue'
 
 const mockMetrics = {
   'vllm:prompt_tokens_total': { '{}': 50000 },
@@ -20,6 +21,9 @@ const mockMetrics = {
   'vllm:num_preemptions_total': { '{}': 0 }
 }
 
+const { catalogue } = vi.hoisted(() => ({ catalogue: { byType: {} } }))
+vi.mock('./useEngineCatalogue', () => ({ default: () => catalogue }))
+
 const mockFetchAPI = vi.fn()
 vi.mock('../api', () => ({
   fetchAPI: (...args) => mockFetchAPI(...args)
@@ -28,6 +32,7 @@ vi.mock('../api', () => ({
 beforeEach(() => {
   vi.useFakeTimers()
   mockFetchAPI.mockReset()
+  catalogue.byType = Object.fromEntries(SAMPLE_ENGINES.map(e => [e.type, e]))
 })
 
 afterEach(() => {

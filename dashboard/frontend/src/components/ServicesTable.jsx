@@ -6,6 +6,8 @@ import { startService, stopService, restartService } from '../services/lifecycle
 import useServicesSSE from '../hooks/useServicesSSE'
 import RotateDefaultKeyModal from './RotateDefaultKeyModal'
 import CreateServiceModal from './CreateServiceModal'
+import EngineBadge from './EngineBadge'
+import useEngineCatalogue from '../hooks/useEngineCatalogue'
 
 function InspectBadge() {
   return (
@@ -42,19 +44,6 @@ function ModelSizeCell({ service }) {
   return <span className="text-fg-muted text-xs">{service.model_size_str || '—'}</span>
 }
 
-function getEngine(name) {
-  if (name === 'open-webui') return 'WebUI'
-  if (name.startsWith('llamacpp-')) return 'llama.cpp'
-  if (name.startsWith('ik-')) return 'ik_llama'
-  if (name.startsWith('vllm-')) return 'vLLM'
-  if (name.startsWith('ds4-')) return 'DS4'
-  if (name.startsWith('exl3-')) return 'EXL3'
-  if (name.startsWith('sglang-')) return 'SGLang'
-  if (name.startsWith('ninfer-')) return 'NInfer'
-  if (name.startsWith('maya-')) return 'Maya'
-  return 'Unknown'
-}
-
 function isInfra(name) {
   return name === 'open-webui'
 }
@@ -89,26 +78,6 @@ function StatusLabel({ service }) {
     return <span className="text-danger-fg">Stopped{exitInfo}</span>
   }
   return <span className="text-fg-subtle">Not Created</span>
-}
-
-function EngineBadge({ engine }) {
-  const colors = {
-    'llama.cpp': 'bg-badge-llamacpp-bg text-badge-llamacpp-fg',
-    'ik_llama': 'bg-badge-llamacpp-bg text-badge-llamacpp-fg',
-    'vLLM': 'bg-badge-vllm-bg text-badge-vllm-fg',
-    'DS4': 'bg-badge-ds4-bg text-badge-ds4-fg',
-    'EXL3': 'bg-badge-exl3-bg text-badge-exl3-fg',
-    'SGLang': 'bg-badge-sglang-bg text-badge-sglang-fg',
-    'Maya': 'bg-badge-maya-bg text-badge-maya-fg',
-    'NInfer': 'bg-badge-ninfer-bg text-badge-ninfer-fg',
-    'WebUI': 'bg-badge-webui-bg text-badge-webui-fg',
-    'Unknown': 'bg-badge-neutral-bg text-badge-neutral-fg'
-  }
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[engine] || colors.Unknown}`}>
-      {engine}
-    </span>
-  )
 }
 
 function CopyButton({ text }) {
@@ -516,15 +485,15 @@ export default function ServicesTable() {
 function PortInline({ service, onSetPublicPort }) {
   const infra = isInfra(service.name)
   const port = service.host_port && service.host_port !== 9999 ? service.host_port : null
-  const engine = getEngine(service.name)
-  const isLlamaCpp = engine === 'llama.cpp'
+  const { byType } = useEngineCatalogue()
+  const hasWebUi = !!byType[service.template_type]?.web_ui
   const isPublicPort = port === 3301
 
   if (!port) return <span className="font-mono text-fg-subtle">N/A</span>
 
   return (
       <div className="flex items-center gap-1.5">
-        {isLlamaCpp ? (
+        {hasWebUi ? (
           <a
             href={`http://${window.location.hostname}:${port}`}
             target="_blank"
@@ -567,7 +536,6 @@ function PortCell({ service, onSetPublicPort }) {
 // Mobile (md:hidden) stacked card — same data/actions as a table row,
 // no horizontal scroll.
 function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onToggleFavorite, onEdit, onViewLogs, onDelete }) {
-  const engine = getEngine(service.name)
   const infra = isInfra(service.name)
 
   return (
@@ -609,7 +577,7 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
         </div>
         <div>
           <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Engine</p>
-          <EngineBadge engine={engine} />
+          <EngineBadge templateType={service.template_type} infra={infra} />
         </div>
         <div>
           <p className="text-fg-subtle text-[10px] uppercase tracking-wide mb-0.5">Size</p>
@@ -644,7 +612,6 @@ function ServiceCard({ service, transitioning, onStart, onStop, onRestart, onSet
 }
 
 function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetPublicPort, onToggleFavorite, onEdit, onViewLogs, onDelete }) {
-  const engine = getEngine(service.name)
   const infra = isInfra(service.name)
 
   return (
@@ -682,7 +649,7 @@ function ServiceRow({ service, transitioning, onStart, onStop, onRestart, onSetP
         </div>
       </td>
       <PortCell service={service} onSetPublicPort={onSetPublicPort} />
-      <td className="px-6 py-3"><EngineBadge engine={engine} /></td>
+      <td className="px-6 py-3"><EngineBadge templateType={service.template_type} infra={infra} /></td>
       <td className="px-6 py-3">
         <ModelSizeCell service={service} />
       </td>
