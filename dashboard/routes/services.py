@@ -501,61 +501,14 @@ def update_service(service_name):
 def delete_service(service_name):
     """Delete service from database and rebuild compose file"""
     try:
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check if service exists
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Stop and remove container if running
-        try:
-            subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "stop", service_name],
-                capture_output=True,
-                timeout=30,
-            )
-            subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "rm", "-f", service_name],
-                capture_output=True,
-                timeout=10,
-            )
-            logger.info(f"Stopped and removed container for: {service_name}")
-        except Exception as e:
-            logger.warning(f"Error stopping container (may not be running): {e}")
-
-        # Remove from database
-        compose_mgr.remove_service_from_db(service_name)
-
-        # Rebuild compose file
-        compose_mgr.rebuild_compose_file()
-
-        # Drop the inspector proxy if any; its capture rows stay, because
-        # deleting them is a deliberate action in the Inspector UI.
-        proxy_supervisor.sync()
-
-        # A service that never had a key file (every engine but TabbyAPI) is a no-op;
-        # one that did must not leave its api/admin keys on disk.
-        try:
-            tabby_keys.remove(service_name)
-        except Exception as e:
-            logger.warning(f"Failed to remove key file for '{service_name}': {e}")
-
-        from services import event_manager
-        event_manager.emit({
-            "service_name": service_name,
-            "action": "service-deleted",
-            "status": "deleted",
-            "container_id": "",
-            "timestamp": time.time(),
-        })
-
-        logger.info(f"Service deleted: {service_name}")
+        outcome = service_ops.delete(_service_ops_deps(), service_name)
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
 
         return jsonify(
             {
                 "success": True,
-                "message": f'Service "{service_name}" deleted successfully',
+                "message": f'Service "{outcome.name}" deleted successfully',
             }
         ), 200
 
