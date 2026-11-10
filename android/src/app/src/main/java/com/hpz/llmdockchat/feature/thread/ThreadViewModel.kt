@@ -108,7 +108,6 @@ class ThreadViewModel(
             mcpServers = settings.mcpServers,
             reasoningLevel = settings.reasoningLevel,
         )
-        loaded()?.let { _state.value = it.copy(conversation = merged) }
         return merged
     }
 
