@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchAPI } from '../api'
 import { getValue, totalValue, POLL_INTERVAL } from '../utils'
+import useEngineCatalogue from './useEngineCatalogue'
 
 const MAX_HISTORY = 60
 
@@ -60,6 +61,10 @@ function normalizeMetrics(raw, engine) {
 }
 
 export default function useServiceMetrics({ serviceName, enabled }) {
+  const { status: catalogueStatus, error: catalogueError, byType } = useEngineCatalogue()
+  const catalogueReady = catalogueStatus === 'ready'
+  const byTypeRef = useRef(byType)
+  byTypeRef.current = byType
   const [metrics, setMetrics] = useState({})
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
@@ -89,8 +94,15 @@ export default function useServiceMetrics({ serviceName, enabled }) {
 
     if (!enabled) return
 
-     
+    // Whether /slots applies is the catalogue's call, so no poll runs (and no
+    // counter baseline is seeded) before it has loaded.
+    if (catalogueStatus === 'error') {
+      setLoading(false)
+      setError(`Couldn't load the engine list: ${catalogueError}`)
+      return
+    }
     setLoading(true)
+    if (!catalogueReady) return
     let pollActive = true
     let inFlight = false
 
@@ -113,8 +125,9 @@ export default function useServiceMetrics({ serviceName, enabled }) {
           return
         }
 
+        const supportsSlots = !!byTypeRef.current[eng]?.slots
         let slots = null
-        if (eng === 'llamacpp') {
+        if (supportsSlots) {
           try {
             const slotsData = await fetchAPI(`/services/${serviceName}/slots`)
             if (pollActive && mountedRef.current) slots = slotsData.slots
@@ -164,7 +177,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
         let preemptRate = eng === 'sglang' && preemptTotal == null ? undefined : 0
 
         const dt = prev.timestamp != null ? now - prev.timestamp : 0
-        if (eng === 'llamacpp') {
+        if (supportsSlots) {
           if (slots != null) {
             let decodedDelta = 0
             let promptDelta = 0
@@ -272,7 +285,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
       mountedRef.current = false
       clearInterval(id)
     }
-  }, [serviceName, enabled])
+  }, [serviceName, enabled, catalogueReady, catalogueStatus, catalogueError])
 
   return { metrics, history, loading, error, lastScraped, engine }
 }

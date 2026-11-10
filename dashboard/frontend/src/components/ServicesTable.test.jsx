@@ -3,8 +3,16 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 import { MemoryRouter } from 'react-router-dom'
 import ServicesTable from './ServicesTable'
 import { fetchAPI } from '../api'
+import { SAMPLE_ENGINES } from '../test/engineCatalogue'
 
 const mockRefresh = vi.fn()
+
+vi.mock('../hooks/useEngineCatalogue', () => ({
+  default: () => ({
+    status: 'ready', engines: [], error: null, retry: () => {},
+    byType: Object.fromEntries(SAMPLE_ENGINES.map(e => [e.type, e])),
+  }),
+}))
 
 // The badge is driven by the service payload: the SSE delta (metadata-changed)
 // rewrites the service object in the hook's state, so re-rendering the table
@@ -191,5 +199,46 @@ describe('ServicesTable delete', () => {
 
     await waitFor(() => expect(screen.getByText(/docker compose is busy/)).toBeTruthy())
     expect(mockRefresh).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServicesTable engine badge and port link', () => {
+  it('derives the badge from template_type, not from the service name', () => {
+    mockServices = [
+      svc('my-custom-name', { template_type: 'tabbyapi' }),
+      svc('llamacpp-but-really-vllm', { template_type: 'vllm' }),
+      svc('mystery', { template_type: 'future_engine' }),
+      svc('typeless'),
+    ]
+
+    const { table } = renderTable()
+
+    expect(within(table).getByText('EXL3')).toBeTruthy()
+    expect(within(table).getByText('vLLM')).toBeTruthy()
+    expect(within(table).getByText('future_engine')).toBeTruthy()
+    expect(within(table).getByText('Unknown')).toBeTruthy()
+  })
+
+  it('keeps the infrastructure badge for Open WebUI', () => {
+    mockServices = [svc('open-webui', { host_port: 3300 })]
+
+    const { table } = renderTable()
+
+    expect(within(table).getByText('WebUI')).toBeTruthy()
+  })
+
+  it('links the port only for an engine the catalogue says serves a web UI', () => {
+    mockServices = [
+      svc('a', { template_type: 'llamacpp', host_port: 3310 }),
+      svc('b', { template_type: 'vllm', host_port: 3311 }),
+      svc('c', { template_type: 'ik_llamacpp', host_port: 3312 }),
+    ]
+
+    const { table } = renderTable()
+
+    const link = within(table).getByRole('link', { name: '3310' })
+    expect(link.getAttribute('href')).toMatch(/:3310$/)
+    expect(within(table).queryByRole('link', { name: '3311' })).toBeNull()
+    expect(within(table).queryByRole('link', { name: '3312' })).toBeNull()
   })
 })

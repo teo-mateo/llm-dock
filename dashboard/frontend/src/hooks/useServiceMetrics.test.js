@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import useServiceMetrics from './useServiceMetrics'
+import { SAMPLE_ENGINES } from '../test/engineCatalogue'
 
 const mockMetrics = {
   'vllm:prompt_tokens_total': { '{}': 50000 },
@@ -20,6 +21,9 @@ const mockMetrics = {
   'vllm:num_preemptions_total': { '{}': 0 }
 }
 
+const { catalogue } = vi.hoisted(() => ({ catalogue: { status: 'ready', error: null, byType: {} } }))
+vi.mock('./useEngineCatalogue', () => ({ default: () => catalogue }))
+
 const mockFetchAPI = vi.fn()
 vi.mock('../api', () => ({
   fetchAPI: (...args) => mockFetchAPI(...args)
@@ -28,6 +32,9 @@ vi.mock('../api', () => ({
 beforeEach(() => {
   vi.useFakeTimers()
   mockFetchAPI.mockReset()
+  catalogue.status = 'ready'
+  catalogue.error = null
+  catalogue.byType = Object.fromEntries(SAMPLE_ENGINES.map(e => [e.type, e]))
 })
 
 afterEach(() => {
@@ -297,6 +304,52 @@ describe('useServiceMetrics for an engine without a rename table', () => {
     expect(result.current.metrics['future:tokens_total']).toEqual({ '{}': 10 })
     expect(result.current.metrics['vllm:num_requests_running']).toEqual({ '{}': 2 })
     expect(result.current.history.length).toBe(1)
+  })
+})
+
+describe('useServiceMetrics while the engine catalogue loads', () => {
+  const llamacppSample = {
+    engine: 'llamacpp',
+    metrics: { 'vllm:num_requests_running': { '{}': 1 } },
+    scraped_at: '2026-01-01T00:00:00Z',
+  }
+
+  it('does not poll, and seeds no baseline, until the catalogue is ready', async () => {
+    catalogue.status = 'loading'
+    catalogue.byType = {}
+    mockFetchAPI.mockResolvedValue(llamacppSample)
+
+    const { result, rerender } = renderHook(() => useServiceMetrics({ serviceName: 'svc', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(20000) })
+
+    expect(mockFetchAPI).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(true)
+    expect(result.current.history).toEqual([])
+
+    catalogue.status = 'ready'
+    catalogue.byType = Object.fromEntries(SAMPLE_ENGINES.map(e => [e.type, e]))
+    mockFetchAPI.mockImplementation(async (path) => (
+      path.endsWith('/slots') ? { slots: [] } : llamacppSample
+    ))
+    rerender()
+    await act(async () => { vi.advanceTimersByTime(100) })
+
+    expect(mockFetchAPI).toHaveBeenCalledWith('/services/svc/metrics')
+    expect(mockFetchAPI).toHaveBeenCalledWith('/services/svc/slots')
+    expect(result.current.history.length).toBe(1)
+  })
+
+  it('says why there are no metrics when the catalogue cannot load, instead of polling blind', async () => {
+    catalogue.status = 'error'
+    catalogue.error = 'HTTP 502'
+    catalogue.byType = {}
+
+    const { result } = renderHook(() => useServiceMetrics({ serviceName: 'svc', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(20000) })
+
+    expect(mockFetchAPI).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(false)
+    expect(result.current.error).toMatch(/Couldn't load the engine list: HTTP 502/)
   })
 })
 

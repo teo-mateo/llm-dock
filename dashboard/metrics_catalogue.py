@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 VLLM_CURATED_METRICS = {
     "vllm:num_requests_running",
     "vllm:num_requests_waiting",
@@ -78,3 +80,27 @@ CURATED_METRICS = {
 }
 
 METRICS_ENGINES = frozenset(CURATED_METRICS)
+
+
+@dataclass(frozen=True)
+class ParseOptions:
+    """Per-engine quirks of reading the Prometheus text.
+
+    position_family: a family whose samples are keyed by their `position`
+    label (as position_<n>) instead of by the whole label set.
+    drop_created_samples: Python counters also emit a *_created timestamp that
+    shares the counter's labels but is not a count; keep only the counter.
+    """
+
+    position_family: str | None = None
+    drop_created_samples: bool = False
+
+
+PARSE_OPTIONS = {
+    "vllm": ParseOptions(position_family="vllm:spec_decode_num_accepted_tokens_per_pos_total"),
+    "sglang": ParseOptions(drop_created_samples=True),
+}
+DEFAULT_PARSE_OPTIONS = ParseOptions()
+
+# Engines whose server answers /slots with live per-slot generation state.
+SLOTS_ENGINES = frozenset({"llamacpp"})

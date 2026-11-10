@@ -2333,6 +2333,16 @@ SERVICE_ENGINES = tuple(name for name in FLAG_METADATA_BY_TYPE if name != "llama
 # Engines the benchmark runner supports (llama-bench ships only in the llama.cpp image).
 BENCHMARK_ENGINES = frozenset({"llamacpp"})
 
+# Engines whose server must be sent a `model` field matching the served id,
+# which their templates pin to the service alias. The other local engines
+# receive none: a string they do not advertise can regress engines that
+# validate it.
+MODEL_FIELD_ENGINES = frozenset({"ninfer", "sglang"})
+
+# Engines whose server serves a browsable web UI at its root (linked from the
+# services table).
+WEB_UI_ENGINES = frozenset({"llamacpp"})
+
 
 def _choices_message(names) -> str:
     quoted = [f'"{name}"' for name in names]

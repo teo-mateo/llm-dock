@@ -5,11 +5,12 @@ import requests
 from flask import Blueprint, jsonify
 
 from auth import require_auth
-from metrics_catalogue import CURATED_METRICS
+from metrics_catalogue import CURATED_METRICS, DEFAULT_PARSE_OPTIONS, PARSE_OPTIONS, SLOTS_ENGINES
 
 logger = logging.getLogger(__name__)
 
 metrics_bp = Blueprint("metrics", __name__)
+
 
 def _get_service_config(service_name: str):
     from config import COMPOSE_FILE
@@ -25,6 +26,7 @@ def _parse_metrics(text: str, engine: str) -> dict:
     curated = CURATED_METRICS.get(engine)
     if curated is None:
         return {}
+    options = PARSE_OPTIONS.get(engine, DEFAULT_PARSE_OPTIONS)
     result = {}
     try:
         families = text_string_to_metric_families(text)
@@ -41,7 +43,7 @@ def _parse_metrics(text: str, engine: str) -> dict:
         if canonical is None:
             continue
 
-        if engine == "vllm" and canonical == "vllm:spec_decode_num_accepted_tokens_per_pos_total":
+        if canonical == options.position_family:
             metric_data = {}
             for sample in family.samples:
                 pos = sample.labels.get("position")
@@ -53,7 +55,7 @@ def _parse_metrics(text: str, engine: str) -> dict:
             for sample in family.samples:
                 # Python's Counter also emits a *_created timestamp. It is
                 # metadata, not a token count, and shares the same labels.
-                if engine == "sglang" and sample.name != canonical:
+                if options.drop_created_samples and sample.name != canonical:
                     continue
                 if sample.labels:
                     key = ";".join(f"{k}={v}" for k, v in sorted(sample.labels.items()))
@@ -184,8 +186,8 @@ def get_service_slots(service_name):
     if not config:
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
-    if config.get("template_type") != "llamacpp":
-        return jsonify({"error": "Slots endpoint is only available for llamacpp services"}), 400
+    if config.get("template_type") not in SLOTS_ENGINES:
+        return jsonify({"error": f"Slots endpoint is only available for {', '.join(sorted(SLOTS_ENGINES))} services"}), 400
 
     host_port = config.get("port")
     if not host_port:
