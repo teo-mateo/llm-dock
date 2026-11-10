@@ -787,10 +787,15 @@ class ThreadViewModel(
                 if (error == null) {
                     if (attempt.sawAnyFrame) backoff.reset()
                     setReconnecting(true)
-                    val conversation = reconcileAfterEof(backoff)
+                    val reconciled = reconcileAfterEof(backoff)
+                    val conversation = reconciled.getOrNull()
+                    if (conversation == null) {
+                        refetch = reconciled
+                        break
+                    }
                     val active = conversation.activeRun?.takeIf { conversation.isGenerating }
                     if (active == null) {
-                        refetch = Result.success(conversation)
+                        refetch = reconciled
                         break
                     }
                     runId = active.id
@@ -819,10 +824,15 @@ class ThreadViewModel(
      * the conversation is refetched — and a server that cannot answer keeps the
      * turn *not done* rather than making it done, retrying on the same capped
      * backoff that governs reattachment.
+     *
+     * A failure the server will repeat (a deleted conversation, an unreadable
+     * body) is returned instead of retried, so the caller can end the turn.
      */
-    private suspend fun reconcileAfterEof(backoff: ReconnectBackoff): ConversationDetail {
+    private suspend fun reconcileAfterEof(backoff: ReconnectBackoff): Result<ConversationDetail> {
         while (true) {
-            repository.load(conversationId).getOrNull()?.let { return it }
+            val result = repository.load(conversationId)
+            val error = result.exceptionOrNull()?.appError
+            if (error == null || !error.isTransientForReconcile()) return result
             delay(backoff.next())
         }
     }
