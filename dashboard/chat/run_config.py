@@ -189,7 +189,30 @@ class RunConfig:
         return extra
 
 
-def prepare_run_config(conv, project_id, services: ServiceLookup | None = None) -> RunConfig:
-    reasoning_level, reasoning_note = effective_reasoning_level(conv, services)
-    sampling_params, sampling_note = effective_sampling_params(conv, services)
-    return RunConfig(project_id, reasoning_level, reasoning_note, sampling_params, sampling_note)
+def _once(lookup: ServiceLookup | None) -> ServiceLookup:
+    """One docker payload per run, resolved on first use so a remote-only
+    conversation still never asks docker."""
+    outcome = []
+
+    def resolve():
+        if not outcome:
+            try:
+                outcome.append((True, (lookup or default_services)()))
+            except Exception as e:
+                outcome.append((False, e))
+        ok, value = outcome[0]
+        if not ok:
+            raise value
+        return value
+
+    return resolve
+
+
+def prepare_run_config(conv, resolve_project_id, services: ServiceLookup | None = None) -> RunConfig:
+    catalog = _once(services)
+    reasoning_level, reasoning_note = effective_reasoning_level(conv, catalog)
+    sampling_params, sampling_note = effective_sampling_params(conv, catalog)
+    return RunConfig(
+        effective_project_id(conv, resolve_project_id),
+        reasoning_level, reasoning_note, sampling_params, sampling_note,
+    )

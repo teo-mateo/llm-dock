@@ -818,9 +818,8 @@ def reorder_prompts():
 # -- Messages --
 
 
-def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
-                        first_user_content, delete_from_seq=None,
-                        effective_project_id=None):
+def _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first,
+                        first_user_content, delete_from_seq=None):
     """Atomically persist the user message + a queued run (rejecting a second
     run while one is active), start the background job, and return an SSE
     Response that observes it.
@@ -842,8 +841,6 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     created = db.create_run_with_user_message(user_msg, run, delete_from_seq=delete_from_seq)
     if created is None:
         return jsonify({"error": "A run is already active for this conversation"}), 409
-
-    cfg = run_config.prepare_run_config(conv, effective_project_id)
 
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
@@ -892,11 +889,10 @@ def send_message(conv_id):
     )
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    project_id = run_config.effective_project_id(conv, db.resolve_project_id)
-    mcp_manager = _mcp_for_conversation(conv, enabled_servers, project_id)
+    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
+    mcp_manager = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
 
-    return _start_run_response(db, conv, user_msg, mcp_manager, is_first, content,
-                               effective_project_id=project_id)
+    return _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first, content)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["PUT"])
@@ -922,8 +918,8 @@ def edit_message(conv_id, msg_id):
     images_json = json.dumps(images) if images else None
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    project_id = run_config.effective_project_id(conv, db.resolve_project_id)
-    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, project_id)
+    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
+    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
 
     new_msg = Message(
         id=str(uuid.uuid4()),
@@ -937,9 +933,8 @@ def edit_message(conv_id, msg_id):
     # The truncate-from-seq and re-send happen in one transaction (with the
     # active-run guard), so a rejected edit doesn't destroy the tail. An edit
     # replaces an existing turn, so it never triggers auto-title.
-    return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False,
-                               first_user_content=content, delete_from_seq=msg.seq,
-                               effective_project_id=project_id)
+    return _start_run_response(db, conv, new_msg, mcp_mgr, cfg, is_first=False,
+                               first_user_content=content, delete_from_seq=msg.seq)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["DELETE"])
