@@ -21,6 +21,7 @@ import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModel
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModelResolver
+import com.hpz.llmdockchat.feature.share.SHARE_SAVE_FAILED
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import com.hpz.llmdockchat.feature.share.SummarizeMessage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -279,7 +280,10 @@ class NewChatViewModel(
     private suspend fun applyTools(conversationId: String, serverIds: List<String>, onCreated: (String) -> Unit) {
         conversationsRepository.setMcpServers(conversationId, serverIds).fold(
             onSuccess = {
-                stageSummarizeClaim(conversationId)
+                if (stageSummarizeClaim(conversationId).isFailure) {
+                    updateLoaded { it.copy(creating = false, createError = SHARE_SAVE_FAILED) }
+                    return@fold
+                }
                 updateLoaded { it.copy(creating = false, toolsFailure = null) }
                 onCreated(conversationId)
             },
@@ -294,10 +298,16 @@ class NewChatViewModel(
         )
     }
 
+    /** The staged share could not be filed; the sheet stays open with the reason. */
+    fun shareFailed() {
+        updateLoaded { it.copy(creating = false, createError = SHARE_SAVE_FAILED) }
+    }
+
     /** Claim instead of draft: the thread sends the turn on opening. */
-    private fun stageSummarizeClaim(conversationId: String) {
-        val url = (state.value as? NewChatUiState.Loaded)?.summarizeUrl ?: return
-        sharedDraftStore?.stageForAutoSend(conversationId, SummarizeMessage.build(url))
+    private suspend fun stageSummarizeClaim(conversationId: String): Result<Unit> {
+        val url = (state.value as? NewChatUiState.Loaded)?.summarizeUrl ?: return Result.success(Unit)
+        val store = sharedDraftStore ?: return Result.success(Unit)
+        return store.stageForAutoSend(conversationId, SummarizeMessage.build(url))
     }
 
     private inline fun updateLoaded(transform: (NewChatUiState.Loaded) -> NewChatUiState.Loaded) {

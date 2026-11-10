@@ -210,7 +210,7 @@ class SharedDraftStoreTest {
 
     @Test
     fun `a share keeps the attachments an earlier share staged, and in order`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,EARLIER"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,EARLIER")) }
         store.stage(StagedShare(text = "caption", attachments = listOf("data:image/jpeg;base64,NEWER")))
 
         reassign("conv-1", FakeDraftStore())
@@ -233,44 +233,83 @@ class SharedDraftStoreTest {
         val drafts = FakeDraftStore()
         drafts.failOnSave = true
 
-        assertThrows(IOException::class.java) { reassign("conv-1", drafts) }
+        assertTrue(reassign("conv-1", drafts).isFailure)
 
         assertEquals("SHARED_TEXT", store.pending.value?.text)
         assertEquals("SHARED_TEXT", SharedDraftStore(dir).pending.value?.text)
     }
 
+    @Test
+    fun `a failed attachment write leaves the share on the picker and writes nothing`() {
+        store.stage(
+            StagedShare(text = "SHARED_TEXT", attachments = listOf("data:image/jpeg;base64,AAA")),
+        )
+        val drafts = FakeDraftStore()
+        java.io.File(dir, "conv_conv-1").writeText("not a directory")
+
+        assertTrue(reassign("conv-1", drafts).isFailure)
+
+        assertEquals("SHARED_TEXT", store.pending.value?.text)
+        assertEquals("SHARED_TEXT", SharedDraftStore(dir).pending.value?.text)
+        assertTrue(
+            "a failed append must not leave a partial record",
+            runBlocking { store.attachments("conv-1") }.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a retried pick adds one copy of the text and one of each attachment`() {
+        store.stage(
+            StagedShare(
+                text = "SHARED_TEXT",
+                attachments = listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"),
+            ),
+        )
+        val drafts = FakeDraftStore()
+        val blocker = java.io.File(dir, "conv_conv-1").apply { writeText("not a directory") }
+
+        assertTrue("the first attempt fails", reassign("conv-1", drafts).isFailure)
+        assertTrue(blocker.delete())
+        assertTrue("the retry succeeds", reassign("conv-1", drafts).isSuccess)
+
+        assertEquals("the text is not duplicated", "SHARED_TEXT", drafts.saved["conv-1"])
+        assertEquals(
+            listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"),
+            runBlocking { store.attachments("conv-1") },
+        )
+        assertNull(store.pending.value)
+    }
+
     /**
-     * Durability, not just call order. The draft store's flush is the last step
-     * before the pick consumes the pending record, so what the draft store sees at
-     * that instant is what survives a death one instruction later: the attachment
-     * already on disk at the destination, and `pending.json` still there to
-     * re-offer the share. Swapping the two statements in `reassign` fails this.
+     * Durability, not just call order. The record outlives the destination
+     * writes: at the moment the first one starts, `pending.json` is still there
+     * to re-offer the share, and only a confirmed write of both halves spends it.
      */
     @Test
     fun `a pick puts the attachments on disk before it spends the record`() {
         val other = Files.createTempDirectory("durable-pick").toFile()
-        var seenAtTheLastMoment: Pair<Boolean, Boolean>? = null
+        var recordSeenAtTheFirstWrite: Boolean? = null
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
         try {
             val queued = SharedDraftStore(other, scope)
             queued.stage(StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")))
 
-            runBlocking {
+            val result = runBlocking {
                 withTimeout(5_000) {
                     queued.reassign(
                         "conv-1",
                         ObservingDraftStore {
-                            seenAtTheLastMoment = java.io.File(other, "pending.json").exists() to
-                                java.io.File(other, "conv_conv-1/0.txt").exists()
+                            recordSeenAtTheFirstWrite = java.io.File(other, "pending.json").exists()
                         },
                     )
                 }
             }
 
+            assertTrue("the pick must succeed", result.isSuccess)
             assertEquals(
-                "the attachment must be on disk while the record still exists",
-                true to true,
-                seenAtTheLastMoment,
+                "the record must outlive the destination write",
+                true,
+                recordSeenAtTheFirstWrite,
             )
             assertNull(SharedDraftStore(other).pending.value)
             assertEquals(
@@ -282,13 +321,17 @@ class SharedDraftStoreTest {
         }
     }
 
-    /** Runs [onAwaitWrites] at the pick's last step, where a test can read the disk. */
-    private class ObservingDraftStore(private val onAwaitWrites: () -> Unit) : DraftStore {
+    /** Runs [onConfirmed] at the pick's first destination write, where a test can read the disk. */
+    private class ObservingDraftStore(private val onConfirmed: () -> Unit) : DraftStore {
         private val saved = mutableMapOf<String, String>()
         override suspend fun draft(conversationId: String): String = saved[conversationId].orEmpty()
         override fun save(conversationId: String, text: String) { saved[conversationId] = text }
         override fun clear(conversationId: String) { saved.remove(conversationId) }
-        override suspend fun awaitWrites() = onAwaitWrites()
+        override suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit> {
+            saved[conversationId] = text
+            onConfirmed()
+            return Result.success(Unit)
+        }
     }
 
     // -- the merge rule itself ---------------------------------------------
@@ -324,22 +367,22 @@ class SharedDraftStoreTest {
 
     @Test
     fun `attachments survive a store rebuild - the force-stop case`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB")) }
         val reborn = SharedDraftStore(dir)
         assertEquals(listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"), runBlocking { reborn.attachments("conv-1") })
     }
 
     @Test
     fun `records are keyed per conversation`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
-        store.appendAttachments("conv-2", listOf("data:image/jpeg;base64,BBB"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA")) }
+        runBlocking { store.appendAttachments("conv-2", listOf("data:image/jpeg;base64,BBB")) }
         assertEquals(listOf("data:image/jpeg;base64,AAA"), attachments("conv-1"))
         assertEquals(listOf("data:image/jpeg;base64,BBB"), attachments("conv-2"))
     }
 
     @Test
     fun `removeAttachment deletes that index and renumbers the rest`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB")) }
         store.removeAttachment("conv-1", 0)
         assertEquals(listOf("data:image/jpeg;base64,BBB"), attachments("conv-1"))
     }
@@ -352,7 +395,7 @@ class SharedDraftStoreTest {
 
     @Test
     fun `clear deletes the conversation record - send or leave`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA")) }
         store.clear("conv-1")
         assertTrue(attachments("conv-1").isEmpty())
         // And a rebuild does not resurrect it.
@@ -361,20 +404,20 @@ class SharedDraftStoreTest {
 
     @Test
     fun `a second attachment write appends rather than replacing the record`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,BBB"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA")) }
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,BBB")) }
         assertEquals(listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"), attachments("conv-1"))
     }
 
     @Test
     fun `a removed attachment keeps the merged record index-aligned`() {
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"))
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,CCC"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB")) }
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,CCC")) }
         store.removeAttachment("conv-1", 1)
 
         assertEquals(listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,CCC"), attachments("conv-1"))
 
-        store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,DDD"))
+        runBlocking { store.appendAttachments("conv-1", listOf("data:image/jpeg;base64,DDD")) }
         assertEquals(
             listOf("data:image/jpeg;base64,AAA", "data:image/jpeg;base64,CCC", "data:image/jpeg;base64,DDD"),
             attachments("conv-1"),
@@ -421,7 +464,7 @@ class SharedDraftStoreTest {
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
         try {
             val queued = SharedDraftStore(other, scope)
-            queued.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA"))
+            runBlocking { queued.appendAttachments("conv-1", listOf("data:image/jpeg;base64,AAA")) }
 
             assertEquals(
                 listOf("data:image/jpeg;base64,AAA"),

@@ -96,6 +96,24 @@ class ValuePreference<T : Any>(
         }
     }
 
+    /**
+     * Writes [value] and waits for *that* write to reach disk, reporting the
+     * failure instead of swallowing it.
+     *
+     * The best-effort [set] is right for a value the app can rebuild from user
+     * input; it is wrong for a caller that is about to delete the only other
+     * copy, which is what this exists for.
+     */
+    suspend fun setConfirmed(value: T): Result<Unit> {
+        val encoded = encode(value)
+        synchronized(writeLock) { state.value = Stored.Ready(value) }
+        val done = CompletableDeferred<Result<Unit>>()
+        writes.send {
+            done.complete(runCatching { dataStore.edit { it[key] = encoded } }.map { })
+        }
+        return done.await()
+    }
+
     private fun enqueue(write: suspend () -> Unit) {
         writes.trySend {
             try {

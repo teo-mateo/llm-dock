@@ -335,7 +335,6 @@ fun AppNavHost(
         }
 
         composable(Destinations.SHARE_PICKER) {
-            val pickerScope = rememberCoroutineScope()
             val viewModel: ShareTargetViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -350,13 +349,11 @@ fun AppNavHost(
             ShareTargetScreen(
                 viewModel = viewModel,
                 onPickConversation = { conversation ->
-                    // Navigates after the write rather than after the call: the
-                    // thread reads the draft and the staged attachments as soon as
-                    // it loads, so a merge still in flight would land behind that
-                    // read and the thread would open without the shared content.
-                    pickerScope.launch {
-                        container.sharedDraftStore.reassign(conversation.id, container.draftStore)
-                        navController.navigate(Destinations.thread(conversation.id)) {
+                    // The view model owns the write so a failure can be shown
+                    // instead of navigating into a thread that never received the
+                    // share. Navigation happens only once the content is filed.
+                    viewModel.pick(conversation.id, container.draftStore) { id ->
+                        navController.navigate(Destinations.thread(id)) {
                             popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
                         }
                     }
@@ -485,7 +482,10 @@ private fun NewChatDestination(
             // a summarize run this returns without waiting — the sheet already
             // spent the pending share.
             newChatScope.launch {
-                container.sharedDraftStore.reassign(id, container.draftStore)
+                if (container.sharedDraftStore.reassign(id, container.draftStore).isFailure) {
+                    viewModel.shareFailed()
+                    return@launch
+                }
                 // Replaces the sheet on the back stack — Back from the new
                 // thread returns to the conversation list, not to a sheet
                 // for a chat that already exists.

@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.IOException
 
 /**
  * Where a share lives between the intent and the send. Three records:
@@ -141,13 +142,6 @@ class SharedDraftStore(
 
     /**
      * The picker's "pick a conversation" and the new-chat flow's
-     * `onConversationCreated` both land here: the staged text becomes the
-     * conversation's draft (the thread's `loadedFrom` already merges it), the
-     * attachments move to the per-conversation record, and the pending share
-     * is gone.
-     */
-    /**
-     * The picker's "pick a conversation" and the new-chat flow's
      * `onConversationCreated` both land here: the staged text is **appended** to
      * the conversation's draft ([mergedDraft]) rather than replacing it, the
      * attachments are appended to the per-conversation record, and the pending
@@ -157,18 +151,21 @@ class SharedDraftStore(
      * before DataStore has hydrated (a share that starts the process cold would
      * otherwise read "no draft" and overwrite one), and the destination writes
      * have to be durable before the pending record is spent. A failure anywhere
-     * in here therefore leaves the share on the picker rather than losing it.
+     * in here is returned instead of thrown, and leaves the share on the picker
+     * rather than losing it.
      */
-    suspend fun reassign(conversationId: String, drafts: DraftStore) {
-        val share = _pending.value ?: return
+    suspend fun reassign(conversationId: String, drafts: DraftStore): Result<Unit> {
+        val share = _pending.value ?: return Result.success(Unit)
         // A placeholder is not content: spending it would hand the user an empty
         // composer and throw the incoming bytes away.
-        if (share.importing) return
-        if (share.text.isNotBlank()) drafts.save(conversationId, mergedDraft(drafts.draft(conversationId), share.text))
-        appendAttachments(conversationId, share.attachments)
-        awaitPendingWrites()
-        drafts.awaitWrites()
+        if (share.importing) return Result.success(Unit)
+        if (share.text.isNotBlank()) {
+            val merged = mergedDraft(drafts.draft(conversationId), share.text)
+            drafts.saveConfirmed(conversationId, merged).onFailure { return Result.failure(it) }
+        }
+        appendAttachments(conversationId, share.attachments).onFailure { return Result.failure(it) }
         clearPending()
+        return Result.success(Unit)
     }
 
     /**
@@ -179,16 +176,14 @@ class SharedDraftStore(
      * into that directory and [attachments] reads all of them back — a claim
      * filed there would be handed to the composer as a staged image.
      */
-    fun stageForAutoSend(conversationId: String, message: String) {
-        enqueue {
+    suspend fun stageForAutoSend(conversationId: String, message: String): Result<Unit> =
+        confirmed {
             dir.mkdirs()
             val file = autoSendFile(conversationId)
             val tmp = File(dir, "${file.name}.tmp")
             tmp.writeText(message)
-            tmp.renameTo(file)
-        }
-        clearPending()
-    }
+            if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
+        }.onSuccess { clearPending() }
 
     /** Reads the claim and spends it, so no second visit can send it again. */
     suspend fun takeAutoSend(conversationId: String): String? = drain {
@@ -205,16 +200,30 @@ class SharedDraftStore(
      * not throw the first one away. Indexes continue after the highest existing
      * one, so the record stays index-aligned with the composer's list and
      * [removeAttachment]'s renumbering still holds.
+     *
+     * All-or-nothing: a write that fails deletes what this call already wrote,
+     * so a retry starts at the same index instead of appending a second copy.
      */
-    fun appendAttachments(conversationId: String, attachments: List<String>) {
-        if (attachments.isEmpty()) return
-        enqueue {
-            val convDir = conversationDir(conversationId).apply { mkdirs() }
+    suspend fun appendAttachments(conversationId: String, attachments: List<String>): Result<Unit> {
+        if (attachments.isEmpty()) return Result.success(Unit)
+        return confirmed {
+            val convDir = conversationDir(conversationId)
+            if (!convDir.mkdirs() && !convDir.isDirectory) {
+                throw IOException("could not create $convDir")
+            }
             val next = convDir.listFiles().orEmpty()
                 .mapNotNull { file -> file.nameWithoutExtension.toIntOrNull() }
                 .maxOrNull()?.plus(1) ?: 0
-            attachments.forEachIndexed { offset, dataUrl ->
-                File(convDir, "${next + offset}.txt").writeText(dataUrl)
+            val written = mutableListOf<File>()
+            try {
+                attachments.forEachIndexed { offset, dataUrl ->
+                    val file = File(convDir, "${next + offset}.txt")
+                    written += file
+                    file.writeText(dataUrl)
+                }
+            } catch (failure: Throwable) {
+                written.forEach { it.delete() }
+                throw failure
             }
         }
     }
@@ -268,7 +277,7 @@ class SharedDraftStore(
         val file = File(dir, PENDING_FILE)
         val tmp = File(dir, "$PENDING_FILE.tmp")
         tmp.writeText(json.encodeToString(StagedShare.serializer(), share))
-        tmp.renameTo(file)
+        if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
     }
 
     private fun deletePending() {
@@ -287,13 +296,26 @@ class SharedDraftStore(
         val file = File(dir, HANDLED_FILE)
         val tmp = File(dir, "$HANDLED_FILE.tmp")
         tmp.writeText(json.encodeToString(String.serializer(), token))
-        tmp.renameTo(file)
+        if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
     }
 
     private fun conversationDir(conversationId: String): File = File(dir, "conv_$conversationId")
 
     private fun enqueue(write: suspend () -> Unit) {
         writes.trySend(write)
+    }
+
+    /**
+     * Runs [write] on the queue and waits for *its* result, so a caller that is
+     * about to delete the only other copy learns whether the new one landed.
+     * A drained queue still means only "nothing is queued".
+     */
+    private suspend fun <T> confirmed(write: suspend () -> T): Result<T> {
+        val done = CompletableDeferred<Result<T>>()
+        writes.send {
+            done.complete(runCatching { write() })
+        }
+        return done.await()
     }
 
     /**

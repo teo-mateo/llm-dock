@@ -24,11 +24,11 @@ interface DraftStore {
     fun clear(conversationId: String)
 
     /**
-     * Returns once every write enqueued before this call has reached disk. A
-     * caller that consumes something *because* it moved a draft elsewhere needs
-     * this, or a death between the two loses both copies.
+     * Saves and waits for the write to reach disk, reporting a failure. A caller
+     * that consumes something *because* it moved a draft elsewhere needs this,
+     * or a death between the two loses both copies.
      */
-    suspend fun awaitWrites()
+    suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit>
 }
 
 /**
@@ -57,10 +57,21 @@ class DataStoreDraftStore(
 
     override fun save(conversationId: String, text: String) {
         if (text.isBlank()) return clear(conversationId)
+        drafts.set(updated(conversationId, text))
+    }
+
+    override suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit> =
+        if (text.isBlank()) {
+            drafts.setConfirmed(inMemory() - conversationId)
+        } else {
+            drafts.setConfirmed(updated(conversationId, text))
+        }
+
+    private fun updated(conversationId: String, text: String): Map<String, String> {
         val updated = (inMemory() - conversationId) + (conversationId to text)
         // Keeping the newest few is enough for a phone; an unbounded map would
         // grow one entry per thread ever typed in and never shrink.
-        drafts.set(updated.entries.toList().takeLast(MAX_DRAFTS).associate { it.toPair() })
+        return updated.entries.toList().takeLast(MAX_DRAFTS).associate { it.toPair() }
     }
 
     override fun clear(conversationId: String) {
@@ -68,8 +79,6 @@ class DataStoreDraftStore(
         if (conversationId !in existing) return
         drafts.set(existing - conversationId)
     }
-
-    override suspend fun awaitWrites() = drafts.awaitPendingWrites()
 
     /**
      * The hydrated value without blocking — [ValuePreference.get] would park
