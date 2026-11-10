@@ -21,6 +21,7 @@ def _summary(session_id="s1", instance_id="i1", live=True):
         state="idle" if live else None,
         context_percent=None,
         parent_session_id=None,
+        parent_instance_id=None,
         project="tmp",
     )
 
@@ -243,6 +244,7 @@ def test_session_frames_carry_parent_and_project():
         state="idle",
         context_percent=None,
         parent_session_id="s1",
+        parent_instance_id="i1",
         project="teo-mateo/llm-dock",
     )
     source = _FakeSource(summaries=[child])

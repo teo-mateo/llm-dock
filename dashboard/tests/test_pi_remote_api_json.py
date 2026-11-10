@@ -20,6 +20,7 @@ def _summary():
         state="idle",
         context_percent=10.0,
         parent_session_id=None,
+        parent_instance_id=None,
         project="tmp",
     )
 

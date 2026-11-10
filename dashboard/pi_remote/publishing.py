@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 from .bus import BusMessage, EventBus, SessionKey
-from .read_model import EventView, SessionSummary, session_summary
+from .read_model import EventView, SessionSummary, resolve_parent, session_summary
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
@@ -29,5 +29,6 @@ def publish_session(
         return
     presence = registry.get(session_id, instance_id, now)
     prompts = store.prompts.open_for(session_id, instance_id)
-    summary = session_summary(row, presence, prompts)
+    parents = resolve_parent(store.sessions.list())
+    summary = session_summary(row, presence, prompts, parents)
     publish("session", (session_id, instance_id), (), summary)

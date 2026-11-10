@@ -306,7 +306,10 @@ differs, and keeping it apart avoids touching chat migrations. Precedent:
 
 Histories survive pi exit because they are the event log. `PiRemoteDB._init_db` migrates
 the #331 `pi_sessions` table by adding `acked_seq` and `parent_session_id`, and adds
-`gap_from`/`gap_to` to an existing `pi_events` table. Retention bound: events
+`gap_from`/`gap_to` to an existing `pi_events` table. `parent_session_id` names a
+session, not a row, so `read_model.resolve_parent` picks the row it means (live first,
+then greatest `last_seen`, then `first_seen`; self and cycles resolve to none) and every
+summary carries the answer as `parent_instance_id` beside the declared id. Retention bound: events
 older than **30 days** (`received_at`) are deleted; ended sessions' events are kept
 until that bound, not deleted at `bye`. The sweeper alone owns the purge: its first
 sweep after listener start purges, then at most once per hour. It does not purge on

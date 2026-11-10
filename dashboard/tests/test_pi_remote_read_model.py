@@ -1,6 +1,12 @@
 from pi_remote.events import StoredEvent
 from pi_remote.frames import ContextUsage, HelloFrame, ModelRef
-from pi_remote.read_model import clamp_limit, event_page, project_label, session_summary
+from pi_remote.read_model import (
+    clamp_limit,
+    event_page,
+    project_label,
+    resolve_parent,
+    session_summary,
+)
 from pi_remote.registry import PresenceEntry
 
 
@@ -131,3 +137,74 @@ def test_summary_of_a_root_session_has_no_parent():
     summary = session_summary(_row(), None)
     assert summary.parent_session_id is None
     assert summary.project == "tmp"
+
+
+def test_resolve_parent_prefers_the_live_row():
+    rows = [
+        _row(instance_id="old", ended_at=10, last_seen=50),
+        _row(instance_id="new", ended_at=None, last_seen=1),
+        _row(session_id="child", instance_id="c1", parent_session_id="s1"),
+    ]
+
+    assert resolve_parent(rows) == {("child", "c1"): ("s1", "new")}
+
+
+def test_resolve_parent_breaks_a_tie_by_last_seen_then_first_seen():
+    rows = [
+        _row(instance_id="a", ended_at=1, last_seen=100, first_seen=1),
+        _row(instance_id="b", ended_at=1, last_seen=100, first_seen=2),
+        _row(session_id="child", instance_id="c1", parent_session_id="s1"),
+    ]
+
+    assert resolve_parent(rows)[("child", "c1")] == ("s1", "b")
+
+
+def test_resolve_parent_leaves_a_missing_parent_unresolved():
+    rows = [_row(session_id="child", instance_id="c1", parent_session_id="gone")]
+
+    assert resolve_parent(rows) == {}
+
+
+def test_resolve_parent_ignores_self_and_cycles():
+    rows = [
+        _row(session_id="a", instance_id="i1", parent_session_id="a"),
+        _row(session_id="b", instance_id="i1", parent_session_id="c"),
+        _row(session_id="c", instance_id="i1", parent_session_id="b"),
+    ]
+
+    assert resolve_parent(rows) == {}
+
+
+def test_resolve_parent_keeps_a_chain():
+    rows = [
+        _row(session_id="root", instance_id="i1"),
+        _row(session_id="child", instance_id="i1", parent_session_id="root"),
+        _row(session_id="grandchild", instance_id="i1", parent_session_id="child"),
+    ]
+
+    assert resolve_parent(rows) == {
+        ("child", "i1"): ("root", "i1"),
+        ("grandchild", "i1"): ("child", "i1"),
+    }
+
+
+def test_summary_carries_the_resolved_parent_instance():
+    rows = [
+        _row(instance_id="old", ended_at=10, last_seen=50),
+        _row(instance_id="new", ended_at=None, last_seen=1),
+    ]
+    child = _row(session_id="child", instance_id="c1", parent_session_id="s1")
+
+    summary = session_summary(child, None, parents=resolve_parent(rows + [child]))
+
+    assert summary.parent_session_id == "s1"
+    assert summary.parent_instance_id == "new"
+
+
+def test_summary_of_an_unresolved_parent_keeps_the_declared_id():
+    child = _row(session_id="child", instance_id="c1", parent_session_id="gone")
+
+    summary = session_summary(child, None, parents=resolve_parent([child]))
+
+    assert summary.parent_session_id == "gone"
+    assert summary.parent_instance_id is None
