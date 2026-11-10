@@ -20,6 +20,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-rl-chat")
 
 from chat.db import ChatDB
 from chat.models import Conversation
+from chat import run_config
 from chat.routes import chat_bp
 
 TOKEN = "test-token-rl-chat"
@@ -37,14 +38,13 @@ LEVELS = {
 def client(monkeypatch):
     """Chat blueprint on an in-memory DB, with service levels stubbed.
 
-    `_service_reasoning_levels` is the only seam that touches Docker; stubbing
+    `run_config.service_reasoning_levels` is the only seam that touches Docker; stubbing
     it keeps this file about the column and its guards. Its own test patches
     one level lower, at get_docker_services.
     """
-    import chat.routes as routes
 
-    monkeypatch.setattr(routes, "_service_reasoning_levels",
-                        lambda svc, _levels=LEVELS: _parse(_levels.get(svc)))
+    monkeypatch.setattr(run_config, "service_reasoning_levels",
+                        lambda svc, services=None, _levels=LEVELS: _parse(_levels.get(svc)))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
     app.config["CHAT_DB"] = ChatDB(":memory:")
@@ -168,8 +168,7 @@ def test_level_offered_only_by_another_service_is_rejected(client):
 
 
 def test_service_with_no_declaration_rejects_any_level(client, monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_reasoning_levels", lambda svc: [])
+    monkeypatch.setattr(run_config, "service_reasoning_levels", lambda svc, services=None: [])
     r = client.post(CONVERSATIONS_PATH, json={"main_service": "llamacpp-a",
                                              "reasoning_level": "low"}, headers=_auth())
     assert r.status_code == 400
@@ -197,20 +196,18 @@ def test_openrouter_conversation_cannot_carry_a_level(client, monkeypatch):
 def test_openrouter_conversation_carries_a_level_its_ladder_offers(client, monkeypatch):
     # The ladder a shortlist entry carries stands in for a service declaration, so the
     # same guard applies to it rather than a blanket refusal.
-    import chat.routes as routes
 
-    monkeypatch.setattr(routes, "_service_reasoning_levels",
-                        lambda svc: _parse("off,low,high") if svc == "openrouter:x" else [])
+    monkeypatch.setattr(run_config, "service_reasoning_levels",
+                        lambda svc, services=None: _parse("off,low,high") if svc == "openrouter:x" else [])
     r = client.post(CONVERSATIONS_PATH, json={"main_service": "openrouter:x",
                                              "reasoning_level": "low"}, headers=_auth())
     assert r.status_code == 201
 
 
 def test_openrouter_conversation_rejects_a_level_outside_its_ladder(client, monkeypatch):
-    import chat.routes as routes
 
-    monkeypatch.setattr(routes, "_service_reasoning_levels",
-                        lambda svc: _parse("off,low") if svc == "openrouter:x" else [])
+    monkeypatch.setattr(run_config, "service_reasoning_levels",
+                        lambda svc, services=None: _parse("off,low") if svc == "openrouter:x" else [])
     r = client.post(CONVERSATIONS_PATH, json={"main_service": "openrouter:x",
                                              "reasoning_level": "xhigh"}, headers=_auth())
     assert r.status_code == 400
@@ -263,30 +260,33 @@ def _conv(main_service, level):
     return Conversation(id="c", title="t", main_service=main_service, reasoning_level=level)
 
 
-def test_run_keeps_a_level_the_service_still_offers(monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_reasoning_levels", lambda svc: _parse(LEVELS.get(svc)))
-    assert routes._effective_reasoning_level(_conv("llamacpp-a", "low")) == ("low", None)
+def _services(levels=None):
+    levels = LEVELS if levels is None else levels
+    return lambda: [
+        {"name": name, "reasoning_levels": _parse(raw)} for name, raw in levels.items()
+    ]
 
 
-def test_run_drops_a_level_the_service_lost_and_says_so(monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_reasoning_levels", lambda svc: _parse(LEVELS.get(svc)))
-    level, note = routes._effective_reasoning_level(_conv("vllm-b", "low"))
+def test_run_keeps_a_level_the_service_still_offers():
+    from chat import run_config
+    assert run_config.effective_reasoning_level(_conv("llamacpp-a", "low"), _services()) == ("low", None)
+
+
+def test_run_drops_a_level_the_service_lost_and_says_so():
+    from chat import run_config
+    level, note = run_config.effective_reasoning_level(_conv("vllm-b", "low"), _services())
     assert level is None
     assert "low" in note and "ignored" in note
 
 
-def test_run_drops_a_level_when_the_service_declares_nothing_now(monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_reasoning_levels", lambda svc: [])
-    assert routes._effective_reasoning_level(_conv("llamacpp-a", "off"))[0] is None
+def test_run_drops_a_level_when_the_service_declares_nothing_now():
+    from chat import run_config
+    assert run_config.effective_reasoning_level(_conv("llamacpp-a", "off"), _services({}))[0] is None
 
 
-def test_run_without_a_level_produces_no_note_and_no_value(monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_reasoning_levels", lambda svc: _parse(LEVELS.get(svc)))
-    assert routes._effective_reasoning_level(_conv("llamacpp-a", None)) == (None, None)
+def test_run_without_a_level_produces_no_note_and_no_value():
+    from chat import run_config
+    assert run_config.effective_reasoning_level(_conv("llamacpp-a", None), _services()) == (None, None)
 
 
 def test_run_started_frame_reports_the_resolved_level(client, monkeypatch):
@@ -307,8 +307,8 @@ def test_run_started_frame_reports_the_resolved_level(client, monkeypatch):
 
     import chat.routes as routes
     monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
-    monkeypatch.setattr(routes, "_effective_reasoning_level",
-                        lambda conv: (None, "Reasoning level 'low' is not offered by this model and was ignored"))
+    monkeypatch.setattr(run_config, "effective_reasoning_level",
+                        lambda conv, services=None: (None, "Reasoning level 'low' is not offered by this model and was ignored"))
 
     conv = _create(client, reasoning_level="low")
     r = client.post(f"{CONVERSATIONS_PATH}/{conv['id']}/messages", json={"content": "hi"},

@@ -108,7 +108,7 @@ class ChatTurnRequest:
     mcp_manager: object = None
     # The conversation's resolved project (root-only membership means a
     # spin-off's own project_id is NULL), snapshotted when the run was
-    # created — see routes._effective_project_id, the single owner of that
+    # created — see run_config.effective_project_id, the single owner of that
     # resolution. The runner consumes it verbatim so manager scoping and
     # tool auto-enable can never disagree about the effective project.
     effective_project_id: Optional[str] = None
