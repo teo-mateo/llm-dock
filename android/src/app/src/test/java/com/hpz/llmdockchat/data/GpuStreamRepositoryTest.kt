@@ -98,6 +98,21 @@ class GpuStreamRepositoryTest {
     }
 
     @Test
+    fun `a transient failure retries on the reconnect schedule, not the terminal one`() = runTest {
+        val transport = TimingSseTransport(testScheduler, IOException("connection reset"))
+        val repository = GpuStreamRepository(transport)
+
+        withTimeout(120_000) {
+            repository.stream(
+                backoff = ReconnectBackoff(initialMs = 100L, maxMs = 400L),
+                terminalBackoff = ReconnectBackoff(initialMs = 5_000L, maxMs = 60_000L),
+            ).take(4).toList()
+        }
+
+        assertEquals(listOf(0L, 100L, 300L), transport.opens)
+    }
+
+    @Test
     fun `a 404 is retried on a growing delay rather than hammered or given up on`() = runTest {
         val transport = TimingSseTransport(testScheduler, ApiException(AppError.Http(404, "no such endpoint", fromServer = true)))
         val repository = GpuStreamRepository(transport)

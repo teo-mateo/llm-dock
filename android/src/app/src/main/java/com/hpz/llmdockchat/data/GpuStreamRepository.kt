@@ -72,8 +72,8 @@ class GpuStreamRepository(private val transport: SseTransport) {
             } catch (e: Throwable) {
                 val error = e.appError
                 if (error.isTransient()) {
-                    emit(GpuState.Unavailable(error.displayMessage))
-                    waitMs = terminalBackoff.next()
+                    emit(GpuState.Unavailable(null))
+                    waitMs = backoff.next()
                 } else {
                     // A 401 re-auth could not fix, or a 404, answers the same
                     // way however often it is asked — but the dashboard can be
