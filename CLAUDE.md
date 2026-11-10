@@ -384,7 +384,7 @@ built by a `build-*.sh` script or documented `docker build`.
 - **Format:** GGUF files
 - **Multimodal:** Supported (mmproj files)
 - **Image:** Custom build (`llm-dock-llamacpp`), tracks upstream `main` — the Dockerfile does a `--depth 1` clone, so there is no pinned version
-- **Benchmarking:** Built-in `llama-bench` support; `scripts/bench/llamacpp/bench.py` separately benchmarks a *running* service via `/completion`
+- **Benchmarking:** Built-in `llama-bench` support, run on the service's effective image (its `image` override or the default; a failed run names the image); `scripts/bench/llamacpp/bench.py` separately benchmarks a *running* service via `/completion`
 - **Metrics:** yes — the template always passes `--metrics`, and `/api/services/<name>/metrics` and `/slots` both accept `llamacpp`
 - **Params:** CLI flags directly (e.g. `-ngl 99`, `-fa 1`, `-c 8192`)
 

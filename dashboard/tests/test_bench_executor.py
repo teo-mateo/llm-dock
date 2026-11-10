@@ -5,7 +5,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from benchmarking.db import BenchmarkDB
-from benchmarking.executor import BenchmarkExecutor, LLAMA_BENCH_PATH, LLAMACPP_IMAGE
+from benchmarking.executor import BenchmarkExecutor, LLAMA_BENCH_PATH
+from flag_metadata import ENGINE_IMAGES
 
 
 @pytest.fixture
@@ -23,7 +24,7 @@ class TestBuildDockerCmd:
         assert "--rm" in cmd
         assert "--gpus" in cmd
         assert "all" in cmd
-        assert LLAMACPP_IMAGE in cmd
+        assert ENGINE_IMAGES["llamacpp"] in cmd
         assert LLAMA_BENCH_PATH in cmd
 
         m_idx = cmd.index("-m")

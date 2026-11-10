@@ -10,6 +10,9 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from compose_manager import ComposeManager
+from flag_metadata import default_engine_image, effective_image
+
 from .db import BenchmarkDB
 from .models import BenchmarkRun
 
@@ -17,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 BENCHMARK_TIMEOUT = 600  # 10 minutes
 LLAMA_BENCH_PATH = "/llama.cpp/build/bin/llama-bench"
-LLAMACPP_IMAGE = "llm-dock-llamacpp"
 
 
 class BenchmarkExecutor:
@@ -106,9 +108,25 @@ class BenchmarkExecutor:
             return ["--ipc", str(ipc)]
         return []
 
+    def _image_for(self, service_name: str) -> str:
+        try:
+            config = ComposeManager(self.compose_file).get_service_from_db(service_name)
+        except Exception as e:
+            logger.warning(f"Failed to read services for {service_name}: {e}")
+            config = None
+        if not config:
+            logger.warning(f"No service config for {service_name}, using the default llama.cpp image")
+            return default_engine_image("llamacpp")
+        return effective_image(config.get("template_type", "llamacpp"), config)
+
     def _build_docker_cmd(
-        self, service_name: str, model_path: str, params: Dict[str, str]
+        self,
+        service_name: str,
+        model_path: str,
+        params: Dict[str, str],
+        image: Optional[str] = None,
     ) -> list:
+        image = image or self._image_for(service_name)
         service_config = self._get_service_compose_config(service_name)
 
         cmd = ["docker", "run", "--rm"]
@@ -129,7 +147,7 @@ class BenchmarkExecutor:
             cmd.extend(["-v", f"{home}/.cache/models:/local-models:ro"])
 
         cmd.extend([
-            LLAMACPP_IMAGE,
+            image,
             LLAMA_BENCH_PATH,
             "-m", model_path,
             "-o", "json",
@@ -156,7 +174,8 @@ class BenchmarkExecutor:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.db.update_status(run_id, "running", started_at=now)
 
-        cmd = self._build_docker_cmd(service_name, model_path, params)
+        image = self._image_for(service_name)
+        cmd = self._build_docker_cmd(service_name, model_path, params, image=image)
         logger.info(f"Benchmark {run_id}: executing {' '.join(cmd)}")
 
         try:
@@ -191,7 +210,11 @@ class BenchmarkExecutor:
                 logger.debug(f"Benchmark {run_id} stderr (first 500 chars): {stderr_text[:500]!r}")
 
             if proc.returncode != 0:
-                error_msg = stderr_text.strip() or f"llama-bench exited with code {proc.returncode}"
+                detail = stderr_text.strip() or "no output"
+                error_msg = (
+                    f"llama-bench ({LLAMA_BENCH_PATH}) failed on image '{image}' "
+                    f"(exit code {proc.returncode}): {detail}"
+                )
                 self._finish_failed(run_id, error_msg, raw_output=stdout_text)
                 return
 
