@@ -551,21 +551,23 @@ class TestNinferMetrics:
         )
         assert resp.status_code == 400
 
-    def test_unsupported_engine_still_returns_empty(self, metrics_client):
-        # Engines without a curated set keep the existing empty response.
-        # The fixture has no such service, so drive the route's gate directly
-        # through a stubbed config.
+    @pytest.mark.parametrize("engine", ["ds4", "ik_llamacpp", "tabbyapi", "maya"])
+    def test_unsupported_engine_still_returns_empty(self, metrics_client, engine):
+        # Engines without a curated set keep the existing empty response. The
+        # fixture has no such service, so drive the route's gate directly
+        # through a stubbed config. The catalogue's `metrics` flag is derived
+        # from the same table, so the UI does not offer a tab for these.
         from routes import metrics as metrics_mod
         orig = metrics_mod._get_service_config
         try:
             metrics_mod._get_service_config = lambda _name: {
-                "template_type": "ds4", "port": 3304, "api_key": "test-key"
+                "template_type": engine, "port": 3304, "api_key": "test-key"
             }
-            resp = metrics_client.get("/api/services/ds4-test/metrics", headers=_auth_headers())
+            resp = metrics_client.get(f"/api/services/{engine}-test/metrics", headers=_auth_headers())
             assert resp.status_code == 200
             data = resp.get_json()
             assert data["metrics"] == {}
-            assert data["engine"] == "ds4"
+            assert data["engine"] == engine
         finally:
             metrics_mod._get_service_config = orig
 

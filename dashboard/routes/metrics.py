@@ -222,7 +222,7 @@ def get_service_metrics(service_name):
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     template_type = config.get("template_type")
-    engine = {"vllm": "vllm", "llamacpp": "llamacpp", "ninfer": "ninfer", "sglang": "sglang"}.get(template_type)
+    engine = template_type if template_type in CURATED_METRICS else None
     if engine is None:
         return jsonify({
             "metrics": {},

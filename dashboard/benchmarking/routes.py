@@ -5,6 +5,8 @@ from flask import Blueprint, jsonify, request, current_app
 from auth import require_auth
 from db_lock import serialize_db
 from .db import BenchmarkDB
+from flag_metadata import BENCHMARK_ENGINES
+
 from .executor import BenchmarkExecutor
 from .validators import validate_params, validate_service_name, BENCHMARK_ONLY_FLAGS
 
@@ -64,7 +66,7 @@ def start_benchmark():
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
     template_type = service_config.get("template_type", "")
-    if template_type != "llamacpp":
+    if template_type not in BENCHMARK_ENGINES:
         return jsonify({"error": "Benchmarking is only supported for llama.cpp services"}), 400
 
     executor = current_app.config["BENCHMARK_EXECUTOR"]
@@ -188,7 +190,7 @@ def get_service_defaults(service_name):
     if not service_config:
         return jsonify({"error": f"Service '{service_name}' not found"}), 404
 
-    if service_config.get("template_type") != "llamacpp":
+    if service_config.get("template_type") not in BENCHMARK_ENGINES:
         return jsonify({"error": "Only llama.cpp services are supported"}), 400
 
     params = {
