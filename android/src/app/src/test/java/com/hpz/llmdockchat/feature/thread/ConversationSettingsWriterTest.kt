@@ -22,18 +22,19 @@ class ConversationSettingsWriterTest {
         val serverWrites = mutableListOf<List<String>>()
         val levelWrites = mutableListOf<String?>()
         var gate: CompletableDeferred<Unit>? = null
+        val gates = ArrayDeque<CompletableDeferred<Unit>>()
         var failPrompt = false
         var failTools = false
 
         override suspend fun setPrompt(promptId: String?): Result<Unit> {
             promptWrites += promptId
-            gate?.await()
+            (gates.removeFirstOrNull() ?: gate)?.await()
             return if (failPrompt) failure() else Result.success(Unit)
         }
 
         override suspend fun setMcpServers(serverIds: List<String>): Result<Unit> {
             serverWrites += serverIds
-            gate?.await()
+            (gates.removeFirstOrNull() ?: gate)?.await()
             return if (failTools) failure() else Result.success(Unit)
         }
 
@@ -165,6 +166,33 @@ class ConversationSettingsWriterTest {
         writes.gate?.complete(Unit)
         testScheduler.advanceUntilIdle()
         assertFalse(writer.pending)
+    }
+
+    @Test
+    fun `a seed after the first of two queued writes finished keeps the chosen value`() = runTest {
+        val writes = FakeWrites()
+        val recorder = Recorder()
+        val writer = writer(writes, CoroutineScope(StandardTestDispatcher(testScheduler)), recorder)
+        writer.seed(null, listOf("a"), null)
+        val first = CompletableDeferred<Unit>()
+        val second = CompletableDeferred<Unit>()
+        writes.gates.addAll(listOf(first, second))
+
+        writer.toggleTool("b")
+        writer.toggleTool("c")
+        testScheduler.advanceUntilIdle()
+        first.complete(Unit)
+        testScheduler.advanceUntilIdle()
+
+        writer.seed(null, listOf("a"), null)
+
+        assertEquals(
+            "the second write is still outstanding, so the chosen list stays",
+            listOf("a", "b", "c"),
+            recorder.latest?.mcpServers,
+        )
+        second.complete(Unit)
+        testScheduler.advanceUntilIdle()
     }
 
     @Test

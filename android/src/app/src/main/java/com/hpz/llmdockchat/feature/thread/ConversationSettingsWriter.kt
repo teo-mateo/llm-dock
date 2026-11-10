@@ -47,17 +47,17 @@ class ConversationSettingsWriter(
     private val promptLock = Mutex()
     private var latestPrompt = 0L
     private var confirmedPrompt: String? = null
-    private var promptBusy = false
+    private var promptOutstanding = 0
 
     private val toolsLock = Mutex()
     private var latestTools = 0L
     private var confirmedTools: List<String> = emptyList()
-    private var toolsBusy = false
+    private var toolsOutstanding = 0
 
     private val levelLock = Mutex()
     private var latestLevel = 0L
     private var confirmedLevel: String? = null
-    private var levelBusy = false
+    private var levelOutstanding = 0
 
     /**
      * Settings writes the server has not confirmed. Counted by [submit] before it
@@ -82,19 +82,20 @@ class ConversationSettingsWriter(
         confirmedLevel = reasoningLevel
         publish(
             snapshot.copy(
-                promptId = if (promptBusy) snapshot.promptId else promptId,
-                mcpServers = if (toolsBusy) snapshot.mcpServers else mcpServers,
-                reasoningLevel = if (levelBusy) snapshot.reasoningLevel else reasoningLevel,
+                promptId = if (promptOutstanding > 0) snapshot.promptId else promptId,
+                mcpServers = if (toolsOutstanding > 0) snapshot.mcpServers else mcpServers,
+                reasoningLevel = if (levelOutstanding > 0) snapshot.reasoningLevel else reasoningLevel,
             ),
         )
     }
 
     fun selectPrompt(promptId: String?) {
         val write = ++latestPrompt
-        promptBusy = true
+        promptOutstanding++
         publish(snapshot.copy(promptId = promptId))
         submit {
-            promptLock.withLock {
+            try {
+                promptLock.withLock {
                 if (write != latestPrompt) return@withLock
                 writes.setPrompt(promptId).fold(
                     onSuccess = { confirmedPrompt = promptId },
@@ -104,8 +105,10 @@ class ConversationSettingsWriter(
                         onError(failure.appError.displayMessage)
                     },
                 )
+                }
+            } finally {
+                promptOutstanding--
             }
-            promptBusy = false
         }
     }
 
@@ -113,10 +116,11 @@ class ConversationSettingsWriter(
         val previous = snapshot.mcpServers
         val next = if (serverId in previous) previous - serverId else previous + serverId
         val write = ++latestTools
-        toolsBusy = true
+        toolsOutstanding++
         publish(snapshot.copy(mcpServers = next))
         submit {
-            toolsLock.withLock {
+            try {
+                toolsLock.withLock {
                 writes.setMcpServers(next).fold(
                     onSuccess = { confirmedTools = next },
                     onFailure = { failure ->
@@ -125,17 +129,20 @@ class ConversationSettingsWriter(
                         onError(failure.appError.displayMessage)
                     },
                 )
+                }
+            } finally {
+                toolsOutstanding--
             }
-            toolsBusy = false
         }
     }
 
     fun selectReasoningLevel(level: String?) {
         val write = ++latestLevel
-        levelBusy = true
+        levelOutstanding++
         publish(snapshot.copy(reasoningLevel = level, reasoningPending = true))
         submit {
-            levelLock.withLock {
+            try {
+                levelLock.withLock {
                 writes.setReasoningLevel(level).fold(
                     onSuccess = {
                         confirmedLevel = level
@@ -150,8 +157,10 @@ class ConversationSettingsWriter(
                         onError(failure.appError.displayMessage)
                     },
                 )
+                }
+            } finally {
+                levelOutstanding--
             }
-            levelBusy = false
         }
     }
 

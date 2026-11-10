@@ -100,18 +100,16 @@ class ThreadViewModel(
      * rebuilt from the writer's snapshot rather than from the copy that was
      * captured before the seed ran.
      */
-    private fun applyServerConversation(conversation: ConversationDetail) {
+    internal fun applyServerConversation(conversation: ConversationDetail): ConversationDetail {
         settingsWriter.seed(conversation.promptId, conversation.mcpServers, conversation.reasoningLevel)
         val settings = settingsWriter.current
-        loaded()?.let {
-            _state.value = it.copy(
-                conversation = it.conversation.copy(
-                    promptId = settings.promptId,
-                    mcpServers = settings.mcpServers,
-                    reasoningLevel = settings.reasoningLevel,
-                ),
-            )
-        }
+        val merged = conversation.copy(
+            promptId = settings.promptId,
+            mcpServers = settings.mcpServers,
+            reasoningLevel = settings.reasoningLevel,
+        )
+        loaded()?.let { _state.value = it.copy(conversation = merged) }
+        return merged
     }
 
     private fun applySettings(settings: SettingsSnapshot) {
@@ -221,10 +219,10 @@ class ThreadViewModel(
         staged: List<String> = emptyList(),
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
-        applyServerConversation(conversation)
-        val edit = reconcileEdit(current, conversation)
+        val merged = applyServerConversation(conversation)
+        val edit = reconcileEdit(current, merged)
         return ThreadUiState.Loaded(
-            conversation = conversation,
+            conversation = merged,
             thread = ThreadState(
                 messages = conversation.messages,
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
@@ -451,10 +449,10 @@ class ThreadViewModel(
     private suspend fun reloadConversation() {
         val conversation = repository.load(conversationId).getOrNull() ?: return
         val current = loaded() ?: return
-        applyServerConversation(conversation)
-        val edit = reconcileEdit(current, conversation)
+        val merged = applyServerConversation(conversation)
+        val edit = reconcileEdit(current, merged)
         _state.value = current.copy(
-            conversation = conversation,
+            conversation = merged,
             thread = current.thread.copy(
                 messages = conversation.messages,
                 streaming = current.thread.streaming?.takeUnless { it.unconfirmed },
@@ -924,10 +922,10 @@ class ThreadViewModel(
             return
         }
 
-        applyServerConversation(refetched)
+        val merged = applyServerConversation(refetched)
         _state.value = latest.copy(
             sending = false,
-            conversation = refetched,
+            conversation = merged,
             thread = ThreadState(messages = refetched.messages, streaming = null),
             actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
         )
