@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -176,33 +177,67 @@ class RunSupervisorTest {
     }
 
     @Test
-    fun `a load that answers resets the frameless streak`() = runTest {
+    fun `a refetch that shows a different run live resets the frameless streak`() = runTest {
         val bug = serverBug()
         val harness = Harness(
             attempts = listOf(
-                attempt(error = bug, runId = "r1"),
-                attempt(runId = "r1", sawAnyFrame = true),
-                attempt(error = bug, runId = "r1"),
-                attempt(error = bug, runId = "r1"),
-                attempt(error = bug, runId = "r1"),
-                attempt(error = bug, runId = "r1"),
+                attempt(error = bug),
+                attempt(),
+                attempt(error = bug),
+                attempt(error = bug),
+                attempt(error = bug),
             ),
-            loads = listOf(
-                Result.failure(bug),
-                Result.success(conversation(ActiveRun("r2", "running", null, null))),
-            ),
+            loads = listOf(Result.success(conversation(ActiveRun("r2", "running", null, null)))),
             maxFramelessAttempts = 3,
         )
 
-        val supervision = harness.supervisor.supervise(emptyFlow(), initialRunId = null)
+        val supervision = harness.supervisor.supervise(emptyFlow(), initialRunId = "r1")
 
         assertSame(bug, supervision.error)
         assertEquals(
-            "the streak restarted when the load answered: one frameless, an EOF, then a fresh count of three",
+            "the streak restarted at the different run: one frameless, an EOF that moved to r2, then a fresh count of three",
             5,
             harness.attemptCalls,
         )
-        assertEquals(2, harness.loadCalls)
+        assertEquals(listOf("r1", "r2", "r2", "r2"), harness.reattached)
+        assertEquals(1, harness.loadCalls)
+    }
+
+    @Test
+    fun `a frameless EOF whose refetch still shows the same run is backed off and ends at the ceiling`() = runTest {
+        val live = conversation(ActiveRun("r1", "running", null, null))
+        val harness = Harness(
+            attempts = List(20) { attempt() },
+            loads = List(20) { Result.success(live) },
+        )
+
+        val supervision = withTimeout(120_000) {
+            harness.supervisor.supervise(emptyFlow(), initialRunId = "r1")
+        }
+
+        assertNull(supervision.error)
+        assertSame(live, supervision.refetch?.getOrNull())
+        assertEquals("eight frameless EOF cycles, then the ceiling ends it", 8, harness.attemptCalls)
+        assertEquals(8, harness.loadCalls)
+        assertEquals(7, harness.reattached.size)
+        assertEquals(
+            "every resubscribe on this path waited on the backoff: 1+2+4+8+8+8+8 s",
+            39_000L,
+            testScheduler.currentTime,
+        )
+    }
+
+    @Test
+    fun `the budget exhausts at exactly the maximum and restarts on progress`() {
+        val budget = FramelessBudget(3)
+        budget.recordMiss()
+        assertFalse(budget.exhausted)
+        budget.recordMiss()
+        assertFalse(budget.exhausted)
+        budget.recordMiss()
+        assertTrue(budget.exhausted)
+        budget.recordProgress()
+        assertFalse(budget.exhausted)
     }
 
     @Test

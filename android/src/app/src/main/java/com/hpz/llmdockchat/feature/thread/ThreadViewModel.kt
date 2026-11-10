@@ -746,7 +746,6 @@ class ThreadViewModel(
 
         val error: Throwable? = try {
             source.collect { event ->
-                if (!accumulator.sawAnyFrame) setReconnecting(false)
                 accumulator.sawFrame()
                 when (event) {
                     is RunEvent.Delta -> {
@@ -882,7 +881,6 @@ class ThreadViewModel(
             thread = current.thread.copy(
                 streaming = accumulator.snapshot(
                     stopping = existing?.stopping == true,
-                    reconnecting = existing?.reconnecting == true,
                     reattached = existing?.reattached == true,
                 ),
             ),
