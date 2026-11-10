@@ -14,8 +14,8 @@ def rotate_key(deps: RotateKeyDeps) -> KeyRotated:
     so a failure leaves .env untouched. The key is committed second; if that
     fails the services.json and compose changes are undone, so the process
     never advertises a key the files do not hold. Running containers are
-    stopped last, because they keep the revoked key in memory; a failed stop
-    is reported per container, anything that raises propagates. The caller
+    stopped last, because they keep the revoked key in memory; a stop that
+    fails or raises is reported per container and the rest still stop. The caller
     holds the services DB lock across the whole operation."""
     db_services, running, openwebui_registered = deps.affected_state()
 
@@ -35,7 +35,12 @@ def rotate_key(deps: RotateKeyDeps) -> KeyRotated:
     stopped = []
     stop_errors = {}
     for name in running:
-        res = deps.stop_service(name)
+        try:
+            res = deps.stop_service(name)
+        except Exception as e:
+            logger.exception("Stopping %s after key rotation raised", name)
+            stop_errors[name] = str(e) or type(e).__name__
+            continue
         if res.get("success"):
             stopped.append(name)
         else:

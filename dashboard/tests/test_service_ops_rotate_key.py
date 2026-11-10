@@ -104,6 +104,22 @@ def test_a_failed_stop_is_reported_per_container_and_the_rest_still_stop():
     assert (outcome.ok, outcome.status) == (False, 207)
 
 
+def test_a_raising_stop_is_recorded_and_the_rest_still_stop():
+    harness = Harness(running=["a", "b"])
+    deps = harness.deps()
+
+    def stop(name):
+        if name == "a":
+            raise RuntimeError("docker down")
+        return {"success": True}
+
+    outcome = rotate_key(RotateKeyDeps(**{**deps.__dict__, "stop_service": stop}))
+
+    assert outcome.stopped == ["b"]
+    assert outcome.stop_errors == {"a": "docker down"}
+    assert (outcome.ok, outcome.status) == (False, 207)
+
+
 def test_a_failure_without_a_reason_reads_as_unknown_error():
     harness = Harness(running=["a"])
     harness.stop_results = {"a": {"success": False}}
