@@ -6,7 +6,7 @@ from flask import jsonify, request
 
 from auth import require_auth
 from . import providers
-from .routes import chat_bp
+from .blueprint import chat_bp
 
 logger = logging.getLogger(__name__)
 

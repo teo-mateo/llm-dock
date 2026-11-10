@@ -21,7 +21,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-run-routes")
 
 from chat import runtime
 from chat import run_manager as run_manager_module
-from chat.deps import install
+from chat.app_deps import install
 from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.event_bus import EventBus

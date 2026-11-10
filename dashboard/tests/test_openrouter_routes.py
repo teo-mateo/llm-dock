@@ -16,7 +16,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-openrouter")
 
 import config
 from chat import critique, llm_proxy, openrouter, openrouter_catalog
-from chat.deps import install
+from chat.app_deps import install
 from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.openrouter import DEFAULT_MODELS

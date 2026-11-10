@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-msg-routes")
 
-from chat.deps import install
+from chat.app_deps import install
 from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.models import (Conversation, Message, ChatRun, Critique, Artifact,

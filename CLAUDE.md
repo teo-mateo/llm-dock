@@ -104,8 +104,19 @@ llm-dock/
 │   │   └── log_stream.py        # Container log iterator (SSE log stream)
 │   │
 │   ├── chat/                    # Chat subsystem
-│   │   ├── __init__.py          # Empty; the factory lives in routes.py
-│   │   ├── routes.py            # Chat API endpoints + init_chat() factory
+│   │   ├── __init__.py          # Empty; the factory lives in bootstrap.py
+│   │   ├── routes.py            # Registration shim: imports the endpoint modules, re-exports chat_bp + init_chat
+│   │   ├── blueprint.py         # chat_bp (leaf, imported by every endpoint module)
+│   │   ├── settings_routes.py   # MCP server list, default system prompt setting
+│   │   ├── openrouter_routes.py # OpenRouter shortlist + live catalog
+│   │   ├── project_routes.py    # Project CRUD
+│   │   ├── conversation_routes.py # Conversation CRUD, sampling-fields
+│   │   ├── prompt_routes.py     # Managed chat prompts
+│   │   ├── message_routes.py    # Send / edit / delete message (starts a run)
+│   │   ├── run_routes.py        # Run get / stream / cancel
+│   │   ├── critique_routes.py   # Message critiques
+│   │   ├── ephemeral_routes.py  # Spinoff and ghost chat
+│   │   ├── app_deps.py          # deps()/install(): the only Flask access to ChatDeps
 │   │   ├── db.py                # Database utilities
 │   │   ├── models.py            # Dataclasses (conversations, messages, runs, projects, prompts)
 │   │   ├── llm_proxy.py         # LLM inference proxy

@@ -18,9 +18,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-rl-chat")
 
-from chat.deps import replace_deps
+from chat.app_deps import replace_deps
 from tests.chat_support import chat_parts
-from chat.deps import install
+from chat.app_deps import install
 from chat.db import ChatDB
 from chat.models import Conversation
 from chat import run_config

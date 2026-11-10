@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-bg-runs")
 
 from chat import runtime
-from chat.deps import install
+from chat.app_deps import install
 from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.event_bus import EventBus

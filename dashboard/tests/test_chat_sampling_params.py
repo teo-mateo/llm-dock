@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-sp-chat")
 
-from chat.deps import replace_deps
+from chat.app_deps import replace_deps
 from tests.chat_support import chat_parts
-from chat.deps import install
+from chat.app_deps import install
 from chat.db import ChatDB
 from chat.models import Conversation
 from chat import run_config
@@ -85,7 +85,7 @@ def test_stored_blob_is_one_column_of_json(client):
     shape a client that reads the column directly (Android, a future export) sees."""
     conv = _create(client, sampling_params={"seed": 7, "temperature": 0.5})
     with client.application.app_context():
-        from chat.deps import deps
+        from chat.app_deps import deps
         stored = deps().db.get_conversation(conv["id"]).sampling_params_json
     assert stored == '{"temperature":0.5,"seed":7}'
 

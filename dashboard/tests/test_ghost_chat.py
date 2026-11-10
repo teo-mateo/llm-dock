@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-ghost")
 
-from chat.deps import install, replace_deps
+from chat.app_deps import install, replace_deps
 from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.routes import chat_bp
@@ -76,9 +76,9 @@ def _patch_stream(monkeypatch, events, with_tools=False):
         fake["stream_chat_completion"] = (service_name, messages_array)
         yield from events
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "stream_with_tools", fake_with_tools)
-    monkeypatch.setattr(routes, "stream_chat_completion", fake_plain)
+    import chat.ephemeral_routes as ephemeral
+    monkeypatch.setattr(ephemeral, "stream_with_tools", fake_with_tools)
+    monkeypatch.setattr(ephemeral, "stream_chat_completion", fake_plain)
     return fake
 
 

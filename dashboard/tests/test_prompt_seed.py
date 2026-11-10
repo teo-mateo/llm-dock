@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chat.deps import deps_for
+from chat.app_deps import deps_for
 from chat.db import ChatDB
 from chat.prompt_seed import seed_default_prompts, _humanize_name
 

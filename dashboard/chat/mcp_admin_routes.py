@@ -1,4 +1,5 @@
-"""Admin endpoints for the declarative MCP registry.
+"""MCP endpoints: the server list with its url-fetch probe, and the admin
+endpoints for the declarative MCP registry.
 
 Mounted on the same `chat_bp` blueprint as the rest of the chat API. All
 routes require the standard bearer auth. None of these handlers echo
@@ -14,12 +15,36 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from flask import jsonify, request
 
 from auth import require_auth
-from . import mcp_config
-from .mcp_registry import MCP_SERVERS as BUILTIN
-from .deps import deps
-from .routes import chat_bp
+from . import mcp_config, url_retrieval
+from .mcp_registry import MCP_SERVERS as BUILTIN, list_available_servers
+from .app_deps import deps
+from .blueprint import chat_bp
 
 logger = logging.getLogger(__name__)
+
+@chat_bp.route("/api/chat/mcp-servers", methods=["GET"])
+@require_auth
+def get_mcp_servers():
+    servers = list_available_servers()
+    if request.args.get(url_retrieval.PROBE_PARAM) == url_retrieval.URL_FETCH_PROBE:
+        return jsonify({"servers": servers, "url_fetch": _url_fetch_probe(servers)})
+    return jsonify({"servers": servers})
+
+
+def _url_fetch_probe(servers: list) -> dict:
+    """`url_fetch` payload for `?probe=url-fetch` — see chat/url_retrieval.py."""
+    try:
+        manager = deps().mcp
+    except LookupError:
+        manager = None
+
+    def discover(server_id: str) -> list:
+        if manager is None:
+            raise RuntimeError("MCP manager not initialised")
+        return manager.discover_bounded(server_id, url_retrieval.PROBE_TIMEOUT)
+
+    return url_retrieval.probe(servers, discover)
+
 
 DISCOVER_TIMEOUT = 5.0
 CALL_TIMEOUT = 10.0
