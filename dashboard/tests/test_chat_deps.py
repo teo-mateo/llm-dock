@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import deps as deps_module
 from chat.deps import ChatDeps, deps, deps_for, install, replace_deps
-from tests.chat_support import FakeMcp, UnusedRunManager, chat_parts
+from tests.chat_support import chat_parts
 
 CHAT_DIR = Path(__file__).resolve().parent.parent / "chat"
 
