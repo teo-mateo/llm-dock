@@ -885,6 +885,34 @@ SSE_ERROR = "error"
 SSE_KEEPALIVE_INTERVAL_S = 5.0
 
 
+def _snapshot_frame(snapshot: list[dict]) -> str:
+    payload = {
+        "type": SSE_SNAPSHOT,
+        "data": {
+            "services": snapshot,
+            "total": len(snapshot),
+            "running": sum(1 for s in snapshot if s["status"] == "running"),
+            "stopped": sum(1 for s in snapshot if s["status"] != "running"),
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    return "data: " + json.dumps(payload) + "\n\n"
+
+
+def _delta_frame(event: dict) -> str:
+    payload = {
+        "type": SSE_DELTA,
+        "service_name": event["service_name"],
+        "status": event["status"],
+        "action": event["action"],
+        "container_id": event["container_id"],
+        "timestamp": datetime.fromtimestamp(event["timestamp"]).isoformat() + "Z",
+    }
+    if "metadata" in event:
+        payload["metadata"] = event["metadata"]
+    return "data: " + json.dumps(payload) + "\n\n"
+
+
 @services_bp.route("/api/services/stream", methods=["GET"])
 @require_auth
 def services_stream():
@@ -894,57 +922,27 @@ def services_stream():
     then streams delta updates as Docker events occur.
     """
     from services import event_manager
+    from services.service_stream import DELTA, ServiceStream
 
     def generate() -> Generator[str, None, None]:
-        callback = None
+        stream = ServiceStream(event_manager)
         try:
             logger.info("SSE client connected to /api/services/stream")
 
-            snapshot = event_manager.get_services_snapshot()
-            payload = {
-                "type": SSE_SNAPSHOT,
-                "data": {
-                    "services": snapshot,
-                    "total": len(snapshot),
-                    "running": sum(1 for s in snapshot if s["status"] == "running"),
-                    "stopped": sum(1 for s in snapshot if s["status"] != "running"),
-                },
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-            }
-            yield "data: " + json.dumps(payload) + "\n\n"
+            yield _snapshot_frame(stream.open())
 
-            events_queue = []
-            # The idle branch parks in wake.wait(), not sleep(), so a delta that
+            # The idle branch parks in stream.wait(), not sleep(), so a delta that
             # lands mid-wait is written out at once instead of after a full
             # keepalive interval — a client would otherwise keep showing a row
             # the server has already deleted.
-            wake = threading.Event()
-
-            def on_event(event):
-                events_queue.append(event)
-                wake.set()
-
-            callback = on_event
-            event_manager.register_callback(callback)
-
             while True:
-                wake.clear()
-                if events_queue:
-                    event = events_queue.pop(0)
-                    payload = {
-                        "type": SSE_DELTA,
-                        "service_name": event["service_name"],
-                        "status": event["status"],
-                        "action": event["action"],
-                        "container_id": event["container_id"],
-                        "timestamp": datetime.fromtimestamp(event["timestamp"]).isoformat() + "Z",
-                    }
-                    if "metadata" in event:
-                        payload["metadata"] = event["metadata"]
-                    yield "data: " + json.dumps(payload) + "\n\n"
-                else:
+                item = stream.poll()
+                if item is None:
                     yield ": keepalive\n\n"
-                    wake.wait(SSE_KEEPALIVE_INTERVAL_S)
+                    stream.wait(SSE_KEEPALIVE_INTERVAL_S)
+                    continue
+                kind, body = item
+                yield _delta_frame(body) if kind == DELTA else _snapshot_frame(body)
 
         except GeneratorExit:
             logger.info("SSE client disconnected")
@@ -953,9 +951,8 @@ def services_stream():
             error_payload = {"type": SSE_ERROR, "message": str(e)}
             yield "data: " + json.dumps(error_payload) + "\n\n"
         finally:
-            if callback:
-                event_manager.unregister_callback(callback)
-                logger.debug("SSE callback unregistered")
+            stream.close()
+            logger.debug("SSE callback unregistered")
 
     return Response(
         stream_with_context(generate()),
