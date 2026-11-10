@@ -9,13 +9,16 @@ SPA_SOURCES = Path(__file__).resolve().parent.parent / "frontend" / "src"
 # GET /api/engines. A new engine needs no entry here unless it needs bespoke
 # rendering in one of these files.
 ALLOWED = {
-    "components/commandPreview.js": "shape of each engine's launch command in the create preview",
-    "hooks/useServiceMetrics.js": "per-engine metric families and their normalisation",
+    "components/commandPreview.js": "bespoke launch-command shapes; an engine without a branch gets the generic model-path-plus-params preview",
+    "hooks/useServiceMetrics.js": "per-engine metric-name normalisation (RENAMES); a new metrics engine needs a RENAMES entry or its raw fields render as-is",
     "components/MetricsPanel.jsx": "the SGLang-only details panel",
+    "components/ServiceDetailsHeader.jsx": "engine badge colour tokens (theme); an unknown engine gets a neutral badge labelled with its type",
 }
 
 ENGINE_NAMES = sorted(set(ENGINE_IMAGES) | set(FLAG_METADATA_BY_TYPE))
-LITERAL = re.compile(r"""(['"`])(%s)\1""" % "|".join(map(re.escape, ENGINE_NAMES)))
+NAMES = "|".join(map(re.escape, ENGINE_NAMES))
+# A quoted whole token ('vllm'), or an unquoted object key ({ vllm: ... }).
+LITERAL = re.compile(r"""(['"`])(%s)\1|(?<![\w'"`.\-:])(%s)\s*:(?!:)""" % (NAMES, NAMES))
 
 
 def _spa_files():
@@ -27,7 +30,7 @@ def _spa_files():
 def _literals(path: Path):
     for number, line in enumerate(path.read_text().splitlines(), 1):
         for match in LITERAL.finditer(line):
-            yield number, match.group(2)
+            yield number, match.group(2) or match.group(3)
 
 
 def test_the_spa_holds_no_engine_name_outside_the_named_exceptions():
@@ -52,6 +55,9 @@ def test_every_allowed_file_still_needs_its_exception():
 
 def test_the_detector_finds_the_spellings_the_spa_uses(tmp_path):
     sample = tmp_path / "a.js"
-    sample.write_text("const a = 'vllm'\nconst b = \"maya\"\nconst c = `ds4`\nconst d = 'vllm-x'\n")
+    sample.write_text(
+        "const a = 'vllm'\nconst b = \"maya\"\nconst c = `ds4`\nconst d = 'vllm-x'\n"
+        "const e = { sglang: 1, maya : 2 }\nconst f = 'vllm:num_requests'\nconst g = x ? vllm : y\n"
+    )
 
-    assert [name for _, name in _literals(sample)] == ["vllm", "maya", "ds4"]
+    assert [name for _, name in _literals(sample)] == ["vllm", "maya", "ds4", "sglang", "maya", "vllm"]

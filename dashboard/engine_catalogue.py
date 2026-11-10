@@ -1,10 +1,9 @@
-from typing import Iterable
-
 from flag_metadata import (
     BENCHMARK_ENGINES,
     SERVICE_ENGINES,
     SERVICE_NAME_PREFIXES,
 )
+from metrics_catalogue import METRICS_ENGINES
 
 DEFAULT_PATH_PLACEHOLDER = "/hf-cache/… or /local-models/…"
 DIRECTORY_PLACEHOLDER = "/hf-cache/… or /local-models/… (model directory)"
@@ -32,8 +31,7 @@ ENGINE_PRESENTATION = {
 }
 
 
-def build_catalogue(metrics_engines: Iterable[str]) -> list[dict]:
-    metrics = set(metrics_engines)
+def build_catalogue() -> list[dict]:
     return [
         {
             "type": engine,
@@ -42,8 +40,7 @@ def build_catalogue(metrics_engines: Iterable[str]) -> list[dict]:
             "model_source": ENGINE_PRESENTATION[engine]["model_source"],
             "placeholder": ENGINE_PRESENTATION[engine].get("placeholder", DEFAULT_PATH_PLACEHOLDER),
             "gguf_picker": ENGINE_PRESENTATION[engine]["gguf_picker"],
-            "chat": True,
-            "metrics": engine in metrics,
+            "metrics": engine in METRICS_ENGINES,
             "benchmark": engine in BENCHMARK_ENGINES,
             "name_prefix": SERVICE_NAME_PREFIXES.get(engine, engine),
         }

@@ -61,6 +61,7 @@ llm-dock/
 │   ├── service_templates.py     # API key generation + Docker-safe name sanitizer
 │   ├── flag_metadata.py         # Engine flag definitions & CLI rendering
 │   ├── engine_catalogue.py      # Per-engine UI catalogue served by GET /api/engines
+│   ├── metrics_catalogue.py     # Curated Prometheus families per engine (the one owner of metrics support)
 │   ├── reasoning_levels.py      # Reasoning-level grammar, lookup, per-engine request mapping
 │   ├── key_rotation.py          # Default API-key rotation over services.json
 │   ├── tabby_keys.py            # Per-service TabbyAPI api_tokens.yml files
@@ -394,7 +395,7 @@ built by a `build-*.sh` script or documented `docker build`.
 - **Image:** `llm-dock-ik-llamacpp`, built from `ik_llama.cpp/Dockerfile` — **no build script**; use `docker build`, `--build-arg IK_REF=<sha>` to pin (it tracks `main` by default)
 - **Template:** `dashboard/templates/ik_llamacpp.j2`, `template_type: "ik_llamacpp"`, service-name prefix `ik`. The Dockerfile symlinks `/llama.cpp/build/bin` to the ik build so the template's binary path is identical to `llamacpp.j2`.
 - **Benchmarking:** no — the executor targets `llm-dock-llamacpp`
-- **Metrics:** the template passes `--metrics`, but `/api/services/<service>/metrics` serves only the engines in `routes/metrics.py:CURATED_METRICS`, so `ik_llamacpp` answers `metrics: {}`. The engine catalogue derives its `metrics` flag from the same table, so the SPA offers no Metrics tab for it
+- **Metrics:** the template passes `--metrics`, but `/api/services/<service>/metrics` serves only the engines in `metrics_catalogue.CURATED_METRICS`, so `ik_llamacpp` answers `metrics: {}`. The engine catalogue derives its `metrics` flag from the same table, so the SPA offers no Metrics tab for it
 - **Reasoning levels:** no request mapping (see *Reasoning levels per service*)
 - Upstream comparison: `.pi/skills/check-upstream/SKILL.md`
 
@@ -499,7 +500,7 @@ All routes are under the Flask app and require Bearer token auth (except static 
 
 | Blueprint | Key Endpoints | Purpose |
 |-----------|--------------|---------|
-| `system_bp` | `/api/system/info`, `/api/health`, `/api/images/metadata`, `/api/engines`, `/api/auth/session`, `/api/auth/login`, `/api/auth/verify` | System hardware info, image build metadata, the engine catalogue (`engine_catalogue.build_catalogue`: type, label, hint, model source, GGUF picker, chat/metrics/benchmark capability, name prefix; the SPA's only source of engine lists), token issuance |
+| `system_bp` | `/api/system/info`, `/api/health`, `/api/images/metadata`, `/api/engines`, `/api/auth/session`, `/api/auth/login`, `/api/auth/verify` | System hardware info, image build metadata, the engine catalogue (`engine_catalogue.build_catalogue`: type, label, hint, model source, GGUF picker, metrics/benchmark capability, name prefix; the SPA's only source of engine lists), token issuance |
 | `gpu_bp` | `/api/gpu`, `/api/gpu/stream` | Real-time GPU stats via nvidia-smi |
 | `services_bp` | `/api/services`, `/api/services/<name>`, `/api/services/stream`, `/api/services/<name>/{start,stop,logs,preview,rename,favorite,set-public-port}`, `/api/services/<name>/logs/stream`, `/api/services/<name>/inspect`, `/api/flag-metadata/<template_type>`, `/api/default-api-key/{rotation-preview,rotate}` | Service CRUD, live SSE state, per-service logs SSE, inspection toggle |
 | `openwebui_bp` | `/api/services/<name>/register-openwebui`, `/api/services/<name>/unregister-openwebui`, `/api/openwebui/restart` | Open WebUI integration |

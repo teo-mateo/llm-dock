@@ -108,9 +108,7 @@ def get_images_metadata():
 @system_bp.route("/api/engines", methods=["GET"])
 @require_auth
 def get_engines():
-    from routes.metrics import CURATED_METRICS
-
-    return jsonify({"engines": build_catalogue(CURATED_METRICS)})
+    return jsonify({"engines": build_catalogue()})
 
 
 @system_bp.route("/api/system/info", methods=["GET"])

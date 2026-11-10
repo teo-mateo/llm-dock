@@ -294,7 +294,7 @@ describe('CreateServiceModal', () => {
     it('offers an engine the server added, with no code change, and posts its type and path', async () => {
       const added = {
         type: 'future_engine', label: 'Future', hint: 'a future file', model_source: 'file',
-        placeholder: '/future/…', gguf_picker: false, chat: true, metrics: false, benchmark: false,
+        placeholder: '/future/…', gguf_picker: false, metrics: false, benchmark: false,
         name_prefix: 'fut',
       }
       fetchAPIMock.mockImplementation(async (endpoint, opts) => {

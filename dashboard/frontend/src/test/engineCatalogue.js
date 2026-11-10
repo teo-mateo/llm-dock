@@ -4,7 +4,7 @@ const DIR = '/hf-cache/… or /local-models/… (model directory)'
 function entry(type, label, hint, over = {}) {
   return {
     type, label, hint, model_source: 'file', placeholder: PATH, gguf_picker: false,
-    chat: true, metrics: false, benchmark: false, name_prefix: type, ...over,
+    metrics: false, benchmark: false, name_prefix: type, ...over,
   }
 }
 

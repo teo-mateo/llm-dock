@@ -46,11 +46,15 @@ export function renderCommandPreview(config, apiKey, params) {
     parts.push('--host 0.0.0.0')
     parts.push('--port 8080')
     parts.push(`--api-key ${apiKey || '***'}`)
-  } else {
+  } else if (config.template_type === 'vllm') {
     parts.push('vllm serve')
     if (config.model_name) parts.push(config.model_name)
     parts.push(`--port 8000`)
     parts.push(`--api-key ${apiKey || '***'}`)
+  } else {
+    // No bespoke preview for this engine: show only what the config says.
+    const model = config.model_path || config.model_name
+    if (model) parts.push(model)
   }
 
   for (const { flag, value } of params) {
