@@ -1,14 +1,14 @@
 package com.hpz.llmdockchat.feature.share
 
 import com.hpz.llmdockchat.core.prefs.DraftStore
-import kotlinx.coroutines.CompletableDeferred
+import com.hpz.llmdockchat.core.prefs.SerialWriteQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -56,7 +56,7 @@ class SharedDraftStore(
 
     private val _handled = MutableStateFlow(readHandledToken())
 
-    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val writes = SerialWriteQueue(scope)
 
     private var importToken: String? = null
 
@@ -68,12 +68,6 @@ class SharedDraftStore(
      * away returns after a restart.
      */
     private val pendingCommit = Any()
-
-    init {
-        scope.launch {
-            for (write in writes) runCatching { write() }
-        }
-    }
 
     /** The last delivery claimed by intake; a redelivery with this token is refused. */
     val handledToken: String? get() = _handled.value
@@ -141,6 +135,19 @@ class SharedDraftStore(
     }
 
     /**
+     * Spends [share] only if it is still the staged one. A share staged while a
+     * pick was writing is a different record and must survive: the pick filed
+     * the one it captured, not this one.
+     */
+    private fun clearPendingIf(share: StagedShare) {
+        synchronized(pendingCommit) {
+            if (_pending.value !== share) return
+            _pending.value = null
+            enqueue { deletePending() }
+        }
+    }
+
+    /**
      * The picker's "pick a conversation" and the new-chat flow's
      * `onConversationCreated` both land here: the staged text is **appended** to
      * the conversation's draft ([mergedDraft]) rather than replacing it, the
@@ -159,13 +166,19 @@ class SharedDraftStore(
         // A placeholder is not content: spending it would hand the user an empty
         // composer and throw the incoming bytes away.
         if (share.importing) return Result.success(Unit)
-        if (share.text.isNotBlank()) {
-            val merged = mergedDraft(drafts.draft(conversationId), share.text)
-            drafts.saveConfirmed(conversationId, merged).onFailure { return Result.failure(it) }
+        // Not cancellable: a caller that navigates away after the writes landed
+        // must still spend the record, or a re-pick appends the attachments a
+        // second time.
+        return withContext(NonCancellable) {
+            if (share.text.isNotBlank()) {
+                val merged = mergedDraft(drafts.draft(conversationId), share.text)
+                drafts.saveConfirmed(conversationId, merged).onFailure { return@withContext Result.failure(it) }
+            }
+            appendAttachments(conversationId, share.attachments)
+                .onFailure { return@withContext Result.failure(it) }
+            clearPendingIf(share)
+            Result.success(Unit)
         }
-        appendAttachments(conversationId, share.attachments).onFailure { return Result.failure(it) }
-        clearPending()
-        return Result.success(Unit)
     }
 
     /**
@@ -176,14 +189,18 @@ class SharedDraftStore(
      * into that directory and [attachments] reads all of them back — a claim
      * filed there would be handed to the composer as a staged image.
      */
-    suspend fun stageForAutoSend(conversationId: String, message: String): Result<Unit> =
-        confirmed {
-            dir.mkdirs()
-            val file = autoSendFile(conversationId)
-            val tmp = File(dir, "${file.name}.tmp")
-            tmp.writeText(message)
-            if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
-        }.onSuccess { clearPending() }
+    suspend fun stageForAutoSend(conversationId: String, message: String): Result<Unit> {
+        val share = _pending.value
+        return withContext(NonCancellable) {
+            confirmed {
+                dir.mkdirs()
+                val file = autoSendFile(conversationId)
+                val tmp = File(dir, "${file.name}.tmp")
+                tmp.writeText(message)
+                if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
+            }.onSuccess { if (share != null) clearPendingIf(share) }
+        }
+    }
 
     /** Reads the claim and spends it, so no second visit can send it again. */
     suspend fun takeAutoSend(conversationId: String): String? = drain {
@@ -277,7 +294,7 @@ class SharedDraftStore(
         val file = File(dir, PENDING_FILE)
         val tmp = File(dir, "$PENDING_FILE.tmp")
         tmp.writeText(json.encodeToString(StagedShare.serializer(), share))
-        if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
+        tmp.renameTo(file)
     }
 
     private fun deletePending() {
@@ -296,13 +313,13 @@ class SharedDraftStore(
         val file = File(dir, HANDLED_FILE)
         val tmp = File(dir, "$HANDLED_FILE.tmp")
         tmp.writeText(json.encodeToString(String.serializer(), token))
-        if (!tmp.renameTo(file)) throw IOException("could not move ${tmp.name} into place")
+        tmp.renameTo(file)
     }
 
     private fun conversationDir(conversationId: String): File = File(dir, "conv_$conversationId")
 
     private fun enqueue(write: suspend () -> Unit) {
-        writes.trySend(write)
+        writes.post(write)
     }
 
     /**
@@ -310,30 +327,13 @@ class SharedDraftStore(
      * about to delete the only other copy learns whether the new one landed.
      * A drained queue still means only "nothing is queued".
      */
-    private suspend fun <T> confirmed(write: suspend () -> T): Result<T> {
-        val done = CompletableDeferred<Result<T>>()
-        writes.send {
-            done.complete(runCatching { write() })
-        }
-        return done.await()
-    }
+    private suspend fun <T> confirmed(write: suspend () -> T): Result<T> = writes.confirmed(write)
 
     /**
      * Runs [op] on the write queue, after everything enqueued before this call:
      * a reader must not see a state older than the write it is answering for.
      */
-    private suspend fun <T> drain(op: suspend () -> T): T {
-        val done = CompletableDeferred<T>()
-        writes.send {
-            try {
-                done.complete(op())
-            } catch (failure: Throwable) {
-                done.completeExceptionally(failure)
-                throw failure
-            }
-        }
-        return done.await()
-    }
+    private suspend fun <T> drain(op: suspend () -> T): T = writes.confirmed(op).getOrThrow()
 
     /** Returns once every write enqueued before this call has reached disk. */
     internal suspend fun awaitPendingWrites() = drain { Unit }
@@ -364,3 +364,10 @@ internal fun mergedDraft(existing: String, shared: String): String {
     if (current.endsWith(incoming)) return existing
     return "$current\n\n$incoming"
 }
+
+/**
+ * Shown when the staged share could not be filed into a conversation. The
+ * pending record is untouched, so the same pick can be retried.
+ */
+internal const val SHARE_SAVE_FAILED =
+    "Couldn't save the share to this conversation \u2014 nothing was lost. Try again."

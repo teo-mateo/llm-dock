@@ -139,14 +139,15 @@ class ValuePreferenceTest {
     }
 
     @Test
-    fun `a confirmed write reports a failing disk instead of swallowing it`() = runTest {
+    fun `a confirmed write reports a failing disk and restores the unsaved value`() = runTest {
         val pref = preference(FailingWrites(dataStore(file())))
+        assertNull(pref.awaitReady())
 
         val result = pref.setConfirmed("http://10.0.2.2:3399")
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is IOException)
-        assertEquals("http://10.0.2.2:3399", pref.flow.value.valueOrNull)
+        assertEquals(Stored.Ready(null), pref.flow.value)
     }
 
     /** Reads pass through; every write fails, which is what a full disk looks like. */

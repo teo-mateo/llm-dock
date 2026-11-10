@@ -3,6 +3,7 @@ package com.hpz.llmdockchat.feature.share
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -278,6 +279,63 @@ class SharedDraftStoreTest {
             runBlocking { store.attachments("conv-1") },
         )
         assertNull(store.pending.value)
+    }
+
+    /**
+     * The writes landed but the caller went away before the spend. The spend
+     * must still happen: the attachments are on disk, and a re-pick would
+     * append them a second time.
+     */
+    @Test
+    fun `a cancelled pick still spends the record, so a re-pick writes nothing twice`() {
+        store.stage(
+            StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")),
+        )
+        val drafts = FakeDraftStore()
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gated = object : DraftStore by drafts {
+            override suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit> {
+                started.complete(Unit)
+                gate.await()
+                return drafts.saveConfirmed(conversationId, text)
+            }
+        }
+
+        runBlocking {
+            val job = launch(kotlinx.coroutines.Dispatchers.Default) { store.reassign("conv-1", gated) }
+            started.await()
+            job.cancel()
+            gate.complete(Unit)
+            job.join()
+        }
+
+        assertNull("the record must be spent even though the caller was cancelled", store.pending.value)
+        assertEquals(listOf("data:image/jpeg;base64,AAA"), attachments("conv-1"))
+
+        assertTrue(reassign("conv-1", drafts).isSuccess)
+        assertEquals(
+            "a re-pick must not append the attachments again",
+            listOf("data:image/jpeg;base64,AAA"),
+            attachments("conv-1"),
+        )
+    }
+
+    @Test
+    fun `a share staged during a pick survives it`() {
+        store.stage(StagedShare(text = "first"))
+        val drafts = FakeDraftStore()
+        val restaging = object : DraftStore by drafts {
+            override suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit> {
+                store.stage(StagedShare(text = "second"))
+                return drafts.saveConfirmed(conversationId, text)
+            }
+        }
+
+        assertTrue(reassign("conv-1", restaging).isSuccess)
+
+        assertEquals("the pick filed the one it captured", "first", drafts.saved["conv-1"])
+        assertEquals("the newer share is still staged", "second", store.pending.value?.text)
     }
 
     /**

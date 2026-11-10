@@ -21,6 +21,7 @@ import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModel
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModelResolver
+import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.feature.share.SHARE_SAVE_FAILED
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import com.hpz.llmdockchat.feature.share.SummarizeMessage
@@ -78,6 +79,12 @@ sealed interface NewChatUiState {
          * tools enabled.
          */
         val toolsFailure: ToolsFailure? = null,
+        /**
+         * The conversation exists, but filing the share into it failed. Retry
+         * re-files against [ShareFailure.conversationId]; creating again would
+         * make a second thread for the same share.
+         */
+        val shareFailure: ShareFailure? = null,
     ) : NewChatUiState {
         val canStart: Boolean
             get() = selectedModel.isLiveSelectable(services) && !creating &&
@@ -93,6 +100,9 @@ sealed interface NewChatUiState {
 
 /** [conversationId] already exists server-side — see [NewChatUiState.Loaded.toolsFailure]. */
 data class ToolsFailure(val conversationId: String, val message: String)
+
+/** [conversationId] already exists server-side — see [NewChatUiState.Loaded.shareFailure]. */
+data class ShareFailure(val conversationId: String, val message: String)
 
 class NewChatViewModel(
     private val servicesRepository: ServicesRepository,
@@ -225,6 +235,9 @@ class NewChatViewModel(
         val current = _state.value as? NewChatUiState.Loaded ?: return
         val model = current.selectedModel ?: return
         if (current.creating) return
+        // The thread exists and only the share failed: [retryShare] files it
+        // again. Creating here would leave the first thread orphaned.
+        if (current.shareFailure != null) return
         // The same predicate canStart renders, so a direct call cannot start a
         // thread on a service the live stream has already stopped.
         if (!model.isLiveSelectable(current.services)) {
@@ -281,7 +294,12 @@ class NewChatViewModel(
         conversationsRepository.setMcpServers(conversationId, serverIds).fold(
             onSuccess = {
                 if (stageSummarizeClaim(conversationId).isFailure) {
-                    updateLoaded { it.copy(creating = false, createError = SHARE_SAVE_FAILED) }
+                    updateLoaded {
+                        it.copy(
+                            creating = false,
+                            shareFailure = ShareFailure(conversationId, SHARE_SAVE_FAILED),
+                        )
+                    }
                     return@fold
                 }
                 updateLoaded { it.copy(creating = false, toolsFailure = null) }
@@ -298,9 +316,38 @@ class NewChatViewModel(
         )
     }
 
-    /** The staged share could not be filed; the sheet stays open with the reason. */
-    fun shareFailed() {
-        updateLoaded { it.copy(creating = false, createError = SHARE_SAVE_FAILED) }
+    /**
+     * Files the staged share into a conversation that already exists — the
+     * new-chat sibling of the picker's pick. A failure keeps the share staged
+     * and records the id, so [retryShare] re-files instead of creating again.
+     */
+    fun fileShare(conversationId: String, drafts: DraftStore, onFiled: (String) -> Unit) {
+        val current = _state.value as? NewChatUiState.Loaded ?: return
+        if (current.creating) return
+        _state.value = current.copy(creating = true, shareFailure = null)
+        viewModelScope.launch {
+            val result = sharedDraftStore?.reassign(conversationId, drafts) ?: Result.success(Unit)
+            result.fold(
+                onSuccess = {
+                    updateLoaded { it.copy(creating = false) }
+                    onFiled(conversationId)
+                },
+                onFailure = {
+                    updateLoaded {
+                        it.copy(
+                            creating = false,
+                            shareFailure = ShareFailure(conversationId, SHARE_SAVE_FAILED),
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    /** Re-files the share for the thread that already exists. */
+    fun retryShare(drafts: DraftStore, onFiled: (String) -> Unit) {
+        val failure = (_state.value as? NewChatUiState.Loaded)?.shareFailure ?: return
+        fileShare(failure.conversationId, drafts, onFiled)
     }
 
     /** Claim instead of draft: the thread sends the turn on opening. */

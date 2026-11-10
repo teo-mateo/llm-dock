@@ -446,7 +446,6 @@ private fun NewChatDestination(
     preselectedServiceName: String?,
     summarizeMode: Boolean,
 ) {
-    val newChatScope = rememberCoroutineScope()
     val viewModel: NewChatViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
@@ -468,6 +467,7 @@ private fun NewChatDestination(
     )
     NewChatScreen(
         viewModel = viewModel,
+        drafts = container.draftStore,
         onBack = { navController.popBackStack() },
         onConversationCreated = { id ->
             // A conversation created from the share picker takes
@@ -477,19 +477,14 @@ private fun NewChatDestination(
             // though the sheet already spent the pending share filing its
             // claim — the picker is still what sits under this sheet.
             val hadPendingShare = summarizeMode || container.sharedDraftStore.pending.value != null
-            // Awaited for the same reason as the picker's pick: the thread must
-            // not load before the content it is opening with has been filed. For
-            // a summarize run this returns without waiting — the sheet already
-            // spent the pending share.
-            newChatScope.launch {
-                if (container.sharedDraftStore.reassign(id, container.draftStore).isFailure) {
-                    viewModel.shareFailed()
-                    return@launch
-                }
+            // The view model files the share and only then hands back the id,
+            // so the thread never opens before the content it is opening with
+            // has been written. A failure stays on the sheet with the id kept.
+            viewModel.fileShare(id, container.draftStore) { filed ->
                 // Replaces the sheet on the back stack — Back from the new
                 // thread returns to the conversation list, not to a sheet
                 // for a chat that already exists.
-                navController.navigate(Destinations.thread(id)) {
+                navController.navigate(Destinations.thread(filed)) {
                     popUpTo(
                         if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
                     ) { inclusive = true }

@@ -4,9 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,7 +36,7 @@ class ValuePreference<T : Any>(
 ) {
     private val key = stringPreferencesKey(name)
     private val state = MutableStateFlow<Stored<T>>(Stored.Loading)
-    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val writes = SerialWriteQueue(scope)
     private val writeLock = Any()
 
     val flow: StateFlow<Stored<T>> = state.asStateFlow()
@@ -55,12 +53,6 @@ class ValuePreference<T : Any>(
         }
         // A write that beat the read to it wins: it is the newer truth.
         state.compareAndSet(Stored.Loading, Stored.Ready(loaded))
-    }
-
-    init {
-        scope.launch {
-            for (write in writes) write()
-        }
     }
 
     fun get(): T? {
@@ -106,16 +98,18 @@ class ValuePreference<T : Any>(
      */
     suspend fun setConfirmed(value: T): Result<Unit> {
         val encoded = encode(value)
-        synchronized(writeLock) { state.value = Stored.Ready(value) }
-        val done = CompletableDeferred<Result<Unit>>()
-        writes.send {
-            done.complete(runCatching { dataStore.edit { it[key] = encoded } }.map { })
+        val (previous, done) = synchronized(writeLock) {
+            val previous = state.value
+            state.value = Stored.Ready(value)
+            previous to writes.postConfirmed { dataStore.edit { it[key] = encoded } }
         }
-        return done.await()
+        val result = done.await().map { }
+        if (result.isFailure) state.compareAndSet(Stored.Ready(value), previous)
+        return result
     }
 
     private fun enqueue(write: suspend () -> Unit) {
-        writes.trySend {
+        writes.post {
             try {
                 write()
             } catch (e: IOException) {
@@ -126,9 +120,5 @@ class ValuePreference<T : Any>(
     }
 
     /** Returns once every write enqueued before this call has reached disk. */
-    internal suspend fun awaitPendingWrites() {
-        val drained = CompletableDeferred<Unit>()
-        writes.send { drained.complete(Unit) }
-        drained.await()
-    }
+    internal suspend fun awaitPendingWrites() = writes.drain()
 }

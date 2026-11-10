@@ -172,10 +172,3 @@ class ShareTargetViewModel(
         if (probeFailed && share.url != null) SummarizeOption.UNREACHABLE
         else SummarizeOption.of(share, retrieval)
 }
-
-/**
- * Shown when the staged share could not be filed into the conversation. The
- * pending record is untouched, so the same pick can be retried.
- */
-internal const val SHARE_SAVE_FAILED =
-    "Couldn't save the share to this conversation \u2014 nothing was lost. Try again."
