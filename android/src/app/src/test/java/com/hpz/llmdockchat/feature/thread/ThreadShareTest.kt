@@ -29,6 +29,7 @@ import com.hpz.llmdockchat.testing.quiesceAndRelease
 import com.hpz.llmdockchat.testing.readFixture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -237,6 +238,37 @@ class ThreadShareTest {
         val reloaded = viewModel.awaitReloaded()
         assertEquals("TYPED\n\nhttps://shared.example", reloaded.composer)
         assertTrue(reloaded.canSend)
+    }
+
+    /**
+     * A reload publishes the conversation it fetched and the composer it
+     * adopted in one state. Publishing the fetched conversation first, with the
+     * pre-reload composer, is a state a client can observe — it renders as a
+     * reloaded thread whose draft was thrown away — so the whole sequence is
+     * asserted, not just the settled value.
+     */
+    @Test
+    fun `a reload never publishes the fetched conversation with the pre-reload composer`() = threadTest {
+        conversation()
+        val viewModel = viewModel()
+        viewModel.load()
+        viewModel.awaitLoaded()
+
+        val seen = mutableListOf<ThreadUiState.Loaded>()
+        val collector = launch(Dispatchers.Unconfined) {
+            viewModel.state.collect { if (it is ThreadUiState.Loaded) seen += it }
+        }
+
+        viewModel.onComposerChange("TYPED")
+        drafts.saveConfirmed(CONVERSATION_ID, mergedDraft("TYPED", "https://one.example"))
+        reloadedConversation()
+        viewModel.load()
+        val reloaded = viewModel.awaitReloaded()
+        collector.cancel()
+        assertEquals("TYPED\n\nhttps://one.example", reloaded.composer)
+
+        val stale = seen.filter { it.conversation.title == RELOADED_TITLE && it.composer == "TYPED" }
+        assertTrue("published the reloaded conversation with the old composer: $stale", stale.isEmpty())
     }
 
     @Test
