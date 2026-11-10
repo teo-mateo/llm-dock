@@ -19,6 +19,7 @@ from flag_metadata import (
     validate_service_config,
 )
 from inspector.supervisor import proxy_supervisor
+from service_ops import wiring
 from service_recreate import IMAGE_CHANGE_TIMEOUT_S
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
@@ -158,7 +159,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(proxy_supervisor, "sync", lambda: None)
     monkeypatch.setattr(docker_utils, "get_image_info", lambda n: {"exists": True})
     state = {"container": None, "docker_calls": [], "docker_rc": 0, "docker_stderr": ""}
-    monkeypatch.setattr(services_route, "get_service_container", lambda name: state["container"])
+    monkeypatch.setattr(wiring, "get_service_container", lambda name: state["container"])
 
     real_run = subprocess.run
 

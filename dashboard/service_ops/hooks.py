@@ -17,6 +17,7 @@ class Cause(Enum):
     DELETE = "delete"
     PUBLIC_PORT = "public_port"
     INSPECT = "inspect"
+    UPDATE = "update"
 
 
 class HookContext:

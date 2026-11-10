@@ -37,11 +37,11 @@ def test_no_service_ops_module_imports_flask_or_routes_itself():
     assert offenders == []
 
 
-def test_only_the_wiring_module_imports_the_real_singletons():
+def test_only_the_wiring_modules_import_the_real_singletons():
     singletons = {"docker_utils", "openwebui_integration", "inspector", "tabby_keys", "compose_manager"}
     offenders = []
     for path in sorted(SERVICE_OPS.glob("*.py")):
-        if path.name == "wiring.py":
+        if path.name == "wiring.py" or path.name.endswith("_wiring.py"):
             continue
         for node in ast.walk(ast.parse(path.read_text())):
             names = []

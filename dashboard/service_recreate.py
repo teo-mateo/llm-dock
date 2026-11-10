@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from compose_manager import ComposeManager
-from docker_utils import reported_image
-from flag_metadata import ImagePlan
 from port_conflicts import PORT_IN_USE
 from service_start_guard import check_start, finish_start
 
@@ -161,40 +159,3 @@ def restart_if_running(
     if result.code == COMPOSE_REBUILD_FAILED:
         raise ValueError(result.error)
     return result.restart_status()
-
-
-@dataclass(frozen=True)
-class UpdateEffects:
-    restarted: bool = False
-    error: str | None = None
-    reported_image: str | None = None
-
-    def response_fields(self, plan: ImagePlan) -> dict:
-        fields = {"configured_image": plan.new_image, "restarted": self.restarted}
-        if self.error:
-            fields["recreate_error"] = self.error
-        return fields
-
-
-def apply_update_effects(
-    plan: ImagePlan,
-    name: str,
-    container,
-    compose_file: str,
-    rebuild: Callable[[], None],
-    sync: Callable[[], None],
-    restart=restart_if_running,
-) -> UpdateEffects:
-    if not plan.changed:
-        rebuild()
-        sync()
-        return UpdateEffects()
-    status = container.status if container else "not-created"
-    result = restart(
-        compose_file, name, status, True, lambda services, n: sync(), timeout=IMAGE_CHANGE_TIMEOUT_S
-    )
-    restarted = bool(result["restarted"])
-    current = container.attrs["Config"]["Image"] if container else None
-    return UpdateEffects(
-        restarted, result.get("error"), reported_image(None if restarted else current, plan.new_image)
-    )

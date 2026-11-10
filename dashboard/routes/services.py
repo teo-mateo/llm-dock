@@ -17,18 +17,18 @@ from flag_metadata import (
     generate_service_name as gen_service_name,
     validate_service_config,
     get_flag_metadata,
-    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
+    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image,
     FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
 import port_conflicts
 from port_conflicts import find_port_owner, port_in_use_body
 import service_ops
-from service_ops import wiring
+from service_ops import update_wiring, wiring
 from service_ops.errors import ErrorKind, OpError
 from service_ops.set_public_port import AlreadyPublic
-from service_recreate import NOT_FOUND, apply_update_effects, recreate
+from service_ops.update import PortInUse, ValidationFailed
+from service_recreate import NOT_FOUND, recreate
 from service_start_guard import check_start, current_statuses, finish_start
-from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.supervisor import proxy_supervisor
 
@@ -357,97 +357,25 @@ def update_service(service_name):
         if not data:
             return jsonify({"error": "Request body is required"}), 400
 
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check if service exists
-        existing = compose_mgr.get_service_from_db(service_name)
-        if not existing:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Prevent template_type change
-        if (
-            "template_type" in data
-            and data["template_type"] != existing["template_type"]
-        ):
-            return jsonify(
-                {"error": "Cannot change template_type of existing service"}
-            ), 400
-
-        # Use existing template_type
-        template_type = existing["template_type"]
-        data["template_type"] = template_type
-
-        # Server-owned: the toggle endpoint allocates it, a client-supplied
-        # value could pick a colliding or out-of-band port.
-        data.pop("inspect_upstream_port", None)
-
-        # Validate updated configuration
-        valid, errors = validate_service_config(template_type, data)
-        if not valid:
-            return jsonify({"error": "Validation failed", "details": errors}), 400
-
-        # Check port if changed
-        if "port" in data and int(data["port"]) != int(existing.get("port", 0)):
-            new_port = int(data["port"])
-            owner = find_port_owner(
-                compose_mgr.list_services_in_db(),
-                new_port,
-                exclude=service_name,
-                compose_ports=compose_mgr.get_used_ports(),
-            )
-            if owner:
-                return jsonify(port_in_use_body(new_port, owner)), 400
-
-        # Update in database — merge into existing to preserve fields not
-        # sent by the client (favorite, etc.)
-        before = dict(existing)
-        existing.update(data)
-        plan = plan_image_change(template_type, before, existing)
-        compose_mgr.update_service_in_db(service_name, existing)
-
-        # Advisory, over the MERGED params: a typo stored before this check
-        # existed must surface when the service is next touched, not only on
-        # the write that created it.
-        warnings = [
-            f"Unknown {template_type} flag: {flag} (not in the engine's recorded "
-            f"flag surface; it will be passed through and may fail at startup)"
-            for flag in flag_surfaces.unknown_service_params(template_type, existing.get("params"))
-        ]
-        if warnings:
-            logger.warning(f"Service {service_name} update with unknown {template_type} flags: {warnings}")
-
-        warnings += image_presence_warnings(existing.get("image")) if plan.changed else []
-        effects = apply_update_effects(
-            plan, service_name, get_service_container(service_name), COMPOSE_FILE,
-            compose_mgr.rebuild_compose_file, proxy_supervisor.sync,
-        )
-
-        # Broadcast the ladder to every SSE consumer: chat reads it off the
-        # service payload, not off this config fetch, and rejects a level the
-        # service stopped declaring at run creation.
-        from services import event_manager
-        event_manager.emit({
-            "service_name": service_name,
-            "action": "metadata-changed",
-            "status": None,
-            "container_id": None,
-            "metadata": {
-                "reasoning_levels": parse_levels(existing.get("reasoning_levels")),
-                **({"image": effects.reported_image} if plan.changed else {}),
-            },
-            "timestamp": time.time(),
-        })
-
-        logger.info(f"Service updated: {service_name}")
+        outcome = service_ops.update(update_wiring.update_deps(COMPOSE_FILE), service_name, data)
+        if isinstance(outcome, OpError):
+            return _op_error(outcome)
+        if isinstance(outcome, ValidationFailed):
+            return jsonify({"error": "Validation failed", "details": outcome.details}), 400
+        if isinstance(outcome, PortInUse):
+            return jsonify(port_in_use_body(outcome.port, outcome.owner)), 400
 
         response = {
             "success": True,
-            "service_name": service_name,
-            "message": f'Service "{service_name}" updated successfully',
-            **effects.response_fields(plan),
+            "service_name": outcome.name,
+            "message": f'Service "{outcome.name}" updated successfully',
+            "configured_image": outcome.configured_image,
+            "restarted": outcome.restarted,
         }
-        if warnings:
-            response["warnings"] = warnings
+        if outcome.recreate_error:
+            response["recreate_error"] = outcome.recreate_error
+        if outcome.warnings:
+            response["warnings"] = outcome.warnings
         return jsonify(response), 200
 
     except Exception as e:
