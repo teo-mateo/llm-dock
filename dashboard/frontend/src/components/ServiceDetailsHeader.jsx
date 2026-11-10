@@ -1,4 +1,5 @@
 import PageTitle from './PageTitle'
+import RecreateConfirmModal from './RecreateConfirmModal'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -30,7 +31,7 @@ function StatusBadge({ status, transitioning }) {
     bgClass = 'bg-warning-subtle'
     textClass = 'text-warning-fg'
     borderClass = 'border-warning'
-    label = transitioning === 'starting' ? 'Starting...' : transitioning === 'stopping' ? 'Stopping...' : 'Restarting...'
+    label = transitioning === 'starting' ? 'Starting...' : transitioning === 'stopping' ? 'Stopping...' : transitioning === 'recreating' ? 'Recreating...' : 'Restarting...'
   } else if (status === 'running') {
     bgClass = 'bg-success-subtle'
     textClass = 'text-success-fg'
@@ -456,6 +457,7 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
   const [yamlPreview, setYamlPreview] = useState(null)
   const [settingPublicPort, setSettingPublicPort] = useState(false)
   const [togglingWebUI, setTogglingWebUI] = useState(false)
+  const [recreateWasRunning, setRecreateWasRunning] = useState(null)
 
   const status = runtime?.status || 'not-created'
   const isRunning = status === 'running'
@@ -563,6 +565,15 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
           </button>
         )}
 
+        <button
+          onClick={() => setRecreateWasRunning(isRunning)}
+          disabled={disabled}
+          className={`${toolbarBtnBase} bg-surface-muted hover:bg-surface-strong text-fg`}
+        >
+          <i className="fa-solid fa-arrows-rotate"></i>
+          Recreate
+        </button>
+
         {/* Divider between groups */}
         <div className="w-px h-5 bg-surface-muted mx-1" />
 
@@ -611,6 +622,18 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
 
       {yamlPreview && (
         <YamlPreviewModal yaml={yamlPreview} onClose={() => setYamlPreview(null)} />
+      )}
+
+      {recreateWasRunning !== null && (
+        <RecreateConfirmModal
+          running={recreateWasRunning}
+          onCancel={() => setRecreateWasRunning(null)}
+          onConfirm={async () => {
+            await actions.recreate()
+            setRecreateWasRunning(null)
+            onSuccess?.('Container recreated')
+          }}
+        />
       )}
     </>
   )

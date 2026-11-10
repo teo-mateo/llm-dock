@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import ServiceDetailsHeader from './ServiceDetailsHeader'
 
@@ -36,6 +36,7 @@ const builtImageInfo = {
 
 function renderHeader({ onFetch, config, runtime }) {
   const onError = vi.fn()
+  const onSuccess = vi.fn()
   const actions = {
     fetchImageInfo: onFetch,
     fetchYamlPreview: vi.fn(),
@@ -45,6 +46,7 @@ function renderHeader({ onFetch, config, runtime }) {
     start: vi.fn(),
     stop: vi.fn(),
     restart: vi.fn(),
+    recreate: vi.fn().mockResolvedValue({}),
   }
   render(
     <MemoryRouter>
@@ -55,12 +57,12 @@ function renderHeader({ onFetch, config, runtime }) {
         transitioning={null}
         actions={actions}
         onRename={vi.fn()}
-        onSuccess={vi.fn()}
+        onSuccess={onSuccess}
         onError={onError}
       />
     </MemoryRouter>
   )
-  return { onError }
+  return { onError, onSuccess, actions }
 }
 
 function openPopover() {
@@ -109,5 +111,85 @@ describe('ImagePopover', () => {
     expect(screen.queryByText(/Failed to load image details/)).toBeNull()
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
     expect(onError).not.toHaveBeenCalled()
+  })
+})
+
+describe('Recreate button', () => {
+  const running = { status: 'running', api_key: 'key-not-a-real-key-1234567890abcdef' }
+  const stopped = { status: 'exited', api_key: 'key-not-a-real-key-1234567890abcdef' }
+
+  it.each([['running', running, 'recreate-running-note'], ['stopped', stopped, 'recreate-stopped-note']])(
+    'is offered for a %s service and opens the matching confirmation',
+    (_label, runtime, note) => {
+      const { actions } = renderHeader({ onFetch: vi.fn(), runtime })
+
+      fireEvent.click(screen.getByRole('button', { name: /Recreate/ }))
+
+      expect(screen.getByRole('dialog')).toBeTruthy()
+      expect(screen.getByTestId(note)).toBeTruthy()
+      expect(actions.recreate).not.toHaveBeenCalled()
+    }
+  )
+
+  it('runs the recreate only after confirming, then closes and reports success', async () => {
+    const { actions, onSuccess } = renderHeader({ onFetch: vi.fn(), runtime: running })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Recreate$/ }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Recreate' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(actions.recreate).toHaveBeenCalledTimes(1)
+    expect(onSuccess).toHaveBeenCalledWith('Container recreated')
+  })
+
+  it('cancelling closes the dialog and runs nothing', () => {
+    const { actions } = renderHeader({ onFetch: vi.fn(), runtime: running })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Recreate$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.recreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('Recreate confirmation while pending', () => {
+  it('keeps the running note when the service status flips mid-request', async () => {
+    let resolve
+    const recreate = vi.fn(() => new Promise(r => { resolve = r }))
+    const actions = {
+      fetchImageInfo: vi.fn(), fetchYamlPreview: vi.fn(), setPublicPort: vi.fn(),
+      registerOpenWebUI: vi.fn(), unregisterOpenWebUI: vi.fn(),
+      start: vi.fn(), stop: vi.fn(), restart: vi.fn(), recreate,
+    }
+    const element = status => (
+      <MemoryRouter>
+        <ServiceDetailsHeader
+          serviceName="llamacpp-test"
+          config={{ template_type: 'llamacpp', image: MISSING_IMAGE, port: 3336 }}
+          runtime={{ status, api_key: 'key-not-a-real-key-1234567890abcdef' }}
+          transitioning={null}
+          actions={actions}
+          onRename={vi.fn()}
+          onSuccess={vi.fn()}
+          onError={vi.fn()}
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(element('running'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Recreate$/ }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Recreate' }))
+    await waitFor(() => expect(recreate).toHaveBeenCalledTimes(1))
+
+    rerender(element('exited'))
+    rerender(element('running'))
+    rerender(element('exited'))
+
+    expect(screen.getByTestId('recreate-running-note')).toBeTruthy()
+    expect(screen.queryByTestId('recreate-stopped-note')).toBeNull()
+
+    resolve({})
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })
