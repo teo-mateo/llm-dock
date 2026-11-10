@@ -67,8 +67,8 @@ enum class SharedRead { None, Stream }
 object SharedKindParser {
     const val ACTION_SEND = "android.intent.action.SEND"
 
-    /** Cap per-file inlined text — the web's `MAX_INLINE_BYTES` (`ChatInput.jsx`). */
-    const val MAX_INLINE_BYTES = 512 * 1024
+    /** Cap per-file inlined text — owned by [com.hpz.llmdockchat.core.attachment.MAX_INLINE_BYTES]. */
+    const val MAX_INLINE_BYTES = com.hpz.llmdockchat.core.attachment.MAX_INLINE_BYTES
 
     /** `ChatInput.jsx`'s `ALLOWED_EXT`, plus the code MIME types it accepts. */
     private val CODE_MIME_TYPES = setOf(

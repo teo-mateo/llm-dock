@@ -1,6 +1,5 @@
-package com.hpz.llmdockchat.feature.thread
+package com.hpz.llmdockchat.core.attachment
 
-import com.hpz.llmdockchat.feature.share.SharedContentReader
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
@@ -12,7 +11,7 @@ import kotlinx.coroutines.withContext
  * composer has to stay responsive.
  */
 class AttachmentImporter(
-    private val reader: SharedContentReader,
+    private val reader: AttachmentReader,
     private val io: CoroutineDispatcher,
 ) {
     /** Null means the image could not be read; the caller owns the message. */

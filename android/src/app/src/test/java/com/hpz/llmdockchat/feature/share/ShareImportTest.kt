@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.runBlocking
+import com.hpz.llmdockchat.core.attachment.AttachmentReader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -248,7 +249,7 @@ class ShareImportTest {
         val gates: Map<String, CountDownLatch> = emptyMap(),
         val throws: Set<String> = emptySet(),
         val afterRead: (String) -> Unit = {},
-    ) : SharedContentReader {
+    ) : AttachmentReader {
         var readCalls = 0
         val threads = mutableListOf<Thread>()
 

@@ -27,6 +27,7 @@ import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
+import com.hpz.llmdockchat.core.attachment.AttachmentImporter
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

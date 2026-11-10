@@ -85,6 +85,8 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
+import com.hpz.llmdockchat.core.attachment.discardCapture
+import com.hpz.llmdockchat.core.attachment.newCaptureUri
 import com.hpz.llmdockchat.feature.share.ShareImport
 import kotlinx.coroutines.launch
 

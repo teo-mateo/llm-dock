@@ -15,8 +15,8 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.feature.pi.transcript.PiDisplayItem
 import com.hpz.llmdockchat.feature.pi.transcript.PiItem
-import com.hpz.llmdockchat.feature.thread.MarkdownBody
-import com.hpz.llmdockchat.feature.thread.ReasoningBlock
+import com.hpz.llmdockchat.core.ui.render.MarkdownBody
+import com.hpz.llmdockchat.core.ui.render.ReasoningBlock
 @Composable
 fun PiItemView(item: PiItem, lastStopAt: Long? = null) {
     when (item) {
