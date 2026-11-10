@@ -1,7 +1,14 @@
 from typing import Callable, Optional, Tuple
 
 from .bus import BusMessage, EventBus, SessionKey
-from .read_model import EventView, SessionSummary, resolve_parent, session_summary
+from .read_model import (
+    EventView,
+    SessionSummary,
+    children_to_republish,
+    resolve_parent,
+    row_key,
+    session_summary,
+)
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
@@ -24,11 +31,18 @@ def publish_session(
     instance_id: str,
     now: int,
 ) -> None:
-    row = store.sessions.get(session_id, instance_id)
-    if row is None:
+    rows = store.sessions.list()
+    by_key = {row_key(row): row for row in rows}
+    key = (session_id, instance_id)
+    if key not in by_key:
         return
-    presence = registry.get(session_id, instance_id, now)
-    prompts = store.prompts.open_for(session_id, instance_id)
-    parents = resolve_parent(store.sessions.list())
-    summary = session_summary(row, presence, prompts, parents)
-    publish("session", (session_id, instance_id), (), summary)
+    parents = resolve_parent(rows)
+    keys = [key]
+    for child in children_to_republish(rows, session_id):
+        if child not in keys:
+            keys.append(child)
+    for each in keys:
+        presence = registry.get(each[0], each[1], now)
+        prompts = store.prompts.open_for(each[0], each[1])
+        summary = session_summary(by_key[each], presence, prompts, parents)
+        publish("session", each, (), summary)

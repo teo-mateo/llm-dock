@@ -219,3 +219,70 @@ def test_plain_events_do_not_publish_a_session(tmp_path):
     handler.handle("POST", "/v1/events", events_request([1]), 2000)
     assert published == ["events"]
     store.close()
+
+
+def test_a_parent_reload_republishes_its_children(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append((kind, key, summary)),
+    )
+    handler.handle("POST", "/v1/hello", {**HELLO, "session_id": "root", "instance_id": "old"}, 1000)
+    handler.handle(
+        "POST", "/v1/hello",
+        {**HELLO, "session_id": "child", "instance_id": "c1", "parent_session_id": "root"},
+        1001,
+    )
+    published.clear()
+
+    handler.handle(
+        "POST", "/v1/hello",
+        {**HELLO, "session_id": "root", "instance_id": "new", "reason": "reload"},
+        2000,
+    )
+
+    sessions = {key: summary for kind, key, summary in published if kind == "session"}
+    assert sessions[("root", "new")].parent_instance_id is None
+    assert sessions[("child", "c1")].parent_session_id == "root"
+    assert sessions[("child", "c1")].parent_instance_id == "new"
+    store.close()
+
+
+def test_a_parent_bye_republishes_its_children(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append((kind, key, summary)),
+    )
+    handler.handle("POST", "/v1/hello", {**HELLO, "session_id": "root", "instance_id": "i1"}, 1000)
+    handler.handle(
+        "POST", "/v1/hello",
+        {**HELLO, "session_id": "child", "instance_id": "c1", "parent_session_id": "root"},
+        1001,
+    )
+    published.clear()
+
+    handler.handle("POST", "/v1/bye", {**BYE, "session_id": "root", "instance_id": "i1"}, 2000)
+
+    sessions = {key: summary for kind, key, summary in published if kind == "session"}
+    assert sessions[("root", "i1")].live is False
+    assert sessions[("child", "c1")].parent_instance_id == "i1"
+    store.close()
+
+
+def test_a_session_without_children_publishes_only_itself(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append((kind, key, summary)),
+    )
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    published.clear()
+
+    handler.handle("POST", "/v1/heartbeat", {**HEARTBEAT, "state": "working"}, 2000)
+
+    assert [key for kind, key, _ in published if kind == "session"] == [("s1", "i1")]
+    store.close()

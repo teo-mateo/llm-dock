@@ -1,6 +1,7 @@
 from pi_remote.events import StoredEvent
 from pi_remote.frames import ContextUsage, HelloFrame, ModelRef
 from pi_remote.read_model import (
+    children_to_republish,
     clamp_limit,
     event_page,
     project_label,
@@ -208,3 +209,14 @@ def test_summary_of_an_unresolved_parent_keeps_the_declared_id():
 
     assert summary.parent_session_id == "gone"
     assert summary.parent_instance_id is None
+
+
+def test_children_to_republish_lists_every_row_declaring_the_session():
+    rows = [
+        _row(session_id="root", instance_id="i1"),
+        _row(session_id="child", instance_id="c1", parent_session_id="root"),
+        _row(session_id="child", instance_id="c2", parent_session_id="root"),
+        _row(session_id="other", instance_id="o1", parent_session_id="elsewhere"),
+    ]
+
+    assert children_to_republish(rows, "root") == [("child", "c1"), ("child", "c2")]

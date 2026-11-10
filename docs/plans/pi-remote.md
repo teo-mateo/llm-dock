@@ -309,7 +309,9 @@ the #331 `pi_sessions` table by adding `acked_seq` and `parent_session_id`, and 
 `gap_from`/`gap_to` to an existing `pi_events` table. `parent_session_id` names a
 session, not a row, so `read_model.resolve_parent` picks the row it means (live first,
 then greatest `last_seen`, then `first_seen`; self and cycles resolve to none) and every
-summary carries the answer as `parent_instance_id` beside the declared id. Retention bound: events
+summary carries the answer as `parent_instance_id` beside the declared id. A change to a
+session republishes its children as well, since their resolved parent can move to a new
+instance of it. Retention bound: events
 older than **30 days** (`received_at`) are deleted; ended sessions' events are kept
 until that bound, not deleted at `bye`. The sweeper alone owns the purge: its first
 sweep after listener start purges, then at most once per hour. It does not purge on
