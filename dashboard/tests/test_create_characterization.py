@@ -13,6 +13,7 @@ import docker_utils
 import routes.services as services_route
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
+from service_ops import create_wiring
 from services import event_manager
 
 TOKEN = "test-token-create"
@@ -45,7 +46,7 @@ class Seams:
 
 def patch_key_generator(monkeypatch):
     """The one place that knows where create gets a generated key from."""
-    monkeypatch.setattr(services_route, "generate_api_key", lambda: "key-generated")
+    monkeypatch.setattr(create_wiring, "generate_api_key", lambda: "key-generated")
 
 
 @pytest.fixture

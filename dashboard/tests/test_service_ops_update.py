@@ -11,7 +11,8 @@ from service_ops.deps import Infra
 from service_ops.errors import ErrorKind, OpError, service_not_found
 from service_ops.hooks import Cause, ServiceHook
 from service_ops.subsystems import InspectorHook, KeyFileHook
-from service_ops.update import PortInUse, Updated, UpdateDeps, ValidationFailed
+from service_ops.config_checks import PortInUse, ValidationFailed
+from service_ops.update import Updated, UpdateDeps
 
 OLD, NEW = "llm-dock-llamacpp", "custom:1"
 
