@@ -31,6 +31,11 @@ import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.SummarizeMessage
+import com.hpz.llmdockchat.feature.share.StagedShare
+import com.hpz.llmdockchat.testing.FakeDraftStore
+import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -90,7 +95,11 @@ class NewChatViewModelTest {
         server.close()
     }
 
-    private fun viewModel(preselectedServiceName: String? = null) = NewChatViewModel(
+    private fun viewModel(
+        preselectedServiceName: String? = null,
+        sharedDraftStore: SharedDraftStore? = null,
+        summarizeMode: Boolean = false,
+    ) = NewChatViewModel(
         servicesRepository = servicesRepository,
         promptsRepository = promptsRepository,
         mcpServersRepository = mcpServersRepository,
@@ -100,6 +109,8 @@ class NewChatViewModelTest {
         preferences = preferences,
         servicesStreamRepository = servicesStreamRepository,
         preselectedServiceName = preselectedServiceName,
+        summarizeMode = summarizeMode,
+        sharedDraftStore = sharedDraftStore,
     )
 
     /** Load order in [NewChatViewModel.load]: services, openrouter, providers, prompts, mcp-servers. */
@@ -442,6 +453,147 @@ class NewChatViewModelTest {
         assertEquals(model, loadedFinal.selectedModel)
         assertEquals(setOf("sympy-math"), loadedFinal.selectedMcpServerIds)
         assertFalse(loadedFinal.canStart) // Start is not the way out of this state
+    }
+
+    @Test
+    fun `a failed share filing keeps the thread id and the retry files it instead of creating another`() {
+        enqueueLoadResponses()
+        val dir = Files.createTempDirectory("new-chat-share").toFile()
+        val store = SharedDraftStore(dir)
+        val viewModel = viewModel(sharedDraftStore = store)
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        store.stage(StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")))
+        val blocker = java.io.File(dir, "conv_new-conv-9").apply { writeText("not a directory") }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-9"}""").build())
+        var createdId: String? = null
+        viewModel.create { createdId = it }
+        runBlocking { withTimeout(10_000) { while (createdId == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("new-conv-9", createdId)
+
+        val drafts = FakeDraftStore()
+        var filed: String? = null
+        viewModel.fileShare("new-conv-9", drafts) { filed = it }
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.shareFailure != null }
+            }
+        } as NewChatUiState.Loaded
+        assertEquals("new-conv-9", failed.shareFailure?.conversationId)
+        assertNull("a failed filing must not open the thread", filed)
+        assertEquals("the share is still staged", "shared", store.pending.value?.text)
+
+        val createsBeforeRetry = server.requestCount
+        assertTrue(blocker.delete())
+        viewModel.retryShare(drafts) { filed = it }
+
+        runBlocking { withTimeout(10_000) { while (filed == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("the retry files into the same thread", "new-conv-9", filed)
+        assertEquals(
+            "no second conversation is created",
+            createsBeforeRetry,
+            server.requestCount,
+        )
+        assertNull(store.pending.value)
+    }
+
+    @Test
+    fun `a failed claim is retried as a claim, so the summarize turn is not lost`() {
+        enqueueLoadResponses(
+            mcpServers = """{"servers": [{"id": "webfetch", "name": "WebFetch"}],
+                "url_fetch": {"available": true,
+                    "servers": [{"id": "webfetch", "name": "WebFetch", "tools": ["fetch_readable"]}],
+                    "failures": []}}""",
+        )
+        val dir = Files.createTempDirectory("new-chat-claim").toFile()
+        val store = SharedDraftStore(dir)
+        val url = "https://example.com/a"
+        store.stage(StagedShare(text = url, url = url))
+        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        assertEquals(setOf("webfetch"), loaded.selectedMcpServerIds)
+        val blocker = java.io.File(dir, "conv_new-conv-7.autosend.txt.tmp").apply { mkdirs() }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-7"}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-7"}""").build())
+        var createdId: String? = null
+        viewModel.create { createdId = it }
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.shareFailure != null }
+            }
+        } as NewChatUiState.Loaded
+        assertEquals(ShareFailureKind.Claim, failed.shareFailure?.kind)
+        assertNull(createdId)
+
+        assertTrue(blocker.delete())
+        var filed: String? = null
+        viewModel.retryShare(FakeDraftStore()) { filed = it }
+
+        runBlocking { withTimeout(10_000) { while (filed == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("new-conv-7", filed)
+        assertEquals(
+            "the retry must file the claim, not a draft",
+            SummarizeMessage.build(url),
+            runBlocking { store.takeAutoSend("new-conv-7") },
+        )
+    }
+
+    @Test
+    fun `a claim failing after retryTools replaces the tools banner instead of hiding behind it`() {
+        enqueueLoadResponses(
+            mcpServers = """{"servers": [{"id": "webfetch", "name": "WebFetch"}],
+                "url_fetch": {"available": true,
+                    "servers": [{"id": "webfetch", "name": "WebFetch", "tools": ["fetch_readable"]}],
+                    "failures": []}}""",
+        )
+        val dir = Files.createTempDirectory("new-chat-claim-retry").toFile()
+        val store = SharedDraftStore(dir)
+        val url = "https://example.com/b"
+        store.stage(StagedShare(text = url, url = url))
+        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        val blocker = java.io.File(dir, "conv_new-conv-8.autosend.txt.tmp").apply { mkdirs() }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-8"}""").build())
+        server.enqueue(MockResponse.Builder().code(500).body("""{"error": "temporary failure"}""").build())
+        viewModel.create {}
+
+        runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.toolsFailure != null }
+            }
+        }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-8"}""").build())
+        viewModel.retryTools {}
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.shareFailure != null }
+            }
+        } as NewChatUiState.Loaded
+        assertNull("the tools banner must not hide the share one", failed.toolsFailure)
+        assertEquals(ShareFailureKind.Claim, failed.shareFailure?.kind)
+
+        assertTrue(blocker.delete())
+        var filed: String? = null
+        viewModel.retryShare(FakeDraftStore()) { filed = it }
+
+        runBlocking { withTimeout(10_000) { while (filed == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("new-conv-8", filed)
+        assertEquals(
+            SummarizeMessage.build(url),
+            runBlocking { store.takeAutoSend("new-conv-8") },
+        )
     }
 
     @Test

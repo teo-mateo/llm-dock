@@ -24,6 +24,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import kotlin.time.Duration.Companion.seconds
 
 class ValuePreferenceTest {
@@ -122,6 +123,38 @@ class ValuePreferenceTest {
         // What the OkHttp interceptor does: no coroutine, needs an answer now.
         assertEquals("totp-abc", pref.get())
         assertEquals("totp-abc", pref.get())
+    }
+
+    // -- confirmed writes --------------------------------------------------
+
+    @Test
+    fun `a confirmed write is on disk when it returns`() = runTest {
+        val file = file()
+        val store = dataStore(file)
+        val pref = preference(store)
+
+        assertTrue(pref.setConfirmed("http://10.0.2.2:3399").isSuccess)
+
+        assertEquals("http://10.0.2.2:3399", readBack(store))
+    }
+
+    @Test
+    fun `a confirmed write reports a failing disk and restores the unsaved value`() = runTest {
+        val pref = preference(FailingWrites(dataStore(file())))
+        assertNull(pref.awaitReady())
+
+        val result = pref.setConfirmed("http://10.0.2.2:3399")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertEquals(Stored.Ready(null), pref.flow.value)
+    }
+
+    /** Reads pass through; every write fails, which is what a full disk looks like. */
+    private class FailingWrites(private val delegate: DataStore<Preferences>) : DataStore<Preferences> {
+        override val data = delegate.data
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
+            throw IOException("disk full")
     }
 
     // -- the corrupt-file path --------------------------------------------

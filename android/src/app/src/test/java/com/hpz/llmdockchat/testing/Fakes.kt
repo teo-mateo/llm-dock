@@ -125,7 +125,8 @@ class FakeDraftStore(initial: Map<String, String> = emptyMap()) : DraftStore {
         if (text.isBlank()) saved.remove(conversationId) else saved[conversationId] = text
     }
     override fun clear(conversationId: String) { saved.remove(conversationId) }
-    override suspend fun awaitWrites() = Unit
+    override suspend fun saveConfirmed(conversationId: String, text: String): Result<Unit> =
+        runCatching { save(conversationId, text) }
 }
 
 class FakeEditStateStore(initial: Map<String, EditSession> = emptyMap()) : EditStateStore {

@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ManagedPrompt
 import com.hpz.llmdockchat.data.model.ModelOption
@@ -58,6 +59,7 @@ import com.hpz.llmdockchat.feature.toolspicker.ToolsPickerSheet
 @Composable
 fun NewChatScreen(
     viewModel: NewChatViewModel,
+    drafts: DraftStore,
     onBack: () -> Unit,
     onConversationCreated: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -92,6 +94,8 @@ fun NewChatScreen(
                     onToggleMcpServer = viewModel::toggleMcpServer,
                     onStart = { viewModel.create(onConversationCreated) },
                     onRetryTools = { viewModel.retryTools(onConversationCreated) },
+                    onRetryShare = { viewModel.retryShare(drafts, onConversationCreated) },
+                    onOpenAfterShareFailure = { viewModel.openAfterShareFailure(onConversationCreated) },
                     onOpenAnyway = { viewModel.openAnyway(onConversationCreated) },
                 )
             }
@@ -133,6 +137,8 @@ private fun NewChatSheetBody(
     onToggleMcpServer: (String) -> Unit,
     onStart: () -> Unit,
     onRetryTools: () -> Unit,
+    onRetryShare: () -> Unit,
+    onOpenAfterShareFailure: () -> Unit,
     onOpenAnyway: () -> Unit,
 ) {
     val colors = LlmTheme.colors
@@ -181,12 +187,22 @@ private fun NewChatSheetBody(
         Spacer(Modifier.weight(1f))
 
         val toolsFailure = state.toolsFailure
+        val shareFailure = state.shareFailure
         if (toolsFailure != null) {
-            ToolsFailureBanner(
-                message = toolsFailure.message,
+            RetryableFailureBanner(
+                message = "Conversation created, but tools couldn't be set: ${toolsFailure.message}",
                 creating = state.creating,
+                tag = "new_chat_tools_failure",
                 onRetry = onRetryTools,
                 onOpenAnyway = onOpenAnyway,
+            )
+        } else if (shareFailure != null) {
+            RetryableFailureBanner(
+                message = "${shareFailure.message} The share stays on the share screen.",
+                creating = state.creating,
+                tag = "new_chat_share_failure",
+                onRetry = onRetryShare,
+                onOpenAnyway = onOpenAfterShareFailure,
             )
         } else {
             state.createError?.let { error ->
@@ -339,19 +355,20 @@ private fun StartButton(enabled: Boolean, creating: Boolean, label: String, onCl
  * through the nav graph).
  */
 @Composable
-private fun ToolsFailureBanner(
+private fun RetryableFailureBanner(
     message: String,
     creating: Boolean,
+    tag: String,
     onRetry: () -> Unit,
     onOpenAnyway: () -> Unit,
 ) {
     val colors = LlmTheme.colors
     Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("new_chat_tools_failure"),
+        modifier = Modifier.fillMaxWidth().padding(16.dp).testTag(tag),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            "Conversation created, but tools couldn't be set: $message",
+            message,
             color = colors.amber,
             style = MaterialTheme.typography.bodyMedium,
         )

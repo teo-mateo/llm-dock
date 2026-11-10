@@ -89,6 +89,7 @@ class SummarizeCoordinator(
             }
 
         store.stageForAutoSend(conversationId, SummarizeMessage.build(url))
+            .onFailure { return SummarizeOutcome.Failed(SHARE_SAVE_FAILED) }
         return SummarizeOutcome.Opened(conversationId)
     }
 }

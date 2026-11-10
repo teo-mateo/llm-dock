@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.data.model.UrlRetrieval
@@ -51,6 +52,8 @@ class ShareTargetViewModel(
 
     private var launching = false
 
+    private var picking = false
+
     init {
         // A second share arriving while the picker is open replaces the staged
         // content on screen — the NavHost does not re-navigate (already here),
@@ -92,6 +95,29 @@ class ShareTargetViewModel(
                 onFailure = { failure ->
                     probe.cancel()
                     _state.value = ShareTargetUiState.Failed(failure.appError.displayMessage)
+                },
+            )
+        }
+    }
+
+    /**
+     * Picking a conversation for the staged share. The write lives here rather
+     * than in the navigation lambda because a failed one has to be shown: the
+     * share stays staged, so the user can pick again.
+     */
+    fun pick(conversationId: String, drafts: DraftStore, onPicked: (String) -> Unit) {
+        val loaded = _state.value as? ShareTargetUiState.Loaded ?: return
+        if (picking) return
+        picking = true
+        _state.value = loaded.copy(actionError = null)
+        viewModelScope.launch {
+            val result = store.reassign(conversationId, drafts)
+            picking = false
+            result.fold(
+                onSuccess = { onPicked(conversationId) },
+                onFailure = {
+                    val current = _state.value as? ShareTargetUiState.Loaded ?: return@fold
+                    _state.value = current.copy(actionError = SHARE_SAVE_FAILED)
                 },
             )
         }

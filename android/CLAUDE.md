@@ -87,10 +87,14 @@ works from anywhere.
 
 `testDebugUnitTest` has to be read rather than counted. Known intermittent
 full-suite failures include `ThreadToolsTest` (also observed on the base branch),
-`ThreadAutoSendTest` (the draft-save assertion can race a state emission), and
+`ThreadAutoSendTest` (the draft-save assertion can race a state emission),
 `ThreadPromptSelectionTest` (timeouts on different test methods in separate
-full-suite runs, with all 11 tests green in isolation). For a failure in one of
-these classes, rerun it alone before attributing it to a change:
+full-suite runs, with all 11 tests green in isolation), and
+`ThreadReasoningLevelTest` (a different method each time, failing in `setUp` or
+`tearDown` with `Dispatchers.Main is used concurrently with setting it` — the
+class's own executor races the next test's `setMain`; measured at roughly 1 in
+30 runs alone, on `main` as well as on feature branches). For a failure in one
+of these classes, rerun it alone before attributing it to a change:
 
 ```bash
 cd android/src

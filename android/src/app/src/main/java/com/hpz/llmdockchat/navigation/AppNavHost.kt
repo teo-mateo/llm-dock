@@ -335,7 +335,6 @@ fun AppNavHost(
         }
 
         composable(Destinations.SHARE_PICKER) {
-            val pickerScope = rememberCoroutineScope()
             val viewModel: ShareTargetViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -350,13 +349,11 @@ fun AppNavHost(
             ShareTargetScreen(
                 viewModel = viewModel,
                 onPickConversation = { conversation ->
-                    // Navigates after the write rather than after the call: the
-                    // thread reads the draft and the staged attachments as soon as
-                    // it loads, so a merge still in flight would land behind that
-                    // read and the thread would open without the shared content.
-                    pickerScope.launch {
-                        container.sharedDraftStore.reassign(conversation.id, container.draftStore)
-                        navController.navigate(Destinations.thread(conversation.id)) {
+                    // The view model owns the write so a failure can be shown
+                    // instead of navigating into a thread that never received the
+                    // share. Navigation happens only once the content is filed.
+                    viewModel.pick(conversation.id, container.draftStore) { id ->
+                        navController.navigate(Destinations.thread(id)) {
                             popUpTo(Destinations.SHARE_PICKER) { inclusive = true }
                         }
                     }
@@ -449,7 +446,6 @@ private fun NewChatDestination(
     preselectedServiceName: String?,
     summarizeMode: Boolean,
 ) {
-    val newChatScope = rememberCoroutineScope()
     val viewModel: NewChatViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
@@ -471,6 +467,7 @@ private fun NewChatDestination(
     )
     NewChatScreen(
         viewModel = viewModel,
+        drafts = container.draftStore,
         onBack = { navController.popBackStack() },
         onConversationCreated = { id ->
             // A conversation created from the share picker takes
@@ -480,16 +477,14 @@ private fun NewChatDestination(
             // though the sheet already spent the pending share filing its
             // claim — the picker is still what sits under this sheet.
             val hadPendingShare = summarizeMode || container.sharedDraftStore.pending.value != null
-            // Awaited for the same reason as the picker's pick: the thread must
-            // not load before the content it is opening with has been filed. For
-            // a summarize run this returns without waiting — the sheet already
-            // spent the pending share.
-            newChatScope.launch {
-                container.sharedDraftStore.reassign(id, container.draftStore)
+            // The view model files the share and only then hands back the id,
+            // so the thread never opens before the content it is opening with
+            // has been written. A failure stays on the sheet with the id kept.
+            viewModel.fileShare(id, container.draftStore) { filed ->
                 // Replaces the sheet on the back stack — Back from the new
                 // thread returns to the conversation list, not to a sheet
                 // for a chat that already exists.
-                navController.navigate(Destinations.thread(id)) {
+                navController.navigate(Destinations.thread(filed)) {
                     popUpTo(
                         if (hadPendingShare) Destinations.SHARE_PICKER else Destinations.NEW_CHAT,
                     ) { inclusive = true }

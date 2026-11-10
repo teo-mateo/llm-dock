@@ -30,7 +30,7 @@ class SharedDraftStoreAutoSendTest {
     fun `filing a claim spends the pending share in the same call`() {
         store.stage(StagedShare(text = "https://example.com/a", url = "https://example.com/a"))
 
-        store.stageForAutoSend(CONV, "summarise it")
+        runBlocking { store.stageForAutoSend(CONV, "summarise it") }
 
         assertNull(store.pending.value)
         assertEquals("summarise it", take())
@@ -38,7 +38,7 @@ class SharedDraftStoreAutoSendTest {
 
     @Test
     fun `a claim is owed once - the second read finds nothing`() {
-        store.stageForAutoSend(CONV, "summarise it")
+        runBlocking { store.stageForAutoSend(CONV, "summarise it") }
 
         assertEquals("summarise it", take())
         assertNull(take())
@@ -47,7 +47,7 @@ class SharedDraftStoreAutoSendTest {
     /** Process-death: the intent outlives the store object. */
     @Test
     fun `a claim survives process death and is still owed exactly once`() {
-        store.stageForAutoSend(CONV, "summarise it")
+        runBlocking { store.stageForAutoSend(CONV, "summarise it") }
 
         val reborn = SharedDraftStore(dir)
 
@@ -58,20 +58,32 @@ class SharedDraftStoreAutoSendTest {
     /** The claim is a sibling of the attachment dir, which `saveAttachments` wipes. */
     @Test
     fun `an attachment write after the claim does not erase it`() {
-        store.stageForAutoSend(CONV, "summarise it")
+        runBlocking { store.stageForAutoSend(CONV, "summarise it") }
 
-        store.appendAttachments(CONV, listOf("data:image/jpeg;base64,AAA"))
+        runBlocking { store.appendAttachments(CONV, listOf("data:image/jpeg;base64,AAA")) }
 
         assertEquals("summarise it", take())
     }
 
     @Test
     fun `sending the thread clears the claim - no ghost turn on a later visit`() {
-        store.stageForAutoSend(CONV, "summarise it")
+        runBlocking { store.stageForAutoSend(CONV, "summarise it") }
 
         store.clear(CONV)
 
         assertNull(take())
+    }
+
+    @Test
+    fun `a refused claim write leaves the pending share staged`() {
+        store.stage(StagedShare(text = "https://example.com/a"))
+        java.io.File(dir, "conv_$CONV.autosend.txt.tmp").mkdirs()
+
+        val result = runBlocking { store.stageForAutoSend(CONV, "summarise it") }
+
+        assertTrue("the claim cannot be filed", result.isFailure)
+        assertEquals("https://example.com/a", store.pending.value?.text)
+        assertNull("and nothing was claimed", take())
     }
 
     @Test

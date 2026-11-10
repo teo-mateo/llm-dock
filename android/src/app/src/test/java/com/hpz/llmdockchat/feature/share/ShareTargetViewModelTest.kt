@@ -10,6 +10,7 @@ import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.model.UrlFetchFailure
 import com.hpz.llmdockchat.data.model.UrlFetchServer
 import com.hpz.llmdockchat.data.model.UrlRetrieval
+import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeTokenStore
 import com.hpz.llmdockchat.testing.MainDispatcherRule
@@ -24,6 +25,7 @@ import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -40,6 +42,7 @@ class ShareTargetViewModelTest {
     private lateinit var viewModel: ShareTargetViewModel
     private lateinit var repository: ConversationsRepository
     private lateinit var store: SharedDraftStore
+    private lateinit var dir: java.io.File
     private lateinit var launcher: StubLauncher
 
     @Before
@@ -53,7 +56,8 @@ class ShareTargetViewModelTest {
             .addInterceptor(AuthInterceptor(FakeTokenStore("totp-test"), SessionState()))
             .build()
         repository = ConversationsRepository(ApiClient(client, urlStore, ApiJson, Dispatchers.IO))
-        store = SharedDraftStore(Files.createTempDirectory("shared-drafts").toFile())
+        dir = Files.createTempDirectory("shared-drafts").toFile()
+        store = SharedDraftStore(dir)
         launcher = StubLauncher(UrlRetrieval(true, listOf(UrlFetchServer("webfetch", "WebFetch", listOf("fetch_readable"))), emptyList()))
         viewModel = ShareTargetViewModel(repository, store, launcher)
     }
@@ -81,6 +85,46 @@ class ShareTargetViewModelTest {
         assertEquals(2, state.conversations.size)
         assertEquals("hello", state.share.text)
         assertFalse(state.isEmpty)
+    }
+
+    @Test
+    fun `a pick that cannot write the share reports it and stays on the picker`() {
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "hello", attachments = listOf("data:image/jpeg;base64,AAA")))
+        viewModel.refresh()
+        val loaded = settled() as ShareTargetUiState.Loaded
+        val target = loaded.conversations.first().id
+        java.io.File(dir, "conv_$target").writeText("not a directory")
+
+        var picked: String? = null
+        viewModel.pick(target, FakeDraftStore()) { picked = it }
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { it is ShareTargetUiState.Loaded && it.actionError != null }
+            }
+        } as ShareTargetUiState.Loaded
+        assertEquals(SHARE_SAVE_FAILED, failed.actionError)
+        assertNull("a failed pick must not navigate", picked)
+        assertEquals("the share is still staged", "hello", store.pending.value?.text)
+    }
+
+    @Test
+    fun `a pick that writes the share navigates and spends the record`() {
+        server.enqueue(MockResponse.Builder().body(readFixture("conversations.json")).build())
+        store.stage(StagedShare(text = "hello"))
+        viewModel.refresh()
+        val loaded = settled() as ShareTargetUiState.Loaded
+        val target = loaded.conversations.first().id
+        val drafts = FakeDraftStore()
+
+        var picked: String? = null
+        viewModel.pick(target, drafts) { picked = it }
+
+        runBlocking { withTimeout(10_000) { while (picked == null) kotlinx.coroutines.delay(5) } }
+        assertEquals(target, picked)
+        assertEquals("hello", drafts.saved[target])
+        assertNull(store.pending.value)
     }
 
     @Test
