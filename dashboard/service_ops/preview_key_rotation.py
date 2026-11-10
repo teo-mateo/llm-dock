@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable
+
+from .affected import AffectedState
 
 
 @dataclass(frozen=True)
 class PreviewKeyRotationDeps:
-    affected_state: Callable[[], tuple[Sequence[str], Sequence[str], Sequence[str]]]
+    affected_state: Callable[[], AffectedState]
 
 
 @dataclass(frozen=True)
@@ -23,5 +25,5 @@ class RotationPreview:
 
 def preview_key_rotation(deps: PreviewKeyRotationDeps) -> RotationPreview:
     """Describe what rotating the default key would touch, changing nothing."""
-    db_services, running, openwebui_registered = deps.affected_state()
-    return RotationPreview(len(db_services), list(running), list(openwebui_registered))
+    state = deps.affected_state()
+    return RotationPreview(len(state.services), list(state.running), list(state.openwebui_registered))

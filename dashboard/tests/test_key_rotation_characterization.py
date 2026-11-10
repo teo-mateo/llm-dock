@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 import routes.services as services_route
 from service_ops import wiring
+from service_ops.affected import AffectedState
 from compose_manager import ComposeManager
 
 TOKEN = "test-token-rotation"
@@ -40,9 +41,13 @@ class Seams:
 
 def patch_seams(monkeypatch, seams):
     """The one place that knows where the route reaches its collaborators."""
+    def affected():
+        return AffectedState(sorted(SERVICES), list(seams.running), list(seams.registered))
+
+    rotate_deps, preview_deps = wiring.rotate_key_deps, wiring.preview_key_rotation_deps
+    monkeypatch.setattr(wiring, "rotate_key_deps", lambda compose_file: rotate_deps(compose_file, affected=affected))
     monkeypatch.setattr(
-        wiring, "affected_services_state",
-        lambda compose_file: (sorted(SERVICES), list(seams.running), list(seams.registered)),
+        wiring, "preview_key_rotation_deps", lambda compose_file: preview_deps(compose_file, affected=affected)
     )
     monkeypatch.setattr(
         wiring, "control_service",

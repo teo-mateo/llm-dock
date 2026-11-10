@@ -6,9 +6,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import set_public_port
-from service_ops.deps import Infra, SetPublicPortDeps
+from service_ops.deps import Infra
+from service_ops.errors import service_not_found
 from service_ops.hooks import Cause, Phase, ServiceHook, ServicesChangedContext, run_phase
-from service_ops.outcomes import AlreadyPublic, OpError, PublicPortSet
+from service_ops.set_public_port import AlreadyPublic, PublicPortSet, SetPublicPortDeps
 from service_ops.subsystems import InspectorHook
 
 PUBLIC = 3301
@@ -72,7 +73,7 @@ class Harness:
 def test_an_unknown_service_is_a_404_before_anything_runs():
     harness = Harness()
 
-    assert set_public_port(harness.deps(), "ghost", PUBLIC) == OpError(404, 'Service "ghost" not found')
+    assert set_public_port(harness.deps(), "ghost", PUBLIC) == service_not_found("ghost")
     assert harness.log == []
 
 

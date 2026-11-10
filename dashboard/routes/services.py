@@ -24,7 +24,8 @@ import port_conflicts
 from port_conflicts import find_port_owner, port_in_use_body
 import service_ops
 from service_ops import wiring
-from service_ops.outcomes import AlreadyPublic, OpError
+from service_ops.errors import ErrorKind, OpError
+from service_ops.set_public_port import AlreadyPublic
 from service_recreate import NOT_FOUND, apply_update_effects, recreate
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
@@ -40,6 +41,13 @@ services_bp = Blueprint("services", __name__)
 _SERVICES_DB_LOCK = SERVICES_DB_LOCK
 _serialize_db = serialize_db
 _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
+
+
+_OP_ERROR_STATUS = {ErrorKind.NOT_FOUND: 404, ErrorKind.CONFLICT: 409, ErrorKind.INVALID: 400}
+
+
+def _op_error(error: OpError):
+    return jsonify(error.body()), _OP_ERROR_STATUS[error.kind]
 
 
 def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
@@ -455,7 +463,7 @@ def delete_service(service_name):
     try:
         outcome = service_ops.delete(wiring.delete_deps(COMPOSE_FILE), service_name)
         if isinstance(outcome, OpError):
-            return jsonify(outcome.body()), outcome.status
+            return _op_error(outcome)
 
         return jsonify(
             {
@@ -490,7 +498,7 @@ def rename_service(service_name):
 
         outcome = service_ops.rename(wiring.rename_deps(COMPOSE_FILE), service_name, data["new_name"].strip())
         if isinstance(outcome, OpError):
-            return jsonify(outcome.body()), outcome.status
+            return _op_error(outcome)
 
         return jsonify(
             {
@@ -553,7 +561,7 @@ def set_public_port(service_name):
             wiring.set_public_port_deps(COMPOSE_FILE), service_name, port_conflicts.PUBLIC_SLOT_PORT
         )
         if isinstance(outcome, OpError):
-            return jsonify(outcome.body()), outcome.status
+            return _op_error(outcome)
         if isinstance(outcome, AlreadyPublic):
             return jsonify(
                 {
@@ -631,7 +639,7 @@ def set_inspect(service_name):
 
         outcome = service_ops.set_inspect(wiring.set_inspect_deps(COMPOSE_FILE), service_name, enabled)
         if isinstance(outcome, OpError):
-            return jsonify(outcome.body()), outcome.status
+            return _op_error(outcome)
         return jsonify(outcome.body()), 200
 
     except Exception as e:
@@ -826,7 +834,7 @@ def rotate_default_api_key():
     try:
         with _SERVICES_DB_LOCK:
             outcome = service_ops.rotate_key(wiring.rotate_key_deps(COMPOSE_FILE))
-        return jsonify(outcome.body()), outcome.status
+        return jsonify(outcome.body()), (200 if outcome.ok else 207)
 
     except Exception as e:
         logger.error(f"Failed to rotate default API key: {e}", exc_info=True)
