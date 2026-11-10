@@ -3,7 +3,8 @@ import logging
 import uuid
 from typing import Optional, List, Tuple
 
-from .models import Conversation, Message, Critique, Artifact, ChatRun, Project, Prompt
+from .models import (Conversation, Message, Critique, Artifact, ChatRun, Project, Prompt,
+                     DeleteMessageOutcome, DeleteMessageResult)
 from .runs import ChatRunStatus, ACTIVE_STATUSES, TERMINAL_STATUSES, ALL_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -642,40 +643,56 @@ class ChatDB:
         finally:
             self._close_conn(conn)
 
-    def delete_message(self, msg_id: str) -> Optional[Message]:
-        """Delete a single message by id.
+    def delete_message_guarded(self, conv_id: str, msg_id: str) -> DeleteMessageResult:
+        """Delete one message, but only while its conversation has no active run.
 
-        Critiques and artifacts for the message are removed explicitly (FK
-        cascades are not relied upon — the in-memory test DB doesn't enable
-        PRAGMA foreign_keys). Any chat_run still referencing the message via
-        user_message_id is detached (set to NULL), matching the FK's ON DELETE
-        SET NULL semantics.
+        The active-run guard, the ownership lookup and the delete share one
+        BEGIN IMMEDIATE transaction, so a send cannot commit a run between the
+        check and the delete. Ownership is the lookup's own
+        `id = ? AND conversation_id = ?`, so a message from another
+        conversation is NOT_FOUND rather than deleted.
 
-        Returns the deleted message, or None if not found.
+        Critiques and artifacts are removed explicitly (FK cascades are not
+        relied upon — the in-memory test DB doesn't enable PRAGMA foreign_keys).
+        A chat_run referencing the message via user_message_id is detached
+        (set to NULL), matching the FK's ON DELETE SET NULL semantics.
         """
         conn = self._get_conn()
+        prev_iso = conn.isolation_level
+        conn.isolation_level = None
         try:
-            row = conn.execute(
-                "SELECT * FROM messages WHERE id = ?", (msg_id,)
-            ).fetchone()
-            if row is None:
-                return None
-            msg = self._row_to_message(row)
-            conn.execute("DELETE FROM critiques WHERE message_id = ?", (msg_id,))
-            conn.execute("DELETE FROM artifacts WHERE message_id = ?", (msg_id,))
-            conn.execute(
-                "UPDATE chat_runs SET user_message_id = NULL WHERE user_message_id = ?",
-                (msg_id,),
-            )
-            conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
-            conn.execute(
-                "UPDATE conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-                "WHERE id = ?",
-                (msg.conversation_id,),
-            )
-            conn.commit()
-            return msg
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if self._active_run_for(conn, conv_id) is not None:
+                    conn.execute("ROLLBACK")
+                    return DeleteMessageResult(DeleteMessageOutcome.CONFLICT)
+                row = conn.execute(
+                    "SELECT * FROM messages WHERE id = ? AND conversation_id = ?",
+                    (msg_id, conv_id),
+                ).fetchone()
+                if row is None:
+                    conn.execute("ROLLBACK")
+                    return DeleteMessageResult(DeleteMessageOutcome.NOT_FOUND)
+                msg = self._row_to_message(row)
+                conn.execute("DELETE FROM critiques WHERE message_id = ?", (msg_id,))
+                conn.execute("DELETE FROM artifacts WHERE message_id = ?", (msg_id,))
+                conn.execute(
+                    "UPDATE chat_runs SET user_message_id = NULL WHERE user_message_id = ?",
+                    (msg_id,),
+                )
+                conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
+                conn.execute(
+                    "UPDATE conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                    "WHERE id = ?",
+                    (conv_id,),
+                )
+                conn.execute("COMMIT")
+                return DeleteMessageResult(DeleteMessageOutcome.DELETED, msg)
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
         finally:
+            conn.isolation_level = prev_iso
             self._close_conn(conn)
 
     # -- Critiques --
