@@ -1,5 +1,8 @@
 package com.hpz.llmdockchat.feature.pi
 
+import com.hpz.llmdockchat.data.model.PiSession
+import com.hpz.llmdockchat.data.model.PiSessionKey
+import com.hpz.llmdockchat.data.model.PiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -95,5 +98,27 @@ class PiFormattingTest {
         val jumped = FollowState(following = false, seen = "a").jump("b")
         assertTrue(jumped.following)
         assertFalse(jumped.hasUnseen("b"))
+    }
+
+    private fun session(state: PiState) = PiSession(
+        key = PiSessionKey("s1", "i1"),
+        name = null,
+        cwd = "/repo",
+        model = null,
+        thinkingLevel = null,
+        firstSeen = 0,
+        lastSeen = 0,
+        endedAt = null,
+        endReason = null,
+        live = state != PiState.ENDED,
+        state = state,
+        contextPercent = null,
+    )
+
+    @Test
+    fun `status label names every state`() {
+        assertEquals("working", piStatusLabel(session(PiState.WORKING)))
+        assertEquals("idle", piStatusLabel(session(PiState.IDLE)))
+        assertEquals("ended", piStatusLabel(session(PiState.ENDED)))
     }
 }

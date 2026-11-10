@@ -213,10 +213,13 @@ fun AppNavHost(
                     )
                     val state by viewModel.state.collectAsState()
                     val cacheLabels by viewModel.cacheLabels.collectAsState()
+                    val projectToggles by viewModel.projectToggles.collectAsState()
                     LaunchedEffect(Unit) { viewModel.start() }
                     PiSessionsScreen(
                         state = state,
                         cacheLabels = cacheLabels,
+                        projectToggles = projectToggles,
+                        onToggleProject = viewModel::toggleProject,
                         onOpen = { key -> navController.navigate(Destinations.piSession(key)) },
                         onSwipeDelete = viewModel::deleteWithUndo,
                         onUndoDelete = viewModel::undoDelete,

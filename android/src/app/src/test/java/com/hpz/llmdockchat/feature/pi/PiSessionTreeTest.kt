@@ -4,6 +4,7 @@ import com.hpz.llmdockchat.data.model.PiSession
 import com.hpz.llmdockchat.data.model.PiSessionKey
 import com.hpz.llmdockchat.data.model.PiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -184,5 +185,26 @@ class PiSessionTreeTest {
         assertTrue(tree.isEmpty)
         assertTrue(tree.live.isEmpty())
         assertTrue(tree.ended.isEmpty())
+    }
+
+    @Test
+    fun `live groups start expanded and ended groups start collapsed`() {
+        val toggles = emptyMap<String, Boolean>()
+
+        assertTrue(piProjectExpanded(PiSection.LIVE, "a/b", toggles))
+        assertFalse(piProjectExpanded(PiSection.ENDED, "a/b", toggles))
+    }
+
+    @Test
+    fun `a toggle overrides the default for its section only`() {
+        val toggles = mapOf(
+            piProjectKey(PiSection.LIVE, "a/b") to false,
+            piProjectKey(PiSection.ENDED, "c/d") to true,
+        )
+
+        assertFalse(piProjectExpanded(PiSection.LIVE, "a/b", toggles))
+        assertTrue(piProjectExpanded(PiSection.LIVE, "x/y", toggles))
+        assertTrue(piProjectExpanded(PiSection.ENDED, "c/d", toggles))
+        assertFalse(piProjectExpanded(PiSection.ENDED, "a/b", toggles))
     }
 }

@@ -37,12 +37,6 @@ sealed interface PiSessionsUiState {
         val visible: List<PiSession>
             get() = sessions.filterNot { it.key == pendingUndo?.key }
 
-        val visibleLive: List<PiSession>
-            get() = visible.filter { it.live }
-
-        val visibleEnded: List<PiSession>
-            get() = visible.filterNot { it.live }
-
         val tree: PiSessionTree
             get() = buildPiSessionTree(visible)
 
@@ -77,6 +71,8 @@ internal class PiSessionsViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow<PiSessionsUiState>(PiSessionsUiState.Loading)
     val state: StateFlow<PiSessionsUiState> = _state.asStateFlow()
+    private val _projectToggles = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val projectToggles: StateFlow<Map<String, Boolean>> = _projectToggles.asStateFlow()
     val cacheLabels: StateFlow<PiCacheLabels> = combine(_state, cacheUsage) { state, usage ->
         val sessions = (state as? PiSessionsUiState.Loaded)?.sessions.orEmpty()
         piCacheLabels(usage, sessions) { cachedBytes(usage, it) }
@@ -96,6 +92,12 @@ internal class PiSessionsViewModel(
                 )
             }
         }
+    }
+
+    fun toggleProject(section: PiSection, project: String) {
+        val key = piProjectKey(section, project)
+        val expanded = piProjectExpanded(section, project, _projectToggles.value)
+        _projectToggles.value = _projectToggles.value + (key to !expanded)
     }
 
     fun deleteWithUndo(session: PiSession) {

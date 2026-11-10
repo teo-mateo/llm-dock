@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.pi
 
 import com.hpz.llmdockchat.data.model.PiSession
+import com.hpz.llmdockchat.data.model.PiState
 
 fun formatAgo(nowMs: Long, thenMs: Long): String {
     val elapsed = nowMs - thenMs
@@ -32,6 +33,12 @@ private fun shortCwd(cwd: String): String? {
 }
 
 fun piContextLabel(contextPercent: Double?): String? = contextPercent?.let { "ctx ${Math.round(it)}%" }
+
+fun piStatusLabel(session: PiSession): String = when (session.state) {
+    PiState.WORKING -> "working"
+    PiState.IDLE -> "idle"
+    PiState.ENDED -> "ended"
+}
 
 data class FollowState(val following: Boolean, val seen: Any?) {
     fun hasUnseen(current: Any?): Boolean = !following && current !== seen

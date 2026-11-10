@@ -5,6 +5,17 @@ import com.hpz.llmdockchat.data.model.PiSessionKey
 
 const val PI_NO_PROJECT = "other"
 
+enum class PiSection { LIVE, ENDED }
+
+fun piProjectKey(section: PiSection, project: String): String =
+    "${section.name.lowercase()}:$project"
+
+fun piProjectExpanded(
+    section: PiSection,
+    project: String,
+    toggles: Map<String, Boolean>,
+): Boolean = toggles[piProjectKey(section, project)] ?: (section == PiSection.LIVE)
+
 data class PiSessionNode(val session: PiSession, val children: List<PiSession>)
 
 data class PiProjectGroup(val project: String, val roots: List<PiSessionNode>)
