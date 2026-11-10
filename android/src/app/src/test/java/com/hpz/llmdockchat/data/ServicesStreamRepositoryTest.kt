@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.data
 
+import com.hpz.llmdockchat.core.error.AppError
+import com.hpz.llmdockchat.core.net.ApiException
 import com.hpz.llmdockchat.core.net.ServiceStreamEvent
 import com.hpz.llmdockchat.core.net.parseServiceStreamFrame
 import com.hpz.llmdockchat.data.dto.ServiceDto
@@ -13,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.IOException
 
 /**
  * [mergeServiceEvent] (pure — the reduce step) and [ServicesStreamRepository.stream]
@@ -197,6 +200,34 @@ class ServicesStreamRepositoryTest {
      * a snapshot arrives, then the same connection drops mid-stream.
      */
     @Test
+    fun `a 404 ends both loops instead of retrying forever`() = runTest {
+        val transport = FakeSseTransport()
+        transport.failWith = ApiException(AppError.Http(404, "no such endpoint", fromServer = true))
+        val repository = ServicesStreamRepository(transport)
+
+        val plain = withTimeout(5_000) { repository.stream(reconnectDelayMs = 1L).toList() }
+        assertEquals(emptyList<List<ServiceSummary>>(), plain)
+        assertEquals(1, transport.requests.size)
+
+        val status = withTimeout(5_000) {
+            repository.streamWithStatus(reconnectDelayMs = 1L).toList()
+        }
+        assertEquals(listOf(ServicesStreamState(emptyList(), stale = true)), status)
+        assertEquals(2, transport.requests.size)
+    }
+
+    @Test
+    fun `a 503 keeps retrying, because it can answer differently next time`() = runTest {
+        val transport = FakeSseTransport()
+        transport.failWith = ApiException(AppError.Http(503, "unavailable", fromServer = true))
+        val repository = ServicesStreamRepository(transport)
+
+        withTimeout(5_000) { repository.streamWithStatus(reconnectDelayMs = 1L).take(3).toList() }
+
+        assertEquals(3, transport.requests.size)
+    }
+
+    @Test
     fun `a dropped connection is re-emitted immediately as stale, with the last known list intact`() = runTest {
         val transport = ScriptedSseTransport()
         transport.script(
@@ -206,7 +237,7 @@ class ServicesStreamRepositoryTest {
                         {"name":"llamacpp-a","status":"running","kind":"chat","host_port":3301,"favorite":false}
                     ],"total":1,"running":1,"stopped":0}}""",
                 ),
-                failWith = RuntimeException("connection reset"),
+                failWith = IOException("connection reset"),
             ),
         )
         transport.whenScriptRunsOut = { ScriptedSseTransport.Leg(park = true) }

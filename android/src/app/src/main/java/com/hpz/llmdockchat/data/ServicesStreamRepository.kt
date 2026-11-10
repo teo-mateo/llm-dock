@@ -1,6 +1,8 @@
 package com.hpz.llmdockchat.data
 
 import com.hpz.llmdockchat.core.net.Endpoints
+import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.net.isTransient
 import com.hpz.llmdockchat.core.net.ServiceStreamEvent
 import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.net.StreamRequest
@@ -49,7 +51,10 @@ class ServicesStreamRepository(private val transport: SseTransport) {
             } catch (e: Throwable) {
                 // A dropped connection — retried below rather than surfaced,
                 // since the picker has nothing better to show than the last
-                // list it had.
+                // list it had. A terminal failure is different: it answers the
+                // same way however often it is asked, so the loop ends and the
+                // collector learns the list has stopped updating.
+                if (!e.appError.isTransient()) return@flow
             }
             delay(reconnectDelayMs)
         }
@@ -81,6 +86,7 @@ class ServicesStreamRepository(private val transport: SseTransport) {
                 throw e
             } catch (e: Throwable) {
                 emit(ServicesStreamState(current, stale = true))
+                if (!e.appError.isTransient()) return@flow
             }
             delay(reconnectDelayMs)
         }

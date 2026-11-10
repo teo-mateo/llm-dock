@@ -1,11 +1,14 @@
 package com.hpz.llmdockchat.data
 
 import com.hpz.llmdockchat.core.net.Endpoints
+import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.net.isTransient
 import com.hpz.llmdockchat.core.net.GpuStreamEvent
 import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.SseTransport
 import com.hpz.llmdockchat.core.net.StreamRequest
 import com.hpz.llmdockchat.core.net.parseGpuStreamFrame
+import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.data.mapper.toDomain
 import com.hpz.llmdockchat.data.model.GpuState
 import kotlinx.coroutines.CancellationException
@@ -57,6 +60,14 @@ class GpuStreamRepository(private val transport: SseTransport) {
                 // (same reasoning as ServicesStreamRepository.stream).
                 throw e
             } catch (e: Throwable) {
+                val error = e.appError
+                if (!error.isTransient()) {
+                    // A 401 re-auth could not fix, or a 404, answers the same
+                    // way however often it is asked: surface it and end the
+                    // stream rather than retrying in the background forever.
+                    emit(GpuState.Unavailable(error.displayMessage))
+                    return@flow
+                }
                 emit(GpuState.Unavailable(null))
             }
             delay(backoff.next())

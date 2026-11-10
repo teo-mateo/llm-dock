@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.data
 
+import com.hpz.llmdockchat.core.error.AppError
+import com.hpz.llmdockchat.core.net.ApiException
 import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.data.model.GpuState
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -12,6 +14,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 /**
  * [GpuStreamRepository.stream] — the transport wiring and the
@@ -93,9 +96,39 @@ class GpuStreamRepositoryTest {
     }
 
     @Test
+    fun `a 404 ends the stream with the server's message instead of retrying`() = runTest {
+        val transport = FakeSseTransport()
+        transport.failWith = ApiException(AppError.Http(404, "no such endpoint", fromServer = true))
+        val backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L)
+        val repository = GpuStreamRepository(transport)
+
+        // Completing at all is the assertion: the previous loop never ended,
+        // so this call would hang until the timeout.
+        val emissions = withTimeout(5_000) {
+            repository.stream(backoff = backoff).toList()
+        }
+
+        assertEquals(1, transport.requests.size)
+        assertEquals(GpuState.Connecting, emissions[0])
+        assertEquals(GpuState.Unavailable("no such endpoint"), emissions[1])
+    }
+
+    @Test
+    fun `a 503 keeps retrying, because it can answer differently next time`() = runTest {
+        val transport = FakeSseTransport()
+        transport.failWith = ApiException(AppError.Http(503, "unavailable", fromServer = true))
+        val backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L)
+        val repository = GpuStreamRepository(transport)
+
+        withTimeout(5_000) { repository.stream(backoff = backoff).take(4).toList() }
+
+        assertEquals(3, transport.requests.size)
+    }
+
+    @Test
     fun `a dropped connection keeps retrying rather than giving up after the first attempt`() = runTest {
         val transport = FakeSseTransport()
-        transport.failWith = RuntimeException("connection reset")
+        transport.failWith = IOException("connection reset")
         val backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L)
         val repository = GpuStreamRepository(transport)
 
