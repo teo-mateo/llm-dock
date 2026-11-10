@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import yaml
 
 from compose_manager import ComposeManager
-from flag_metadata import default_engine_image, effective_image
+from flag_metadata import effective_image
 
 from .db import BenchmarkDB
 from .models import BenchmarkRun
@@ -109,24 +109,21 @@ class BenchmarkExecutor:
         return []
 
     def _image_for(self, service_name: str) -> str:
-        try:
-            config = ComposeManager(self.compose_file).get_service_from_db(service_name)
-        except Exception as e:
-            logger.warning(f"Failed to read services for {service_name}: {e}")
-            config = None
+        config = ComposeManager(self.compose_file).get_service_from_db(service_name)
         if not config:
-            logger.warning(f"No service config for {service_name}, using the default llama.cpp image")
-            return default_engine_image("llamacpp")
-        return effective_image(config.get("template_type", "llamacpp"), config)
+            raise LookupError("not found in services.json (or the file is unreadable)")
+        template_type = config.get("template_type")
+        if template_type != "llamacpp":
+            raise ValueError(f"benchmarking supports llamacpp services, not '{template_type}'")
+        return effective_image(template_type, config)
 
     def _build_docker_cmd(
         self,
         service_name: str,
         model_path: str,
         params: Dict[str, str],
-        image: Optional[str] = None,
+        image: str,
     ) -> list:
-        image = image or self._image_for(service_name)
         service_config = self._get_service_compose_config(service_name)
 
         cmd = ["docker", "run", "--rm"]
@@ -174,7 +171,12 @@ class BenchmarkExecutor:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.db.update_status(run_id, "running", started_at=now)
 
-        image = self._image_for(service_name)
+        try:
+            image = self._image_for(service_name)
+        except Exception as e:
+            self._finish_failed(run_id, f"Cannot resolve image for service '{service_name}': {e}")
+            return
+
         cmd = self._build_docker_cmd(service_name, model_path, params, image=image)
         logger.info(f"Benchmark {run_id}: executing {' '.join(cmd)}")
 

@@ -56,12 +56,13 @@ def _cfg(engine, **extra):
     return cfg
 
 
-def test_override_engines_are_exactly_the_templates_that_render_an_image_variable():
-    rendering = {
-        t.stem for t in TEMPLATES.glob("*.j2") if re.search(r"image:\s*{{\s*image\s*}}", t.read_text())
-    }
+def test_every_template_renders_its_image_from_the_table():
+    unparameterised = [
+        t.stem for t in TEMPLATES.glob("*.j2")
+        if not re.search(r"^\s+image:\s*{{\s*image\s*}}\s*$", t.read_text(), re.M)
+    ]
 
-    assert rendering == IMAGE_OVERRIDE_ENGINES
+    assert unparameterised == []
 
 
 @pytest.mark.parametrize("engine", OVERRIDE_ENGINES)

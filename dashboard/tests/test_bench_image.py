@@ -69,30 +69,57 @@ def test_image_metadata_lists_every_engine_with_its_own_image(api, monkeypatch):
         ({"svc": _service(image="my-build:1")}, "my-build:1"),
         ({"svc": _service()}, DEFAULT),
         ({"svc": _service(image="")}, DEFAULT),
-        ({"other": _service(image="my-build:1")}, DEFAULT),
     ],
-    ids=["override", "no-override", "empty-override", "unknown-service"],
+    ids=["override", "no-override", "empty-override"],
 )
 def test_the_benchmark_runs_on_the_services_effective_image(db, stored, services, expected):
     executor = BenchmarkExecutor(db, compose_file=stored(services))
 
-    cmd = executor._build_docker_cmd("svc", "/models/m.gguf", {})
+    assert executor._image_for("svc") == expected
+    assert _image_in(executor._build_docker_cmd("svc", "/models/m.gguf", {}, expected)) == expected
 
-    assert _image_in(cmd) == expected
+
+@pytest.mark.parametrize(
+    "services,reason",
+    [
+        ({"other": _service()}, "not found"),
+        ({"svc": _service(template_type="vllm")}, "supports llamacpp services, not 'vllm'"),
+        ({"svc": {"alias": "x"}}, "not 'None'"),
+    ],
+    ids=["unknown-service", "wrong-engine", "no-template-type"],
+)
+def test_an_unresolvable_service_fails_the_run_instead_of_using_another_image(db, stored, services, reason):
+    executor = BenchmarkExecutor(db, compose_file=stored(services))
+
+    with patch("benchmarking.executor.subprocess.Popen") as popen:
+        result = _run(db, executor, 0, b"")
+
+    assert result.status == "failed"
+    assert result.error_message.startswith("Cannot resolve image for service 'svc': ")
+    assert reason in result.error_message
+    popen.assert_not_called()
 
 
-def test_an_unreadable_services_file_falls_back_to_the_default_image(db, tmp_path):
+def test_an_unreadable_services_file_fails_the_run(db, tmp_path):
     executor = BenchmarkExecutor(db, compose_file=str(tmp_path / "missing" / "docker-compose.yml"))
 
-    assert _image_in(executor._build_docker_cmd("svc", "/models/m.gguf", {})) == DEFAULT
+    with patch("benchmarking.executor.subprocess.Popen") as popen:
+        result = _run(db, executor, 0, b"")
+
+    assert result.status == "failed" and "Cannot resolve image" in result.error_message
+    popen.assert_not_called()
 
 
-def test_an_explicit_image_wins_over_the_lookup(db, stored):
-    executor = BenchmarkExecutor(db, compose_file=stored({"svc": _service(image="a:1")}))
+def test_a_corrupt_services_file_fails_the_run(db, stored, tmp_path):
+    compose = stored({"svc": _service()})
+    (tmp_path / "services.json").write_text("{not json")
+    executor = BenchmarkExecutor(db, compose_file=compose)
 
-    cmd = executor._build_docker_cmd("svc", "/models/m.gguf", {}, image="b:2")
+    with patch("benchmarking.executor.subprocess.Popen") as popen:
+        result = _run(db, executor, 0, b"")
 
-    assert _image_in(cmd) == "b:2"
+    assert result.status == "failed" and "Cannot resolve image" in result.error_message
+    popen.assert_not_called()
 
 
 def _run(db, executor, returncode, stderr):
