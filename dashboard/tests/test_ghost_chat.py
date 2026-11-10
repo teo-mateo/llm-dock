@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-ghost")
 
 from chat.deps import install, replace_deps
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.routes import chat_bp
 
@@ -30,7 +31,7 @@ def ctx(tmp_path):
     db = ChatDB(str(tmp_path / "chat.db"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    install(app, db=db, mcp=FakeMCP())
+    install(app, **chat_parts(db, mcp=FakeMCP()))
     app.register_blueprint(chat_bp)
     app.testing = True
     yield app, db

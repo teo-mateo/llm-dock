@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import llm_proxy, providers
 from chat.deps import install
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.routes import chat_bp
 from reasoning_levels import ENGINE_PROVIDER
@@ -85,7 +86,7 @@ def upstream(monkeypatch):
 def client():
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    install(app, db=ChatDB(":memory:"))
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

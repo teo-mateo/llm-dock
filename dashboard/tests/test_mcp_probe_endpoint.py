@@ -110,8 +110,11 @@ def make_client(tmp_path, monkeypatch):
 
         app = Flask(__name__)
         app.config["DASHBOARD_TOKEN"] = TOKEN
-        from chat.deps import install
-        install(app, mcp=None if manager is _NO_MANAGER else manager)
+        if manager is not _NO_MANAGER:
+            from chat.db import ChatDB
+            from chat.deps import install
+            from tests.chat_support import chat_parts
+            install(app, **chat_parts(ChatDB(":memory:"), mcp=manager))
         app.register_blueprint(chat_bp)
         app.testing = True
         return app.test_client()

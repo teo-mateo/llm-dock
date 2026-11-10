@@ -20,6 +20,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-chat-settings")
 
 from chat import settings_store
 from chat.deps import install
+from tests.chat_support import chat_parts
 from chat.constants import DEFAULT_MAIN_SYSTEM_PROMPT
 from chat.db import ChatDB
 from chat.routes import chat_bp
@@ -37,7 +38,7 @@ def client(tmp_path, monkeypatch):
 
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    install(app, db=ChatDB(":memory:"))
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

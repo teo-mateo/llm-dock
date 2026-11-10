@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-chat-prompts")
 
 from chat.deps import deps_for
+from tests.chat_support import chat_parts
 from chat.deps import install
 from chat.db import ChatDB
 from chat.routes import chat_bp
@@ -28,7 +29,7 @@ def client():
     """Minimal Flask app exposing the chat blueprint with an in-memory DB."""
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    install(app, db=ChatDB(":memory:"))
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

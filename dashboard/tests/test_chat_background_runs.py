@@ -25,6 +25,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-bg-runs")
 
 from chat import runtime
 from chat.deps import install
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.event_bus import EventBus
 from chat.run_manager import ChatRunManager
@@ -57,7 +58,7 @@ def ctx(tmp_path):
     app.config["DASHBOARD_TOKEN"] = TOKEN
     bus = EventBus()
     manager = ChatRunManager(db, bus, max_workers=2)
-    install(app, db=db, bus=bus, run_manager=manager, mcp=_FakeMCPManager())
+    install(app, **chat_parts(db, bus=bus, run_manager=manager, mcp=_FakeMCPManager()))
     app.register_blueprint(chat_bp)
     app.testing = True
     try:
