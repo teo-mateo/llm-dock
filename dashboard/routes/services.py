@@ -24,6 +24,10 @@ from flag_metadata import (
     FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+import service_ops
+from service_ops.deps import ServiceOpsDeps
+from service_ops.outcomes import OpError
+from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
@@ -49,6 +53,39 @@ PUBLIC_SLOT_PORT = 3301
 _SERVICES_DB_LOCK = SERVICES_DB_LOCK
 _serialize_db = serialize_db
 _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
+
+
+def _service_ops_deps() -> ServiceOpsDeps:
+    from services import event_manager
+
+    def compose_run(action, name, timeout):
+        return subprocess.run(
+            ["docker", "compose", "-f", COMPOSE_FILE, *action, name], capture_output=True, timeout=timeout
+        )
+
+    def rename_benchmarks(old, new):
+        from benchmarking.routes import rename_service as bench_rename
+
+        return bench_rename(old, new)
+
+    return ServiceOpsDeps(
+        compose=lambda: ComposeManager(COMPOSE_FILE),
+        get_container=lambda name: get_service_container(name),
+        stop_container=lambda name: compose_run(["stop"], name, 30),
+        remove_container=lambda name: compose_run(["rm", "-f"], name, 10),
+        hooks=[
+            InspectorHook(lambda old, new: proxy_supervisor.rename_service(old, new), lambda: proxy_supervisor.sync()),
+            BenchmarkHook(rename_benchmarks),
+            KeyFileHook(lambda name: tabby_keys.remove(name)),
+            OpenWebUIHook(
+                lambda name, engine: is_service_registered_in_openwebui(name, engine),
+                lambda name, engine: remove_service_from_openwebui(name, engine),
+                lambda name, port, key, engine: add_service_to_openwebui(name, port, key, engine),
+            ),
+        ],
+        emit=lambda event: event_manager.emit(event),
+        now=time.time,
+    )
 
 
 def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
@@ -546,85 +583,19 @@ def rename_service(service_name):
         if not data or not data.get("new_name"):
             return jsonify({"error": "new_name is required"}), 400
 
-        new_name = data["new_name"].strip()
-
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check service exists
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Check service is not running
-        container = get_service_container(service_name)
-        if container and container.status == "running":
-            return jsonify(
-                {"error": "Service must be stopped before renaming"}
-            ), 409
-
-        # Handle Open WebUI: unregister old name (best-effort)
-        engine = service_config.get("template_type", "")
-        owu_was_registered = False
-        if engine:
-            try:
-                if is_service_registered_in_openwebui(service_name, engine):
-                    owu_was_registered = True
-                    remove_service_from_openwebui(service_name, engine)
-            except Exception as e:
-                logger.warning(f"Failed to unregister old name from Open WebUI: {e}")
-
-        # Remove old container if it exists (stopped/exited)
-        if container:
-            try:
-                subprocess.run(
-                    ["docker", "compose", "-f", COMPOSE_FILE, "rm", "-f", service_name],
-                    capture_output=True,
-                    timeout=10,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to remove old container: {e}")
-
-        # Rename in services DB and rebuild compose
-        compose_mgr.rename_service(service_name, new_name)
-
-        # Move the capture history so the service filter keeps matching, then
-        # reconcile the proxy (stops the old-name listener, starts the new one).
-        proxy_supervisor.rename_service(service_name, new_name)
-        proxy_supervisor.sync()
-
-        # Rename in benchmark DB
-        from benchmarking.routes import rename_service as bench_rename
-
-        try:
-            updated = bench_rename(service_name, new_name)
-            logger.info(
-                f"Updated {updated} benchmark records from '{service_name}' to '{new_name}'"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to rename benchmarks (non-fatal): {e}")
-
-        # Re-register with Open WebUI under new name (best-effort)
-        if owu_was_registered and engine:
-            try:
-                port = service_config.get("port", 0)
-                api_key = service_config.get("api_key", "")
-                add_service_to_openwebui(new_name, port, api_key, engine)
-            except Exception as e:
-                logger.warning(f"Failed to re-register new name with Open WebUI: {e}")
-
-        logger.info(f"Service renamed: {service_name} -> {new_name}")
+        outcome = service_ops.rename(_service_ops_deps(), service_name, data["new_name"].strip())
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
 
         return jsonify(
             {
                 "success": True,
-                "old_name": service_name,
-                "new_name": new_name,
-                "message": f'Service renamed from "{service_name}" to "{new_name}"',
+                "old_name": outcome.old_name,
+                "new_name": outcome.new_name,
+                "message": f'Service renamed from "{outcome.old_name}" to "{outcome.new_name}"',
             }
         ), 200
 
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error(f"Failed to rename service: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
