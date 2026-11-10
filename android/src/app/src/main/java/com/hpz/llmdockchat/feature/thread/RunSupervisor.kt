@@ -20,10 +20,14 @@ import kotlinx.coroutines.flow.Flow
  * finish path. This class is the part that can be tested without ViewModel
  * scaffolding.
  *
- * Never completes on its own: a terminal frame ends it, a failure the server
- * will repeat ends it, and a cancellation propagates — but a connection that
- * keeps dropping is retried, not surfaced, for as long as the caller keeps
- * collecting.
+ * A terminal frame ends it, a failure the server will repeat ends it, a
+ * cancellation propagates — and a connection that keeps dropping is retried,
+ * not surfaced, for as long as the caller keeps collecting. One thing does end
+ * it: [DEFAULT_MAX_FRAMELESS_ATTEMPTS] attempts in a row that delivered no
+ * frame (a dropped stream, a refused load — both count), because a server
+ * that keeps failing is a verdict about the run, not an outage to wait out.
+ * Any frame, or a load that answers, starts the count over — a dashboard
+ * restart survives, a persistent 5xx does not.
  */
 internal class RunSupervisor(
     private val reattach: suspend (String) -> Flow<RunEvent>,
@@ -31,7 +35,10 @@ internal class RunSupervisor(
     private val collectAttempt: suspend (Flow<RunEvent>, String?) -> RunAttempt,
     private val setReconnecting: (Boolean) -> Unit,
     private val backoff: ReconnectBackoff,
+    private val maxFramelessAttempts: Int = DEFAULT_MAX_FRAMELESS_ATTEMPTS,
 ) {
+    private var framelessStreak = 0
+
     suspend fun supervise(first: Flow<RunEvent>, initialRunId: String?): RunSupervision {
         var source: Flow<RunEvent> = first
         var runId: String? = initialRunId
@@ -47,19 +54,25 @@ internal class RunSupervisor(
             sawAnyFrame = sawAnyFrame || attempt.sawAnyFrame
             error = attempt.error
 
+            if (attempt.sawAnyFrame) {
+                backoff.reset()
+                framelessStreak = 0
+            } else {
+                framelessStreak++
+            }
+
             if (attempt.sawTerminal) break
 
             val id = runId
             val transient = error != null && error.appError.isTransient()
             if (transient && id != null) {
-                if (attempt.sawAnyFrame) backoff.reset()
+                if (framelessStreak >= maxFramelessAttempts) break
                 setReconnecting(true)
                 delay(backoff.next())
                 source = reattach(id)
                 continue
             }
             if (error == null) {
-                if (attempt.sawAnyFrame) backoff.reset()
                 setReconnecting(true)
                 val reconciled = reconcile()
                 val conversation = reconciled.getOrNull()
@@ -93,7 +106,8 @@ internal class RunSupervisor(
      * the stream with no frame at all. Only the run's own status settles it, so
      * the conversation is refetched — and a server that cannot answer keeps the
      * turn *not done* rather than making it done, retrying on the same capped
-     * backoff that governs reattachment.
+     * backoff that governs reattachment, until the frameless ceiling ends the
+     * wait with the load's own error.
      *
      * A failure the server will repeat (a deleted conversation, an unreadable
      * body) is returned instead of retried, so the caller can end the turn.
@@ -102,9 +116,25 @@ internal class RunSupervisor(
         while (true) {
             val result = load()
             val error = result.exceptionOrNull()?.appError
-            if (error == null || !error.isTransient()) return result
+            if (error == null) {
+                framelessStreak = 0
+                return result
+            }
+            if (!error.isTransient()) return result
+            if (++framelessStreak >= maxFramelessAttempts) return result
             delay(backoff.next())
         }
+    }
+
+    companion object {
+        /**
+         * How many attempts in a row may deliver nothing before the turn is
+         * ended with the error it has. At the production backoff (1 s doubling
+         * to 8 s) this is roughly 45 s of trying — long enough that a dashboard
+         * restart recovers on its own, short enough that a server bug does not
+         * hold the thread hostage behind a spinner that cannot resolve.
+         */
+        const val DEFAULT_MAX_FRAMELESS_ATTEMPTS = 8
     }
 }
 
