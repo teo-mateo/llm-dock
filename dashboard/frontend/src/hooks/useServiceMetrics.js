@@ -101,6 +101,7 @@ export default function useServiceMetrics({ serviceName, enabled }) {
       setError(`Couldn't load the engine list: ${catalogueError}`)
       return
     }
+    setError(null)
     setLoading(true)
     if (!catalogueReady) return
     let pollActive = true
