@@ -7,6 +7,7 @@ from flask import current_app
 
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
+from port_conflicts import conflicts_for
 from flag_metadata import openwebui_base_url, default_engine_image
 from model_discovery import inspect_model
 from openwebui_integration import get_openwebui_registered_urls
@@ -222,9 +223,11 @@ def get_docker_services():
     inspect_map = {}
     upstream_port_map = {}
     host_port_map = {}
+    declared_map = {}
     for service_name in allowed_services:
         config = compose_mgr.get_service_from_db(service_name)
         if config:
+            declared_map[service_name] = config
             api_key_map[service_name] = config.get("api_key", "")
             template_type_map[service_name] = config.get("template_type", "")
             alias_map[service_name] = config.get("alias", "")
@@ -344,6 +347,11 @@ def get_docker_services():
                     "upstream_port": upstream_port_map.get(service_name),
                 }
             )
+
+    conflicts = conflicts_for(declared_map)
+    for service in services:
+        if service["name"] in conflicts:
+            service["port_conflicts"] = conflicts[service["name"]]
 
     # Sort by port number (ascending)
     services.sort(key=lambda s: s["host_port"])

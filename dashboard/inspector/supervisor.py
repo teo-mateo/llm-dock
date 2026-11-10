@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 import config
 from compose_manager import ComposeManager
+from port_conflicts import conflicts_for, holds_port
 
 from .db import InspectorDB
 from .proxy import ServiceProxy
@@ -63,6 +64,8 @@ class ProxySupervisor:
                 logger.debug("Inspector sync: compose file not found; nothing to reconcile")
                 return
 
+            running = self._running_services() if conflicts_for(services) else set()
+
             desired: Dict[str, dict] = {}
             for name, cfg in services.items():
                 if not cfg.get("inspect"):
@@ -74,6 +77,13 @@ class ProxySupervisor:
                         "Inspector: service '%s' has inspect enabled but no "
                         "port/inspect_upstream_port; its proxy is not started",
                         name,
+                    )
+                    continue
+                if not holds_port(services, name, running.__contains__):
+                    logger.warning(
+                        "Inspector: port %s is claimed by another service; not holding "
+                        "it for stopped service '%s'",
+                        cfg.get("port"), name,
                     )
                     continue
                 desired[name] = {
@@ -104,6 +114,15 @@ class ProxySupervisor:
             for name, spec in desired.items():
                 if name not in self._proxies:
                     self._start(name, spec)
+
+    def _running_services(self) -> set:
+        from docker_utils import get_docker_services
+
+        try:
+            return {s["name"] for s in get_docker_services() if s["status"] == "running"}
+        except Exception as e:
+            logger.warning("Inspector: could not read container status: %s", e)
+            return set()
 
     def _start(self, name: str, spec: dict) -> ServiceProxy:
         proxy = ServiceProxy(

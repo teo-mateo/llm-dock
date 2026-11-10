@@ -264,10 +264,10 @@ class TestWritePathSync:
         monkeypatch.setattr(services_route, "PUBLIC_SLOT_PORT", public_port)
 
         # Pin the displaced service's replacement port: the picker scans
-        # 3300-3399 against the compose file only, which knows nothing about
-        # host listeners (Open WebUI sits on 3300 on this machine).
+        # 3300-3399 against declared and compose ports only, which knows nothing
+        # about host listeners (Open WebUI sits on 3300 on this machine).
         displaced_port = _free_port()
-        monkeypatch.setattr(ComposeManager, "get_next_available_port", lambda self, **kw: displaced_port)
+        monkeypatch.setattr(services_route, "next_free_port", lambda *a, **kw: displaced_port)
 
         other_port = _free_port()
         _write_services(

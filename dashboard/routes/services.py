@@ -21,6 +21,8 @@ from flag_metadata import (
     get_flag_metadata,
     MANDATORY_FIELDS,
 )
+from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.ports import allocate_upstream_port
@@ -138,9 +140,15 @@ def start_service(service_name):
     the just-revoked key (rotation only stops the containers it snapshotted
     as running, so such a container would otherwise be missed).
     """
+    services = ComposeManager(COMPOSE_FILE).list_services_in_db()
+    blocked = check_start(services, service_name, current_statuses())
+    if blocked:
+        return jsonify({"success": False, **blocked}), 400
+
     result = control_service(service_name, "start")
 
     if result["success"]:
+        finish_start(services, service_name)
         logger.info(f"Started service: {service_name}")
         return jsonify(result)
     else:
@@ -303,10 +311,12 @@ def create_service():
         if compose_mgr.get_service_from_db(service_name):
             return jsonify({"error": f'Service "{service_name}" already exists'}), 409
 
-        # Check port availability
         port = int(data["port"])
-        if port in compose_mgr.get_used_ports():
-            return jsonify({"error": f"Port {port} is already in use"}), 409
+        owner = find_port_owner(
+            compose_mgr.list_services_in_db(), port, compose_ports=compose_mgr.get_used_ports()
+        )
+        if owner:
+            return jsonify(port_in_use_body(port, owner)), 400
 
         # Add to database and rebuild
         compose_mgr.add_service_to_db(service_name, data)
@@ -381,10 +391,15 @@ def update_service(service_name):
 
         # Check port if changed
         if "port" in data and int(data["port"]) != int(existing.get("port", 0)):
-            used_ports = compose_mgr.get_used_ports()
             new_port = int(data["port"])
-            if new_port in used_ports:
-                return jsonify({"error": f"Port {new_port} is already in use"}), 409
+            owner = find_port_owner(
+                compose_mgr.list_services_in_db(),
+                new_port,
+                exclude=service_name,
+                compose_ports=compose_mgr.get_used_ports(),
+            )
+            if owner:
+                return jsonify(port_in_use_body(new_port, owner)), 400
 
         # Update in database — merge into existing to preserve fields not
         # sent by the client (favorite, etc.)
@@ -676,33 +691,25 @@ def set_public_port(service_name):
                 }
             ), 200
 
-        # Find service currently using the public slot
         all_services = compose_mgr.list_services_in_db()
-        conflicting_service = None
-        conflicting_service_name = None
+        displaced = [
+            name
+            for name, cfg in all_services.items()
+            if name != service_name and cfg.get("port") == PUBLIC_SLOT_PORT
+        ]
 
-        for svc_name, svc_config in all_services.items():
-            if svc_config.get("port") == PUBLIC_SLOT_PORT:
-                conflicting_service = svc_config
-                conflicting_service_name = svc_name
-                break
-
-        # Prepare updates
         updates_made = []
 
-        if conflicting_service:
-            # Reassign conflicting service to the lowest free 33XX port
-            new_port = compose_mgr.get_next_available_port(
-                start_port=3300, end_port=3399
+        for displaced_name in displaced:
+            new_port = next_free_port(
+                all_services, compose_mgr.get_used_ports(), start=3300, end=3399
             )
-            conflicting_service["port"] = new_port
-            compose_mgr.update_service_in_db(
-                conflicting_service_name, conflicting_service
-            )
+            all_services[displaced_name]["port"] = new_port
+            compose_mgr.update_service_in_db(displaced_name, all_services[displaced_name])
 
             updates_made.append(
                 {
-                    "service": conflicting_service_name,
+                    "service": displaced_name,
                     "old_port": PUBLIC_SLOT_PORT,
                     "new_port": new_port,
                 }
@@ -719,9 +726,7 @@ def set_public_port(service_name):
         # Rebuild compose file and restart affected services
         compose_mgr.rebuild_compose_file()
 
-        services_to_restart = [service_name]
-        if conflicting_service_name:
-            services_to_restart.append(conflicting_service_name)
+        services_to_restart = [service_name, *displaced]
 
         restart_results = []
         for svc in services_to_restart:

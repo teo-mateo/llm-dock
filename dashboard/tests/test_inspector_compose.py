@@ -87,7 +87,6 @@ def test_used_ports_accepts_inspector_bindings_and_long_syntax(manager):
         host_ip: 127.0.0.1
 ''')
     assert manager.get_used_ports() == {3301, 34001, 34002, 3380}
-    assert manager.get_next_available_port(start_port=3301) == 3302
 
 
 @pytest.mark.parametrize("template_type", TEMPLATE_TYPES)
