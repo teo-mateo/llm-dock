@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +12,9 @@ from flag_metadata import (
     FLAG_METADATA_BY_TYPE,
     LLAMACPP_LLAMA_SERVER_FLAGS,
     MANDATORY_FIELDS,
+    SERVICE_ENGINES,
     flag_metadata_types_message,
+    service_engines_message,
     get_flag_metadata,
 )
 
@@ -21,6 +24,13 @@ PREVIOUS_MESSAGE = (
     'template_type must be "llamacpp", "ik_llamacpp", "llamacpp_bench", "vllm", '
     '"ds4", "tabbyapi", "ninfer", "sglang", or "maya"'
 )
+
+
+PREVIOUS_CREATE_MESSAGE = (
+    'template_type must be "llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi", '
+    '"ninfer", "sglang", or "maya"'
+)
+TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 
 
 @pytest.fixture
@@ -82,3 +92,71 @@ def test_the_engine_tables_agree_on_which_engines_exist():
     }
 
     assert gaps == {}
+
+
+def _post(client, body):
+    return client.post("/api/services", json=body, headers={"Authorization": f"Bearer {TOKEN}"})
+
+
+def test_service_engines_are_the_metadata_types_without_the_bench_type():
+    assert set(SERVICE_ENGINES) == set(ENGINE_IMAGES)
+    assert BENCH not in SERVICE_ENGINES
+
+
+def test_create_rejects_an_unknown_type_naming_every_engine(client):
+    response = _post(client, {"template_type": "not-an-engine"})
+
+    assert response.status_code == 400
+    message = response.get_json()["error"]
+    assert all(f'"{name}"' in message for name in SERVICE_ENGINES)
+    assert BENCH not in message
+
+
+def test_the_create_message_wording_is_unchanged():
+    assert service_engines_message() == PREVIOUS_CREATE_MESSAGE
+
+
+def test_create_rejects_the_bench_type_it_does_not_serve(client):
+    assert _post(client, {"template_type": BENCH}).status_code == 400
+
+
+@pytest.mark.parametrize("engine", sorted(ENGINE_IMAGES))
+def test_create_gets_every_engine_past_the_type_check(client, engine):
+    response = _post(client, {"template_type": engine})
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Validation failed"
+
+
+@pytest.mark.parametrize("engine", sorted(ENGINE_IMAGES))
+def test_every_engine_has_a_compose_template(engine):
+    assert (TEMPLATES / f"{engine}.j2").is_file()
+
+
+def _minimal_service(engine):
+    config = {"template_type": engine, "port": 3399 - 1, "alias": "svc", "api_key": "k", "params": {}}
+    if engine == "vllm":
+        config["model_name"] = "org/model"
+    elif engine == "tabbyapi":
+        config["model_path"] = "/exl3/model"
+    elif engine == "maya":
+        config["model_path"] = "/tmp/maya-pack"
+    else:
+        config["model_path"] = "/models/model.gguf"
+    return config
+
+
+@pytest.mark.parametrize("engine", sorted(ENGINE_IMAGES))
+def test_every_engine_renders_a_minimal_service(tmp_path, monkeypatch, engine):
+    from compose_manager import ComposeManager
+
+    monkeypatch.setenv("LLM_DOCK_TABBY_KEYS_DIR", str(tmp_path / "keys"))
+    monkeypatch.setenv("LLM_DOCK_MAYA_STATE_DIR", str(tmp_path / "maya"))
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services: {}\n")
+    (tmp_path / "services.json").write_text("{}")
+
+    rendered = ComposeManager(str(compose))._render_service(f"{engine}-svc", _minimal_service(engine))
+
+    assert f"{engine}-svc" in rendered
+    assert ENGINE_IMAGES[engine] in rendered

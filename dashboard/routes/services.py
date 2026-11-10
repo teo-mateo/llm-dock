@@ -20,7 +20,7 @@ from flag_metadata import (
     validate_service_config,
     get_flag_metadata,
     MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
-    FLAG_METADATA_BY_TYPE, flag_metadata_types_message,
+    FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
 from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
@@ -271,8 +271,8 @@ def create_service():
         template_type = data.get("template_type")
         if not template_type:
             return jsonify({"error": "template_type is required"}), 400
-        if template_type not in ["llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi", "ninfer", "sglang", "maya"]:
-            return jsonify({"error": 'template_type must be "llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi", "ninfer", "sglang", or "maya"'}), 400
+        if template_type not in SERVICE_ENGINES:
+            return jsonify({"error": service_engines_message()}), 400
 
         # Auto-generate API key if not provided
         if not data.get("api_key"):

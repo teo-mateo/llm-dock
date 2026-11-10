@@ -2328,9 +2328,20 @@ def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     return FLAG_METADATA_BY_TYPE.get(template_type, {})
 
 
-def flag_metadata_types_message() -> str:
-    quoted = [f'"{name}"' for name in FLAG_METADATA_BY_TYPE]
+SERVICE_ENGINES = tuple(name for name in FLAG_METADATA_BY_TYPE if name != "llamacpp_bench")
+
+
+def _choices_message(names) -> str:
+    quoted = [f'"{name}"' for name in names]
     return f"template_type must be {', '.join(quoted[:-1])}, or {quoted[-1]}"
+
+
+def flag_metadata_types_message() -> str:
+    return _choices_message(FLAG_METADATA_BY_TYPE)
+
+
+def service_engines_message() -> str:
+    return _choices_message(SERVICE_ENGINES)
 
 
 def get_bool_cli_flags(template_type: str) -> Set[str]:
