@@ -457,7 +457,7 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
   const [yamlPreview, setYamlPreview] = useState(null)
   const [settingPublicPort, setSettingPublicPort] = useState(false)
   const [togglingWebUI, setTogglingWebUI] = useState(false)
-  const [confirmingRecreate, setConfirmingRecreate] = useState(false)
+  const [recreateWasRunning, setRecreateWasRunning] = useState(null)
 
   const status = runtime?.status || 'not-created'
   const isRunning = status === 'running'
@@ -566,7 +566,7 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
         )}
 
         <button
-          onClick={() => setConfirmingRecreate(true)}
+          onClick={() => setRecreateWasRunning(isRunning)}
           disabled={disabled}
           className={`${toolbarBtnBase} bg-surface-muted hover:bg-surface-strong text-fg`}
         >
@@ -624,13 +624,13 @@ function ToolbarRow({ config, runtime, transitioning, actions, onSuccess, onErro
         <YamlPreviewModal yaml={yamlPreview} onClose={() => setYamlPreview(null)} />
       )}
 
-      {confirmingRecreate && (
+      {recreateWasRunning !== null && (
         <RecreateConfirmModal
-          running={isRunning}
-          onCancel={() => setConfirmingRecreate(false)}
+          running={recreateWasRunning}
+          onCancel={() => setRecreateWasRunning(null)}
           onConfirm={async () => {
             await actions.recreate()
-            setConfirmingRecreate(false)
+            setRecreateWasRunning(null)
             onSuccess?.('Container recreated')
           }}
         />

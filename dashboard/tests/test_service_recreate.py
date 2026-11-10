@@ -9,12 +9,16 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+import service_recreate as service_recreate_module
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
 from service_recreate import (
+    COMPOSE_REBUILD_FAILED,
     NOT_FOUND,
     RECREATE_FAILED,
+    RECREATE_TIMEOUT,
     RECREATE_TIMEOUT_S,
+    RESTART_TIMEOUT_S,
     force_recreate,
     recreate_service,
 )
@@ -37,17 +41,24 @@ class FakeRun:
         return subprocess.CompletedProcess(command, self.returncode, "", self.stderr)
 
 
-def _recreate(services=SERVICES, name="a", statuses=None, run=None, finish=None, events=None):
-    events = events if events is not None else []
+def _recreate(services=SERVICES, name="a", statuses=None, run=None, rebuild=None, **kwargs):
+    events = []
     run = run or FakeRun()
+
+    def do_rebuild():
+        events.append("rebuild")
+        if rebuild:
+            rebuild()
+
     result = recreate_service(
         services,
         name,
         statuses or {},
         "/x/docker-compose.yml",
-        rebuild=lambda: events.append("rebuild"),
+        rebuild=do_rebuild,
         run=lambda cmd, t: events.append("run") or run(cmd, t),
-        finish=finish or (lambda s, n: events.append("finish")),
+        finish=lambda s, n: events.append("finish"),
+        **kwargs,
     )
     return result, run, events
 
@@ -55,7 +66,7 @@ def _recreate(services=SERVICES, name="a", statuses=None, run=None, finish=None,
 def test_command_is_a_forced_recreate_of_just_that_service():
     run = FakeRun()
 
-    assert force_recreate("/x/docker-compose.yml", "a", run) is None
+    assert force_recreate("/x/docker-compose.yml", "a", run).status == "ok"
 
     assert run.calls == [(
         ["docker", "compose", "-f", "/x/docker-compose.yml", "up", "-d", "--force-recreate", "a"],
@@ -66,7 +77,7 @@ def test_command_is_a_forced_recreate_of_just_that_service():
 def test_a_stopped_service_is_recreated_too_and_reports_it_was_not_running():
     result, run, _ = _recreate(statuses={"a": "exited"})
 
-    assert result.ok and result.was_running is False
+    assert result.ok and result.recreated and result.was_running is False
     assert len(run.calls) == 1
 
 
@@ -86,7 +97,7 @@ def test_rebuild_runs_before_docker_and_finish_after_it():
 def test_unknown_service_is_not_found_and_touches_nothing():
     result, run, events = _recreate(name="ghost")
 
-    assert result.code == NOT_FOUND and result.http_status() == 404
+    assert result.code == NOT_FOUND
     assert run.calls == [] and events == []
 
 
@@ -95,28 +106,81 @@ def test_port_conflict_is_refused_before_rebuild_and_docker():
 
     result, run, events = _recreate(services=services, statuses={"b": "running"})
 
-    assert result.code == "port_in_use" and result.http_status() == 400
+    assert result.code == "port_in_use"
     assert "service 'b'" in result.error
     assert run.calls == [] and events == []
 
 
-def test_docker_failure_surfaces_the_docker_error_and_skips_finish():
+def test_docker_failure_surfaces_the_docker_error_and_still_finishes():
     run = FakeRun(returncode=1, stderr="failed to bind host port 0.0.0.0:3301/tcp")
 
     result, _, events = _recreate(run=run)
 
     assert not result.ok and result.code == RECREATE_FAILED
     assert result.error == "failed to bind host port 0.0.0.0:3301/tcp"
-    assert "finish" not in events
+    assert events == ["rebuild", "run", "finish"]
 
 
-def test_timeout_becomes_an_error_instead_of_an_exception():
+def test_timeout_has_its_own_code_and_still_finishes():
     run = FakeRun(raises=subprocess.TimeoutExpired("docker", 240))
 
     result, _, events = _recreate(run=run)
 
-    assert not result.ok and "timed out" in result.error
-    assert "finish" not in events
+    assert not result.ok and result.code == RECREATE_TIMEOUT
+    assert "timed out" in result.error
+    assert events == ["rebuild", "run", "finish"]
+
+
+def test_timeout_and_failure_are_distinguishable_outcomes():
+    timeout = force_recreate("/x", "a", FakeRun(raises=subprocess.TimeoutExpired("d", 1)))
+    failed = force_recreate("/x", "a", FakeRun(returncode=1, stderr="x"))
+
+    assert (timeout.status, failed.status) == ("timeout", "failed")
+
+
+def test_rebuild_failure_is_an_error_body_not_an_exception_and_skips_docker():
+    def broken():
+        raise ValueError("generated compose file is invalid")
+
+    result, run, events = _recreate(rebuild=broken)
+
+    assert not result.ok and result.code == COMPOSE_REBUILD_FAILED
+    assert result.error == "generated compose file is invalid"
+    assert run.calls == []
+    assert events == ["rebuild", "finish"]
+
+
+def test_only_if_running_skips_docker_for_a_stopped_service_but_still_rebuilds():
+    result, run, events = _recreate(statuses={"a": "exited"}, only_if_running=True)
+
+    assert result.ok and not result.recreated
+    assert run.calls == []
+    assert events == ["rebuild", "finish"]
+
+
+def test_only_if_running_recreates_a_running_service_with_the_given_timeout():
+    result, run, _ = _recreate(statuses={"a": "running"}, only_if_running=True, timeout=RESTART_TIMEOUT_S)
+
+    assert result.recreated
+    assert run.calls[0][1] == RESTART_TIMEOUT_S
+
+
+def test_only_if_running_skips_the_port_guard_for_a_stopped_service():
+    services = {"a": {"port": 3301}, "b": {"port": 3301}}
+
+    result, _, _ = _recreate(services=services, statuses={"b": "running", "a": "exited"}, only_if_running=True)
+
+    assert result.ok and not result.recreated
+
+
+def test_restart_status_keeps_the_legacy_shape():
+    ok, _, _ = _recreate(statuses={"a": "running"}, only_if_running=True)
+    skipped, _, _ = _recreate(statuses={"a": "exited"}, only_if_running=True)
+    failed, _, _ = _recreate(statuses={"a": "running"}, only_if_running=True, run=FakeRun(returncode=1, stderr="boom"))
+
+    assert ok.restart_status() == {"restarted": True}
+    assert skipped.restart_status() == {"restarted": False}
+    assert failed.restart_status() == {"restarted": False, "error": "boom"}
 
 
 def test_docker_events_map_the_recreate_sequence_to_statuses():
@@ -164,7 +228,7 @@ def test_route_requires_auth(env):
 def test_route_maps_success_failure_and_not_found(env, monkeypatch):
     fake = FakeRun()
     monkeypatch.setattr(
-        services_route, "recreate_service", functools.partial(recreate_service, run=fake)
+        service_recreate_module, "recreate_service", functools.partial(recreate_service, run=fake)
     )
 
     ok = _post(env, "svc-a")
@@ -177,34 +241,54 @@ def test_route_maps_success_failure_and_not_found(env, monkeypatch):
 
     failing = FakeRun(returncode=1, stderr="boom")
     monkeypatch.setattr(
-        services_route, "recreate_service", functools.partial(recreate_service, run=failing)
+        service_recreate_module, "recreate_service", functools.partial(recreate_service, run=failing)
     )
     bad = _post(env, "svc-a")
     assert bad.status_code == 400
     assert bad.get_json() == {"success": False, "error": "boom", "code": RECREATE_FAILED}
 
 
-def test_route_refuses_the_infrastructure_service(env):
-    resp = _post(env, "open-webui")
+def test_route_returns_the_rebuild_error_not_a_500(env, monkeypatch):
+    def broken(self):
+        raise ValueError("generated compose file is invalid")
+
+    monkeypatch.setattr(ComposeManager, "rebuild_compose_file", broken)
+
+    resp = _post(env, "svc-a")
 
     assert resp.status_code == 400
-    assert env["rebuilds"] == []
+    assert resp.get_json() == {
+        "success": False,
+        "error": "generated compose file is invalid",
+        "code": COMPOSE_REBUILD_FAILED,
+    }
 
 
-def test_recreate_if_running_still_does_nothing_for_a_stopped_service(monkeypatch):
-    calls = []
+def test_route_maps_a_timeout_to_its_own_code(env, monkeypatch):
+    fake = FakeRun(raises=subprocess.TimeoutExpired("docker", 240))
+    monkeypatch.setattr(
+        service_recreate_module, "recreate_service", functools.partial(recreate_service, run=fake)
+    )
+
+    assert _post(env, "svc-a").get_json()["code"] == RECREATE_TIMEOUT
+
+
+def test_recreate_if_running_does_nothing_for_a_stopped_service(env, monkeypatch):
     monkeypatch.setattr(services_route, "get_service_container", lambda n: None)
-    monkeypatch.setattr(services_route, "force_recreate", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(service_recreate_module, "run_compose", lambda *a: pytest.fail("docker called"))
 
     assert services_route._recreate_if_running("svc-a") == {"restarted": False}
-    assert calls == []
 
 
-def test_recreate_if_running_delegates_and_reports_the_error(monkeypatch):
+def test_recreate_if_running_still_raises_when_the_compose_rebuild_fails(env, monkeypatch):
     class Running:
         status = "running"
 
-    monkeypatch.setattr(services_route, "get_service_container", lambda n: Running())
-    monkeypatch.setattr(services_route, "force_recreate", lambda *a, **k: "bind failed")
+    def broken(self):
+        raise ValueError("generated compose file is invalid")
 
-    assert services_route._recreate_if_running("svc-a") == {"restarted": False, "error": "bind failed"}
+    monkeypatch.setattr(services_route, "get_service_container", lambda n: Running())
+    monkeypatch.setattr(ComposeManager, "rebuild_compose_file", broken)
+
+    with pytest.raises(ValueError, match="invalid"):
+        services_route._rebuild_and_restart(ComposeManager(services_route.COMPOSE_FILE), "svc-a")

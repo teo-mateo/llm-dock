@@ -22,7 +22,7 @@ from flag_metadata import (
     MANDATORY_FIELDS,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
-from service_recreate import RESTART_TIMEOUT_S, force_recreate, recreate_service
+from service_recreate import NOT_FOUND, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -46,24 +46,19 @@ PUBLIC_SLOT_PORT = 3301
 # existing private-looking names used throughout this module.
 _SERVICES_DB_LOCK = SERVICES_DB_LOCK
 _serialize_db = serialize_db
-def _recreate_if_running(service_name):
-    """Recreate the container if it was running. Returns restart status dict."""
-    container = get_service_container(service_name)
-    if not container or container.status != "running":
-        return {"restarted": False}
+_RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
 
-    error = force_recreate(COMPOSE_FILE, service_name, timeout=RESTART_TIMEOUT_S)
-    if error:
-        return {"restarted": False, "error": error}
-    logger.info(f"Restarted service: {service_name}")
-    return {"restarted": True}
+
+def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
+    container = get_service_container(service_name)
+    status = container.status if container else "not-created"
+    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish)
 
 
 def _rebuild_and_restart(compose_mgr, service_name):
-    """Rebuild docker-compose.yml and recreate the container if it was running."""
-    compose_mgr.rebuild_compose_file()
-    proxy_supervisor.sync()
-    return _recreate_if_running(service_name)
+    return _recreate_if_running(
+        service_name, rebuild=True, finish=lambda services, name: proxy_supervisor.sync()
+    )
 
 
 # ============================================
@@ -152,19 +147,8 @@ def start_service(service_name):
 @require_auth
 @_serialize_db
 def recreate_service_endpoint(service_name):
-    """Recreate the container from the current compose entry (running or stopped)."""
-    if service_name == "open-webui":
-        return jsonify({"success": False, "error": "Cannot recreate infrastructure services"}), 400
-
-    compose_mgr = ComposeManager(COMPOSE_FILE)
-    result = recreate_service(
-        compose_mgr.list_services_in_db(),
-        service_name,
-        current_statuses(),
-        COMPOSE_FILE,
-        compose_mgr.rebuild_compose_file,
-    )
-    return jsonify(result.body()), result.http_status()
+    result = recreate(COMPOSE_FILE, service_name, current_statuses())
+    return jsonify(result.body()), 200 if result.ok else _RECREATE_ERROR_STATUS.get(result.code, 400)
 
 
 @services_bp.route("/api/services/<service_name>/stop", methods=["POST"])

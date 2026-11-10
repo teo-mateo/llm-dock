@@ -152,3 +152,44 @@ describe('Recreate button', () => {
     expect(actions.recreate).not.toHaveBeenCalled()
   })
 })
+
+describe('Recreate confirmation while pending', () => {
+  it('keeps the running note when the service status flips mid-request', async () => {
+    let resolve
+    const recreate = vi.fn(() => new Promise(r => { resolve = r }))
+    const actions = {
+      fetchImageInfo: vi.fn(), fetchYamlPreview: vi.fn(), setPublicPort: vi.fn(),
+      registerOpenWebUI: vi.fn(), unregisterOpenWebUI: vi.fn(),
+      start: vi.fn(), stop: vi.fn(), restart: vi.fn(), recreate,
+    }
+    const element = status => (
+      <MemoryRouter>
+        <ServiceDetailsHeader
+          serviceName="llamacpp-test"
+          config={{ template_type: 'llamacpp', image: MISSING_IMAGE, port: 3336 }}
+          runtime={{ status, api_key: 'key-not-a-real-key-1234567890abcdef' }}
+          transitioning={null}
+          actions={actions}
+          onRename={vi.fn()}
+          onSuccess={vi.fn()}
+          onError={vi.fn()}
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(element('running'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Recreate$/ }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Recreate' }))
+    await waitFor(() => expect(recreate).toHaveBeenCalledTimes(1))
+
+    rerender(element('exited'))
+    rerender(element('running'))
+    rerender(element('exited'))
+
+    expect(screen.getByTestId('recreate-running-note')).toBeTruthy()
+    expect(screen.queryByTestId('recreate-stopped-note')).toBeNull()
+
+    resolve({})
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+})
