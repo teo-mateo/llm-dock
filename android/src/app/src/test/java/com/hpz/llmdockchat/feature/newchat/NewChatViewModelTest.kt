@@ -546,6 +546,57 @@ class NewChatViewModelTest {
     }
 
     @Test
+    fun `a claim failing after retryTools replaces the tools banner instead of hiding behind it`() {
+        enqueueLoadResponses(
+            mcpServers = """{"servers": [{"id": "webfetch", "name": "WebFetch"}],
+                "url_fetch": {"available": true,
+                    "servers": [{"id": "webfetch", "name": "WebFetch", "tools": ["fetch_readable"]}],
+                    "failures": []}}""",
+        )
+        val dir = Files.createTempDirectory("new-chat-claim-retry").toFile()
+        val store = SharedDraftStore(dir)
+        val url = "https://example.com/b"
+        store.stage(StagedShare(text = url, url = url))
+        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        val blocker = java.io.File(dir, "conv_new-conv-8.autosend.txt.tmp").apply { mkdirs() }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-8"}""").build())
+        server.enqueue(MockResponse.Builder().code(500).body("""{"error": "temporary failure"}""").build())
+        viewModel.create {}
+
+        runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.toolsFailure != null }
+            }
+        }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-8"}""").build())
+        viewModel.retryTools {}
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.shareFailure != null }
+            }
+        } as NewChatUiState.Loaded
+        assertNull("the tools banner must not hide the share one", failed.toolsFailure)
+        assertEquals(ShareFailureKind.Claim, failed.shareFailure?.kind)
+
+        assertTrue(blocker.delete())
+        var filed: String? = null
+        viewModel.retryShare(FakeDraftStore()) { filed = it }
+
+        runBlocking { withTimeout(10_000) { while (filed == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("new-conv-8", filed)
+        assertEquals(
+            SummarizeMessage.build(url),
+            runBlocking { store.takeAutoSend("new-conv-8") },
+        )
+    }
+
+    @Test
     fun `retryTools re-issues only the PUT and opens the thread on success`() {
         enqueueLoadResponses()
         val viewModel = viewModel()
