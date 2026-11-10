@@ -22,7 +22,10 @@ class InspectorHook(ServiceHook):
         self._rename_captures(ctx.old_name, ctx.new_name)
         self._sync()
 
-    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
+    def before_container_swap(self, ctx: ServicesChangedContext) -> None:
+        self._sync()
+
+    def after_container_swap(self, ctx: ServicesChangedContext) -> None:
         self._sync()
 
 
@@ -42,13 +45,13 @@ class KeyFileHook(ServiceHook):
     so a deleted service does not leave its api/admin keys on disk."""
 
     name = "key file"
+    causes = frozenset({Cause.DELETE})
 
     def __init__(self, remove: Callable[[str], object]):
         self._remove = remove
 
-    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
-        if ctx.cause is Cause.DELETE:
-            self._remove(ctx.subject)
+    def after_container_swap(self, ctx: ServicesChangedContext) -> None:
+        self._remove(ctx.subject)
 
 
 class OpenWebUIHook(ServiceHook):

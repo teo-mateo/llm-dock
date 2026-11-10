@@ -51,7 +51,7 @@ def set_public_port(deps: SetPublicPortDeps, name: str, public_port: int) -> Pub
 
     run_phase(
         infra.hooks,
-        Phase.AFTER_SERVICES_CHANGED,
+        Phase.AFTER_CONTAINER_SWAP,
         ServicesChangedContext(name, Cause.PUBLIC_PORT, [name, *displaced]),
     )
     logger.info(f"Service {name} now on public port {public_port}")

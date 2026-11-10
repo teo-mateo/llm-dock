@@ -2,21 +2,24 @@ import subprocess
 import time
 from dataclasses import replace
 
+import config
 import tabby_keys
 from compose_manager import ComposeManager
-from docker_utils import get_service_container
+from docker_utils import control_service, get_docker_services, get_service_container
+from key_rotation import rotate_keys_in_db
 from inspector.ports import allocate_upstream_port
 from inspector.supervisor import proxy_supervisor
 import port_conflicts
 from port_conflicts import next_free_port
 from service_recreate import restart_if_running
+from service_templates import generate_api_key
 from openwebui_integration import (
     add_service_to_openwebui,
     is_service_registered_in_openwebui,
     remove_service_from_openwebui,
 )
 
-from .deps import DeleteDeps, Infra, RenameDeps, SetInspectDeps, SetPublicPortDeps
+from .deps import DeleteDeps, Infra, RenameDeps, RotateKeyDeps, SetInspectDeps, SetPublicPortDeps
 from .subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 
@@ -90,7 +93,41 @@ def set_public_port_deps(compose_file: str, next_port=None, recreate=None, **ove
 def set_inspect_deps(compose_file: str, allocate=None, recreate=None, status=None, **overrides) -> SetInspectDeps:
     return SetInspectDeps(
         replace(build_infra(compose_file), **overrides),
-        allocate_upstream_port=allocate or (lambda services, name: allocate_upstream_port(services, name)),
+        allocate_upstream_port=allocate or allocate_upstream_port,
         recreate_if_running=recreate or (lambda name: recreate_if_running(compose_file, name)),
         proxy_status=status or (lambda: proxy_supervisor.status()),
+    )
+
+
+def affected_services_state(compose_file: str):
+    """Return (db_service_names, running, openwebui_registered) for rotation.
+
+    Only services present in services.json are affected by a rotation; infra
+    containers like open-webui are never in services.json so they're excluded
+    naturally.
+    """
+    db_services = set(ComposeManager(compose_file).list_services_in_db().keys())
+
+    running = []
+    openwebui_registered = []
+    for svc in get_docker_services():
+        name = svc["name"]
+        if name not in db_services:
+            continue
+        if svc.get("status") == "running":
+            running.append(name)
+        if svc.get("openwebui_registered"):
+            openwebui_registered.append(name)
+
+    return sorted(db_services), sorted(running), sorted(openwebui_registered)
+
+
+def rotate_key_deps(compose_file: str, **overrides) -> RotateKeyDeps:
+    return RotateKeyDeps(
+        replace(build_infra(compose_file), **overrides),
+        affected_state=lambda: affected_services_state(compose_file),
+        generate_key=lambda: generate_api_key(),
+        rotate_in_db=lambda compose, key: rotate_keys_in_db(compose, key),
+        commit_key=lambda key: config.set_global_api_key(key),
+        stop_service=lambda name: control_service(name, "stop"),
     )

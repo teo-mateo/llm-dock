@@ -10,11 +10,10 @@ logger = logging.getLogger(__name__)
 def set_inspect(deps: SetInspectDeps, name: str, enabled: bool) -> InspectSet | OpError:
     """Turn request inspection on or off for a service.
 
-    The hooks reconcile the proxies right after the services DB changes, and
-    their position relative to the container is the constraint: enabling
-    recreates the container first so it releases the public port before the
-    proxy claims it; disabling reconciles first so the proxy releases the port
-    before the container takes it back. The upstream port is kept on disable
+    The hooks' position relative to the container is the constraint: enabling
+    runs AFTER_CONTAINER_SWAP so the container has released the public port
+    before the proxy claims it; disabling runs BEFORE_CONTAINER_SWAP so the
+    proxy releases the port before the container takes it back. The upstream port is kept on disable
     so the allocation does not drift across toggles. Toggling to the state a
     service is already in changes nothing. The metadata event is emitted
     either way. Anything that fails propagates."""
@@ -34,11 +33,11 @@ def set_inspect(deps: SetInspectDeps, name: str, enabled: bool) -> InspectSet | 
         compose.update_service_in_db(name, config)
         compose.rebuild_compose_file()
         restarted = deps.recreate_if_running(name).get("restarted", False)
-        run_phase(infra.hooks, Phase.AFTER_SERVICES_CHANGED, changed)
+        run_phase(infra.hooks, Phase.AFTER_CONTAINER_SWAP, changed)
     elif not enabled and current:
         config["inspect"] = False
         compose.update_service_in_db(name, config)
-        run_phase(infra.hooks, Phase.AFTER_SERVICES_CHANGED, changed)
+        run_phase(infra.hooks, Phase.BEFORE_CONTAINER_SWAP, changed)
         compose.rebuild_compose_file()
         restarted = deps.recreate_if_running(name).get("restarted", False)
 

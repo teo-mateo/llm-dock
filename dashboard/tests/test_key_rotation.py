@@ -104,6 +104,7 @@ def test_route_does_not_commit_env_before_services_and_compose(tmp_path, monkeyp
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
+    from service_ops import wiring
 
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(
@@ -119,7 +120,11 @@ def test_route_does_not_commit_env_before_services_and_compose(tmp_path, monkeyp
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
     monkeypatch.setattr(
-        svc, "_affected_services_state", lambda: (["svc-a"], [], [])
+        wiring, "affected_services_state", lambda _f: (["svc-a"], [], [])
+    )
+    monkeypatch.setattr(
+        wiring, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
     )
     monkeypatch.setattr(
         svc, "ComposeManager",
@@ -185,6 +190,7 @@ def test_concurrent_rotations_keep_stores_consistent(tmp_path, monkeypatch):
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
+    from service_ops import wiring
 
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(
@@ -201,7 +207,11 @@ def test_concurrent_rotations_keep_stores_consistent(tmp_path, monkeypatch):
     env_path.write_text("LLM_DOCK_API_KEY=old-key\n")
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
-    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["svc-a"], [], []))
+    monkeypatch.setattr(wiring, "affected_services_state", lambda _f: (["svc-a"], [], []))
+    monkeypatch.setattr(
+        wiring, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
     monkeypatch.setattr(
         svc, "ComposeManager",
         lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
@@ -250,6 +260,7 @@ def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
+    from service_ops import wiring
 
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(
@@ -266,7 +277,11 @@ def test_rotation_does_not_drop_concurrent_create(tmp_path, monkeypatch):
     env_path.write_text("LLM_DOCK_API_KEY=old-key\n")
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
-    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-existing"], [], []))
+    monkeypatch.setattr(wiring, "affected_services_state", lambda _f: (["vllm-existing"], [], []))
+    monkeypatch.setattr(
+        wiring, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
     monkeypatch.setattr(
         svc, "ComposeManager",
         lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
@@ -339,6 +354,7 @@ def test_rotation_not_reverted_by_concurrent_benchmark_apply(tmp_path, monkeypat
     from compose_manager import ComposeManager
     from benchmarking.models import BenchmarkRun
     import routes.services as svc
+    from service_ops import wiring
     import benchmarking.routes as bench
 
     compose_path = tmp_path / "docker-compose.yml"
@@ -359,7 +375,8 @@ def test_rotation_not_reverted_by_concurrent_benchmark_apply(tmp_path, monkeypat
         return ComposeManager(str(compose_path), services_db_file=str(services_path))
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
-    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-existing"], [], []))
+    monkeypatch.setattr(wiring, "affected_services_state", lambda _f: (["vllm-existing"], [], []))
+    monkeypatch.setattr(wiring, "ComposeManager", cm)
     monkeypatch.setattr(svc, "ComposeManager", cm)
     monkeypatch.setattr(bench, "_get_compose_manager", cm)
 
@@ -417,6 +434,7 @@ def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch)
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
+    from service_ops import wiring
 
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(
@@ -431,7 +449,11 @@ def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch)
     )
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
-    monkeypatch.setattr(svc, "_affected_services_state", lambda: (["vllm-x"], ["vllm-x"], []))
+    monkeypatch.setattr(wiring, "affected_services_state", lambda _f: (["vllm-x"], ["vllm-x"], []))
+    monkeypatch.setattr(
+        wiring, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
     monkeypatch.setattr(
         svc, "ComposeManager",
         lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
@@ -439,7 +461,7 @@ def test_rotate_partial_failure_when_container_stop_fails(tmp_path, monkeypatch)
     monkeypatch.setattr(config, "set_global_api_key",
                         lambda *a, **k: setattr(config, "GLOBAL_API_KEY", a[0]))
     monkeypatch.setattr(
-        svc, "control_service",
+        wiring, "control_service",
         lambda name, action: {"success": False, "error": "docker daemon unreachable"},
     )
 
@@ -466,6 +488,7 @@ def test_rotation_vs_concurrent_start_no_stale_key_container(tmp_path, monkeypat
     import config
     from compose_manager import ComposeManager
     import routes.services as svc
+    from service_ops import wiring
 
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(
@@ -510,8 +533,13 @@ def test_rotation_vs_concurrent_start_no_stale_key_container(tmp_path, monkeypat
 
     monkeypatch.setattr(config, "GLOBAL_API_KEY", "old-key")
     monkeypatch.setattr(config, "set_global_api_key", fake_set_global)
-    monkeypatch.setattr(svc, "_affected_services_state", fake_affected)
+    monkeypatch.setattr(wiring, "affected_services_state", lambda _f: fake_affected())
+    monkeypatch.setattr(wiring, "control_service", fake_control)
     monkeypatch.setattr(svc, "control_service", fake_control)
+    monkeypatch.setattr(
+        wiring, "ComposeManager",
+        lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),
+    )
     monkeypatch.setattr(
         svc, "ComposeManager",
         lambda *_a, **_k: ComposeManager(str(compose_path), services_db_file=str(services_path)),

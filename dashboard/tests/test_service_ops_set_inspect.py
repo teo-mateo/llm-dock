@@ -104,14 +104,21 @@ def test_the_hooks_see_the_inspect_cause_and_the_service():
     seen = []
 
     class Recording(ServiceHook):
-        def after_services_changed(self, ctx):
-            seen.append((ctx.subject, ctx.cause, list(ctx.affected)))
+        def after_container_swap(self, ctx):
+            seen.append(("after", ctx.subject, ctx.cause, list(ctx.affected)))
+
+        def before_container_swap(self, ctx):
+            seen.append(("before", ctx.subject, ctx.cause, list(ctx.affected)))
 
     harness.hooks = [Recording()]
 
     set_inspect(harness.deps(), "off", True)
+    set_inspect(harness.deps(), "on", False)
 
-    assert seen == [("off", Cause.INSPECT, ["off"])]
+    assert seen == [
+        ("after", "off", Cause.INSPECT, ["off"]),
+        ("before", "on", Cause.INSPECT, ["on"]),
+    ]
 
 
 @pytest.mark.parametrize("name,enabled", [("on", True), ("off", False)])
@@ -168,7 +175,7 @@ def test_a_best_effort_hook_failure_does_not_stop_the_toggle():
     harness = Harness()
 
     class Flaky(ServiceHook):
-        def after_services_changed(self, ctx):
+        def after_container_swap(self, ctx):
             raise RuntimeError("flaky")
 
     harness.hooks = [Flaky()]

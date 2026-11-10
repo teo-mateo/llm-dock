@@ -28,7 +28,7 @@ def delete(deps: DeleteDeps, name: str) -> Deleted | OpError:
     compose.remove_service_from_db(name)
     compose.rebuild_compose_file()
     run_phase(
-        infra.hooks, Phase.AFTER_SERVICES_CHANGED,
+        infra.hooks, Phase.AFTER_CONTAINER_SWAP,
         ServicesChangedContext(name, Cause.DELETE, [name]),
     )
 

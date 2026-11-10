@@ -161,14 +161,14 @@ def test_the_inspector_failing_after_the_recreates_is_fatal_and_leaves_the_compo
     assert harness.names().count("recreate") == 3 and "rebuild" in harness.names()
 
 
-def test_the_services_changed_phase_reaches_hooks_with_cause_and_affected_services():
+def test_the_container_swap_phase_reaches_hooks_with_cause_and_affected_services():
     seen = []
 
     class Recording(ServiceHook):
-        def after_services_changed(self, ctx):
+        def after_container_swap(self, ctx):
             seen.append((ctx.subject, ctx.cause, list(ctx.affected)))
 
     ctx = ServicesChangedContext("a", Cause.PUBLIC_PORT, ["a", "b", "c"])
-    run_phase([Recording()], Phase.AFTER_SERVICES_CHANGED, ctx)
+    run_phase([Recording()], Phase.AFTER_CONTAINER_SWAP, ctx)
 
     assert seen == [("a", Cause.PUBLIC_PORT, ["a", "b", "c"])]

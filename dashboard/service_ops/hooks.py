@@ -9,14 +9,14 @@ logger = logging.getLogger(__name__)
 class Phase(Enum):
     BEFORE_RENAME = "before_rename"
     AFTER_RENAME = "after_rename"
-    AFTER_SERVICES_CHANGED = "after_services_changed"
+    BEFORE_CONTAINER_SWAP = "before_container_swap"
+    AFTER_CONTAINER_SWAP = "after_container_swap"
 
 
 class Cause(Enum):
     DELETE = "delete"
     PUBLIC_PORT = "public_port"
     INSPECT = "inspect"
-    KEY_ROTATION = "key_rotation"
 
 
 class HookContext:
@@ -50,9 +50,15 @@ class ServiceHook:
     """A subsystem that keeps per-service state and follows a change to services.json.
 
     A phase a hook does not need stays a no-op. Rename has a before and an
-    after phase because they carry distinct data; every other change is one
-    AFTER_SERVICES_CHANGED phase whose ctx.cause says what happened and
-    ctx.affected which services. best_effort means a failure is logged and the
+    after phase because they carry distinct data. Every other change runs one
+    of two phases around the container swap, whose position is a constraint:
+    BEFORE_CONTAINER_SWAP runs once services.json changed but before the
+    compose file is rebuilt and the container recreated (a proxy must release
+    a port before the container takes it back), AFTER_CONTAINER_SWAP once the
+    container is settled (a proxy may claim a port only after the container
+    released it). ctx.cause says what happened and ctx.affected which
+    services; a hook lists the causes it follows in `causes` and run_phase
+    skips it for any other. best_effort means a failure is logged and the
     operation continues; a hook that sets it False aborts the operation with
     its exception. Every phase runs the hooks in registration order, so the
     order of the list given to the operation's deps is the order of the side
@@ -66,6 +72,7 @@ class ServiceHook:
 
     name = "hook"
     best_effort = True
+    causes: frozenset = frozenset(Cause)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -77,14 +84,18 @@ class ServiceHook:
     def after_rename(self, ctx: RenameContext) -> None:
         pass
 
-    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
+    def before_container_swap(self, ctx: ServicesChangedContext) -> None:
+        pass
+
+    def after_container_swap(self, ctx: ServicesChangedContext) -> None:
         pass
 
 
 PHASE_METHODS = {
     Phase.BEFORE_RENAME: "before_rename",
     Phase.AFTER_RENAME: "after_rename",
-    Phase.AFTER_SERVICES_CHANGED: "after_services_changed",
+    Phase.BEFORE_CONTAINER_SWAP: "before_container_swap",
+    Phase.AFTER_CONTAINER_SWAP: "after_container_swap",
 }
 
 
@@ -102,7 +113,10 @@ _check_phase_methods(ServiceHook)
 
 
 def run_phase(hooks: Iterable[ServiceHook], phase: Phase, ctx) -> None:
+    cause = ctx.cause if isinstance(ctx, ServicesChangedContext) else None
     for hook in hooks:
+        if cause is not None and cause not in hook.causes:
+            continue
         method = getattr(hook, PHASE_METHODS[phase])
         try:
             method(ctx)
