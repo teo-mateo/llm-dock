@@ -166,6 +166,21 @@ def test_delete_message_conflicts_with_an_active_run_and_changes_nothing():
     assert db.get_chat_run(run.id).user_message_id == msg.id
 
 
+def test_the_isolation_level_is_restored_after_a_rollback():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    msg = _msg(db, conv)
+    db.create_chat_run(ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                               status=ChatRunStatus.RUNNING, user_message_id=msg.id))
+    conn = db._get_conn()
+    before = conn.isolation_level
+
+    assert db.delete_message_guarded(conv.id, msg.id).outcome is DeleteMessageOutcome.CONFLICT
+
+    assert conn.isolation_level == before
+    assert not conn.in_transaction
+
+
 def test_a_send_cannot_land_between_the_check_and_the_delete(tmp_path, monkeypatch):
     """The guard and the delete share one write lock, so a competing send
     cannot commit a run in the window between them."""

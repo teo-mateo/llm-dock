@@ -1,7 +1,8 @@
 import sqlite3
 import logging
 import uuid
-from typing import Optional, List, Tuple
+from contextlib import contextmanager
+from typing import Iterator, Optional, List, Tuple
 
 from .models import (Conversation, Message, Critique, Artifact, ChatRun, Project, Prompt,
                      DeleteMessageOutcome, DeleteMessageResult)
@@ -171,6 +172,22 @@ END;
 """
 
 
+class _ImmediateTx:
+    """Handle for `ChatDB._immediate_tx`.
+
+    `rollback()` marks the block's work to be discarded instead of committed
+    when it exits, which lets a guard bail out with a plain `return` — there is
+    no path from an aborted block to a COMMIT.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+        self.aborted = False
+
+    def rollback(self) -> None:
+        self.aborted = True
+
+
 class ChatDB:
     def __init__(self, db_path: str = "chat.db"):
         self.db_path = db_path
@@ -196,6 +213,32 @@ class ChatDB:
     def _close_conn(self, conn: sqlite3.Connection):
         if conn is not self._persistent_conn:
             conn.close()
+
+    @contextmanager
+    def _immediate_tx(self) -> Iterator["_ImmediateTx"]:
+        """Run the block in one BEGIN IMMEDIATE transaction on this DB's connection.
+
+        The write lock is taken before the block reads anything, so a
+        read-then-write guard inside it cannot be interleaved by another
+        connection's commit. The transaction is driven manually (autocommit)
+        because the in-memory test DB reuses one persistent connection, and the
+        isolation level is restored afterwards so that connection keeps working.
+        """
+        conn = self._get_conn()
+        prev_iso = conn.isolation_level
+        conn.isolation_level = None
+        tx = _ImmediateTx(conn)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield tx
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            conn.execute("ROLLBACK" if tx.aborted else "COMMIT")
+        finally:
+            conn.isolation_level = prev_iso
+            self._close_conn(conn)
 
     def _init_db(self):
         conn = self._get_conn()
@@ -631,18 +674,6 @@ class ChatDB:
             if should_close:
                 self._close_conn(conn)
 
-    def delete_messages_from_seq(self, conv_id: str, from_seq: int) -> int:
-        conn = self._get_conn()
-        try:
-            cursor = conn.execute(
-                "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
-                (conv_id, from_seq),
-            )
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            self._close_conn(conn)
-
     def delete_message_guarded(self, conv_id: str, msg_id: str) -> DeleteMessageResult:
         """Delete one message, but only while its conversation has no active run.
 
@@ -657,43 +688,31 @@ class ChatDB:
         A chat_run referencing the message via user_message_id is detached
         (set to NULL), matching the FK's ON DELETE SET NULL semantics.
         """
-        conn = self._get_conn()
-        prev_iso = conn.isolation_level
-        conn.isolation_level = None
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                if self._active_run_for(conn, conv_id) is not None:
-                    conn.execute("ROLLBACK")
-                    return DeleteMessageResult(DeleteMessageOutcome.CONFLICT)
-                row = conn.execute(
-                    "SELECT * FROM messages WHERE id = ? AND conversation_id = ?",
-                    (msg_id, conv_id),
-                ).fetchone()
-                if row is None:
-                    conn.execute("ROLLBACK")
-                    return DeleteMessageResult(DeleteMessageOutcome.NOT_FOUND)
-                msg = self._row_to_message(row)
-                conn.execute("DELETE FROM critiques WHERE message_id = ?", (msg_id,))
-                conn.execute("DELETE FROM artifacts WHERE message_id = ?", (msg_id,))
-                conn.execute(
-                    "UPDATE chat_runs SET user_message_id = NULL WHERE user_message_id = ?",
-                    (msg_id,),
-                )
-                conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
-                conn.execute(
-                    "UPDATE conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-                    "WHERE id = ?",
-                    (conv_id,),
-                )
-                conn.execute("COMMIT")
-                return DeleteMessageResult(DeleteMessageOutcome.DELETED, msg)
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
-        finally:
-            conn.isolation_level = prev_iso
-            self._close_conn(conn)
+        with self._immediate_tx() as tx:
+            if self._active_run_for(tx.conn, conv_id) is not None:
+                tx.rollback()
+                return DeleteMessageResult(DeleteMessageOutcome.CONFLICT)
+            row = tx.conn.execute(
+                "SELECT * FROM messages WHERE id = ? AND conversation_id = ?",
+                (msg_id, conv_id),
+            ).fetchone()
+            if row is None:
+                tx.rollback()
+                return DeleteMessageResult(DeleteMessageOutcome.NOT_FOUND)
+            msg = self._row_to_message(row)
+            tx.conn.execute("DELETE FROM critiques WHERE message_id = ?", (msg_id,))
+            tx.conn.execute("DELETE FROM artifacts WHERE message_id = ?", (msg_id,))
+            tx.conn.execute(
+                "UPDATE chat_runs SET user_message_id = NULL WHERE user_message_id = ?",
+                (msg_id,),
+            )
+            tx.conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
+            tx.conn.execute(
+                "UPDATE conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE id = ?",
+                (conv_id,),
+            )
+            return DeleteMessageResult(DeleteMessageOutcome.DELETED, msg)
 
     # -- Critiques --
 
@@ -985,54 +1004,38 @@ class ChatDB:
         """
         active_ph = ",".join("?" for _ in ACTIVE_STATUSES)
         now = "strftime('%Y-%m-%dT%H:%M:%SZ','now')"
-        conn = self._get_conn()
-        # Take the write lock UP FRONT with BEGIN IMMEDIATE so next_seq() is
-        # allocated under the same lock as the active-run guard and the inserts.
-        # A deferred transaction would read next_seq under only a read lock,
-        # letting a competing request advance the tail in between and this one
-        # commit a stale/duplicate seq. busy_timeout makes the second writer
-        # wait for the first rather than erroring. We drive the transaction
-        # manually (autocommit), restoring isolation_level afterwards because
-        # the in-memory test DB reuses one persistent connection.
-        prev_iso = conn.isolation_level
-        conn.isolation_level = None
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                if delete_from_seq is not None:
-                    conn.execute(
-                        "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
-                        (user_msg.conversation_id, delete_from_seq),
-                    )
-                user_msg.seq = self.next_seq(user_msg.conversation_id, conn=conn)
-                self.add_message(user_msg, conn=conn)
-                cur = conn.execute(
-                    f"""INSERT INTO chat_runs
-                           (id, conversation_id, user_message_id, status, active_step, error)
-                        SELECT ?, ?, ?, ?, ?, ?
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM chat_runs
-                            WHERE conversation_id = ? AND status IN ({active_ph})
-                        )""",
-                    (run.id, run.conversation_id, run.user_message_id, run.status,
-                     run.active_step, run.error,
-                     run.conversation_id, *sorted(ACTIVE_STATUSES)),
+        # next_seq() is allocated under the same lock as the active-run guard and
+        # the inserts: a deferred transaction would read it under only a read
+        # lock, letting a competing request advance the tail in between and this
+        # one commit a stale/duplicate seq.
+        with self._immediate_tx() as tx:
+            if delete_from_seq is not None:
+                tx.conn.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND seq >= ?",
+                    (user_msg.conversation_id, delete_from_seq),
                 )
-                if cur.rowcount == 0:
-                    conn.execute("ROLLBACK")  # active run already exists — undo everything
-                    return None
-                conn.execute(
-                    f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
-                    (run.conversation_id,),
-                )
-                conn.execute("COMMIT")
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
-            return self.get_chat_run(run.id)
-        finally:
-            conn.isolation_level = prev_iso
-            self._close_conn(conn)
+            user_msg.seq = self.next_seq(user_msg.conversation_id, conn=tx.conn)
+            self.add_message(user_msg, conn=tx.conn)
+            cur = tx.conn.execute(
+                f"""INSERT INTO chat_runs
+                       (id, conversation_id, user_message_id, status, active_step, error)
+                    SELECT ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM chat_runs
+                        WHERE conversation_id = ? AND status IN ({active_ph})
+                    )""",
+                (run.id, run.conversation_id, run.user_message_id, run.status,
+                 run.active_step, run.error,
+                 run.conversation_id, *sorted(ACTIVE_STATUSES)),
+            )
+            if cur.rowcount == 0:
+                tx.rollback()  # active run already exists — undo everything
+                return None
+            tx.conn.execute(
+                f"UPDATE conversations SET updated_at = {now} WHERE id = ?",
+                (run.conversation_id,),
+            )
+        return self.get_chat_run(run.id)
 
     def complete_run_with_message(self, run_id: str, assistant_msg: Message,
                                   artifacts: List[Artifact] = None) -> Optional[Message]:
