@@ -16,6 +16,7 @@ import routes.services as services_route
 import service_recreate
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
+from service_ops import wiring
 from services import event_manager
 
 TOKEN = "test-token-update"
@@ -57,7 +58,7 @@ class Seams:
 
 def patch_container_lookup(monkeypatch, seams):
     """The one place that knows where the update reads the container from."""
-    monkeypatch.setattr(services_route, "get_service_container", lambda name: seams.container)
+    monkeypatch.setattr(wiring, "get_service_container", lambda name: seams.container)
 
 
 @pytest.fixture

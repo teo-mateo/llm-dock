@@ -6,6 +6,7 @@ from .hooks import ServiceHook
 
 class Container(Protocol):
     status: str
+    attrs: Mapping[str, Any]
 
 
 class ComposeStore(Protocol):
