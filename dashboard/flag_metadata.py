@@ -2310,26 +2310,27 @@ MAYA_FLAGS = {
 }
 
 
+FLAG_METADATA_BY_TYPE: Dict[str, Dict[str, Any]] = {
+    "llamacpp": LLAMACPP_LLAMA_SERVER_FLAGS,
+    "ik_llamacpp": LLAMACPP_LLAMA_SERVER_FLAGS,
+    "llamacpp_bench": LLAMACPP_LLAMA_BENCH_FLAGS,
+    "vllm": VLLM_FLAGS,
+    "ds4": DS4_FLAGS,
+    "tabbyapi": TABBYAPI_FLAGS,
+    "ninfer": NINFER_FLAGS,
+    "sglang": SGLANG_FLAGS,
+    "maya": MAYA_FLAGS,
+}
+
+
 def get_flag_metadata(template_type: str) -> Dict[str, Any]:
     """Get flag metadata for template type"""
-    if template_type in ("llamacpp", "ik_llamacpp"):
-        return LLAMACPP_LLAMA_SERVER_FLAGS
-    elif template_type == "llamacpp_bench":
-        return LLAMACPP_LLAMA_BENCH_FLAGS
-    elif template_type == "vllm":
-        return VLLM_FLAGS
-    elif template_type == "ds4":
-        return DS4_FLAGS
-    elif template_type == "tabbyapi":
-        return TABBYAPI_FLAGS
-    elif template_type == "ninfer":
-        return NINFER_FLAGS
-    elif template_type == "sglang":
-        return SGLANG_FLAGS
-    elif template_type == "maya":
-        return MAYA_FLAGS
-    else:
-        return {}
+    return FLAG_METADATA_BY_TYPE.get(template_type, {})
+
+
+def flag_metadata_types_message() -> str:
+    quoted = [f'"{name}"' for name in FLAG_METADATA_BY_TYPE]
+    return f"template_type must be {', '.join(quoted[:-1])}, or {quoted[-1]}"
 
 
 def get_bool_cli_flags(template_type: str) -> Set[str]:
