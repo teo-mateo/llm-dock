@@ -173,7 +173,11 @@ class ThreadAutoSendTest {
 
         viewModel.load()
         val state = withTimeout(10_000) {
-            viewModel.state.first { (it as? ThreadUiState.Loaded)?.composer?.contains("example.com/a") == true }
+            viewModel.state.first { s ->
+                (s as? ThreadUiState.Loaded)?.let {
+                    it.composer.contains("example.com/a") && it.actionError != null
+                } == true
+            }
         } as ThreadUiState.Loaded
 
         assertTrue(state.canSend)
