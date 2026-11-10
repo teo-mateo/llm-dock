@@ -15,14 +15,17 @@ SERVICES = lambda: [
 
 
 class FakeDb:
-    def __init__(self, creates=True):
+    def __init__(self, creates=True, log=None):
         self.creates = creates
         self.calls = []
+        self.log = log if log is not None else []
 
     def resolve_project_id(self, conv_id):
+        self.log.append(("resolve",))
         return "root-project"
 
     def create_run_with_user_message(self, user_msg, run, delete_from_seq=None):
+        self.log.append(("create",))
         self.calls.append(("create", user_msg.id, run.conversation_id, delete_from_seq))
         return (user_msg, run) if self.creates else None
 
@@ -55,12 +58,12 @@ def _conv(**extra):
 
 def _start(db=None, conv=None, **kwargs):
     log = []
-    db = db or FakeDb()
+    db = db or FakeDb(log=log)
     mcp_asked = []
     params = dict(
         db=db,
         run_manager=FakeRunManager(log),
-        get_mcp=lambda: mcp_asked.append(1) or "mcp",
+        get_mcp=lambda: log.append(("mcp",)) or mcp_asked.append(1) or "mcp",
         storage_root="/tmp/storage",
         conv=conv or _conv(),
         user_msg=Message(id="m1", conversation_id="c1", role="user", content="hi", seq=0),
@@ -72,12 +75,11 @@ def _start(db=None, conv=None, **kwargs):
     return run_start.start_run(**params), db, log, mcp_asked
 
 
-def test_a_started_run_creates_then_subscribes_then_starts_then_observes():
-    result, db, log, _ = _start()
+def test_a_started_run_resolves_scopes_creates_subscribes_starts_then_observes():
+    result, _, log, _ = _start(conv=_conv(parent_conversation_id="root"))
 
     assert isinstance(result, run_start.Started)
-    assert [entry[0] for entry in log] == ["subscribe", "start", "observe"]
-    assert db.calls[0][0] == "create"
+    assert [entry[0] for entry in log] == ["resolve", "mcp", "create", "subscribe", "start", "observe"]
     assert list(result.observer) == ["frame"]
 
 
@@ -106,10 +108,11 @@ def test_run_started_extra_reaches_the_observer():
 
 
 def test_a_conflict_is_a_409_policy_error_and_never_subscribes_or_starts():
-    result, _, log, _ = _start(db=FakeDb(creates=False))
+    log = []
+    result, _, _, _ = _start(db=FakeDb(creates=False, log=log))
 
     assert result == PolicyError(409, run_start.RUN_ACTIVE_MESSAGE, "run_already_active")
-    assert log == []
+    assert [entry[0] for entry in log] == ["create"]
 
 
 def test_delete_from_seq_is_passed_to_the_atomic_create():

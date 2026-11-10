@@ -28,6 +28,12 @@ def mcp_for_conversation(conv, enabled_servers, project_id, *, db, get_mcp: Call
     the project-files server is auto-enabled for them (see
     runtime._build_stream) — wrapped so its subprocess spawns learn the
     project's directory via the environment.
+
+    The wrapper revalidates after every project-files call: the run
+    snapshotted its project at start, so a write tool can land after the user
+    deletes the project, and the project directory would be recreated as an
+    orphan the UI can never show. The check runs on the runner thread, so it
+    closes over db and storage_root rather than reading an app context.
     """
     if not (enabled_servers or project_id):
         return None
@@ -35,12 +41,6 @@ def mcp_for_conversation(conv, enabled_servers, project_id, *, db, get_mcp: Call
     if project_id:
 
         def _revalidate():
-            # Commit point for MCP writes, mirroring _revalidate_or_cleanup:
-            # the run snapshotted its project at start, so a write tool can
-            # land after the user deletes the project — its directory would
-            # be recreated as an orphan the UI can never show. Runs on the
-            # runner thread after every project-files call (values captured
-            # here; no app context there).
             if db.get_project(project_id) is None:
                 pf.delete_project_root(storage_root, project_id)
 
