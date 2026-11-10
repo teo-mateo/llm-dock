@@ -11,7 +11,7 @@ from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service, get_image_info
+from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
 from model_discovery import inspect_model
 from service_templates import generate_api_key
 from key_rotation import rotate_keys_in_db
@@ -19,10 +19,10 @@ from flag_metadata import (
     generate_service_name as gen_service_name,
     validate_service_config,
     get_flag_metadata,
-    MANDATORY_FIELDS,
+    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
-from service_recreate import NOT_FOUND, recreate, restart_if_running
+from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -103,6 +103,7 @@ def get_service(service_name):
         config["model_size_str"] = model_info["model_size_str"]
         config["model_missing"] = not model_info["model_present"]
         config["model_host_path"] = model_info["model_host_path"]
+        config["image_override"] = config.get("template_type") in IMAGE_OVERRIDE_ENGINES
 
         return jsonify({"service_name": service_name, "config": config}), 200
 
@@ -296,6 +297,7 @@ def create_service():
         ]
         if warnings:
             logger.warning(f"Service create with unknown {template_type} flags: {warnings}")
+        warnings += image_presence_warnings(data.get("image"))
 
         # Generate service name from alias
         service_name = gen_service_name(template_type, data.get("alias"))
@@ -324,6 +326,7 @@ def create_service():
             "service_name": service_name,
             "port": port,
             "api_key": data["api_key"],
+            "configured_image": effective_image(template_type, data),
             "message": f'Service "{service_name}" created successfully',
         }
         if warnings:
@@ -398,7 +401,9 @@ def update_service(service_name):
 
         # Update in database — merge into existing to preserve fields not
         # sent by the client (favorite, etc.)
+        before = dict(existing)
         existing.update(data)
+        plan = plan_image_change(template_type, before, existing)
         compose_mgr.update_service_in_db(service_name, existing)
 
         # Advisory, over the MERGED params: a typo stored before this check
@@ -412,12 +417,11 @@ def update_service(service_name):
         if warnings:
             logger.warning(f"Service {service_name} update with unknown {template_type} flags: {warnings}")
 
-        # Rebuild compose file
-        compose_mgr.rebuild_compose_file()
-
-        # The update may have moved the public port out from under a running
-        # inspector proxy; sync() is a no-op when nothing is inspected.
-        proxy_supervisor.sync()
+        warnings += image_presence_warnings(existing.get("image")) if plan.changed else []
+        effects = apply_update_effects(
+            plan, service_name, get_service_container(service_name), COMPOSE_FILE,
+            compose_mgr.rebuild_compose_file, proxy_supervisor.sync,
+        )
 
         # Broadcast the ladder to every SSE consumer: chat reads it off the
         # service payload, not off this config fetch, and rejects a level the
@@ -430,6 +434,7 @@ def update_service(service_name):
             "container_id": None,
             "metadata": {
                 "reasoning_levels": parse_levels(existing.get("reasoning_levels")),
+                **({"image": effects.reported_image} if plan.changed else {}),
             },
             "timestamp": time.time(),
         })
@@ -440,6 +445,7 @@ def update_service(service_name):
             "success": True,
             "service_name": service_name,
             "message": f'Service "{service_name}" updated successfully',
+            **effects.response_fields(plan),
         }
         if warnings:
             response["warnings"] = warnings

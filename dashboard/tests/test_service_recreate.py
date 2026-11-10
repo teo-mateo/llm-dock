@@ -12,13 +12,17 @@ import routes.services as services_route
 import service_recreate as service_recreate_module
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
+from flag_metadata import ImagePlan, plan_image_change
 from service_recreate import (
+    UpdateEffects,
+    apply_update_effects,
     COMPOSE_REBUILD_FAILED,
     NOT_FOUND,
     RECREATE_FAILED,
     RECREATE_TIMEOUT,
     RECREATE_TIMEOUT_S,
     RESTART_TIMEOUT_S,
+    IMAGE_CHANGE_TIMEOUT_S,
     force_recreate,
     recreate_service,
 )
@@ -292,3 +296,76 @@ def test_recreate_if_running_still_raises_when_the_compose_rebuild_fails(env, mo
 
     with pytest.raises(ValueError, match="invalid"):
         services_route._rebuild_and_restart(ComposeManager(services_route.COMPOSE_FILE), "svc-a")
+
+
+class _Container:
+    def __init__(self, status, image):
+        self.status = status
+        self.attrs = {"Config": {"Image": image}}
+
+
+OLD, NEW = "img:old", "img:new"
+
+
+def _apply(changed, container, restart_result):
+    calls = []
+
+    def restart(compose_file, name, status, rebuild, finish, *, timeout):
+        calls.append(("restart", status, rebuild, timeout))
+        return restart_result
+
+    effects = apply_update_effects(
+        ImagePlan(changed, NEW), "a", container, "/x/c.yml",
+        rebuild=lambda: calls.append("rebuild"),
+        sync=lambda: calls.append("sync"),
+        restart=restart,
+    )
+    return effects, calls
+
+
+def test_an_unchanged_image_only_rebuilds_and_syncs():
+    effects, calls = _apply(False, _Container("running", OLD), {"restarted": True})
+
+    assert effects == UpdateEffects()
+    assert calls == ["rebuild", "sync"]
+
+
+@pytest.mark.parametrize(
+    "container,restart_result,restarted,error,reported",
+    [
+        (_Container("running", OLD), {"restarted": True}, True, None, NEW),
+        (_Container("running", OLD), {"restarted": False, "error": "pull denied"}, False, "pull denied", OLD),
+        (_Container("exited", OLD), {"restarted": False}, False, None, OLD),
+        (None, {"restarted": False}, False, None, NEW),
+    ],
+    ids=["running-ok", "running-failed", "stopped-keeps-old", "no-container"],
+)
+def test_a_changed_image_reports_only_what_the_payload_will(container, restart_result, restarted, error, reported):
+    effects, calls = _apply(True, container, restart_result)
+
+    assert (effects.restarted, effects.error, effects.reported_image) == (restarted, error, reported)
+    status = container.status if container else "not-created"
+    assert calls == [("restart", status, True, IMAGE_CHANGE_TIMEOUT_S)]
+
+
+def test_response_fields_name_the_configured_image_and_surface_a_recreate_error():
+    plan = ImagePlan(True, NEW)
+
+    assert UpdateEffects(True).response_fields(plan) == {"configured_image": NEW, "restarted": True}
+    assert UpdateEffects(False, "boom").response_fields(plan) == {
+        "configured_image": NEW, "restarted": False, "recreate_error": "boom",
+    }
+
+
+@pytest.mark.parametrize(
+    "engine,before,after,changed",
+    [
+        ("llamacpp", {}, {"image": ""}, False),
+        ("llamacpp", {"image": "a:1"}, {"image": "a:1"}, False),
+        ("llamacpp", {"image": "a:1"}, {"image": ""}, True),
+        ("vllm", {}, {"image": "b:2"}, True),
+        ("ds4", {}, {"image": "b:2"}, False),
+    ],
+)
+def test_plan_image_change_compares_effective_images(engine, before, after, changed):
+    assert plan_image_change(engine, before, after).changed is changed

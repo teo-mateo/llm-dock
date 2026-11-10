@@ -145,8 +145,8 @@ export default function ServiceDetailsPage() {
     setToast({ message, type: 'success' })
   }, [])
 
-  const handleSaved = useCallback((message) => {
-    setToast({ message, type: 'success' })
+  const handleSaved = useCallback((message, type = 'success') => {
+    setToast({ message, type })
     refetchConfig()
   }, [refetchConfig])
 

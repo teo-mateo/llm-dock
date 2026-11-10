@@ -3,6 +3,7 @@ Flag metadata and validation for service templates.
 Defines how flags are rendered and validated for each template type.
 """
 
+from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple, Optional, Set
 from service_templates import sanitize_service_name
 from reasoning_levels import validate_levels
@@ -50,8 +51,8 @@ def engine_internal_port(template_type: str) -> int:
 
 
 # Image a service runs on when services.json carries no override. llamacpp,
-# ik_llamacpp, vllm, sglang and maya honour config["image"]; the rest hardcode this in their
-# template. A new engine adds a row here.
+# ik_llamacpp, vllm, sglang and maya honour config["image"] (IMAGE_OVERRIDE_ENGINES); the
+# rest hardcode this in their template. A new engine adds a row here.
 ENGINE_IMAGES = {
     "llamacpp": "llm-dock-llamacpp",
     "ik_llamacpp": "llm-dock-ik-llamacpp",
@@ -67,6 +68,28 @@ ENGINE_IMAGES = {
 def default_engine_image(template_type: str) -> str:
     """Image the engine's template uses by default; empty for an unknown type."""
     return ENGINE_IMAGES.get(template_type, "")
+
+
+IMAGE_OVERRIDE_ENGINES = frozenset({"llamacpp", "ik_llamacpp", "vllm", "sglang", "maya"})
+
+
+def effective_image(template_type: str, config: dict) -> str:
+    """Image a service's compose entry renders: the override on an engine that
+    honours one, else the default. An empty override means the default."""
+    if template_type in IMAGE_OVERRIDE_ENGINES:
+        return config.get("image") or default_engine_image(template_type)
+    return default_engine_image(template_type)
+
+
+@dataclass(frozen=True)
+class ImagePlan:
+    changed: bool
+    new_image: str
+
+
+def plan_image_change(template_type: str, before: dict, after: dict) -> ImagePlan:
+    new_image = effective_image(template_type, after)
+    return ImagePlan(new_image != effective_image(template_type, before), new_image)
 
 
 def openwebui_base_url(service_name: str, template_type: str) -> str:
@@ -2455,6 +2478,18 @@ def validate_service_config(
     # write routes.
     if "inspect" in config and not isinstance(config["inspect"], bool):
         errors.append(f"inspect must be a boolean, got {type(config['inspect']).__name__}")
+
+    if "image" in config:
+        image = config["image"]
+        if not isinstance(image, str):
+            errors.append(f"image must be a string, got {type(image).__name__}")
+        elif image and template_type not in IMAGE_OVERRIDE_ENGINES:
+            errors.append(
+                f"image can only be overridden for {', '.join(sorted(IMAGE_OVERRIDE_ENGINES))} "
+                f"services, not {template_type}"
+            )
+        elif any(ch.isspace() for ch in image):
+            errors.append("image must not contain whitespace")
 
     if template_type == "maya":
         for flag in ("--pack", "--glm-pack", "--serve", "--model-name", "--api-key", "--port"):

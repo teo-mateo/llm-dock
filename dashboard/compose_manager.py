@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Set, Optional
 import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from flag_metadata import render_cli_flag, get_bool_cli_flags, default_engine_image
+from flag_metadata import render_cli_flag, get_bool_cli_flags, effective_image
 import tabby_keys
 
 logger = logging.getLogger(__name__)
@@ -302,17 +302,17 @@ class ComposeManager:
             # Without this the template's hardcoded image wins the rebuild and
             # silently reverts pinned builds that carry architectures upstream
             # llama.cpp does not have yet.
-            context["image"] = config.get("image", default_engine_image(template_type))
+            context["image"] = effective_image(template_type, config)
         elif template_type == "vllm":
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            context["image"] = config.get("image", default_engine_image(template_type))
+            context["image"] = effective_image(template_type, config)
         elif template_type == "sglang":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            context["image"] = config.get("image") or default_engine_image(template_type)
+            context["image"] = effective_image(template_type, config)
             # Compose accepts argv directly. Preserve paths/keys containing
             # whitespace rather than parsing them as part of a folded command.
             context["sglang_args"] = [
@@ -352,7 +352,7 @@ class ComposeManager:
             context["api_key"] = config["api_key"]
             # A service can run its own build (another Maya commit, from
             # MAYA_IMAGE=... ./build-maya.sh) beside the default image.
-            context["image"] = config.get("image") or default_engine_image(template_type)
+            context["image"] = effective_image(template_type, config)
             # The container runs as the host user because it writes into the host's
             # ~/.cache/maya packs; a bind source Docker has to create itself would be
             # root-owned and unwritable for that user, so it exists before compose runs.

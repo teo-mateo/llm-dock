@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-10
+- **Service image override** - The v2 config panel can pin or clear a per-service image on the engines whose templates honour one (llama.cpp, ik_llama.cpp, vLLM, SGLang, Maya). Changing the effective image recreates a running container, with the result reported honestly: a failed recreate is shown as not applied, and the live image only updates once it is true. A non-local image warns at save time instead of failing at start; a non-empty image on ds4, TabbyAPI or NInfer is refused. One rule, `effective_image()`, now feeds both the compose render and the service payload, which fixes a stored empty image rendering an empty `image:` line and a Maya override being ignored by the payload.
+
 ## 2026-10-30
 - **Pennyroyal 3.1.4** - The SGLang image adapter now pins upstream `v3.1.4` (seven releases past `v3.0.0`): fixed verify widths by concurrency with `env:PENNY_MTP_POLICY` selecting the policy whose hash is NIXL cache identity, no preset KV pool, native reading of the capacity and HiCache env knobs, and the 3.1.3/3.1.4 fixes on this service's own paths - hybrid-Mamba chunk page alignment, admission reopening on an already-empty batch, NIXL restore validation, Responses and Anthropic tool handling, Qwen structured tool arguments. The FR-Spec recipe moved to a .97 static fraction, so the recipe patcher now parameterizes the literal the recipe carries instead of asserting `0.981`, and still raises when there is no literal to read. Container checks and the GPU check pass; the machine-local Flash-Next service has not been recreated on it yet, and that first boot re-qualifies its NIXL disk cache.
 
