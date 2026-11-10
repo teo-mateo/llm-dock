@@ -3,7 +3,7 @@ import logging
 import sqlite3
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from auth import require_auth
 from .models import (Conversation, Message, Critique, Project,
@@ -17,6 +17,7 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .runs import TERMINAL_STATUSES
 from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, run_start, settings_store, url_retrieval
 from .outcomes import PolicyError
+from .blueprint import chat_bp
 from .bootstrap import init_chat  # noqa: F401
 from .deps import deps
 from reasoning_levels import parse_levels
@@ -24,7 +25,6 @@ import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
 
-chat_bp = Blueprint("chat", __name__)
 
 
 @chat_bp.route("/api/chat/mcp-servers", methods=["GET"])

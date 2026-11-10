@@ -12,7 +12,7 @@ from flask import jsonify, request, send_file
 from auth import require_auth
 from . import project_files as pf
 from .deps import deps
-from .routes import chat_bp
+from .blueprint import chat_bp
 
 logger = logging.getLogger(__name__)
 

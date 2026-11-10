@@ -17,7 +17,7 @@ from auth import require_auth
 from . import mcp_config
 from .mcp_registry import MCP_SERVERS as BUILTIN
 from .deps import deps
-from .routes import chat_bp
+from .blueprint import chat_bp
 
 logger = logging.getLogger(__name__)
 
