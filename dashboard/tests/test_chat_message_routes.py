@@ -4,8 +4,8 @@ Covers DELETE /api/chat/conversations/<conv_id>/messages/<msg_id>:
 - DB-level delete_message (cascade cleanup of critiques/artifacts/runs)
 - Route auth, 404s, 409 on active run, 200 on success
 """
-import json
 import os
+import sqlite3
 import sys
 import uuid
 
@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-msg-routes")
 
 from chat.db import ChatDB
-from chat.models import Conversation, Message, ChatRun, Critique, Artifact
+from chat.models import (Conversation, Message, ChatRun, Critique, Artifact,
+                         DeleteMessageOutcome)
 from chat.runs import ChatRunStatus
 from chat.routes import chat_bp
 
@@ -55,21 +56,37 @@ def ctx(tmp_path):
         pass
 
 
-# -- DB method: delete_message ------------------------------------------
+# -- DB method: delete_message_guarded ----------------------------------
+
+
+def _delete_ok(db, conv, msg):
+    result = db.delete_message_guarded(conv.id, msg.id)
+    assert result.outcome is DeleteMessageOutcome.DELETED
+    return result
 
 
 def test_delete_message_removes_row():
     db = ChatDB(":memory:")
     conv = _conv(db)
     msg = _msg(db, conv)
-    assert db.delete_message(msg.id) is not None
+    assert _delete_ok(db, conv, msg).message.id == msg.id
     assert db.get_message(msg.id) is None
     assert db.get_messages(conv.id) == []
 
 
-def test_delete_message_returns_none_for_missing():
+def test_delete_message_reports_not_found_for_missing():
     db = ChatDB(":memory:")
-    assert db.delete_message("nope") is None
+    conv = _conv(db)
+    assert db.delete_message_guarded(conv.id, "nope").outcome is DeleteMessageOutcome.NOT_FOUND
+
+
+def test_delete_message_reports_not_found_for_another_conversations_message():
+    db = ChatDB(":memory:")
+    conv_a = _conv(db)
+    conv_b = _conv(db)
+    msg = _msg(db, conv_a)
+    assert db.delete_message_guarded(conv_b.id, msg.id).outcome is DeleteMessageOutcome.NOT_FOUND
+    assert db.get_message(msg.id) is not None
 
 
 def test_delete_message_cascades_critiques():
@@ -83,7 +100,7 @@ def test_delete_message_cascades_critiques():
     db.save_critique(critique)
     assert db.get_critique(msg.id) is not None
 
-    db.delete_message(msg.id)
+    _delete_ok(db, conv, msg)
     assert db.get_critique(msg.id) is None
 
 
@@ -96,7 +113,7 @@ def test_delete_message_cascades_artifacts():
     db.save_artifact(art)
     assert db.get_artifacts_for_conversation(conv.id) != {}
 
-    db.delete_message(msg.id)
+    _delete_ok(db, conv, msg)
     assert db.get_artifacts_for_conversation(conv.id) == {}
 
 
@@ -110,7 +127,7 @@ def test_delete_message_detaches_run_user_message_id():
                   status=ChatRunStatus.COMPLETED, user_message_id=msg.id)
     db.create_chat_run(run)
 
-    db.delete_message(msg.id)
+    _delete_ok(db, conv, msg)
     fetched = db.get_chat_run(run.id)
     assert fetched is not None
     assert fetched.user_message_id is None
@@ -120,10 +137,119 @@ def test_delete_message_touches_conversation():
     db = ChatDB(":memory:")
     conv = _conv(db)
     msg = _msg(db, conv)
-    old_updated = conv.updated_at
-    db.delete_message(msg.id)
-    refreshed = db.get_conversation(conv.id)
-    assert refreshed.updated_at != old_updated or True  # updated_at is a DB default
+    conn = db._get_conn()
+    conn.execute("UPDATE conversations SET updated_at = '2000-01-01T00:00:00Z' WHERE id = ?",
+                 (conv.id,))
+    conn.commit()
+    _delete_ok(db, conv, msg)
+    assert db.get_conversation(conv.id).updated_at != "2000-01-01T00:00:00Z"
+
+
+def test_delete_message_conflicts_with_an_active_run_and_changes_nothing():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    msg = _msg(db, conv, role="assistant", content="reply")
+    db.save_artifact(Artifact(id=str(uuid.uuid4()), message_id=msg.id, artifact_type="code",
+                              content="print(1)", title="snippet", language="python"))
+    db.save_critique(Critique(id=str(uuid.uuid4()), message_id=msg.id, sidekick_service="svc",
+                              annotations_json="[]", summary="ok", verdict="good"))
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                  status=ChatRunStatus.RUNNING, user_message_id=msg.id)
+    db.create_chat_run(run)
+
+    result = db.delete_message_guarded(conv.id, msg.id)
+
+    assert result.outcome is DeleteMessageOutcome.CONFLICT
+    assert db.get_message(msg.id) is not None
+    assert db.get_critique(msg.id) is not None
+    assert db.get_artifacts_for_conversation(conv.id) != {}
+    assert db.get_chat_run(run.id).user_message_id == msg.id
+
+
+class _CommitFails:
+    """Connection proxy whose COMMIT raises, for the rollback-after-failed-commit path."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    @property
+    def isolation_level(self):
+        return self._conn.isolation_level
+
+    @isolation_level.setter
+    def isolation_level(self, value):
+        self._conn.isolation_level = value
+
+    def execute(self, sql, params=()):
+        if sql.strip().upper().startswith("COMMIT"):
+            raise sqlite3.OperationalError("disk I/O error")
+        return self._conn.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        pass
+
+
+def test_a_failing_commit_leaves_no_open_transaction(monkeypatch):
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    msg = _msg(db, conv)
+    conn = db._get_conn()
+    before = conn.isolation_level
+    monkeypatch.setattr(db, "_get_conn", lambda: _CommitFails(conn))
+
+    with pytest.raises(sqlite3.OperationalError):
+        db.delete_message_guarded(conv.id, msg.id)
+
+    assert not conn.in_transaction
+    assert conn.isolation_level == before
+    assert db.get_message(msg.id) is not None
+
+
+def test_the_isolation_level_is_restored_after_a_rollback():
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    msg = _msg(db, conv)
+    db.create_chat_run(ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id,
+                               status=ChatRunStatus.RUNNING, user_message_id=msg.id))
+    conn = db._get_conn()
+    before = conn.isolation_level
+
+    assert db.delete_message_guarded(conv.id, msg.id).outcome is DeleteMessageOutcome.CONFLICT
+
+    assert conn.isolation_level == before
+    assert not conn.in_transaction
+
+
+def test_a_send_cannot_land_between_the_check_and_the_delete(tmp_path, monkeypatch):
+    """The guard and the delete share one write lock, so a competing send
+    cannot commit a run in the window between them."""
+    path = str(tmp_path / "chat.db")
+    db = ChatDB(path)
+    conv = _conv(db)
+    msg = _msg(db, conv)
+    original = db._active_run_for
+
+    def hook(conn, conv_id):
+        other = sqlite3.connect(path, timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                other.execute("BEGIN IMMEDIATE")
+        finally:
+            other.close()
+        return original(conn, conv_id)
+
+    monkeypatch.setattr(db, "_active_run_for", hook)
+
+    assert db.delete_message_guarded(conv.id, msg.id).outcome is DeleteMessageOutcome.DELETED
+    assert db.get_message(msg.id) is None
+
+    user = Message(id=str(uuid.uuid4()), conversation_id=conv.id, role="user",
+                   content="next", seq=0)
+    run = ChatRun(id=str(uuid.uuid4()), conversation_id=conv.id, status=ChatRunStatus.QUEUED)
+    assert db.create_run_with_user_message(user, run) is not None
 
 
 # -- Route: auth + 404s ------------------------------------------------

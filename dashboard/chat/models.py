@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional, List
 
 
@@ -240,3 +241,15 @@ class Prompt:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+
+
+class DeleteMessageOutcome(str, Enum):
+    DELETED = "deleted"
+    CONFLICT = "conflict"
+    NOT_FOUND = "not_found"
+
+
+@dataclass
+class DeleteMessageResult:
+    outcome: DeleteMessageOutcome
+    message: Optional[Message] = None

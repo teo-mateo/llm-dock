@@ -8,7 +8,8 @@ from flask import Blueprint, jsonify, request, current_app, Response, stream_wit
 
 from auth import require_auth
 from .db import ChatDB
-from .models import Conversation, Message, Critique, ChatRun, Project
+from .models import (Conversation, Message, Critique, ChatRun, Project,
+                     DeleteMessageOutcome)
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
 from .llm_proxy import stream_chat_completion
 from .tool_loop import stream_with_tools
@@ -1111,17 +1112,10 @@ def delete_message(conv_id, msg_id):
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
 
-    msg = db.get_message(msg_id)
-    if msg is None or msg.conversation_id != conv_id:
-        return jsonify({"error": "Message not found"}), 404
-
-    # Block deletion while a run is active — the in-flight assistant turn
-    # hasn't been persisted yet, but deleting a prior message mid-run would
-    # leave the transcript inconsistent for the ongoing turn.
-    if db.get_active_run_for_conversation(conv_id) is not None:
+    result = db.delete_message_guarded(conv_id, msg_id)
+    if result.outcome is DeleteMessageOutcome.CONFLICT:
         return jsonify({"error": "Cannot delete a message while a run is active"}), 409
-
-    if db.delete_message(msg_id) is None:
+    if result.outcome is DeleteMessageOutcome.NOT_FOUND:
         return jsonify({"error": "Message not found"}), 404
     logger.info("message deleted: %s from conversation %s", msg_id, conv_id)
     return jsonify({"ok": True})
