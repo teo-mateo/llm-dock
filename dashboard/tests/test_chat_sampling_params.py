@@ -18,6 +18,7 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-sp-chat")
 
 from chat.db import ChatDB
 from chat.models import Conversation
+from chat import run_config
 from chat.routes import chat_bp
 
 TOKEN = "test-token-sp-chat"
@@ -37,13 +38,12 @@ ENGINES = {
 def client(monkeypatch):
     """Chat blueprint on an in-memory DB, with service engines stubbed.
 
-    `_service_engine` is the only seam touching Docker; stubbing it keeps this
+    `run_config.service_engine` is the only seam touching Docker; stubbing it keeps this
     file about the column and its guards. Its own test drives the real one.
     """
-    import chat.routes as routes
 
-    monkeypatch.setattr(routes, "_service_engine",
-                        lambda svc, _e=ENGINES: _e.get(svc))
+    monkeypatch.setattr(run_config, "service_engine",
+                        lambda svc, services=None, _e=ENGINES: _e.get(svc))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
     app.config["CHAT_DB"] = ChatDB(":memory:")
@@ -186,44 +186,50 @@ def _conv(main_service, params_json=None):
                         sampling_params_json=params_json)
 
 
-def test_run_keeps_params_the_engine_can_take(client, monkeypatch):
-    import chat.routes as routes
-    assert routes._effective_sampling_params(_conv("vllm-a", '{"temperature": 0.3}')) \
-        == ({"temperature": 0.3}, None)
+ENGINE_SERVICES = lambda: [
+    {"name": "vllm-a", "template_type": "vllm"},
+    {"name": "ds4-c", "template_type": "ds4"},
+    {"name": "ik-x", "template_type": "ik_llamacpp"},
+]
 
 
-def test_run_drops_fields_an_engine_cannot_take_and_names_them(client, monkeypatch):
+def test_run_keeps_params_the_engine_can_take():
+    from chat import run_config
+    assert run_config.effective_sampling_params(
+        _conv("vllm-a", '{"temperature": 0.3}'), ENGINE_SERVICES) == ({"temperature": 0.3}, None)
+
+
+def test_run_drops_fields_an_engine_cannot_take_and_names_them():
     """The whole point of the note: a dropped temperature must not look like a
     model that ignored it."""
-    import chat.routes as routes
-    params, note = routes._effective_sampling_params(
-        _conv("ds4-c", '{"temperature": 0.3, "seed": 4}'))
+    from chat import run_config
+    params, note = run_config.effective_sampling_params(
+        _conv("ds4-c", '{"temperature": 0.3, "seed": 4}'), ENGINE_SERVICES)
     assert params is None
     assert "temperature" in note and "seed" in note
 
 
-def test_run_drops_everything_for_an_engine_that_takes_nothing(client, monkeypatch):
+def test_run_drops_everything_for_an_engine_that_takes_nothing():
     """ik_llamacpp ships the same flags as llama.cpp but is unverified, so it is
     unmapped and every stored field is dropped — and every one is listed, because
     the note is the only signal the user gets."""
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_engine", lambda svc: "ik_llamacpp")
-    params, note = routes._effective_sampling_params(_conv("x", '{"top_k": 5, "seed": 2}'))
+    from chat import run_config
+    params, note = run_config.effective_sampling_params(
+        _conv("ik-x", '{"top_k": 5, "seed": 2}'), ENGINE_SERVICES)
     assert params is None
     assert "top_k" in note and "seed" in note
 
 
-def test_run_for_an_unknown_service_drops_everything(client, monkeypatch):
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_service_engine", lambda svc: None)
-    params, note = routes._effective_sampling_params(_conv("gone", '{"seed": 1}'))
+def test_run_for_an_unknown_service_drops_everything():
+    from chat import run_config
+    params, note = run_config.effective_sampling_params(_conv("gone", '{"seed": 1}'), ENGINE_SERVICES)
     assert params is None
     assert "seed" in note
 
 
-def test_run_without_params_produces_no_value_and_no_note(client):
-    import chat.routes as routes
-    assert routes._effective_sampling_params(_conv("vllm-a", None)) == (None, None)
+def test_run_without_params_produces_no_value_and_no_note():
+    from chat import run_config
+    assert run_config.effective_sampling_params(_conv("vllm-a", None), ENGINE_SERVICES) == (None, None)
 
 
 def test_run_started_frame_carries_the_applied_params(client, monkeypatch):

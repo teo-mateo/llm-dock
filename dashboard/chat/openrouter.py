@@ -123,7 +123,7 @@ def ladder_for_model(model: str) -> str:
     """The stored ladder for one OpenRouter model id, "" when it has none.
 
     The single reader behind both enforcement points, so the ladder offered and the
-    ladder enforced cannot drift - the property ``routes._service_reasoning_levels``
+    ladder enforced cannot drift - the property ``run_config.service_reasoning_levels``
     documents for local services, provided here for a remote one.
 
     The settings import is deferred because ``settings_store`` imports this module at

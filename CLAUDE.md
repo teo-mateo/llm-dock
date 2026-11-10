@@ -969,7 +969,7 @@ construction all call it, so they cannot disagree.
 - **Two enforcement points** (deliberate): the conversation write paths reject a
   level the service doesn't declare (400 with `code: "invalid_reasoning_level"`,
   which is what the composer's retry-on-level-loss branches on — never the prose),
-  and `_effective_reasoning_level()` re-checks at run creation, dropping it for
+  and `chat/run_config.effective_reasoning_level()` re-checks at run creation, dropping it for
   that run and reporting `reasoning_level_note` on the `run_started` frame. That
   note has a consumer: `useChat` records it as `runNotice` and `ChatArea` renders
   it above the composer, because a dropped level is otherwise indistinguishable
@@ -1553,7 +1553,7 @@ purposes:
 - **Effective project** for spin-offs resolved by walking the
   `parent_conversation_id` chain. Frontend walks in-memory conversation
   list; backend uses `db.resolve_project_id()` (SQL). At run time,
-  `routes._effective_project_id()` resolves once and snapshots into the
+  `chat/run_config.effective_project_id()` resolves once and snapshots into the
   run object.
 - **MCP project-files server** is a built-in (id: `project-files`).
   External MCP servers cannot override it.

@@ -9,7 +9,7 @@ from flask import Flask
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chat import llm_proxy, providers, routes
+from chat import llm_proxy, providers
 from chat.db import ChatDB
 from chat.routes import chat_bp
 from reasoning_levels import ENGINE_PROVIDER
@@ -239,8 +239,9 @@ def test_models_route_lists_enabled_providers(client, upstream):
 
 
 def test_engine_and_levels_for_provider_services():
-    assert routes._service_engine("mistral:m") == ENGINE_PROVIDER
-    assert routes._service_reasoning_levels("mistral:m") == []
+    from chat import run_config
+    assert run_config.service_engine("mistral:m") == ENGINE_PROVIDER
+    assert run_config.service_reasoning_levels("mistral:m") == []
 
 
 class _Stream:

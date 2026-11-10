@@ -591,7 +591,7 @@ class TestRuntimeAutoEnable:
     def test_runner_does_not_resolve_on_its_own(self):
         # The row carries a project, but no snapshot was passed: the runner
         # must NOT fall back to conv.project_id — resolution has exactly one
-        # owner (routes._effective_project_id at run creation).
+        # owner (run_config.effective_project_id at run creation).
         runner = ChatRunner(persistence=FakePersistence())
         mgr = FakeManager()
         runner._build_stream(_conv(project_id="p1"), mgr)
@@ -822,17 +822,13 @@ class TestSpinoffInheritance:
         assert db.resolve_project_id("child") is None
 
     def test_effective_project_id_resolves_through_the_chain(self, db):
-        from chat.routes import _effective_project_id
-        app = Flask(__name__)
-        app.config["CHAT_DB"] = db
-        with app.app_context():
-            assert _effective_project_id(db.get_conversation("root")) == "p1"
-            assert _effective_project_id(db.get_conversation("child")) == "p1"
-            assert _effective_project_id(db.get_conversation("grand")) == "p1"
-            assert _effective_project_id(db.get_conversation("loner")) is None
+        from chat.run_config import effective_project_id
+        for conv_id, expected in (("root", "p1"), ("child", "p1"), ("grand", "p1"), ("loner", None)):
+            assert effective_project_id(db.get_conversation(conv_id), db.resolve_project_id) == expected
 
     def test_routes_scope_spinoff_to_root_project(self, db, tmp_path):
-        from chat.routes import _effective_project_id, _mcp_for_conversation
+        from chat.routes import _mcp_for_conversation
+        from chat.run_config import effective_project_id
         app = Flask(__name__)
         app.config["MCP_MANAGER"] = FakeManager()
         app.config["PROJECT_FILES_DIR"] = str(tmp_path / "storage")
@@ -840,7 +836,7 @@ class TestSpinoffInheritance:
         child = db.get_conversation("child")
         assert child.project_id is None  # root-only membership held
         with app.app_context():
-            project_id = _effective_project_id(child)
+            project_id = effective_project_id(child, db.resolve_project_id)
             mgr = _mcp_for_conversation(child, [], project_id)
         assert mgr is not None
         mgr.call_tool(SERVER_ID, "list_files", {})

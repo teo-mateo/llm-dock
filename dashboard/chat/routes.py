@@ -19,9 +19,9 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import openrouter, openrouter_catalog, providers, settings_store, url_retrieval
+from . import openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
 from .prompt_seed import seed_default_prompts
-from reasoning_levels import ENGINE_OPENROUTER, ENGINE_PROVIDER, find_level, format_levels, parse_levels
+from reasoning_levels import parse_levels
 import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
@@ -77,163 +77,11 @@ def _get_run_manager():
     return current_app.config["CHAT_RUN_MANAGER"]
 
 
-def _effective_project_id(conv):
-    """The conversation's effective project. Membership is root-only: a
-    spin-off keeps project_id NULL and follows its root ancestor.
-
-    This is the SINGLE owner of project resolution for a chat turn: it is
-    called once when the run is created, and the result is snapshotted into
-    the run (manager scoping AND tool auto-enable both consume the same
-    value), so a root moved mid-turn cannot split scope from toggles.
-    """
-    if conv.project_id:
-        return conv.project_id
-    if conv.parent_conversation_id:
-        return _get_db().resolve_project_id(conv.id)
-    return None
-
-
-def _service_reasoning_levels(service_name):
-    """Levels a service currently declares, as parsed dicts ([] when none).
-
-    Reads the same payload the chat picker uses, so the ladder offered and the
-    ladder enforced cannot drift, and stopped services resolve like running ones.
-    For an ``openrouter:`` name the ladder captured when the model joined the curated
-    shortlist stands in for a declaration, read through ``openrouter.ladder_for_model``
-    so this enforcement point and the request builder cannot disagree.
-    """
-    if openrouter.is_openrouter_service(service_name):
-        return parse_levels(openrouter.ladder_for_model(openrouter.model_id(service_name)))
-    if providers.is_provider_service(service_name):
-        return []
-    from docker_utils import get_docker_services
-    try:
-        services = get_docker_services()
-    except Exception:
-        logger.exception("reasoning-level lookup failed for service %s", service_name)
-        return []
-    for svc in services:
-        if svc["name"] == service_name:
-            return svc.get("reasoning_levels") or []
-    return []
-
-
-# Carried on the 400 so a client can tell a level rejection from any other bad
-# request; the composer retries a create on this code and nothing else.
-INVALID_LEVEL_CODE = "invalid_reasoning_level"
-
-
-def _reasoning_level_error(main_service, reasoning_level):
-    """Rejection message for a level the service does not offer, else None.
-
-    `null` is always accepted: it means "say nothing to the model".
-    """
-    if reasoning_level is None:
-        return None
-    if not isinstance(reasoning_level, str):
-        return "reasoning_level must be a string or null"
-    levels = _service_reasoning_levels(main_service)
-    if find_level(levels, reasoning_level) is None:
-        return (
-            f"reasoning_level '{reasoning_level}' is not offered by service "
-            f"'{main_service}' (declared: {format_levels(levels) or 'none'})"
-        )
-    return None
-
-
-def _effective_reasoning_level(conv):
-    """(level to apply, note) for a run — the second enforcement point.
-
-    The service can have lost a stored level since the write path checked it, so
-    nothing undeclared is ever sent. The column is left alone: the drop is for
-    this run only, so switching the model back restores the choice. The note
-    rides the run_started frame so the UI can say the level was ignored.
-    """
-    stored = getattr(conv, "reasoning_level", None)
-    if not stored:
-        return None, None
-    if find_level(_service_reasoning_levels(conv.main_service), stored) is not None:
-        return stored, None
-    logger.info(
-        "run for conversation %s: reasoning level '%s' no longer offered by '%s', ignored",
-        conv.id, stored, conv.main_service,
-    )
-    return None, f"Reasoning level '{stored}' is not offered by this model and was ignored"
-
-
-# Carried on the 400 for the same reason as the level code: the composer retries
-# a rejected save on this code alone, never on prose.
-INVALID_SAMPLING_CODE = "invalid_sampling_params"
-
-
-def _service_engine(service_name):
-    """Engine (``template_type``) a service runs on, None when it is unknown.
-
-    Reads the same service payload the chat picker uses, so what the composer
-    offers and what the runner sends are the same answer - and a stopped service
-    resolves like a running one, which is what lets params be saved before the
-    model starts. See the ``template_type`` gotcha in AGENTS.md: an engine that
-    does not travel with the service silently unmaps every per-engine field.
-    """
-    if openrouter.is_openrouter_service(service_name):
-        return ENGINE_OPENROUTER
-    if providers.is_provider_service(service_name):
-        return ENGINE_PROVIDER
-    from docker_utils import get_docker_services
-    try:
-        services = get_docker_services()
-    except Exception:
-        logger.exception("engine lookup failed for service %s", service_name)
-        return None
-    for svc in services:
-        if svc["name"] == service_name:
-            return svc.get("template_type") or None
-    return None
-
-
-def _sampling_params_error(value):
-    """Rejection message for a request body's sampling params, else None.
-
-    Absent, null and empty are all accepted: they mean "send nothing", which is
-    the pre-feature request rather than a change to it.
-    """
-    valid, errors = sampling.validate(value)
-    if valid:
-        return None
-    return "; ".join(errors)
-
-
-def _effective_sampling_params(conv):
-    """(params to apply, note) for a run — the second enforcement point.
-
-    The engine can have changed under a stored set since the write path checked
-    it, so a field the current engine cannot take is dropped for this run only and
-    the column is left alone; switching the model back restores the choice. The
-    note rides the run_started frame naming each dropped field, because a silently
-    dropped temperature is otherwise indistinguishable from a model that ignored
-    it - which is the outcome the whole two-enforcement-points design exists to
-    avoid.
-    """
-    stored = sampling.from_storage(getattr(conv, "sampling_params_json", None))
-    if not stored:
-        return None, None
-    applicable, dropped = sampling.drop_unsupported(stored, _service_engine(conv.main_service))
-    if not dropped:
-        return applicable, None
-    logger.info(
-        "run for conversation %s: sampling params %s not applicable to '%s', ignored",
-        conv.id, ",".join(dropped), conv.main_service,
-    )
-    return applicable, (
-        f"Sampling params ignored by this model: {', '.join(dropped)}"
-    )
-
-
 def _mcp_for_conversation(conv, enabled_servers, project_id):
     """MCP manager for a run, or None when the turn has no tools.
 
     project_id is the pre-resolved effective project (see
-    _effective_project_id). Project conversations always get a manager —
+    run_config.effective_project_id). Project conversations always get a manager —
     the project-files server is auto-enabled for them (see
     runtime._build_stream) — wrapped so its subprocess spawns learn the
     project's directory via the environment.
@@ -673,7 +521,7 @@ def get_sampling_fields():
     endpoint exists to prevent.
     """
     service = request.args.get("service") or ""
-    engine = _service_engine(service)
+    engine = run_config.service_engine(service)
     return jsonify({
         "service": service,
         "engine": engine,
@@ -694,15 +542,15 @@ def create_conversation():
     # Re-checked at run creation too: the declaration can change between here
     # and the first message.
     if "reasoning_level" in data:
-        level_error = _reasoning_level_error(main_service, data["reasoning_level"])
+        level_error = run_config.reasoning_level_error(main_service, data["reasoning_level"])
         if level_error:
-            return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
+            return jsonify({"error": level_error, "code": run_config.INVALID_LEVEL_CODE}), 400
     reasoning_level = data.get("reasoning_level")
     # Whole-blob replace: the body carries the complete set, and anything absent
     # from it is unset rather than left at a previous value.
-    sampling_error = _sampling_params_error(data.get("sampling_params"))
+    sampling_error = run_config.sampling_params_error(data.get("sampling_params"))
     if sampling_error:
-        return jsonify({"error": sampling_error, "code": INVALID_SAMPLING_CODE}), 400
+        return jsonify({"error": sampling_error, "code": run_config.INVALID_SAMPLING_CODE}), 400
 
     project_id = data.get("project_id")
     if project_id is not None:
@@ -809,16 +657,16 @@ def update_conversation(conv_id):
         existing = db.get_conversation(conv_id)
         if existing is None:
             return jsonify({"error": "Conversation not found"}), 404
-        level_error = _reasoning_level_error(
+        level_error = run_config.reasoning_level_error(
             data.get("main_service") or existing.main_service, data["reasoning_level"]
         )
         if level_error:
-            return jsonify({"error": level_error, "code": INVALID_LEVEL_CODE}), 400
+            return jsonify({"error": level_error, "code": run_config.INVALID_LEVEL_CODE}), 400
     if "sampling_params" in data:
         # null and {} both clear: the column keeps one empty state, NULL.
-        sampling_error = _sampling_params_error(data["sampling_params"])
+        sampling_error = run_config.sampling_params_error(data["sampling_params"])
         if sampling_error:
-            return jsonify({"error": sampling_error, "code": INVALID_SAMPLING_CODE}), 400
+            return jsonify({"error": sampling_error, "code": run_config.INVALID_SAMPLING_CODE}), 400
         data["sampling_params_json"] = sampling.to_storage(data.pop("sampling_params"))
     # project_id: null detaches (back to unfiled); a non-null value must be
     # a string naming an existing project, and only root conversations can
@@ -970,9 +818,8 @@ def reorder_prompts():
 # -- Messages --
 
 
-def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
-                        first_user_content, delete_from_seq=None,
-                        effective_project_id=None):
+def _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first,
+                        first_user_content, delete_from_seq=None):
     """Atomically persist the user message + a queued run (rejecting a second
     run while one is active), start the background job, and return an SSE
     Response that observes it.
@@ -995,28 +842,16 @@ def _start_run_response(db, conv, user_msg, mcp_manager, is_first,
     if created is None:
         return jsonify({"error": "A run is already active for this conversation"}), 409
 
-    # Snapshot the level alongside the project: it cannot change underneath
-    # this run, and a mid-run edit affects only the next one.
-    reasoning_level, level_note = _effective_reasoning_level(conv)
-    sampling_params, sampling_note = _effective_sampling_params(conv)
-
     manager = _get_run_manager()
     q = manager.subscribe(run.id)
     manager.start(conv, run, mcp_manager=mcp_manager, is_first=is_first,
                   first_user_content=first_user_content,
-                  effective_project_id=effective_project_id,
-                  reasoning_level=reasoning_level,
-                  sampling_params=sampling_params)
-
-    started_extra = {"reasoning_level": reasoning_level,
-                     "sampling_params": sampling_params}
-    if level_note:
-        started_extra["reasoning_level_note"] = level_note
-    if sampling_note:
-        started_extra["sampling_params_note"] = sampling_note
+                  effective_project_id=cfg.project_id,
+                  reasoning_level=cfg.reasoning_level,
+                  sampling_params=cfg.sampling_params)
 
     return Response(
-        stream_with_context(manager.observe(run.id, q, run_started_extra=started_extra)),
+        stream_with_context(manager.observe(run.id, q, run_started_extra=cfg.started_extra())),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -1054,11 +889,10 @@ def send_message(conv_id):
     )
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    project_id = _effective_project_id(conv)
-    mcp_manager = _mcp_for_conversation(conv, enabled_servers, project_id)
+    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
+    mcp_manager = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
 
-    return _start_run_response(db, conv, user_msg, mcp_manager, is_first, content,
-                               effective_project_id=project_id)
+    return _start_run_response(db, conv, user_msg, mcp_manager, cfg, is_first, content)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["PUT"])
@@ -1084,8 +918,8 @@ def edit_message(conv_id, msg_id):
     images_json = json.dumps(images) if images else None
 
     enabled_servers = json.loads(conv.mcp_servers_json) if conv.mcp_servers_json else []
-    project_id = _effective_project_id(conv)
-    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, project_id)
+    cfg = run_config.prepare_run_config(conv, db.resolve_project_id)
+    mcp_mgr = _mcp_for_conversation(conv, enabled_servers, cfg.project_id)
 
     new_msg = Message(
         id=str(uuid.uuid4()),
@@ -1099,9 +933,8 @@ def edit_message(conv_id, msg_id):
     # The truncate-from-seq and re-send happen in one transaction (with the
     # active-run guard), so a rejected edit doesn't destroy the tail. An edit
     # replaces an existing turn, so it never triggers auto-title.
-    return _start_run_response(db, conv, new_msg, mcp_mgr, is_first=False,
-                               first_user_content=content, delete_from_seq=msg.seq,
-                               effective_project_id=project_id)
+    return _start_run_response(db, conv, new_msg, mcp_mgr, cfg, is_first=False,
+                               first_user_content=content, delete_from_seq=msg.seq)
 
 
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["DELETE"])
