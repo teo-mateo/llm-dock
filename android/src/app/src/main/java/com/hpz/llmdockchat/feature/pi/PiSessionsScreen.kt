@@ -85,6 +85,7 @@ fun PiSessionsScreen(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator(color = colors.accent) }
                 is PiSessionsUiState.Loaded -> {
+                    val tree = state.tree
                     if (state.stale) {
                         Text(
                             "Reconnecting…",
@@ -111,7 +112,7 @@ fun PiSessionsScreen(
                             piSectionRows(
                                 PiSection.LIVE,
                                 "Live",
-                                state.tree.live,
+                                tree.live,
                                 projectToggles,
                                 cacheLabels,
                                 onOpen,
@@ -121,7 +122,7 @@ fun PiSessionsScreen(
                             piSectionRows(
                                 PiSection.ENDED,
                                 "Ended",
-                                state.tree.ended,
+                                tree.ended,
                                 projectToggles,
                                 cacheLabels,
                                 onOpen,
@@ -285,6 +286,7 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit, cachedSize:
         }
     }
 }
+
 @Composable
 private fun piStatusColor(state: PiState): Color {
     val colors = LlmTheme.colors
