@@ -21,6 +21,8 @@ class ComposeStore(Protocol):
 
     def get_used_ports(self) -> Collection[int]: ...
 
+    def save_services_db(self, services: Mapping[str, Any]) -> None: ...
+
     def rebuild_compose_file(self) -> None: ...
 
 
@@ -62,3 +64,13 @@ class SetInspectDeps:
     allocate_upstream_port: Callable[[Mapping[str, Any], str], int]
     recreate_if_running: Callable[[str], dict]
     proxy_status: Callable[[], Sequence[Mapping[str, Any]]]
+
+
+@dataclass(frozen=True)
+class RotateKeyDeps:
+    infra: Infra
+    affected_state: Callable[[], tuple[Sequence[str], Sequence[str], Sequence[str]]]
+    generate_key: Callable[[], str]
+    rotate_in_db: Callable[[ComposeStore, str], dict]
+    commit_key: Callable[[str], None]
+    stop_service: Callable[[str], dict]

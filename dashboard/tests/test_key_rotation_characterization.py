@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config
 import routes.services as services_route
+from service_ops import wiring
 from compose_manager import ComposeManager
 
 TOKEN = "test-token-rotation"
@@ -40,11 +41,11 @@ class Seams:
 def patch_seams(monkeypatch, seams):
     """The one place that knows where the route reaches its collaborators."""
     monkeypatch.setattr(
-        services_route, "_affected_services_state",
-        lambda: (sorted(SERVICES), list(seams.running), list(seams.registered)),
+        wiring, "affected_services_state",
+        lambda compose_file: (sorted(SERVICES), list(seams.running), list(seams.registered)),
     )
     monkeypatch.setattr(
-        services_route, "control_service",
+        wiring, "control_service",
         lambda name, action: seams.step("control", name, action, result=seams.stop_results.get(name, {"success": True})),
     )
 
@@ -133,7 +134,7 @@ def test_a_failed_stop_is_a_207_partial_that_names_the_containers(seams):
 
 
 def test_a_service_already_on_the_new_key_is_not_counted_as_updated(seams, monkeypatch):
-    monkeypatch.setattr(services_route, "generate_api_key", lambda: "old")
+    monkeypatch.setattr(wiring, "generate_api_key", lambda: "old")
 
     body = _rotate(seams).get_json()
 
