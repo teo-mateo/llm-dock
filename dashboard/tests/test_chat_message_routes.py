@@ -166,6 +166,48 @@ def test_delete_message_conflicts_with_an_active_run_and_changes_nothing():
     assert db.get_chat_run(run.id).user_message_id == msg.id
 
 
+class _CommitFails:
+    """Connection proxy whose COMMIT raises, for the rollback-after-failed-commit path."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    @property
+    def isolation_level(self):
+        return self._conn.isolation_level
+
+    @isolation_level.setter
+    def isolation_level(self, value):
+        self._conn.isolation_level = value
+
+    def execute(self, sql, params=()):
+        if sql.strip().upper().startswith("COMMIT"):
+            raise sqlite3.OperationalError("disk I/O error")
+        return self._conn.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        pass
+
+
+def test_a_failing_commit_leaves_no_open_transaction(monkeypatch):
+    db = ChatDB(":memory:")
+    conv = _conv(db)
+    msg = _msg(db, conv)
+    conn = db._get_conn()
+    before = conn.isolation_level
+    monkeypatch.setattr(db, "_get_conn", lambda: _CommitFails(conn))
+
+    with pytest.raises(sqlite3.OperationalError):
+        db.delete_message_guarded(conv.id, msg.id)
+
+    assert not conn.in_transaction
+    assert conn.isolation_level == before
+    assert db.get_message(msg.id) is not None
+
+
 def test_the_isolation_level_is_restored_after_a_rollback():
     db = ChatDB(":memory:")
     conv = _conv(db)

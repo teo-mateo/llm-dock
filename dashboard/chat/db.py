@@ -232,10 +232,11 @@ class ChatDB:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 yield tx
+                conn.execute("ROLLBACK" if tx.aborted else "COMMIT")
             except BaseException:
-                conn.execute("ROLLBACK")
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
                 raise
-            conn.execute("ROLLBACK" if tx.aborted else "COMMIT")
         finally:
             conn.isolation_level = prev_iso
             self._close_conn(conn)
