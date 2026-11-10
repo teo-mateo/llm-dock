@@ -22,6 +22,7 @@ from flag_metadata import (
     MANDATORY_FIELDS,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+from service_recreate import RESTART_TIMEOUT_S, force_recreate, recreate_service
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -51,18 +52,9 @@ def _recreate_if_running(service_name):
     if not container or container.status != "running":
         return {"restarted": False}
 
-    result = subprocess.run(
-        [
-            "docker", "compose", "-f", COMPOSE_FILE,
-            "up", "-d", "--force-recreate", service_name,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        logger.warning(f"Failed to restart {service_name}: {result.stderr}")
-        return {"restarted": False, "error": result.stderr}
+    error = force_recreate(COMPOSE_FILE, service_name, timeout=RESTART_TIMEOUT_S)
+    if error:
+        return {"restarted": False, "error": error}
     logger.info(f"Restarted service: {service_name}")
     return {"restarted": True}
 
@@ -154,6 +146,25 @@ def start_service(service_name):
     else:
         logger.warning(f"Failed to start service {service_name}: {result.get('error')}")
         return jsonify(result), 400
+
+
+@services_bp.route("/api/services/<service_name>/recreate", methods=["POST"])
+@require_auth
+@_serialize_db
+def recreate_service_endpoint(service_name):
+    """Recreate the container from the current compose entry (running or stopped)."""
+    if service_name == "open-webui":
+        return jsonify({"success": False, "error": "Cannot recreate infrastructure services"}), 400
+
+    compose_mgr = ComposeManager(COMPOSE_FILE)
+    result = recreate_service(
+        compose_mgr.list_services_in_db(),
+        service_name,
+        current_statuses(),
+        COMPOSE_FILE,
+        compose_mgr.rebuild_compose_file,
+    )
+    return jsonify(result.body()), result.http_status()
 
 
 @services_bp.route("/api/services/<service_name>/stop", methods=["POST"])

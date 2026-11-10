@@ -90,6 +90,15 @@ export default function useServiceDetails(serviceName) {
     }
   }, [serviceName])
 
+  const recreate = useCallback(async () => {
+    setTransitioning('recreating')
+    try {
+      return await fetchAPI(`/services/${serviceName}/recreate`, { method: 'POST' })
+    } finally {
+      if (mountedRef.current) setTransitioning(null)
+    }
+  }, [serviceName])
+
   const rename = useCallback(async (newName) => {
     await fetchAPI(`/services/${serviceName}/rename`, {
       method: 'POST',
@@ -135,6 +144,6 @@ export default function useServiceDetails(serviceName) {
   return {
     config, runtime, loading, error, transitioning,
     refetchConfig,
-    actions: { start, stop, restart, rename, deleteService, setPublicPort, fetchYamlPreview, fetchImageInfo, registerOpenWebUI, unregisterOpenWebUI },
+    actions: { start, stop, restart, recreate, rename, deleteService, setPublicPort, fetchYamlPreview, fetchImageInfo, registerOpenWebUI, unregisterOpenWebUI },
   }
 }
