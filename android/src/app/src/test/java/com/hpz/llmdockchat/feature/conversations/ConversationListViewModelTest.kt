@@ -477,9 +477,10 @@ class ConversationListViewModelTest {
         assertEquals(1, paths.count { it.startsWith("DELETE") && it.contains(rows[0].id) })
         assertEquals(1, paths.count { it.startsWith("DELETE") && it.contains(rows[1].id) })
         val done = settledWhere {
-            (it as? ConversationListUiState.Loaded)?.deletedIds?.contains(rows[1].id) == true
+            (it as? ConversationListUiState.Loaded)?.deletedIds?.containsAll(listOf(rows[0].id, rows[1].id)) == true
         } as ConversationListUiState.Loaded
         assertTrue(done.visible.isEmpty())
+        assertTrue(done.pendingDeletion.isEmpty())
     }
 
     @Test

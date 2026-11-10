@@ -192,12 +192,9 @@ class ConversationListViewModel(
     private fun commitPendingNow() {
         val loaded = _state.value as? ConversationListUiState.Loaded ?: return
         val pending = loaded.pendingUndo ?: return
+        if (pending.id in loaded.pendingDeletion) return
         undoJob?.cancel()
         undoJob = null
-        // Its DELETE is already open. Sending a second one would earn a 404 for a
-        // conversation the user has deleted exactly once, and the error would read
-        // as if their swipe had failed.
-        if (pending.id in loaded.pendingDeletion) return
         viewModelScope.launch { commitPending(pending.id) }
     }
 
