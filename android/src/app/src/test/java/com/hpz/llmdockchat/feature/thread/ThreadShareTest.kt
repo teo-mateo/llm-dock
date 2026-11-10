@@ -211,7 +211,7 @@ class ThreadShareTest {
     @Test
     fun `shared text lands in the composer through the draft store`() = threadTest {
         conversation()
-        drafts.save(CONVERSATION_ID, "**Attached file: `notes.txt`**\n\n```txt\nhello\n```")
+        drafts.saveConfirmed(CONVERSATION_ID, "**Attached file: `notes.txt`**\n\n```txt\nhello\n```")
         val viewModel = viewModel()
         viewModel.load()
 
@@ -230,7 +230,7 @@ class ThreadShareTest {
         // Type, leave for a browser, share a URL back into this thread: the
         // picker merges on disk and navigates to a thread that never died.
         viewModel.onComposerChange("TYPED")
-        drafts.save(CONVERSATION_ID, mergedDraft("TYPED", "https://shared.example"))
+        drafts.saveConfirmed(CONVERSATION_ID, mergedDraft("TYPED", "https://shared.example"))
         reloadedConversation()
         viewModel.load()
 
@@ -249,7 +249,7 @@ class ThreadShareTest {
 
         // A draft that is not the screen's own text with something appended
         // under it is not a merge, and the newer on-screen text stands.
-        drafts.save(CONVERSATION_ID, "SOMETHING-ELSE-ENTIRELY")
+        drafts.saveConfirmed(CONVERSATION_ID, "SOMETHING-ELSE-ENTIRELY")
         reloadedConversation()
         viewModel.load()
 
