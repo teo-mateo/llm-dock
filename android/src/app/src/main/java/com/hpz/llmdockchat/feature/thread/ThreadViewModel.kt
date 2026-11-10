@@ -2,11 +2,11 @@ package com.hpz.llmdockchat.feature.thread
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hpz.llmdockchat.core.error.AppError
 import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.net.isTransient
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.EditSession
 import com.hpz.llmdockchat.core.prefs.EditStateStore
@@ -776,8 +776,8 @@ class ThreadViewModel(
                 if (sawTerminal) break
 
                 val id = runId
-                val network = error != null && error.appError is AppError.Network
-                if (network && id != null) {
+                val transient = error != null && error.appError.isTransient()
+                if (transient && id != null) {
                     if (attempt.sawAnyFrame) backoff.reset()
                     setReconnecting(true)
                     delay(backoff.next())
@@ -832,7 +832,7 @@ class ThreadViewModel(
         while (true) {
             val result = repository.load(conversationId)
             val error = result.exceptionOrNull()?.appError
-            if (error == null || !error.isTransientForReconcile()) return result
+            if (error == null || !error.isTransient()) return result
             delay(backoff.next())
         }
     }
