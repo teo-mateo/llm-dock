@@ -4,7 +4,7 @@ import threading
 import time
 import subprocess
 from datetime import datetime
-from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
+from flask import Blueprint, jsonify, request, Response, stream_with_context
 
 from auth import require_auth
 from db_lock import SERVICES_DB_LOCK, serialize_db
