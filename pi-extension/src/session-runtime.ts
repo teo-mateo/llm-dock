@@ -11,7 +11,7 @@ import type { Activity } from "./activity.ts";
 import type { RemoteConfig } from "./config.ts";
 import { EventStamper } from "./events.ts";
 import { EventMirror } from "./mirror.ts";
-import { heartbeatSampleFrom, helloFieldsFrom } from "./pi-adapter.ts";
+import { heartbeatSampleFrom, helloFieldsFrom, parentSessionIdFrom } from "./pi-adapter.ts";
 import { Presence } from "./presence.ts";
 import { EventSender } from "./sender.ts";
 
@@ -67,6 +67,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
       extVersion: options.extVersion,
       piVersion: options.piVersion,
       previousSessionId: options.previousSessionId,
+      parentSessionId: parentSessionIdFrom(process.env),
       reason: options.event.reason,
     }),
     heartbeatSample: () => heartbeatSampleFrom(options.ctx, options.activity),

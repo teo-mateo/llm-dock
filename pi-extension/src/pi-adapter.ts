@@ -8,8 +8,15 @@ export type HelloContext = {
   extVersion: string;
   piVersion: string | null;
   previousSessionId: string | null;
+  parentSessionId: string | null;
   reason: SessionReason;
 };
+
+export function parentSessionIdFrom(env: Record<string, string | undefined>): string | null {
+  if (env.PI_SUBAGENT_CHILD !== "1") return null;
+  const parent = env.PI_SUBAGENT_PARENT_SESSION?.trim();
+  return parent ? parent : null;
+}
 
 export function helloFieldsFrom(ctx: ExtensionContext, info: HelloContext): HelloFields {
   return {
@@ -23,6 +30,7 @@ export function helloFieldsFrom(ctx: ExtensionContext, info: HelloContext): Hell
     thinking_level: ctx.thinkingLevel ?? null,
     reason: info.reason,
     previous_session_id: info.previousSessionId,
+    parent_session_id: info.parentSessionId,
     pi_version: info.piVersion,
     ext_version: info.extVersion,
   };

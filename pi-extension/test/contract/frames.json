@@ -64,6 +64,36 @@
     }
   },
   {
+    "path": "/v1/hello",
+    "now": 1001,
+    "request": {
+      "protocol": 1,
+      "type": "hello",
+      "session_id": "s2",
+      "instance_id": "i3",
+      "session_file": null,
+      "cwd": "/github/teo-mateo/llm-dock",
+      "name": null,
+      "pid": 4244,
+      "model": null,
+      "thinking_level": null,
+      "reason": "startup",
+      "previous_session_id": null,
+      "parent_session_id": "s1",
+      "pi_version": "1.0.4",
+      "ext_version": "0.2.0"
+    },
+    "status": 200,
+    "response": {
+      "ok": true,
+      "protocol": 1,
+      "session_id": "s2",
+      "instance_id": "i3",
+      "server_time": 1001,
+      "acked_seq": 0
+    }
+  },
+  {
     "path": "/v1/heartbeat",
     "now": 16000,
     "request": {

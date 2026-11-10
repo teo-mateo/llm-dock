@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { createActivity } from "../src/activity.ts";
-import { heartbeatSampleFrom, helloFieldsFrom } from "../src/pi-adapter.ts";
+import { heartbeatSampleFrom, helloFieldsFrom, parentSessionIdFrom } from "../src/pi-adapter.ts";
 
 function fakeCtx(): ExtensionContext {
   return {
@@ -26,6 +26,7 @@ test("maps an ExtensionContext to hello fields", () => {
     extVersion: "0.1.0",
     piVersion: "1.0.4",
     previousSessionId: "prev",
+    parentSessionId: null,
     reason: "resume",
   });
   assert.equal(fields.session_id, "s1");
@@ -38,6 +39,7 @@ test("maps an ExtensionContext to hello fields", () => {
   assert.equal(fields.thinking_level, "high");
   assert.equal(fields.reason, "resume");
   assert.equal(fields.previous_session_id, "prev");
+  assert.equal(fields.parent_session_id, null);
   assert.equal(fields.pi_version, "1.0.4");
   assert.equal(fields.ext_version, "0.1.0");
   assert.equal(fields.pid, process.pid);
@@ -68,6 +70,7 @@ test("missing model and usage become nulls", () => {
     extVersion: "0.1.0",
     piVersion: null,
     previousSessionId: null,
+    parentSessionId: null,
     reason: "startup",
   });
   assert.equal(fields.session_file, null);
@@ -76,4 +79,42 @@ test("missing model and usage become nulls", () => {
   assert.equal(fields.thinking_level, null);
   assert.equal(fields.pi_version, null);
   assert.equal(heartbeatSampleFrom(ctx, createActivity()).context, null);
+});
+
+test("reads the parent session id from a subagent child process", () => {
+  assert.equal(
+    parentSessionIdFrom({ PI_SUBAGENT_CHILD: "1", PI_SUBAGENT_PARENT_SESSION: "root-session" }),
+    "root-session",
+  );
+  assert.equal(
+    parentSessionIdFrom({ PI_SUBAGENT_CHILD: "1", PI_SUBAGENT_PARENT_SESSION: "  root-session  " }),
+    "root-session",
+  );
+});
+
+test("a root session has no parent", () => {
+  assert.equal(parentSessionIdFrom({}), null);
+  assert.equal(parentSessionIdFrom({ PI_SUBAGENT_PARENT_SESSION: "root-session" }), null);
+  assert.equal(
+    parentSessionIdFrom({ PI_SUBAGENT_CHILD: "0", PI_SUBAGENT_PARENT_SESSION: "root-session" }),
+    null,
+  );
+});
+
+test("a child without a usable parent id reports none", () => {
+  assert.equal(parentSessionIdFrom({ PI_SUBAGENT_CHILD: "1" }), null);
+  assert.equal(parentSessionIdFrom({ PI_SUBAGENT_CHILD: "1", PI_SUBAGENT_PARENT_SESSION: "" }), null);
+  assert.equal(parentSessionIdFrom({ PI_SUBAGENT_CHILD: "1", PI_SUBAGENT_PARENT_SESSION: "   " }), null);
+});
+
+test("the parent session id reaches the hello frame", () => {
+  const fields = helloFieldsFrom(fakeCtx(), {
+    instanceId: "i1",
+    extVersion: "0.2.0",
+    piVersion: null,
+    previousSessionId: null,
+    parentSessionId: "root-session",
+    reason: "startup",
+  });
+  assert.equal(fields.parent_session_id, "root-session");
 });
