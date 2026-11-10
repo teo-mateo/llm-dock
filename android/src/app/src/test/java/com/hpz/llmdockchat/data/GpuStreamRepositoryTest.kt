@@ -5,6 +5,8 @@ import com.hpz.llmdockchat.core.net.ApiException
 import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.data.model.GpuState
 import com.hpz.llmdockchat.testing.FakeSseTransport
+import com.hpz.llmdockchat.testing.ScriptedSseTransport
+import com.hpz.llmdockchat.testing.TimingSseTransport
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.take
@@ -96,33 +98,64 @@ class GpuStreamRepositoryTest {
     }
 
     @Test
-    fun `a 404 ends the stream with the server's message instead of retrying`() = runTest {
-        val transport = FakeSseTransport()
-        transport.failWith = ApiException(AppError.Http(404, "no such endpoint", fromServer = true))
-        val backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L)
+    fun `a 404 is retried on a growing delay rather than hammered or given up on`() = runTest {
+        val transport = TimingSseTransport(testScheduler, ApiException(AppError.Http(404, "no such endpoint", fromServer = true)))
         val repository = GpuStreamRepository(transport)
 
-        // Completing at all is the assertion: the previous loop never ended,
-        // so this call would hang until the timeout.
-        val emissions = withTimeout(5_000) {
-            repository.stream(backoff = backoff).toList()
+        withTimeout(120_000) {
+            repository.stream(
+                backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L),
+                terminalBackoff = ReconnectBackoff(initialMs = 1_000L, maxMs = 60_000L),
+            ).take(4).toList()
         }
 
-        assertEquals(1, transport.requests.size)
-        assertEquals(GpuState.Connecting, emissions[0])
-        assertEquals(GpuState.Unavailable("no such endpoint"), emissions[1])
+        assertEquals(listOf(0L, 1_000L, 3_000L), transport.opens)
     }
 
     @Test
-    fun `a 503 keeps retrying, because it can answer differently next time`() = runTest {
-        val transport = FakeSseTransport()
-        transport.failWith = ApiException(AppError.Http(503, "unavailable", fromServer = true))
-        val backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L)
+    fun `recovery after a 404 clears the unavailable message`() = runTest {
+        val transport = ScriptedSseTransport()
+        transport.script(
+            ScriptedSseTransport.Leg(failWith = ApiException(AppError.Http(404, "no such endpoint", fromServer = true))),
+            ScriptedSseTransport.Leg(payloads = listOf("""{"gpus": []}""")),
+        )
+        transport.whenScriptRunsOut = { ScriptedSseTransport.Leg(park = true) }
         val repository = GpuStreamRepository(transport)
 
-        withTimeout(5_000) { repository.stream(backoff = backoff).take(4).toList() }
+        val emissions = withTimeout(120_000) {
+            repository.stream(
+                backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L),
+                terminalBackoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L),
+            ).take(3).toList()
+        }
 
-        assertEquals(3, transport.requests.size)
+        assertEquals(GpuState.Connecting, emissions[0])
+        assertEquals("the failure must be visible while it waits", GpuState.Unavailable("no such endpoint"), emissions[1])
+        assertEquals("the next frame must clear it", GpuState.Unavailable(null), emissions[2])
+        assertEquals(2, transport.requests.size)
+    }
+
+    @Test
+    fun `an unauthenticated error followed by success recovers`() = runTest {
+        val transport = ScriptedSseTransport()
+        transport.script(
+            ScriptedSseTransport.Leg(failWith = ApiException(AppError.Unauthenticated)),
+            ScriptedSseTransport.Leg(payloads = listOf("""{"gpus": []}""")),
+        )
+        transport.whenScriptRunsOut = { ScriptedSseTransport.Leg(park = true) }
+        val repository = GpuStreamRepository(transport)
+
+        val emissions = withTimeout(120_000) {
+            repository.stream(
+                backoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L),
+                terminalBackoff = ReconnectBackoff(initialMs = 1L, maxMs = 1L),
+            ).take(3).toList()
+        }
+
+        assertEquals(GpuState.Connecting, emissions[0])
+        assertTrue(emissions[1] is GpuState.Unavailable)
+        assertEquals(GpuState.Unavailable(null), emissions[2])
+        assertEquals(2, transport.requests.size)
     }
 
     @Test

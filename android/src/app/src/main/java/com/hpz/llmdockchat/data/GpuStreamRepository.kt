@@ -36,9 +36,17 @@ class GpuStreamRepository(private val transport: SseTransport) {
      * completes on its own — a dropped connection is retried, not surfaced as
      * a flow failure, same posture as [ServicesStreamRepository.stream].
      */
-    fun stream(interval: Double = DEFAULT_INTERVAL_S, backoff: ReconnectBackoff = ReconnectBackoff()): Flow<GpuState> = flow {
+    fun stream(
+        interval: Double = DEFAULT_INTERVAL_S,
+        backoff: ReconnectBackoff = ReconnectBackoff(),
+        terminalBackoff: ReconnectBackoff = ReconnectBackoff(
+            initialMs = ReconnectBackoff.DEFAULT_INITIAL_MS,
+            maxMs = TERMINAL_MAX_MS,
+        ),
+    ): Flow<GpuState> = flow {
         emit(GpuState.Connecting)
         while (true) {
+            var waitMs: Long
             try {
                 transport.open(
                     StreamRequest(path = Endpoints.GPU_STREAM, query = mapOf("interval" to interval.toString())),
@@ -46,6 +54,7 @@ class GpuStreamRepository(private val transport: SseTransport) {
                     when (val event = parseGpuStreamFrame(payload)) {
                         is GpuStreamEvent.Frame -> {
                             backoff.reset()
+                            terminalBackoff.reset()
                             val gpus = event.gpus.map { it.toDomain() }
                             emit(if (gpus.isEmpty()) GpuState.Unavailable(null) else GpuState.Available(gpus))
                         }
@@ -55,26 +64,33 @@ class GpuStreamRepository(private val transport: SseTransport) {
                         is GpuStreamEvent.Unknown -> Unit
                     }
                 }
+                waitMs = backoff.next()
             } catch (e: CancellationException) {
                 // The screen went away — propagate, never treated as "reconnect"
                 // (same reasoning as ServicesStreamRepository.stream).
                 throw e
             } catch (e: Throwable) {
                 val error = e.appError
-                if (!error.isTransient()) {
-                    // A 401 re-auth could not fix, or a 404, answers the same
-                    // way however often it is asked: surface it and end the
-                    // stream rather than retrying in the background forever.
+                if (error.isTransient()) {
                     emit(GpuState.Unavailable(error.displayMessage))
-                    return@flow
+                    waitMs = terminalBackoff.next()
+                } else {
+                    // A 401 re-auth could not fix, or a 404, answers the same
+                    // way however often it is asked — but the dashboard can be
+                    // restarted under a client that is still on the screen, so
+                    // the stream keeps trying, slowly, and says why meanwhile.
+                    emit(GpuState.Unavailable(error.displayMessage))
+                    waitMs = terminalBackoff.next()
                 }
-                emit(GpuState.Unavailable(null))
             }
-            delay(backoff.next())
+            delay(waitMs)
         }
     }
 
     companion object {
         const val DEFAULT_INTERVAL_S = 3.0
+
+        /** A terminal failure is retried, but at a pace that costs nothing to leave running. */
+        const val TERMINAL_MAX_MS = 60_000L
     }
 }

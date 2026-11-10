@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.data
 
 import com.hpz.llmdockchat.core.net.Endpoints
+import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.net.isTransient
 import com.hpz.llmdockchat.core.net.ServiceStreamEvent
@@ -32,12 +33,17 @@ class ServicesStreamRepository(private val transport: SseTransport) {
      * since the picker has nothing useful to show for "the stream hiccuped" —
      * it just keeps the last list on screen until the reconnect lands.
      */
-    fun stream(reconnectDelayMs: Long = RECONNECT_DELAY_MS): Flow<List<ServiceSummary>> = flow {
+    fun stream(
+        reconnectDelayMs: Long = RECONNECT_DELAY_MS,
+        terminalBackoff: ReconnectBackoff = terminalBackoff(reconnectDelayMs),
+    ): Flow<List<ServiceSummary>> = flow {
         var current = emptyList<ServiceSummary>()
         while (true) {
+            var waitMs = reconnectDelayMs
             try {
                 transport.open(StreamRequest(path = Endpoints.SERVICES_STREAM))
                     .collect { payload ->
+                        terminalBackoff.reset()
                         current = mergeServiceEvent(current, parseServiceStreamFrame(payload))
                         emit(current)
                     }
@@ -52,11 +58,11 @@ class ServicesStreamRepository(private val transport: SseTransport) {
                 // A dropped connection — retried below rather than surfaced,
                 // since the picker has nothing better to show than the last
                 // list it had. A terminal failure is different: it answers the
-                // same way however often it is asked, so the loop ends and the
-                // collector learns the list has stopped updating.
-                if (!e.appError.isTransient()) return@flow
+                // same way however often it is asked, so the retry slows down
+                // instead of ending the stream.
+                if (!e.appError.isTransient()) waitMs = terminalBackoff.next()
             }
-            delay(reconnectDelayMs)
+            delay(waitMs)
         }
     }
 
@@ -73,12 +79,17 @@ class ServicesStreamRepository(private val transport: SseTransport) {
      * Additive on purpose — [stream] is untouched, so existing callers
      * see no behaviour change.
      */
-    fun streamWithStatus(reconnectDelayMs: Long = RECONNECT_DELAY_MS): Flow<ServicesStreamState> = flow {
+    fun streamWithStatus(
+        reconnectDelayMs: Long = RECONNECT_DELAY_MS,
+        terminalBackoff: ReconnectBackoff = terminalBackoff(reconnectDelayMs),
+    ): Flow<ServicesStreamState> = flow {
         var current = emptyList<ServiceSummary>()
         while (true) {
+            var waitMs = reconnectDelayMs
             try {
                 transport.open(StreamRequest(path = Endpoints.SERVICES_STREAM))
                     .collect { payload ->
+                        terminalBackoff.reset()
                         current = mergeServiceEvent(current, parseServiceStreamFrame(payload))
                         emit(ServicesStreamState(current, stale = false))
                     }
@@ -86,14 +97,20 @@ class ServicesStreamRepository(private val transport: SseTransport) {
                 throw e
             } catch (e: Throwable) {
                 emit(ServicesStreamState(current, stale = true))
-                if (!e.appError.isTransient()) return@flow
+                if (!e.appError.isTransient()) waitMs = terminalBackoff.next()
             }
-            delay(reconnectDelayMs)
+            delay(waitMs)
         }
     }
 
     companion object {
         const val RECONNECT_DELAY_MS = 2_000L
+
+        /** A terminal failure is retried, but at a pace that costs nothing to leave running. */
+        const val TERMINAL_MAX_MS = 60_000L
+
+        fun terminalBackoff(reconnectDelayMs: Long) =
+            ReconnectBackoff(initialMs = reconnectDelayMs, maxMs = TERMINAL_MAX_MS)
     }
 }
 
