@@ -31,6 +31,7 @@ import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import com.hpz.llmdockchat.core.attachment.AttachmentStaging
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import com.hpz.llmdockchat.feature.share.SummarizeMessage
 import com.hpz.llmdockchat.feature.share.StagedShare
@@ -97,8 +98,9 @@ class NewChatViewModelTest {
 
     private fun viewModel(
         preselectedServiceName: String? = null,
-        sharedDraftStore: SharedDraftStore? = null,
+        attachmentStaging: AttachmentStaging? = null,
         summarizeMode: Boolean = false,
+        summarizeUrl: String? = null,
     ) = NewChatViewModel(
         servicesRepository = servicesRepository,
         promptsRepository = promptsRepository,
@@ -110,7 +112,8 @@ class NewChatViewModelTest {
         servicesStreamRepository = servicesStreamRepository,
         preselectedServiceName = preselectedServiceName,
         summarizeMode = summarizeMode,
-        sharedDraftStore = sharedDraftStore,
+        summarizeUrl = summarizeUrl,
+        attachmentStaging = attachmentStaging,
     )
 
     /** Load order in [NewChatViewModel.load]: services, openrouter, providers, prompts, mcp-servers. */
@@ -460,7 +463,7 @@ class NewChatViewModelTest {
         enqueueLoadResponses()
         val dir = Files.createTempDirectory("new-chat-share").toFile()
         val store = SharedDraftStore(dir)
-        val viewModel = viewModel(sharedDraftStore = store)
+        val viewModel = viewModel(attachmentStaging = store, summarizeUrl = store.pending.value?.url)
         viewModel.load()
         val loaded = settled(viewModel) as NewChatUiState.Loaded
         viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
@@ -512,7 +515,7 @@ class NewChatViewModelTest {
         val store = SharedDraftStore(dir)
         val url = "https://example.com/a"
         store.stage(StagedShare(text = url, url = url))
-        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        val viewModel = viewModel(summarizeMode = true, attachmentStaging = store, summarizeUrl = store.pending.value?.url)
         viewModel.load()
         val loaded = settled(viewModel) as NewChatUiState.Loaded
         viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
@@ -557,7 +560,7 @@ class NewChatViewModelTest {
         val store = SharedDraftStore(dir)
         val url = "https://example.com/b"
         store.stage(StagedShare(text = url, url = url))
-        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        val viewModel = viewModel(summarizeMode = true, attachmentStaging = store, summarizeUrl = store.pending.value?.url)
         viewModel.load()
         val loaded = settled(viewModel) as NewChatUiState.Loaded
         viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })

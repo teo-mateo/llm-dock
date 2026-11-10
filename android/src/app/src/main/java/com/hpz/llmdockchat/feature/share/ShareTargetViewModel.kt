@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.appError
+import com.hpz.llmdockchat.core.attachment.SHARE_SAVE_FAILED
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.model.ConversationSummary

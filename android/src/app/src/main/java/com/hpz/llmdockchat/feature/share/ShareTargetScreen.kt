@@ -47,6 +47,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.feature.conversations.ConversationRowBody
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
+import com.hpz.llmdockchat.core.attachment.SummarizeMessage
 import com.hpz.llmdockchat.core.attachment.decodeDataUrl
 
 /**

@@ -22,9 +22,9 @@ import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModel
 import com.hpz.llmdockchat.feature.modelpicker.RememberedModelResolver
 import com.hpz.llmdockchat.core.prefs.DraftStore
-import com.hpz.llmdockchat.feature.share.SHARE_SAVE_FAILED
-import com.hpz.llmdockchat.feature.share.SharedDraftStore
-import com.hpz.llmdockchat.feature.share.SummarizeMessage
+import com.hpz.llmdockchat.core.attachment.AttachmentStaging
+import com.hpz.llmdockchat.core.attachment.SHARE_SAVE_FAILED
+import com.hpz.llmdockchat.core.attachment.SummarizeMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,7 +138,9 @@ class NewChatViewModel(
      * chat starts with.
      */
     private val summarizeMode: Boolean = false,
-    private val sharedDraftStore: SharedDraftStore? = null,
+    /** The page a summarize tap is about, read from the pending share by the caller. */
+    private val summarizeUrl: String? = null,
+    private val attachmentStaging: AttachmentStaging? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NewChatUiState>(NewChatUiState.Loading)
@@ -182,7 +184,6 @@ class NewChatViewModel(
 
             val rememberedRaw = preferences.lastModel()
             val rememberedMcpIds = preferences.lastMcpServerIds().toSet()
-            val summarizeUrl = if (summarizeMode) sharedDraftStore?.pending?.value?.url else null
             val requiredMcpIds = if (summarizeUrl != null) retrieval?.serverIds?.toSet().orEmpty() else emptySet()
 
             val remembered = RememberedModelResolver.resolve(
@@ -341,7 +342,7 @@ class NewChatViewModel(
         if (current.creating) return
         _state.value = current.copy(creating = true, shareFailure = null)
         viewModelScope.launch {
-            val result = sharedDraftStore?.reassign(conversationId, drafts) ?: Result.success(Unit)
+            val result = attachmentStaging?.reassign(conversationId, drafts) ?: Result.success(Unit)
             result.fold(
                 onSuccess = {
                     updateLoaded { it.copy(creating = false) }
@@ -407,7 +408,7 @@ class NewChatViewModel(
     /** Claim instead of draft: the thread sends the turn on opening. */
     private suspend fun stageSummarizeClaim(conversationId: String): Result<Unit> {
         val url = (state.value as? NewChatUiState.Loaded)?.summarizeUrl ?: return Result.success(Unit)
-        val store = sharedDraftStore ?: return Result.success(Unit)
+        val store = attachmentStaging ?: return Result.success(Unit)
         return store.stageForAutoSend(conversationId, SummarizeMessage.build(url))
     }
 

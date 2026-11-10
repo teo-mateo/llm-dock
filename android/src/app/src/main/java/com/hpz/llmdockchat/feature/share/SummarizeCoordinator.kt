@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.SHARE_SAVE_FAILED
+import com.hpz.llmdockchat.core.attachment.SummarizeMessage
 import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.appError
 import com.hpz.llmdockchat.core.prefs.NewChatPreferences

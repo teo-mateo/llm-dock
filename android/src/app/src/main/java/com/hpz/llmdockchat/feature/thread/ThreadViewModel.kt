@@ -69,48 +69,61 @@ class ThreadViewModel(
 
     private var modelPickerJob: Job? = null
 
-    private val toolsWriteLock = Mutex()
+    private val settingsWriter = ConversationSettingsWriter(
+        writes = object : SettingsWrites {
+            override suspend fun setPrompt(promptId: String?) =
+                conversationsRepository.setPrompt(conversationId, promptId)
 
-    private var latestToolsToggle = 0L
+            override suspend fun setMcpServers(serverIds: List<String>) =
+                conversationsRepository.setMcpServers(conversationId, serverIds)
 
-    private val levelWriteLock = Mutex()
-    private var latestLevelWrite = 0L
+            override suspend fun setReasoningLevel(level: String?) =
+                conversationsRepository.setReasoningLevel(conversationId, level)
 
-    private val promptWriteLock = Mutex()
-    private var latestPromptWrite = 0L
+        },
+        scope = viewModelScope,
+        onReasoningConfirmed = ::closeReasoningPicker,
+        onError = ::showSettingsError,
+        onSnapshot = ::applySettings,
+    )
+
+    private fun showSettingsError(message: String) {
+        loaded()?.let { _state.value = it.copy(actionError = message) }
+    }
+
+    /** The one Send gate: the composer and the edit confirmation both read it. */
+    internal val sendGate = SendGate { settingsWriter.pending }
 
     /**
-     * Settings writes the server has not confirmed. Counted synchronously in the
-     * handler rather than inside the launch: a Send evaluated on the same
-     * main-thread turn as the toggle must already see the write, or the gate is
-     * a race with a nicer name.
+     * One place where a server copy of the conversation becomes the screen's
+     * settings: the writer takes it as the confirmed values, and the state is
+     * rebuilt from the writer's snapshot rather than from the copy that was
+     * captured before the seed ran.
      */
-    private var settingWritesInFlight = 0
-
-    private fun launchSettingWrite(block: suspend () -> Unit) {
-        settingWritesInFlight++
-        publishSettingsPending()
-        viewModelScope.launch {
-            try {
-                block()
-            } finally {
-                settingWritesInFlight--
-                publishSettingsPending()
-            }
-        }
+    internal fun applyServerConversation(conversation: ConversationDetail): ConversationDetail {
+        settingsWriter.seed(conversation.promptId, conversation.mcpServers, conversation.reasoningLevel)
+        val settings = settingsWriter.current
+        val merged = conversation.copy(
+            promptId = settings.promptId,
+            mcpServers = settings.mcpServers,
+            reasoningLevel = settings.reasoningLevel,
+        )
+        loaded()?.let { _state.value = it.copy(conversation = merged) }
+        return merged
     }
 
-    private fun publishSettingsPending() {
-        val pending = settingWritesInFlight > 0
-        loaded()?.takeIf { it.settingsPending != pending }?.let {
-            _state.value = it.copy(settingsPending = pending)
-        }
+    private fun applySettings(settings: SettingsSnapshot) {
+        val current = loaded() ?: return
+        _state.value = current.copy(
+            conversation = current.conversation.copy(
+                promptId = settings.promptId,
+                mcpServers = settings.mcpServers,
+                reasoningLevel = settings.reasoningLevel,
+            ),
+            settingsPending = settings.pending,
+            reasoningPicker = current.reasoningPicker?.copy(writePending = settings.reasoningPending),
+        )
     }
-
-    /** Last value the server confirmed. The rollback target for a failed
-     * latest write; updated on every settled success and on every full
-     * conversation read. */
-    private var promptConfirmedId: String? = null
 
     private var ladders: Map<String, List<String>> = emptyMap()
 
@@ -206,10 +219,10 @@ class ThreadViewModel(
         staged: List<String> = emptyList(),
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
-        promptConfirmedId = conversation.promptId
-        val edit = reconcileEdit(current, conversation)
+        val merged = applyServerConversation(conversation)
+        val edit = reconcileEdit(current, merged)
         return ThreadUiState.Loaded(
-            conversation = conversation,
+            conversation = merged,
             thread = ThreadState(
                 messages = conversation.messages,
                 streaming = current?.thread?.streaming?.takeUnless { it.unconfirmed },
@@ -217,7 +230,7 @@ class ThreadViewModel(
             composer = edit.composer ?: adoptedDraft(draft) ?: current?.composer ?: draft,
             attachments = ((edit.attachments ?: current?.attachments).orEmpty() + staged).distinct(),
             attachmentImporting = current?.attachmentImporting ?: false,
-            settingsPending = settingWritesInFlight > 0,
+            settingsPending = settingsWriter.pending,
             sending = current?.sending ?: false,
             actionError = current?.actionError ?: edit.cancelNotice,
             pendingDelete = current?.pendingDelete?.takeIf { pending ->
@@ -327,7 +340,9 @@ class ThreadViewModel(
     fun openReasoningPicker() {
         val current = loaded() ?: return
         if (!current.canSwitchModel) return
-        _state.value = current.copy(reasoningPicker = ReasoningPickerState())
+        _state.value = current.copy(
+            reasoningPicker = ReasoningPickerState(writePending = settingsWriter.current.reasoningPending),
+        )
         viewModelScope.launch { refreshLadders() }
     }
 
@@ -342,28 +357,12 @@ class ThreadViewModel(
             closeReasoningPicker()
             return
         }
-        val previous = current.conversation.reasoningLevel
+        // The picker exists because the user just tapped a level in it; the
+        // writer's snapshot only ever updates one that is already open.
         _state.value = current.copy(
-            conversation = current.conversation.copy(reasoningLevel = level),
-            reasoningPicker = ReasoningPickerState(writePending = true),
+            reasoningPicker = current.reasoningPicker ?: ReasoningPickerState(writePending = true),
         )
-        val write = ++latestLevelWrite
-        launchSettingWrite {
-            levelWriteLock.withLock {
-                conversationsRepository.setReasoningLevel(conversationId, level).fold(
-                    onSuccess = { closeReasoningPicker() },
-                    onFailure = { failure ->
-                        if (write != latestLevelWrite) return@fold
-                        val latest = loaded() ?: return@fold
-                        _state.value = latest.copy(
-                            conversation = latest.conversation.copy(reasoningLevel = previous),
-                            reasoningPicker = latest.reasoningPicker?.let { ReasoningPickerState() },
-                            actionError = failure.appError.displayMessage,
-                        )
-                    },
-                )
-            }
-        }
+        settingsWriter.selectReasoningLevel(level)
     }
 
     private fun reattachIfRunning(conversation: ConversationDetail) {
@@ -450,10 +449,10 @@ class ThreadViewModel(
     private suspend fun reloadConversation() {
         val conversation = repository.load(conversationId).getOrNull() ?: return
         val current = loaded() ?: return
-        promptConfirmedId = conversation.promptId
-        val edit = reconcileEdit(current, conversation)
+        val merged = applyServerConversation(conversation)
+        val edit = reconcileEdit(current, merged)
         _state.value = current.copy(
-            conversation = conversation,
+            conversation = merged,
             thread = current.thread.copy(
                 messages = conversation.messages,
                 streaming = current.thread.streaming?.takeUnless { it.unconfirmed },
@@ -547,19 +546,16 @@ class ThreadViewModel(
     fun switchModel(ref: ModelRef) {
         val current = loaded() ?: return
         if (current.runActive) return
-        launchSettingWrite {
+        settingsWriter.guard {
             repository.updateMainService(conversationId, ref.wireValue).fold(
                 onSuccess = {
                     closeModelPicker()
                     reloadConversation()
                 },
-                onFailure = { failure ->
-                    loaded()?.let { _state.value = it.copy(actionError = failure.appError.displayMessage) }
-                },
+                onFailure = { failure -> showSettingsError(failure.appError.displayMessage) },
             )
         }
     }
-
 
     fun openSettings() {
         val current = loaded() ?: return
@@ -586,61 +582,14 @@ class ThreadViewModel(
         val current = loaded() ?: return
         if (!current.canToggleTools) return
         if (current.conversation.promptId == promptId) return
-        _state.value = current.copy(
-            conversation = current.conversation.copy(promptId = promptId),
-        )
-        val write = ++latestPromptWrite
-        launchSettingWrite {
-            promptWriteLock.withLock {
-                if (write != latestPromptWrite) return@withLock
-                conversationsRepository.setPrompt(conversationId, promptId).fold(
-                    onSuccess = {
-                        promptConfirmedId = promptId
-                        val latest = loaded() ?: return@fold
-                        if (write == latestPromptWrite && latest.conversation.promptId != promptId) {
-                            _state.value = latest.copy(
-                                conversation = latest.conversation.copy(promptId = promptId),
-                            )
-                        }
-                    },
-                    onFailure = { failure ->
-                        if (write != latestPromptWrite) return@fold
-                        val latest = loaded() ?: return@fold
-                        _state.value = latest.copy(
-                            conversation = latest.conversation.copy(promptId = promptConfirmedId),
-                            actionError = failure.appError.displayMessage,
-                        )
-                    },
-                )
-            }
-        }
+        settingsWriter.selectPrompt(promptId)
     }
 
     fun toggleTool(serverId: String) {
         val current = loaded() ?: return
         if (!current.canToggleTools) return
-        val previous = current.conversation.mcpServers
-        val next = if (serverId in previous) previous - serverId else previous + serverId
-        _state.value = current.copy(conversation = current.conversation.copy(mcpServers = next))
-
-        val toggle = ++latestToolsToggle
-        launchSettingWrite {
-            toolsWriteLock.withLock {
-                conversationsRepository.setMcpServers(conversationId, next).fold(
-                    onSuccess = {},
-                    onFailure = { failure ->
-                        if (toggle != latestToolsToggle) return@fold
-                        val latest = loaded() ?: return@fold
-                        _state.value = latest.copy(
-                            conversation = latest.conversation.copy(mcpServers = previous),
-                            actionError = failure.appError.displayMessage,
-                        )
-                    },
-                )
-            }
-        }
+        settingsWriter.toggleTool(serverId)
     }
-
 
     fun requestDelete(message: ChatMessage) {
         val current = loaded() ?: return
@@ -705,7 +654,7 @@ class ThreadViewModel(
     fun requestEditConfirm() {
         val current = loaded() ?: return
         val target = current.editingMessage ?: return
-        if (current.settingsPending) return
+        if (sendGate.blocked()) return
         if (current.composer.isBlank() && current.attachments.isEmpty()) return
         _state.value = current.copy(
             pendingEdit = PendingEdit(
@@ -973,10 +922,10 @@ class ThreadViewModel(
             return
         }
 
-        promptConfirmedId = refetched.promptId
+        val merged = applyServerConversation(refetched)
         _state.value = latest.copy(
             sending = false,
-            conversation = refetched,
+            conversation = merged,
             thread = ThreadState(messages = refetched.messages, streaming = null),
             actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
         )

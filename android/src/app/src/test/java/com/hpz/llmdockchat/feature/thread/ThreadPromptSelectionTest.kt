@@ -176,6 +176,28 @@ class ThreadPromptSelectionTest {
 
     // -- selection ------------------------------------------------------------
 
+    /**
+     * A server copy that lands mid-write is older than the write. The merged
+     * conversation is what every caller must use, or the screen shows the value
+     * the server had before the user's choice.
+     */
+    @Test
+    fun `a server copy that lands during a prompt write keeps the chosen prompt`() = threadTest {
+        conversation()
+        enqueue("""{"id": "$CONVERSATION_ID"}""")
+        val viewModel = openedThread()
+        val stale = viewModel.awaitLoaded().conversation.copy(promptId = "stale")
+
+        viewModel.selectPrompt("chosen")
+        val merged = viewModel.applyServerConversation(stale)
+
+        assertEquals("chosen", merged.promptId)
+        assertEquals(
+            "chosen",
+            (viewModel.state.value as ThreadUiState.Loaded).conversation.promptId,
+        )
+    }
+
     @Test
     fun `selecting a prompt updates the reference and PUTs the id alone`() = threadTest {
         conversation()
