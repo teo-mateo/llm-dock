@@ -22,11 +22,18 @@
   value on ds4, tabbyapi or ninfer is a 400, so no inert value is stored.
 - **A failed recreate is not reported as applied.** The response is 200 (the
   config is committed) with `restarted: false` and `recreate_error`, and the
-  UI shows it as an error. The `metadata-changed` delta carries `image` only
-  when the payload will report it: the recreate succeeded, or the service has
-  no container yet. An existing stopped container keeps reporting its
-  creation-time image until it is recreated.
-- **Advisory presence check.** `docker_utils.image_presence_warning` reuses
+  UI shows it as an error. The response field is `configured_image`: what
+  services.json now renders, not necessarily what runs. The
+  `metadata-changed` delta carries the image the payload will report, computed
+  by `docker_utils.reported_image` (the creation-time image of an existing
+  container, else the configured one), so a failed recreate or an existing
+  stopped container announces the old image and a successful recreate or a
+  service with no container announces the new one.
+- **Planner and executor.** `flag_metadata.plan_image_change` is the pure
+  before/after comparison; `service_recreate.apply_update_effects` runs the
+  rebuild or the recreate and returns `restarted`, `error` and the reported
+  image. The route only wires them, and the case table is tested without Flask.
+- **Advisory presence check.** `docker_utils.image_presence_warnings` reuses
   `get_image_info`: a missing local image adds a non-blocking warning, a
   lookup failure adds nothing.
 - **Capability to the UI.** `GET /api/services/<name>` adds `image_override`,

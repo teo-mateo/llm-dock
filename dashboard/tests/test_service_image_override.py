@@ -138,8 +138,9 @@ class TestPresenceWarning:
 
 
 class Container:
-    def __init__(self, status):
+    def __init__(self, status, image="llm-dock-llamacpp"):
         self.status = status
+        self.attrs = {"Config": {"Image": image}}
 
 
 @pytest.fixture
@@ -209,7 +210,7 @@ class TestCreate:
     def test_response_carries_the_effective_image(self, api):
         _, resp = _create(api, image="mine:1")
 
-        assert resp.get_json()["image"] == "mine:1"
+        assert resp.get_json()["configured_image"] == "mine:1"
 
     def test_a_missing_local_image_warns_without_failing(self, api, monkeypatch):
         monkeypatch.setattr(docker_utils, "get_image_info", lambda n: {"exists": False})
@@ -243,7 +244,7 @@ class TestUpdate:
 
         body = resp.get_json()
         assert resp.status_code == 200
-        assert body["image"] == "mine:2" and body["restarted"] is False
+        assert body["configured_image"] == "mine:2" and body["restarted"] is False
         assert api["stored"]()[name]["image"] == "mine:2"
         assert "image: mine:2" in api["compose"].read_text()
         assert api["state"]["docker_calls"] == []
@@ -271,44 +272,12 @@ class TestUpdate:
         assert api["state"]["docker_calls"] == []
         assert not any("image" in (d.get("metadata") or {}) for d in api["deltas"][before:])
 
-    def test_a_failed_recreate_is_reported_and_never_announced_as_the_running_image(self, api):
-        name, _ = _create(api)
-        api["state"]["container"] = Container("running")
-        api["state"].update(docker_rc=1, docker_stderr="pull access denied for mine")
-        before = len(api["deltas"])
-
-        resp = _put(api, name, image="mine:2")
-
-        body = resp.get_json()
-        assert resp.status_code == 200
-        assert body["restarted"] is False
-        assert body["recreate_error"] == "pull access denied for mine"
-        assert api["stored"]()[name]["image"] == "mine:2"
-        assert not any("image" in (d.get("metadata") or {}) for d in api["deltas"][before:])
-
-    def test_an_existing_stopped_container_keeps_its_creation_time_image_in_the_payload(self, api):
-        name, _ = _create(api)
-        api["state"]["container"] = Container("exited")
-
-        body = _put(api, name, image="mine:2").get_json()
-
-        assert body["restarted"] is False
-        assert api["state"]["docker_calls"] == []
-        assert _image_deltas(api) == []
-
-    def test_a_service_with_no_container_announces_the_new_image(self, api):
-        name, _ = _create(api)
-
-        _put(api, name, image="mine:2")
-
-        assert _image_deltas(api)[-1]["metadata"]["image"] == "mine:2"
-
     def test_an_empty_image_resets_to_the_engine_default(self, api):
         name, _ = _create(api, image="mine:2")
 
         body = _put(api, name, image="").get_json()
 
-        assert body["image"] == ENGINE_IMAGES["llamacpp"]
+        assert body["configured_image"] == ENGINE_IMAGES["llamacpp"]
         assert f"image: {ENGINE_IMAGES['llamacpp']}" in api["compose"].read_text()
         assert "image: \n" not in api["compose"].read_text()
 
@@ -328,3 +297,8 @@ class TestUpdate:
 
         assert resp.status_code == 200
         assert any("mine:2" in w for w in resp.get_json()["warnings"])
+
+
+def test_reported_image_prefers_the_container_over_the_configuration():
+    assert docker_utils.reported_image("img:old", "img:new") == "img:old"
+    assert docker_utils.reported_image(None, "img:new") == "img:new"

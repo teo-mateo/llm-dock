@@ -53,6 +53,12 @@ def _image_registry(image_name: str):
     return "docker.io"
 
 
+def reported_image(container_image: str | None, configured_image: str) -> str:
+    """What the service payload reports: a container's creation-time image wins
+    over the configured one, which only describes a service with no container."""
+    return container_image or configured_image
+
+
 def image_presence_warnings(image_name: str | None, lookup=None) -> list[str]:
     if not image_name:
         return []
@@ -294,7 +300,7 @@ def get_docker_services():
                 "container_id": container.id[:12],
                 "created": container.attrs["Created"],
                 "ports": container.ports,
-                "image": container.attrs["Config"]["Image"],
+                "image": reported_image(container.attrs["Config"]["Image"], image_map.get(service_name, "")),
                 "host_port": host_port_for(service_name),
                 "api_key": api_key_map.get(service_name, ""),
                 "openwebui_registered": is_registered_in_openwebui(service_name),
@@ -334,7 +340,7 @@ def get_docker_services():
                     "container_id": None,
                     "created": None,
                     "ports": {},
-                    "image": image_map.get(service_name, ""),
+                    "image": reported_image(None, image_map.get(service_name, "")),
                     "host_port": host_port_for(service_name),
                     "api_key": api_key_map.get(service_name, ""),
                     "openwebui_registered": is_registered_in_openwebui(service_name),

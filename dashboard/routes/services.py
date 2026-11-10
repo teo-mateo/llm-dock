@@ -19,12 +19,10 @@ from flag_metadata import (
     generate_service_name as gen_service_name,
     validate_service_config,
     get_flag_metadata,
-    MANDATORY_FIELDS,
-    IMAGE_OVERRIDE_ENGINES,
-    effective_image,
+    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
-from service_recreate import IMAGE_CHANGE_TIMEOUT_S, NOT_FOUND, RESTART_TIMEOUT_S, recreate, restart_if_running
+from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -51,14 +49,16 @@ _serialize_db = serialize_db
 _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
 
 
-def _recreate_if_running(service_name, rebuild=False, finish=lambda s, n: None, timeout=RESTART_TIMEOUT_S):
+def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
     container = get_service_container(service_name)
     status = container.status if container else "not-created"
-    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish, timeout)
+    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish)
 
 
-def _rebuild_and_restart(compose_mgr, service_name, timeout=RESTART_TIMEOUT_S):
-    return _recreate_if_running(service_name, True, lambda s, n: proxy_supervisor.sync(), timeout)
+def _rebuild_and_restart(compose_mgr, service_name):
+    return _recreate_if_running(
+        service_name, rebuild=True, finish=lambda services, name: proxy_supervisor.sync()
+    )
 
 
 # ============================================
@@ -326,7 +326,7 @@ def create_service():
             "service_name": service_name,
             "port": port,
             "api_key": data["api_key"],
-            "image": effective_image(template_type, data),
+            "configured_image": effective_image(template_type, data),
             "message": f'Service "{service_name}" created successfully',
         }
         if warnings:
@@ -401,10 +401,9 @@ def update_service(service_name):
 
         # Update in database — merge into existing to preserve fields not
         # sent by the client (favorite, etc.)
-        old_image = effective_image(template_type, existing)
+        before = dict(existing)
         existing.update(data)
-        new_image = effective_image(template_type, existing)
-        image_changed = old_image != new_image
+        plan = plan_image_change(template_type, before, existing)
         compose_mgr.update_service_in_db(service_name, existing)
 
         # Advisory, over the MERGED params: a typo stored before this check
@@ -418,17 +417,11 @@ def update_service(service_name):
         if warnings:
             logger.warning(f"Service {service_name} update with unknown {template_type} flags: {warnings}")
 
-        if image_changed:
-            warnings += image_presence_warnings(existing.get("image"))
-            recreate_result = _rebuild_and_restart(compose_mgr, service_name, IMAGE_CHANGE_TIMEOUT_S)
-        else:
-            compose_mgr.rebuild_compose_file()
-            # The update may have moved the public port out from under a running
-            # inspector proxy; sync() is a no-op when nothing is inspected.
-            proxy_supervisor.sync()
-            recreate_result = {"restarted": False}
-        restarted = recreate_result["restarted"]
-        announce = image_changed and (restarted or get_service_container(service_name) is None)
+        warnings += image_presence_warnings(existing.get("image")) if plan.changed else []
+        effects = apply_update_effects(
+            plan, service_name, get_service_container(service_name), COMPOSE_FILE,
+            compose_mgr.rebuild_compose_file, proxy_supervisor.sync,
+        )
 
         # Broadcast the ladder to every SSE consumer: chat reads it off the
         # service payload, not off this config fetch, and rejects a level the
@@ -441,7 +434,7 @@ def update_service(service_name):
             "container_id": None,
             "metadata": {
                 "reasoning_levels": parse_levels(existing.get("reasoning_levels")),
-                **({"image": new_image} if announce else {}),
+                **({"image": effects.reported_image} if plan.changed else {}),
             },
             "timestamp": time.time(),
         })
@@ -452,11 +445,8 @@ def update_service(service_name):
             "success": True,
             "service_name": service_name,
             "message": f'Service "{service_name}" updated successfully',
-            "image": new_image,
-            "restarted": restarted,
+            **effects.response_fields(plan),
         }
-        if recreate_result.get("error"):
-            response["recreate_error"] = recreate_result["error"]
         if warnings:
             response["warnings"] = warnings
         return jsonify(response), 200

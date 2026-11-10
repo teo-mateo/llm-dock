@@ -3,6 +3,7 @@ Flag metadata and validation for service templates.
 Defines how flags are rendered and validated for each template type.
 """
 
+from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple, Optional, Set
 from service_templates import sanitize_service_name
 from reasoning_levels import validate_levels
@@ -78,6 +79,17 @@ def effective_image(template_type: str, config: dict) -> str:
     if template_type in IMAGE_OVERRIDE_ENGINES:
         return config.get("image") or default_engine_image(template_type)
     return default_engine_image(template_type)
+
+
+@dataclass(frozen=True)
+class ImagePlan:
+    changed: bool
+    new_image: str
+
+
+def plan_image_change(template_type: str, before: dict, after: dict) -> ImagePlan:
+    new_image = effective_image(template_type, after)
+    return ImagePlan(new_image != effective_image(template_type, before), new_image)
 
 
 def openwebui_base_url(service_name: str, template_type: str) -> str:
