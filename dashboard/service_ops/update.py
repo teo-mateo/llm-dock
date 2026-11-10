@@ -2,11 +2,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
-import flag_surfaces
-from flag_metadata import plan_image_change, validate_service_config
-from port_conflicts import PortOwner, find_port_owner
+from flag_metadata import plan_image_change
 from reasoning_levels import parse_levels
 
+from .config_checks import PortInUse, ValidationFailed, port_conflict, unknown_flag_warnings, validate
 from .deps import Infra
 from .errors import ErrorKind, OpError, service_not_found
 from .hooks import Cause, Phase, ServicesChangedContext, run_phase
@@ -33,17 +32,6 @@ class Updated:
     restarted: bool = False
     recreate_error: str | None = None
     warnings: list = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class ValidationFailed:
-    details: list
-
-
-@dataclass(frozen=True)
-class PortInUse:
-    port: int
-    owner: PortOwner
 
 
 def update(deps: UpdateDeps, name: str, data: dict) -> Updated | ValidationFailed | PortInUse | OpError:
@@ -74,28 +62,21 @@ def update(deps: UpdateDeps, name: str, data: dict) -> Updated | ValidationFaile
     data["template_type"] = template_type
     data.pop("inspect_upstream_port", None)
 
-    valid, errors = validate_service_config(template_type, data)
-    if not valid:
-        return ValidationFailed(errors)
+    invalid = validate(template_type, data)
+    if invalid:
+        return invalid
 
     if "port" in data and int(data["port"]) != int(existing.get("port", 0)):
-        new_port = int(data["port"])
-        owner = find_port_owner(
-            compose.list_services_in_db(), new_port, exclude=name, compose_ports=compose.get_used_ports()
-        )
-        if owner:
-            return PortInUse(new_port, owner)
+        conflict = port_conflict(compose, int(data["port"]), exclude=name)
+        if conflict:
+            return conflict
 
     before = dict(existing)
     existing.update(data)
     plan = plan_image_change(template_type, before, existing)
     compose.update_service_in_db(name, existing)
 
-    warnings = [
-        f"Unknown {template_type} flag: {flag} (not in the engine's recorded "
-        f"flag surface; it will be passed through and may fail at startup)"
-        for flag in flag_surfaces.unknown_service_params(template_type, existing.get("params"))
-    ]
+    warnings = unknown_flag_warnings(template_type, existing.get("params"))
     if warnings:
         logger.warning(f"Service {name} update with unknown {template_type} flags: {warnings}")
     if plan.changed:

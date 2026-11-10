@@ -10,26 +10,22 @@ from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
+from docker_utils import get_docker_services, get_service_container, control_service, get_image_info
 from model_discovery import inspect_model
-from service_templates import generate_api_key
 from flag_metadata import (
-    generate_service_name as gen_service_name,
-    validate_service_config,
     get_flag_metadata,
-    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image,
-    FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
+    MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES,
+    FLAG_METADATA_BY_TYPE, flag_metadata_types_message,
 )
 import port_conflicts
-from port_conflicts import find_port_owner, port_in_use_body
+from port_conflicts import port_in_use_body
 import service_ops
-from service_ops import update_wiring, wiring
+from service_ops import create_wiring, update_wiring, wiring
 from service_ops.errors import ErrorKind, OpError
 from service_ops.set_public_port import AlreadyPublic
-from service_ops.update import PortInUse, ValidationFailed
+from service_ops.config_checks import PortInUse, ValidationFailed
 from service_recreate import NOT_FOUND, recreate
 from service_start_guard import check_start, current_statuses, finish_start
-import flag_surfaces
 from inspector.supervisor import proxy_supervisor
 
 logger = logging.getLogger(__name__)
@@ -266,70 +262,24 @@ def create_service():
         if not data:
             return jsonify({"error": "Request body is required"}), 400
 
-        template_type = data.get("template_type")
-        if not template_type:
-            return jsonify({"error": "template_type is required"}), 400
-        if template_type not in SERVICE_ENGINES:
-            return jsonify({"error": service_engines_message()}), 400
-
-        # Auto-generate API key if not provided
-        if not data.get("api_key"):
-            data["api_key"] = generate_api_key()
-
-        # Server-owned: the toggle endpoint allocates it, a client-supplied
-        # value could pick a colliding or out-of-band port.
-        data.pop("inspect_upstream_port", None)
-
-        # Validate configuration
-        valid, errors = validate_service_config(template_type, data)
-        if not valid:
-            return jsonify({"error": "Validation failed", "details": errors}), 400
-
-        # Advisory: flags the engine's recorded surface does not know. The flag
-        # still ships to the container verbatim (render_cli_flag is permissive),
-        # so this warns instead of rejecting — a typo or an upstream-removed flag
-        # otherwise fails at container startup, not at config time.
-        warnings = [
-            f"Unknown {template_type} flag: {flag} (not in the engine's recorded "
-            f"flag surface; it will be passed through and may fail at startup)"
-            for flag in flag_surfaces.unknown_service_params(template_type, data.get("params"))
-        ]
-        if warnings:
-            logger.warning(f"Service create with unknown {template_type} flags: {warnings}")
-        warnings += image_presence_warnings(data.get("image"))
-
-        # Generate service name from alias
-        service_name = gen_service_name(template_type, data.get("alias"))
-
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check if service already exists
-        if compose_mgr.get_service_from_db(service_name):
-            return jsonify({"error": f'Service "{service_name}" already exists'}), 409
-
-        port = int(data["port"])
-        owner = find_port_owner(
-            compose_mgr.list_services_in_db(), port, compose_ports=compose_mgr.get_used_ports()
-        )
-        if owner:
-            return jsonify(port_in_use_body(port, owner)), 400
-
-        # Add to database and rebuild
-        compose_mgr.add_service_to_db(service_name, data)
-        compose_mgr.rebuild_compose_file()
-
-        logger.info(f"Service created: {service_name} on port {port}")
+        outcome = service_ops.create(create_wiring.create_deps(COMPOSE_FILE), data)
+        if isinstance(outcome, OpError):
+            return _op_error(outcome)
+        if isinstance(outcome, ValidationFailed):
+            return jsonify({"error": "Validation failed", "details": outcome.details}), 400
+        if isinstance(outcome, PortInUse):
+            return jsonify(port_in_use_body(outcome.port, outcome.owner)), 400
 
         response = {
             "success": True,
-            "service_name": service_name,
-            "port": port,
-            "api_key": data["api_key"],
-            "configured_image": effective_image(template_type, data),
-            "message": f'Service "{service_name}" created successfully',
+            "service_name": outcome.name,
+            "port": outcome.port,
+            "api_key": outcome.api_key,
+            "configured_image": outcome.configured_image,
+            "message": f'Service "{outcome.name}" created successfully',
         }
-        if warnings:
-            response["warnings"] = warnings
+        if outcome.warnings:
+            response["warnings"] = outcome.warnings
         return jsonify(response), 201
 
     except Exception as e:
