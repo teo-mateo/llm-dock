@@ -53,7 +53,9 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -196,6 +198,34 @@ class ThreadPromptSelectionTest {
             "chosen",
             (viewModel.state.value as ThreadUiState.Loaded).conversation.promptId,
         )
+    }
+
+    @Test
+    fun `a reload while a prompt write is outstanding keeps the saving indicator on`() = threadTest {
+        conversation()
+        server.enqueue(MockResponse.Builder().body("""{"ok": true}""").build())
+        conversation("conversation_multi_turn_after_delete.json")
+        val writes = GatedPromptWrites(conversationsApi)
+        writes.script(0, PromptOutcome.Succeed("prompt-a"))
+        val viewModel = viewModel(conversations = writes)
+        viewModel.load()
+        val loaded = viewModel.awaitLoaded()
+
+        viewModel.selectPrompt("prompt-a")
+        drainMain()
+        writes.awaitArrivals(1)
+        assertTrue(viewModel.awaitLoaded().settingsPending)
+
+        viewModel.requestDelete(loaded.thread.messages.single { it.id == "m2" })
+        viewModel.confirmDelete()
+        val reloaded = viewModel.awaitState { it.thread.messages.none { message -> message.id == "m2" } }
+
+        assertTrue("the write is still parked", reloaded.settingsPending)
+
+        writes.release(0)
+        writes.awaitSettled(1)
+        drainMain()
+        assertFalse(viewModel.awaitLoaded().settingsPending)
     }
 
     @Test

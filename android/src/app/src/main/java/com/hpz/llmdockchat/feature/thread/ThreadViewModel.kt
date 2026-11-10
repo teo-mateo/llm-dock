@@ -450,12 +450,15 @@ class ThreadViewModel(
         val current = loaded() ?: return
         val merged = applyServerConversation(conversation)
         val edit = reconcileEdit(current, merged)
-        _state.value = current.copy(
+        val base = loaded() ?: return
+        _state.value = base.copy(
             conversation = merged,
             thread = current.thread.copy(
                 messages = conversation.messages,
                 streaming = current.thread.streaming?.takeUnless { it.unconfirmed },
             ),
+            settingsPending = settingsWriter.pending,
+            reasoningPicker = base.reasoningPicker?.copy(writePending = settingsWriter.current.reasoningPending),
             composer = edit.composer ?: current.composer,
             attachments = edit.attachments ?: current.attachments,
             actionError = current.actionError ?: edit.cancelNotice,
@@ -922,9 +925,12 @@ class ThreadViewModel(
         }
 
         val merged = applyServerConversation(refetched)
-        _state.value = latest.copy(
+        val base = loaded() ?: return
+        _state.value = base.copy(
             sending = false,
             conversation = merged,
+            settingsPending = settingsWriter.pending,
+            reasoningPicker = base.reasoningPicker?.copy(writePending = settingsWriter.current.reasoningPending),
             thread = ThreadState(messages = refetched.messages, streaming = null),
             actionError = if (failureMessage == null) error?.appError?.displayMessage else null,
         )
