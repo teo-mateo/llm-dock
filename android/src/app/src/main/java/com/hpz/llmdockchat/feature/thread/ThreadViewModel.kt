@@ -28,7 +28,8 @@ import com.hpz.llmdockchat.data.model.ParseWarning
 import com.hpz.llmdockchat.data.model.ServiceSummary
 import com.hpz.llmdockchat.data.model.wireValue
 import com.hpz.llmdockchat.core.attachment.AttachmentImporter
-import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.core.attachment.AutoSendClaimStore
+import com.hpz.llmdockchat.core.attachment.ConversationAttachments
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -45,7 +46,8 @@ class ThreadViewModel(
     private val conversationId: String,
     private val repository: ChatRepository,
     private val drafts: DraftStore,
-    private val attachmentStore: SharedDraftStore? = null,
+    private val conversationAttachments: ConversationAttachments? = null,
+    private val autoSendClaims: AutoSendClaimStore? = null,
     private val editStates: EditStateStore? = null,
     private val servicesStreamRepository: ServicesStreamRepository,
     private val servicesRepository: ServicesRepository,
@@ -153,7 +155,7 @@ class ThreadViewModel(
     fun load() {
         viewModelScope.launch {
             val draft = drafts.draft(conversationId)
-            val staged = attachmentStore?.attachments(conversationId).orEmpty()
+            val staged = conversationAttachments?.attachments(conversationId).orEmpty()
             repository.load(conversationId).fold(
                 onSuccess = { conversation ->
                     _state.value = loadedFrom(conversation, draft, staged)
@@ -184,7 +186,7 @@ class ThreadViewModel(
     private suspend fun fireAutoSend() {
         if (autoSendFired) return
         if (loaded()?.runActive == true) return
-        val message = attachmentStore?.takeAutoSend(conversationId) ?: return
+        val message = autoSendClaims?.takeAutoSend(conversationId) ?: return
         autoSendFired = true
         // The exactly-one-turn contract outranks an interrupted edit:
         // the claim spends the composer, so a restored edit banner over the
@@ -408,7 +410,7 @@ class ThreadViewModel(
             thread = current.thread.copy(streaming = StreamingTurn(userMessage = pending)),
         )
         clearDraft()
-        attachmentStore?.clear(conversationId)
+        conversationAttachments?.clear(conversationId)
 
         collectRun(
             first = repository.send(conversationId, pending.content, pending.images),
@@ -497,11 +499,11 @@ class ThreadViewModel(
         val current = loaded() ?: return
         if (index !in current.attachments.indices) return
         _state.value = current.copy(attachments = current.attachments.filterIndexed { i, _ -> i != index })
-        attachmentStore?.removeAttachment(conversationId, index)
+        conversationAttachments?.removeAttachment(conversationId, index)
     }
 
     fun leaveThread() {
-        attachmentStore?.clear(conversationId)
+        conversationAttachments?.clear(conversationId)
     }
 
     fun reportAttachmentFailure(message: String) {

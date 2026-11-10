@@ -1,5 +1,7 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.AutoSendClaimStore
+import com.hpz.llmdockchat.core.attachment.ConversationAttachments
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.SerialWriteQueue
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +51,7 @@ import java.io.IOException
 class SharedDraftStore(
     private val dir: File,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined),
-) {
+) : ConversationAttachments, AutoSendClaimStore {
 
     private val _pending = MutableStateFlow<StagedShare?>(readPending())
     val pending: StateFlow<StagedShare?> = _pending.asStateFlow()
@@ -203,7 +205,7 @@ class SharedDraftStore(
     }
 
     /** Reads the claim and spends it, so no second visit can send it again. */
-    suspend fun takeAutoSend(conversationId: String): String? = drain {
+    override suspend fun takeAutoSend(conversationId: String): String? = drain {
         val file = autoSendFile(conversationId)
         if (!file.exists()) return@drain null
         val message = runCatching { file.readText() }.getOrNull()
@@ -246,7 +248,7 @@ class SharedDraftStore(
     }
 
     /** Read back the staged attachments for a conversation. */
-    suspend fun attachments(conversationId: String): List<String> = drain {
+    override suspend fun attachments(conversationId: String): List<String> = drain {
         val files = conversationDir(conversationId).listFiles().orEmpty()
             .sortedBy { it.nameWithoutExtension.toIntOrNull() }
         files.mapNotNull { file -> file.readText().takeIf { it.isNotEmpty() } }
@@ -257,7 +259,7 @@ class SharedDraftStore(
      * list — the file for that index is deleted and the rest renumbered, so a
      * later re-entry cannot resurrect a removed attachment — no ghosts.
      */
-    fun removeAttachment(conversationId: String, index: Int) {
+    override fun removeAttachment(conversationId: String, index: Int) {
         enqueue {
             val convDir = conversationDir(conversationId)
             if (!convDir.exists()) return@enqueue
@@ -274,7 +276,7 @@ class SharedDraftStore(
     }
 
     /** Send, or leaving the thread — the staged record is spent. */
-    fun clear(conversationId: String) {
+    override fun clear(conversationId: String) {
         enqueue {
             conversationDir(conversationId).deleteRecursively()
             autoSendFile(conversationId).delete()
