@@ -4,7 +4,6 @@ import threading
 import time
 import subprocess
 from datetime import datetime
-from typing import Generator
 from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 
 from auth import require_auth
@@ -878,39 +877,7 @@ def _now() -> str:
 # SSE Stream Endpoint
 # ============================================
 
-# Event type constants for SSE messages
-SSE_SNAPSHOT = "snapshot"
-SSE_DELTA = "delta"
-SSE_ERROR = "error"
 SSE_KEEPALIVE_INTERVAL_S = 5.0
-
-
-def _snapshot_frame(snapshot: list[dict]) -> str:
-    payload = {
-        "type": SSE_SNAPSHOT,
-        "data": {
-            "services": snapshot,
-            "total": len(snapshot),
-            "running": sum(1 for s in snapshot if s["status"] == "running"),
-            "stopped": sum(1 for s in snapshot if s["status"] != "running"),
-        },
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-    return "data: " + json.dumps(payload) + "\n\n"
-
-
-def _delta_frame(event: dict) -> str:
-    payload = {
-        "type": SSE_DELTA,
-        "service_name": event["service_name"],
-        "status": event["status"],
-        "action": event["action"],
-        "container_id": event["container_id"],
-        "timestamp": datetime.fromtimestamp(event["timestamp"]).isoformat() + "Z",
-    }
-    if "metadata" in event:
-        payload["metadata"] = event["metadata"]
-    return "data: " + json.dumps(payload) + "\n\n"
 
 
 @services_bp.route("/api/services/stream", methods=["GET"])
@@ -922,40 +889,12 @@ def services_stream():
     then streams delta updates as Docker events occur.
     """
     from services import event_manager
-    from services.service_stream import DELTA, ServiceStream
-
-    def generate() -> Generator[str, None, None]:
-        stream = ServiceStream(event_manager)
-        try:
-            logger.info("SSE client connected to /api/services/stream")
-
-            yield _snapshot_frame(stream.open())
-
-            # The idle branch parks in stream.wait(), not sleep(), so a delta that
-            # lands mid-wait is written out at once instead of after a full
-            # keepalive interval — a client would otherwise keep showing a row
-            # the server has already deleted.
-            while True:
-                item = stream.poll()
-                if item is None:
-                    yield ": keepalive\n\n"
-                    stream.wait(SSE_KEEPALIVE_INTERVAL_S)
-                    continue
-                kind, body = item
-                yield _delta_frame(body) if kind == DELTA else _snapshot_frame(body)
-
-        except GeneratorExit:
-            logger.info("SSE client disconnected")
-        except Exception as e:
-            current_app.logger.error("SSE stream error: %s", e)
-            error_payload = {"type": SSE_ERROR, "message": str(e)}
-            yield "data: " + json.dumps(error_payload) + "\n\n"
-        finally:
-            stream.close()
-            logger.debug("SSE callback unregistered")
+    from services.service_stream import ServiceStream
 
     return Response(
-        stream_with_context(generate()),
+        stream_with_context(
+            ServiceStream(event_manager).frames(SSE_KEEPALIVE_INTERVAL_S)
+        ),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

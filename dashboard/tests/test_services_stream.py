@@ -1,13 +1,27 @@
 import json
 import os
 import sys
+import time
+from datetime import datetime
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-stream")
 
-from routes import services as services_route
-from services.service_stream import DELTA, SNAPSHOT, ServiceStream
+from services.service_stream import ServiceStream
+from services.service_stream_frames import (
+    DELTA,
+    ERROR,
+    KEEPALIVE_FRAME,
+    SNAPSHOT,
+    delta_frame,
+    error_frame,
+    snapshot_frame,
+)
+
+FIXED_NOW = datetime(2026, 11, 10, 16, 0, 0)
 
 
 def _event(name, status, action="die"):
@@ -43,22 +57,32 @@ class FakeManager:
         return snapshot
 
 
-def _apply(view, kind, body):
-    if kind == SNAPSHOT:
-        return {s["name"]: s["status"] for s in body}
+def _frames(manager, **kwargs):
+    return ServiceStream(manager, **kwargs).frames(0, now=lambda: FIXED_NOW)
+
+
+def _parse(frame):
+    return json.loads(frame[len("data: "):])
+
+
+def _apply(view, frame):
+    if frame == KEEPALIVE_FRAME:
+        return view
+    payload = _parse(frame)
+    if payload["type"] == SNAPSHOT:
+        return {s["name"]: s["status"] for s in payload["data"]["services"]}
     view = dict(view)
-    view[body["service_name"]] = body["status"]
+    view[payload["service_name"]] = payload["status"]
     return view
 
 
-def _drain(stream, view):
-    while (item := stream.poll()) is not None:
-        view = _apply(view, *item)
-    return view
-
-
-def _connect(manager, stream):
-    return {s["name"]: s["status"] for s in stream.open()}
+def _settle(gen, view):
+    for _ in range(50):
+        frame = next(gen)
+        if frame == KEEPALIVE_FRAME:
+            return view
+        view = _apply(view, frame)
+    raise AssertionError("stream never went idle")
 
 
 def test_event_during_snapshot_acquisition_is_delivered():
@@ -69,22 +93,21 @@ def test_event_during_snapshot_acquisition_is_delivered():
         manager.emit(_event("svc", "exited"))
 
     manager.on_snapshot = change_mid_snapshot
-    stream = ServiceStream(manager)
-    view = _connect(manager, stream)
-    view = _drain(stream, view)
+    gen = _frames(manager)
+    view = _apply({}, next(gen))
 
-    assert view == {"svc": "exited"}
+    assert _settle(gen, view) == {"svc": "exited"}
 
 
 def test_event_right_after_first_yield_is_delivered():
     manager = FakeManager({"svc": "running"})
-    stream = ServiceStream(manager)
-    view = _connect(manager, stream)
+    gen = _frames(manager)
+    view = _apply({}, next(gen))
 
     manager.state["svc"] = "exited"
     manager.emit(_event("svc", "exited"))
 
-    assert _drain(stream, view) == {"svc": "exited"}
+    assert _settle(gen, view) == {"svc": "exited"}
 
 
 def test_replayed_deltas_end_on_the_final_state():
@@ -95,101 +118,124 @@ def test_replayed_deltas_end_on_the_final_state():
         manager.emit(_event("svc", "exited", "die"))
 
     manager.on_snapshot = burst
-    stream = ServiceStream(manager)
-    view = _drain(stream, _connect(manager, stream))
+    gen = _frames(manager)
+    view = _apply({}, next(gen))
 
-    assert view == {"svc": "exited"}
+    assert _settle(gen, view) == {"svc": "exited"}
 
 
-def test_immediate_disconnect_unregisters():
+def test_disconnect_right_after_the_first_frame_unregisters():
     manager = FakeManager({"svc": "running"})
-    stream = ServiceStream(manager)
-    stream.open()
+    gen = _frames(manager)
+    assert _parse(next(gen))["type"] == SNAPSHOT
     assert len(manager.callbacks) == 1
 
-    stream.close()
-    stream.close()
+    gen.close()
 
     assert manager.callbacks == []
 
 
-def test_generator_close_after_first_frame_unregisters(monkeypatch):
-    from services import event_manager
-
+def test_unstarted_stream_registers_nothing():
     manager = FakeManager({"svc": "running"})
-    monkeypatch.setattr(event_manager, "register_callback", manager.register_callback)
-    monkeypatch.setattr(event_manager, "unregister_callback", manager.unregister_callback)
-    monkeypatch.setattr(event_manager, "get_services_snapshot", manager.get_services_snapshot)
-
-    generate = _generator(services_route)
-    first = next(generate)
-    assert json.loads(first[len("data: "):])["type"] == "snapshot"
-    assert len(manager.callbacks) == 1
-
-    generate.close()
+    gen = _frames(manager)
+    gen.close()
 
     assert manager.callbacks == []
 
 
-def _generator(route_module):
-    from flask import Flask
+def test_snapshot_failure_yields_an_error_frame_and_unregisters():
+    manager = FakeManager({"svc": "running"})
 
-    app = Flask(__name__)
-    with app.test_request_context("/api/services/stream"):
-        view = route_module.services_stream.__wrapped__
-        response = view()
-        return response.response.__self__ if hasattr(response.response, "__self__") else response.response
+    def boom():
+        raise RuntimeError("docker is down")
+
+    manager.on_snapshot = boom
+    gen = _frames(manager)
+
+    assert _parse(next(gen)) == {"type": ERROR, "message": "docker is down"}
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert manager.callbacks == []
 
 
 def test_updates_after_subscription_still_flow():
     manager = FakeManager({"svc": "running"})
-    stream = ServiceStream(manager)
-    view = _connect(manager, stream)
-    assert stream.poll() is None
+    gen = _frames(manager)
+    view = _apply({}, next(gen))
+    assert next(gen) == KEEPALIVE_FRAME
 
     manager.emit(_event("svc", "exited"))
-    first = stream.poll()
+    first = next(gen)
     manager.emit(_event("svc", "running", "start"))
-    second = stream.poll()
+    second = next(gen)
 
-    assert first[0] == DELTA and second[0] == DELTA
-    assert _apply(_apply(view, *first), *second) == {"svc": "running"}
+    assert _parse(first)["type"] == DELTA and _parse(second)["type"] == DELTA
+    assert _apply(_apply(view, first), second) == {"svc": "running"}
 
 
 def test_overflow_resnapshots_instead_of_growing_unbounded():
     manager = FakeManager({"svc": "running"})
-    stream = ServiceStream(manager, max_pending=3)
-    view = _connect(manager, stream)
+    gen = _frames(manager, max_pending=3)
+    view = _apply({}, next(gen))
+    assert next(gen) == KEEPALIVE_FRAME
 
     for _ in range(10):
         manager.emit(_event("svc", "running", "start"))
     manager.state["svc"] = "exited"
     manager.emit(_event("svc", "exited"))
 
-    kind, body = stream.poll()
-    assert kind == SNAPSHOT
-    assert _apply(view, kind, body) == {"svc": "exited"}
-    assert stream.poll() is None
+    frame = next(gen)
+    assert _parse(frame)["type"] == SNAPSHOT
+    assert _apply(view, frame) == {"svc": "exited"}
+    assert next(gen) == KEEPALIVE_FRAME
 
     manager.emit(_event("svc", "running", "start"))
-    assert stream.poll()[0] == DELTA
+    assert _parse(next(gen))["type"] == DELTA
 
 
-def test_frame_shapes_are_unchanged():
-    snapshot = json.loads(services_route._snapshot_frame([
-        {"name": "a", "status": "running"},
-        {"name": "b", "status": "exited"},
-    ])[len("data: "):])
-    assert snapshot["type"] == "snapshot"
-    assert snapshot["data"]["total"] == 2
-    assert snapshot["data"]["running"] == 1
-    assert snapshot["data"]["stopped"] == 1
-    assert set(snapshot) == {"type", "data", "timestamp"}
+@pytest.fixture
+def utc(monkeypatch):
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
 
-    delta = json.loads(services_route._delta_frame(
-        {**_event("a", "exited"), "metadata": {"favorite": True}}
-    )[len("data: "):])
-    assert set(delta) == {
-        "type", "service_name", "status", "action", "container_id", "timestamp", "metadata",
-    }
-    assert delta["type"] == "delta"
+
+def test_snapshot_frame_golden():
+    frame = snapshot_frame(
+        [{"name": "a", "status": "running"}, {"name": "b", "status": "exited"}],
+        lambda: FIXED_NOW,
+    )
+
+    assert frame == (
+        'data: {"type": "snapshot", "data": {"services": ['
+        '{"name": "a", "status": "running"}, {"name": "b", "status": "exited"}], '
+        '"total": 2, "running": 1, "stopped": 1}, "timestamp": "2026-11-10T16:00:00Z"}\n\n'
+    )
+
+
+def test_delta_frame_golden(utc):
+    assert delta_frame(_event("a", "exited")) == (
+        'data: {"type": "delta", "service_name": "a", "status": "exited", '
+        '"action": "die", "container_id": "cccccccccccc", '
+        '"timestamp": "2023-11-14T22:13:20Z"}\n\n'
+    )
+
+
+def test_delta_frame_with_metadata_golden(utc):
+    event = {**_event("a", "running", "metadata-changed"), "metadata": {"favorite": True}}
+
+    assert delta_frame(event) == (
+        'data: {"type": "delta", "service_name": "a", "status": "running", '
+        '"action": "metadata-changed", "container_id": "cccccccccccc", '
+        '"timestamp": "2023-11-14T22:13:20Z", "metadata": {"favorite": true}}\n\n'
+    )
+
+
+def test_error_frame_golden():
+    assert error_frame("boom") == 'data: {"type": "error", "message": "boom"}\n\n'
+
+
+def test_keepalive_frame_golden():
+    assert KEEPALIVE_FRAME == ": keepalive\n\n"
