@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi sessions — project tree</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="board">
+  <header>
+    <h1>pi sessions grouped by project, with subagents nested</h1>
+    <p>Dark theme, real tokens from <span class="mono">index.css</span>. The list column replaces the flat list in <span class="mono">PiSessionList.jsx</span>; the reading column is unchanged apart from the subagent breadcrumb. Android reference: <span class="mono">PiSessionTree.kt</span>, <span class="mono">PiSessionTreeRows.kt</span>.</p>
+  </header>
+
+  <section>
+    <p class="frame-title">A · Desktop — subagent selected</p>
+    <div class="frames">
+      <div class="desktop">
+        <aside class="list">
+          <div class="list-head"><h2>Sessions</h2></div>
+
+          <div class="section-label">Live</div>
+
+          <div class="project"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">4</span></div>
+          <div class="row"><span class="dot working"></span><span class="title">product-owner</span><span class="state working">working</span></div>
+          <div class="child-wrap">
+            <div class="row child"><span class="glyph">↳</span><span class="dot idle"></span><span class="title">review web mocks</span><span class="state idle">idle</span></div>
+            <div class="row child selected"><span class="glyph">↳</span><span class="dot working"></span><span class="title">survey tool shapes</span><span class="state working">working</span></div>
+          </div>
+          <div class="row"><span class="dot idle"></span><span class="title">headless-developer</span><span class="waiting">1 waiting</span><span class="state idle">idle</span></div>
+
+          <div class="project"><span class="chev">▾</span><span class="name">chatterbox</span><span class="count">1</span></div>
+          <div class="row"><span class="dot idle"></span><span class="title">pi-extension</span><span class="state idle">idle</span></div>
+
+          <div class="project"><span class="chev">▸</span><span class="name">project-maya</span><span class="waiting">1 waiting</span><span class="count">2</span></div>
+
+          <div class="section-label">Ended</div>
+          <div class="project"><span class="chev">▸</span><span class="name">llm-dock</span><span class="count">23</span></div>
+          <div class="project"><span class="chev">▸</span><span class="name">ibkr</span><span class="count">6</span></div>
+          <div class="project"><span class="chev">▸</span><span class="name">other</span><span class="count">3</span></div>
+        </aside>
+
+        <section class="canvas">
+          <div class="sess-head">
+            <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+              <span class="crumb">subagent of <a href="#">product-owner</a></span>
+              <span class="t">survey tool shapes</span>
+            </div>
+            <span class="meta">qwen3.8-27b · ctx 31%</span>
+          </div>
+          <div class="transcript">
+            <div class="user-msg">List every tool name in pi_events and the top-level arg keys of each.</div>
+            <div class="toolgroup">
+              <div class="trow"><span class="tdot"></span><span class="tname">bash</span><span class="tsum">$ sqlite3 dashboard/pi_remote.db "select distinct json_extract(payload,'$.name')…"</span><span class="tog">Details</span></div>
+              <div class="trow"><span class="tdot run"></span><span class="tname">read</span><span class="tsum">read_model.py L1–80</span><span class="tog">Details</span></div>
+            </div>
+            <div class="assistant">Nine tool names appear. <span class="mono" style="font-size:13px">bash</span>, <span class="mono" style="font-size:13px">read</span> and <span class="mono" style="font-size:13px">edit</span> cover 91% of calls…</div>
+          </div>
+          <div class="composer"><div class="input">Message this session…</div><span class="btn">Send</span></div>
+        </section>
+      </div>
+
+      <div class="note">
+        <span class="callout">LIST RULES</span>
+        <ol>
+          <li><b>Two sections</b>, Live then Ended, labelled in small caps. A section with no sessions is not drawn.</li>
+          <li><b>Project header</b> = chevron, project name (mono), total row count including subagents. Click or Enter/Space toggles it.</li>
+          <li><b>Default open state</b>: Live projects open, Ended projects closed. A user toggle is remembered per <span class="mono">section:project</span> in localStorage (wrapped in try/catch).</li>
+          <li><b>A closed project still shows its waiting count</b> (sum of its sessions' open questions) so a question never hides behind a collapsed group.</li>
+          <li><b>Subagents</b> sit under their top-level ancestor, indented with a 1px guide line and a ↳ glyph, regular weight, tighter padding.</li>
+          <li><b>Order</b>: projects by their most recent session; roots by <span class="mono">last_seen</span> desc; subagents by <span class="mono">first_seen</span> asc.</li>
+          <li>A session whose parent is unknown, or whose chain loops, is shown as a root.</li>
+          <li>The <i>live only</i> checkbox goes away — the collapsed Ended section does its job.</li>
+        </ol>
+        <span class="callout">READING COLUMN</span>
+        <ul><li>A subagent's header gets a breadcrumb line: <i>subagent of <u>parent</u></i>; the parent name navigates to it.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">B · Phone (&lt; 768px) — list screen, and an empty Live section</p>
+    <div class="frames">
+      <div class="phone" style="height:560px">
+        <div class="list" style="width:auto;gap:6px">
+          <div class="list-head"><h2>Sessions</h2></div>
+          <div class="section-label">Live</div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">3</span></div>
+          <div class="row" style="min-height:44px"><span class="dot working"></span><span class="title">product-owner</span><span class="mono subtle" style="font-size:11px">teo-mateo/llm-dock</span><span class="state working">working</span></div>
+          <div class="child-wrap">
+            <div class="row child" style="min-height:44px"><span class="glyph">↳</span><span class="dot working"></span><span class="title">survey tool shapes</span><span class="state working">working</span></div>
+          </div>
+          <div class="row" style="min-height:44px"><span class="dot idle"></span><span class="title">headless-developer</span><span class="waiting">1 waiting</span><span class="state idle">idle</span></div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▸</span><span class="name">project-maya</span><span class="waiting">1 waiting</span><span class="count">2</span></div>
+          <div class="section-label">Ended</div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▸</span><span class="name">llm-dock</span><span class="count">23</span></div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▸</span><span class="name">ibkr</span><span class="count">6</span></div>
+        </div>
+      </div>
+
+      <div class="phone" style="height:560px">
+        <div class="list" style="width:auto;gap:6px">
+          <div class="list-head"><h2>Sessions</h2></div>
+          <div class="section-label">Live</div>
+          <p class="muted" style="font-size:13px;margin:2px 2px 4px">No live sessions — start pi with the pi-remote extension.</p>
+          <div class="section-label">Ended</div>
+          <div class="project" style="padding:10px 6px"><span class="chev">▾</span><span class="name">llm-dock</span><span class="count">2</span></div>
+          <div class="row" style="min-height:44px"><span class="dot ended"></span><span class="title">product-owner</span><span class="state ended">ended</span></div>
+          <div class="child-wrap">
+            <div class="row child" style="min-height:44px"><span class="glyph">↳</span><span class="dot ended"></span><span class="title">review web mocks</span><span class="state ended">ended</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="callout">PHONE</span>
+        <ul>
+          <li>Same tree, full width. Project headers and every row are at least 44px tall.</li>
+          <li>Rows keep today's phone-only path tail (<span class="mono">pathTail(cwd)</span>).</li>
+          <li>When Live is empty but Ended is not, Live shows the existing hint line instead of disappearing, so the page never looks broken. With no sessions at all, keep today's single empty message.</li>
+          <li>Selecting a row opens the reading column full screen as today; Back returns to the list with the same groups open.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

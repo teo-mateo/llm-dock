@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi tool viewers</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  .col { width: 860px; display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); }
+</style>
+</head>
+<body>
+<div class="board">
+  <header>
+    <h1>pi tool calls — one viewer per tool</h1>
+    <p>Replaces the raw args/output <span class="mono">&lt;pre&gt;</span> blocks in <span class="mono">PiToolDetails.jsx</span>. The collapsed row keeps its shape (dot · name · summary · Details); only the summary text gets smarter. Android reference: <span class="mono">feature/pi/tools/*Body.kt</span> and <span class="mono">feature/pi/transcript/tools/*.kt</span>; payload shapes in <span class="mono">docs/plans/android-pi-tool-call-viewers.md</span>.</p>
+  </header>
+
+  <section>
+    <p class="frame-title">A · Collapsed rows — summaries per tool</p>
+    <div class="frames">
+      <div class="col">
+        <div class="toolgroup">
+          <div class="trow"><span class="tdot err"></span><span class="tname">bash</span><span class="tsum">$ npm test -- PiToolDetails <span class="bad">· exit 1</span></span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">edit</span><span class="tsum">PiToolDetails.jsx <span class="add">+14</span> <span class="del">−6</span></span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">read</span><span class="tsum">piToolRuns.js L40–79</span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">write</span><span class="tsum">bashTool.js · 31 lines</span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot run"></span><span class="tname">process</span><span class="tsum">start vite · npm run dev</span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">chatterbox_send</span><span class="tsum">→ product-owner: PR #495 is up for the tool viewers</span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">chatterbox_look</span><span class="tsum">look channel · 20</span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot err"></span><span class="tname">edit</span><span class="tsum">usePiSessions.js <span class="bad">· failed</span></span><span class="tog">Details</span></div>
+          <div class="trow"><span class="tdot"></span><span class="tname">web_search</span><span class="tsum">query=tailwind 4 container queries · count=5</span><span class="tog">Details</span></div>
+        </div>
+      </div>
+      <div class="note">
+        <span class="callout">SUMMARY TEXT</span>
+        <ul>
+          <li><b>bash</b>: <span class="mono">$ </span>first line of the command with a leading <span class="mono">cd X &amp;&amp;</span> stripped; <span class="mono">· exit N</span> in red when non-zero; <span class="mono">· timed out</span>.</li>
+          <li><b>edit</b>: file name, <span class="mono">+adds −removes</span> from the result patch; <span class="mono">· failed</span> on error.</li>
+          <li><b>read</b>: file name + line range (<span class="mono">L40–79</span>), or <span class="mono">· image</span>.</li>
+          <li><b>write</b>: file name + line count.</li>
+          <li><b>process</b>: action + name + first command line.</li>
+          <li><b>chatterbox_*</b>: target + first line; look kind + count; join/leave channel.</li>
+          <li><b>anything else</b>: today's <span class="mono">argsSummary</span>.</li>
+          <li>Any parse failure falls back to <span class="mono">argsSummary</span> — a summary never throws.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">B · Expanded — bash (failed) and edit (diff)</p>
+    <div class="frames">
+      <div class="col">
+        <div class="toolgroup">
+          <div class="trow"><span class="tdot err"></span><span class="tname">bash</span><span class="tsum">$ npm test -- PiToolDetails <span class="bad">· exit 1</span></span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="chip bad">exit 1</span><span>done · 4.2 s</span><span class="chip" title="from the leading cd">📁 dashboard/frontend</span><span>timeout 120 s</span></div>
+            <div class="code cmd"><span class="p">$ </span>npm test -- PiToolDetails</div>
+<div class="code"> FAIL  src/components/pi/PiToolDetails.test.jsx
+  ● renders an edit as a diff
+
+    expect(received).toHaveTextContent(expected)
+    Expected element to have text content: "+14 −6"
+    Received: "PiToolDetails.jsx"
+
+ Tests: 1 failed, 11 passed, 12 total</div>
+            <div class="foot"><span class="more">Show all 38 lines</span><span class="raw">Raw ▸</span></div>
+          </div>
+          <div class="trow"><span class="tdot"></span><span class="tname">edit</span><span class="tsum">PiToolDetails.jsx <span class="add">+3</span> <span class="del">−2</span></span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="path"><span class="dir">dashboard/frontend/src/components/pi/</span><span class="file">PiToolDetails.jsx</span></span><span class="chip ok">+3</span><span class="chip bad">−2</span><span>done · 0.0 s</span></div>
+            <div class="numbered">
+              <div class="l hunk"><span class="n">⋯</span><span class="s">@@ -18,7 +18,8 @@ export default function PiToolDetails({ item }) {</span></div>
+              <div class="l"><span class="n">18</span><span class="s">  const [showAll, setShowAll] = useState(false)</span></div>
+              <div class="l del"><span class="n">19</span><span class="s">  const lines = (item.output ?? '').split('\n')</span></div>
+              <div class="l del"><span class="n">20</span><span class="s">  return &lt;pre&gt;{lines.join('\n')}&lt;/pre&gt;</span></div>
+              <div class="l add"><span class="n">19</span><span class="s">  const kind = toolKind(item.name)</span></div>
+              <div class="l add"><span class="n">20</span><span class="s">  const Body = TOOL_BODIES[kind]</span></div>
+              <div class="l add"><span class="n">21</span><span class="s">  return &lt;Body item={item} /&gt;</span></div>
+              <div class="l"><span class="n">22</span><span class="s">}</span></div>
+            </div>
+            <div class="foot"><span></span><span class="raw">Raw ▸</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="note">
+        <span class="callout">BASH</span>
+        <ul>
+          <li>Meta line: exit chip (green <i>exit 0</i> is <b>not</b> shown — only failures), status text, the stripped <span class="mono">cd</span> dir as a chip, timeout if set.</li>
+          <li>Command in a block with a green <span class="mono">$</span> prompt (not selectable); output below in its own block; <i>(no output)</i> in muted text when empty.</li>
+          <li>Output from <span class="mono">structuredContent.output</span>, else the text content.</li>
+        </ul>
+        <span class="callout">EDIT</span>
+        <ul>
+          <li>Path split into muted directory + bold file name.</li>
+          <li>Unified diff from <span class="mono">details.patch</span>: hunk headers in info blue, added lines on a green tint, removed on red, context plain. Line numbers come from the hunk header.</li>
+          <li>No patch (still running / old pi): build the diff from <span class="mono">args.edits[].oldText/newText</span>, one <i>edit N</i> hunk each.</li>
+          <li>Failed: the error text in red instead of the diff.</li>
+        </ul>
+        <span class="callout">ALL BODIES</span>
+        <ul><li>Long content stops at 20 lines with <i>Show all N lines</i> (today's cap). <i>Raw ▸</i> opens today's args/output view, for debugging.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">C · Expanded — read, write, process</p>
+    <div class="frames">
+      <div class="col">
+        <div class="toolgroup">
+          <div class="trow"><span class="tdot"></span><span class="tname">read</span><span class="tsum">piToolRuns.js L40–79</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="path"><span class="dir">dashboard/frontend/src/utils/</span><span class="file">piToolRuns.js</span></span><span class="chip">lines 40–79</span></div>
+            <div class="numbered">
+              <div class="l"><span class="n">40</span><span class="s">export function argsSummary(args) {</span></div>
+              <div class="l"><span class="n">41</span><span class="s">  if (args == null) return ''</span></div>
+              <div class="l"><span class="n">42</span><span class="s">  const flat = objectSummary(args).replace(/\s+/g, ' ').trim()</span></div>
+              <div class="l"><span class="n">43</span><span class="s">  return flat.length &gt; MAX_SUMMARY_CHARS ? `${flat.slice(0, MAX_SUMMARY_CHARS)}…` : flat</span></div>
+              <div class="l"><span class="n">44</span><span class="s">}</span></div>
+            </div>
+            <div class="foot"><span class="more">Show all 40 lines</span><span class="raw">Raw ▸</span></div>
+          </div>
+          <div class="trow"><span class="tdot"></span><span class="tname">write</span><span class="tsum">bashTool.js · 31 lines</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="path"><span class="dir">dashboard/frontend/src/utils/piTools/</span><span class="file">bashTool.js</span></span><span class="chip info">new file · 31 lines</span></div>
+            <div class="numbered">
+              <div class="l"><span class="n">1</span><span class="s">const CD_PREFIX = /^cd[ \t]+(?:"([^"]*)"|'([^']*)'|([^\s;&amp;]+))[ \t]*(?:&amp;&amp;|;)[ \t]*/</span></div>
+              <div class="l"><span class="n">2</span><span class="s"></span></div>
+              <div class="l"><span class="n">3</span><span class="s">export function splitCdPrefix(command) {</span></div>
+            </div>
+            <div class="foot"><span class="more">Show all 31 lines</span><span class="raw">Raw ▸</span></div>
+          </div>
+          <div class="trow"><span class="tdot run"></span><span class="tname">process</span><span class="tsum">start vite · npm run dev</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="chip run">running</span><span class="mono">vite</span><span class="mono subtle">pid 48211</span></div>
+            <div class="kv"><span class="k">command</span><span>npm run dev</span><span class="k">cwd</span><span>/github/teo-mateo/llm-dock/dashboard/frontend</span><span class="k">id</span><span>proc_7</span></div>
+            <div class="foot"><span></span><span class="raw">Raw ▸</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="note">
+        <span class="callout">READ</span>
+        <ul>
+          <li>Range chip: <i>lines 40–79</i>, <i>from line 40</i>, or none for a whole file.</li>
+          <li>Numbered lines start at <span class="mono">offset</span> (1 when absent); the gutter is not selectable, so copying grabs code only.</li>
+          <li>Image results: a thumbnail (max 320px, click opens full size in a new tab) plus mime and size.</li>
+        </ul>
+        <span class="callout">WRITE</span>
+        <ul><li>Numbered content from <span class="mono">args.content</span>, line count chip.</li></ul>
+        <span class="callout">PROCESS</span>
+        <ul><li>Status chip: running = amber, exited/success = green, failed/killed or non-zero exit = red, anything else neutral. Then name, pid, and a small key/value grid (command, cwd, id, exit code).</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="frame-title">D · Expanded — chatterbox and the generic fallback</p>
+    <div class="frames">
+      <div class="col">
+        <div class="toolgroup">
+          <div class="trow"><span class="tdot"></span><span class="tname">chatterbox_send</span><span class="tsum">→ product-owner: PR #495 is up for the tool viewers</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="meta"><span class="mono">→ product-owner</span><span class="chip">private</span><span class="chip ok">confirmed</span></div>
+            <div class="bubble">PR #495 is up for the tool viewers. Tests pass; the edit body falls back to args.edits when the result has no patch.</div>
+          </div>
+          <div class="trow"><span class="tdot"></span><span class="tname">chatterbox_look</span><span class="tsum">look channel · 20</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="chatline"><span class="tm">14:02</span><span class="fr">teo</span><span class="tx">are the web mocks up yet?</span></div>
+            <div class="chatline toyou"><span class="tm">14:03</span><span class="fr bot">product-owner</span><span class="tx">headless-developer: #496 is yours, mocks are in docs/web/pi/</span></div>
+            <div class="chatline imp"><span class="tm">14:05</span><span class="fr bot">architect</span><span class="tx">[IMPORTANT] main is red, hold merges</span></div>
+            <div class="foot"><span class="more">Show all 20 messages</span><span class="raw">Raw ▸</span></div>
+          </div>
+          <div class="trow"><span class="tdot"></span><span class="tname">web_search</span><span class="tsum">query=tailwind 4 container queries · count=5</span><span class="tog">Hide</span></div>
+          <div class="tbody">
+            <div class="kv"><span class="k">query</span><span>tailwind 4 container queries</span><span class="k">count</span><span>5</span></div>
+<div class="code">1. Container queries — Tailwind CSS docs
+   https://tailwindcss.com/docs/responsive-design#container-queries
+2. …</div>
+            <div class="foot"><span class="more">Show all 24 lines</span><span class="raw">Raw ▸</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone" style="height:auto">
+        <div class="toolgroup" style="max-width:none">
+          <div class="trow"><span class="tdot"></span><span class="tname">edit</span><span class="tsum">PiToolDetails.jsx <span class="add">+3</span> <span class="del">−2</span></span><span class="tog">Hide</span></div>
+          <div class="tbody" style="padding-left:12px">
+            <div class="meta"><span class="path"><span class="file">PiToolDetails.jsx</span></span><span class="chip ok">+3</span><span class="chip bad">−2</span></div>
+            <div class="numbered">
+              <div class="l hunk"><span class="n">⋯</span><span class="s">@@ -18,7 +18,8 @@</span></div>
+              <div class="l"><span class="n">18</span><span class="s">  const [showAll, setShowAll]…</span></div>
+              <div class="l del"><span class="n">19</span><span class="s">  const lines = (item.output…</span></div>
+              <div class="l add"><span class="n">19</span><span class="s">  const kind = toolKind(ite…</span></div>
+              <div class="l add"><span class="n">20</span><span class="s">  const Body = TOOL_BODIES[k…</span></div>
+            </div>
+            <div class="foot"><span></span><span class="raw">Raw ▸</span></div>
+          </div>
+          <div class="trow"><span class="tdot err"></span><span class="tname">bash</span><span class="tsum">$ npm test <span class="bad">· exit 1</span></span><span class="tog">Details</span></div>
+        </div>
+        <p class="note" style="margin-top:14px">Phone: the directory part of the path is dropped, body indent shrinks to 12px, and code blocks scroll sideways inside themselves — the page itself never scrolls sideways.</p>
+      </div>
+
+      <div class="note">
+        <span class="callout">CHATTERBOX</span>
+        <ul>
+          <li><b>send</b>: target (<i>→ name</i> or <i>→ channel</i>), <i>private</i> chip, outcome chip (confirmed green, anything else red with the message), the text in a bubble.</li>
+          <li><b>look</b>: one line per message — time (HH:MM), sender (bots in info blue), text. Messages addressed to the session get an accent tint; important ones amber text.</li>
+          <li><b>join / leave</b>: a single meta line.</li>
+        </ul>
+        <span class="callout">GENERIC</span>
+        <ul><li>Args as a key/value grid when they parse as an object (raw text otherwise), then the result text in a code block. This is also what every viewer falls back to when its payload doesn't parse.</li></ul>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
