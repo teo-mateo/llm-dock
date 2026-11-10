@@ -18,6 +18,8 @@ data class PiSessionDto(
     val live: Boolean,
     val state: String? = null,
     @SerialName("context_percent") val contextPercent: Double? = null,
+    @SerialName("parent_session_id") val parentSessionId: String? = null,
+    val project: String? = null,
     val prompts: List<PiPromptDto> = emptyList(),
 )
 

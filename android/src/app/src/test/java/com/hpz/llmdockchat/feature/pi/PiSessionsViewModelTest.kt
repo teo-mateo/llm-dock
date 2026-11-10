@@ -28,11 +28,15 @@ class PiSessionsViewModelTest {
         live: Boolean,
         lastSeen: Long,
         contextPercent: Double?,
+        parent: String? = null,
+        project: String? = null,
     ): String = """
         "session_id":"$id","instance_id":"i1","name":"$name","cwd":"$cwd",
         "model":null,"thinking_level":null,"first_seen":0,"last_seen":$lastSeen,
         "ended_at":null,"end_reason":null,"live":$live,"state":"idle",
         "context_percent":$contextPercent
+        ${parent?.let { ",\"parent_session_id\":\"$it\"" } ?: ""}
+        ${project?.let { ",\"project\":\"$it\"" } ?: ""}
     """.trimIndent()
 
     private fun snapshotJson(): String = """
@@ -206,5 +210,50 @@ class PiSessionsViewModelTest {
         val after = viewModel.state.value as PiSessionsUiState.Loaded
         assertEquals("A running session can't be deleted.", after.actionError)
         assertEquals(listOf("live"), after.visibleLive.map { it.key.sessionId })
+    }
+
+    @Test
+    fun `a live subagent run nests under its ended parent`() {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            """
+                {"type":"snapshot","sessions":[
+                    {${sessionFields("root", "root", "/repo", false, 1000, null, project = "repo/one")}},
+                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", project = "repo/one")}}
+                ]}
+            """.trimIndent(),
+        )
+        val viewModel = viewModel(PiSessionsRepository(transport))
+        viewModel.start()
+
+        val loaded = settle(viewModel)
+        assertTrue(loaded.tree.live.isEmpty())
+        val group = loaded.tree.ended.single()
+        assertEquals("repo/one", group.project)
+        assertEquals("root", group.roots.single().session.key.sessionId)
+        assertEquals(listOf("run"), group.roots.single().children.map { it.key.sessionId })
+    }
+
+    @Test
+    fun `swiping a parent promotes its children until the undo window closes`() {
+        val transport = FakeSseTransport()
+        transport.payloads = listOf(
+            """
+                {"type":"snapshot","sessions":[
+                    {${sessionFields("root", "root", "/repo", true, 1000, null, project = "repo/one")}},
+                    {${sessionFields("run", "run", "/repo", true, 2000, null, parent = "root", project = "repo/one")}}
+                ]}
+            """.trimIndent(),
+        )
+        val viewModel = viewModel(PiSessionsRepository(transport), undoWindowMs = 60_000L)
+        viewModel.start()
+        val loaded = settle(viewModel)
+
+        viewModel.deleteWithUndo(loaded.tree.live.single().roots.single().session)
+
+        val after = viewModel.state.value as PiSessionsUiState.Loaded
+        val roots = after.tree.live.single().roots
+        assertEquals(listOf("run"), roots.map { it.session.key.sessionId })
+        assertTrue(roots.single().children.isEmpty())
     }
 }

@@ -16,6 +16,8 @@ data class PiSession(
     val live: Boolean,
     val state: PiState,
     val contextPercent: Double?,
+    val parentSessionId: String? = null,
+    val project: String? = null,
     val prompts: List<PiPrompt> = emptyList(),
 ) {
     val needsAnswer: Boolean

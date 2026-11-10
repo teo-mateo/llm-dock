@@ -23,20 +23,31 @@ sealed interface PiSessionsUiState {
     data object Loading : PiSessionsUiState
 
     data class Loaded(
-        val live: List<PiSession>,
-        val ended: List<PiSession>,
+        val sessions: List<PiSession>,
         val stale: Boolean,
         val actionError: String? = null,
         val pendingUndo: PendingUndo? = null,
     ) : PiSessionsUiState {
+        val live: List<PiSession>
+            get() = sessions.filter { it.live }
+
+        val ended: List<PiSession>
+            get() = sessions.filterNot { it.live }
+
+        val visible: List<PiSession>
+            get() = sessions.filterNot { it.key == pendingUndo?.key }
+
         val visibleLive: List<PiSession>
-            get() = live.filterNot { it.key == pendingUndo?.key }
+            get() = visible.filter { it.live }
 
         val visibleEnded: List<PiSession>
-            get() = ended.filterNot { it.key == pendingUndo?.key }
+            get() = visible.filterNot { it.live }
+
+        val tree: PiSessionTree
+            get() = buildPiSessionTree(visible)
 
         val isEmpty: Boolean
-            get() = visibleLive.isEmpty() && visibleEnded.isEmpty()
+            get() = visible.isEmpty()
     }
 
     data class PendingUndo(val key: PiSessionKey, val label: String)
@@ -57,9 +68,6 @@ internal fun piCacheLabels(usage: PiCacheUsage, sessions: List<PiSession>, cache
         sizes = sessions.mapNotNull { session -> cachedBytes(session.key)?.let { session.key to formatCacheBytes(it) } }.toMap(),
     )
 
-fun List<PiSession>.splitByLive(): Pair<List<PiSession>, List<PiSession>> =
-    filter { it.live } to filterNot { it.live }
-
 internal class PiSessionsViewModel(
     private val repository: PiSessionsRepository,
     private val deleteRepository: PiSessionDeleteRepository,
@@ -70,7 +78,7 @@ internal class PiSessionsViewModel(
     private val _state = MutableStateFlow<PiSessionsUiState>(PiSessionsUiState.Loading)
     val state: StateFlow<PiSessionsUiState> = _state.asStateFlow()
     val cacheLabels: StateFlow<PiCacheLabels> = combine(_state, cacheUsage) { state, usage ->
-        val sessions = (state as? PiSessionsUiState.Loaded)?.let { it.live + it.ended }.orEmpty()
+        val sessions = (state as? PiSessionsUiState.Loaded)?.sessions.orEmpty()
         piCacheLabels(usage, sessions) { cachedBytes(usage, it) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PiCacheLabels())
     private var started = false
@@ -81,10 +89,8 @@ internal class PiSessionsViewModel(
         started = true
         viewModelScope.launch {
             repository.streamWithStatus().collect { update ->
-                val (live, ended) = update.sessions.splitByLive()
                 _state.value = PiSessionsUiState.Loaded(
-                    live = live,
-                    ended = ended,
+                    sessions = update.sessions,
                     stale = update.stale,
                     pendingUndo = (_state.value as? PiSessionsUiState.Loaded)?.pendingUndo,
                 )

@@ -15,6 +15,8 @@ class PiSessionMapperTest {
         live: Boolean = true,
         state: String? = "idle",
         prompts: List<PiPromptDto> = emptyList(),
+        parentSessionId: String? = null,
+        project: String? = null,
     ) = PiSessionDto(
         sessionId = "s1",
         instanceId = "i1",
@@ -29,6 +31,8 @@ class PiSessionMapperTest {
         live = live,
         state = state,
         contextPercent = 22.5,
+        parentSessionId = parentSessionId,
+        project = project,
         prompts = prompts,
     )
 
@@ -82,5 +86,21 @@ class PiSessionMapperTest {
 
         assertEquals(1, session.prompts.size)
         assertFalse(session.needsAnswer)
+    }
+
+    @Test
+    fun `parent session and project map through`() {
+        val session = dto(parentSessionId = "root", project = "teo-mateo/llm-dock").toDomain()
+
+        assertEquals("root", session.parentSessionId)
+        assertEquals("teo-mateo/llm-dock", session.project)
+    }
+
+    @Test
+    fun `an older dashboard without the fields maps to nulls`() {
+        val session = dto().toDomain()
+
+        assertNull(session.parentSessionId)
+        assertNull(session.project)
     }
 }
