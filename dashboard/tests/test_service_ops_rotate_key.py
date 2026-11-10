@@ -111,14 +111,37 @@ def test_a_failure_without_a_reason_reads_as_unknown_error():
     assert rotate_key(harness.deps()).stop_errors == {"a": "unknown error"}
 
 
-def test_a_stop_that_raises_propagates_after_the_key_is_committed():
-    harness = Harness(running=["a"])
+def test_a_stop_that_raises_is_recorded_and_the_remaining_containers_still_stop():
+    harness = Harness(running=["a", "b"])
     harness.fail["stop"] = RuntimeError("docker down")
 
-    with pytest.raises(RuntimeError, match="docker down"):
-        rotate_key(harness.deps())
+    outcome = rotate_key(harness.deps())
 
-    assert harness.names() == ["rotate_in_db", "commit_key", "stop"]
+    assert harness.names() == ["rotate_in_db", "commit_key", "stop", "stop"]
+    assert outcome.new_key == "new"
+    assert outcome.stop_errors == {"a": "docker down", "b": "docker down"}
+    assert (outcome.ok, outcome.status) == (False, 207)
+
+
+def test_one_raising_stop_does_not_hide_the_ones_that_succeeded():
+    harness = Harness(running=["a", "b"])
+    original = harness.deps()
+    calls = []
+
+    def stop(name):
+        calls.append(name)
+        if name == "a":
+            raise RuntimeError("boom")
+        return {"success": True}
+
+    deps = RotateKeyDeps(
+        original.infra, original.affected_state, original.generate_key,
+        original.rotate_in_db, original.commit_key, stop,
+    )
+
+    outcome = rotate_key(deps)
+
+    assert calls == ["a", "b"] and outcome.stopped == ["b"] and outcome.stop_errors == {"a": "boom"}
 
 
 def test_the_messages_and_body_match_the_wire_shape():

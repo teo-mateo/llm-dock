@@ -19,7 +19,9 @@ from openwebui_integration import (
     remove_service_from_openwebui,
 )
 
+from .affected import affected_services
 from .deps import DeleteDeps, Infra, RenameDeps, RotateKeyDeps, SetInspectDeps, SetPublicPortDeps
+from .preview_key_rotation import PreviewKeyRotationDeps
 from .subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 
@@ -100,26 +102,8 @@ def set_inspect_deps(compose_file: str, allocate=None, recreate=None, status=Non
 
 
 def affected_services_state(compose_file: str):
-    """Return (db_service_names, running, openwebui_registered) for rotation.
-
-    Only services present in services.json are affected by a rotation; infra
-    containers like open-webui are never in services.json so they're excluded
-    naturally.
-    """
-    db_services = set(ComposeManager(compose_file).list_services_in_db().keys())
-
-    running = []
-    openwebui_registered = []
-    for svc in get_docker_services():
-        name = svc["name"]
-        if name not in db_services:
-            continue
-        if svc.get("status") == "running":
-            running.append(name)
-        if svc.get("openwebui_registered"):
-            openwebui_registered.append(name)
-
-    return sorted(db_services), sorted(running), sorted(openwebui_registered)
+    db_names = ComposeManager(compose_file).list_services_in_db().keys()
+    return affected_services(db_names, get_docker_services())
 
 
 def rotate_key_deps(compose_file: str, **overrides) -> RotateKeyDeps:
@@ -131,3 +115,7 @@ def rotate_key_deps(compose_file: str, **overrides) -> RotateKeyDeps:
         commit_key=lambda key: config.set_global_api_key(key),
         stop_service=lambda name: control_service(name, "stop"),
     )
+
+
+def preview_key_rotation_deps(compose_file: str) -> PreviewKeyRotationDeps:
+    return PreviewKeyRotationDeps(affected_state=lambda: affected_services_state(compose_file))
