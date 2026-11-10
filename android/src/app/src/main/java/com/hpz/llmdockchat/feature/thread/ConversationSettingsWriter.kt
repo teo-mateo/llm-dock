@@ -96,15 +96,15 @@ class ConversationSettingsWriter(
         submit {
             try {
                 promptLock.withLock {
-                if (write != latestPrompt) return@withLock
-                writes.setPrompt(promptId).fold(
-                    onSuccess = { confirmedPrompt = promptId },
-                    onFailure = { failure ->
-                        if (write != latestPrompt) return@fold
-                        publish(snapshot.copy(promptId = confirmedPrompt))
-                        onError(failure.appError.displayMessage)
-                    },
-                )
+                    if (write != latestPrompt) return@withLock
+                    writes.setPrompt(promptId).fold(
+                        onSuccess = { confirmedPrompt = promptId },
+                        onFailure = { failure ->
+                            if (write != latestPrompt) return@fold
+                            publish(snapshot.copy(promptId = confirmedPrompt))
+                            onError(failure.appError.displayMessage)
+                        },
+                    )
                 }
             } finally {
                 promptOutstanding--
@@ -121,14 +121,14 @@ class ConversationSettingsWriter(
         submit {
             try {
                 toolsLock.withLock {
-                writes.setMcpServers(next).fold(
-                    onSuccess = { confirmedTools = next },
-                    onFailure = { failure ->
-                        if (write != latestTools) return@fold
-                        publish(snapshot.copy(mcpServers = confirmedTools))
-                        onError(failure.appError.displayMessage)
-                    },
-                )
+                    writes.setMcpServers(next).fold(
+                        onSuccess = { confirmedTools = next },
+                        onFailure = { failure ->
+                            if (write != latestTools) return@fold
+                            publish(snapshot.copy(mcpServers = confirmedTools))
+                            onError(failure.appError.displayMessage)
+                        },
+                    )
                 }
             } finally {
                 toolsOutstanding--
@@ -143,12 +143,12 @@ class ConversationSettingsWriter(
         submit {
             try {
                 levelLock.withLock {
-                writes.setReasoningLevel(level).fold(
-                    onSuccess = {
-                        confirmedLevel = level
-                        if (write == latestLevel) {
-                            publish(snapshot.copy(reasoningPending = false))
-                            onReasoningConfirmed()
+                    writes.setReasoningLevel(level).fold(
+                        onSuccess = {
+                            confirmedLevel = level
+                            if (write == latestLevel) {
+                                publish(snapshot.copy(reasoningPending = false))
+                                onReasoningConfirmed()
                         }
                     },
                     onFailure = { failure ->
