@@ -307,8 +307,6 @@ class NewChatViewModel(
                     updateLoaded {
                         it.copy(
                             creating = false,
-                            // The PUT that this retry re-ran has just succeeded; the
-                            // banner switches to the claim, which is what still blocks.
                             toolsFailure = null,
                             shareFailure = ShareFailure(
                                 conversationId,
