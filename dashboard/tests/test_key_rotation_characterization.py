@@ -164,14 +164,17 @@ def test_a_failing_env_write_undoes_services_and_compose_and_stops_nothing(seams
     assert seams.log[3] == ("save", {"svc-a": "old", "svc-b": "old"})
 
 
-def test_a_raising_stop_is_a_500_after_the_key_is_already_committed(seams):
+def test_a_raising_stop_is_a_207_that_keeps_the_key_and_still_stops_the_rest(seams):
     seams.running = ["svc-a", "svc-b"]
     seams.fail["control"] = RuntimeError("docker down")
 
     response = _rotate(seams)
 
-    assert (response.status_code, response.get_json()) == (500, {"success": False, "error": "docker down"})
-    assert _names(seams) == ["save", "rebuild", "env", "control"]
+    body = response.get_json()
+    assert response.status_code == 207
+    assert body["new_api_key"] and (body["success"], body["partial"]) == (False, True)
+    assert body["stop_errors"] == {"svc-a": "docker down", "svc-b": "docker down"}
+    assert _names(seams) == ["save", "rebuild", "env", "control", "control"]
 
 
 def test_the_preview_reports_impact_and_changes_nothing(seams):

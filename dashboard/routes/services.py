@@ -805,14 +805,8 @@ def set_service_global_api_key(service_name):
 def default_api_key_rotation_preview():
     """Describe the impact of rotating the default API key without changing anything."""
     try:
-        db_services, running, openwebui_registered = wiring.affected_services_state(COMPOSE_FILE)
-        return jsonify(
-            {
-                "total_services": len(db_services),
-                "running": running,
-                "openwebui_registered": openwebui_registered,
-            }
-        ), 200
+        preview = service_ops.preview_key_rotation(wiring.preview_key_rotation_deps(COMPOSE_FILE))
+        return jsonify(preview.body()), 200
     except Exception as e:
         logger.error(f"Failed to build rotation preview: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
