@@ -7,17 +7,14 @@ registered on the app.
 import logging
 import os
 
-from flask import jsonify, request, current_app, send_file
+from flask import jsonify, request, send_file
 
 from auth import require_auth
 from . import project_files as pf
-from .routes import chat_bp, _get_db
+from .deps import deps
+from .routes import chat_bp
 
 logger = logging.getLogger(__name__)
-
-
-def _storage_root() -> str:
-    return current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
 
 
 def _project_root_or_404(project_id, create=False):
@@ -27,12 +24,12 @@ def _project_root_or_404(project_id, create=False):
     (re)create the directory, or a GET racing a project delete would leave
     an orphan directory behind.
     """
-    if _get_db().get_project(project_id) is None:
+    if deps().db.get_project(project_id) is None:
         return None, (jsonify({"error": "Project not found"}), 404)
     if create:
-        root = pf.ensure_project_root(_storage_root(), project_id)
+        root = pf.ensure_project_root(deps().storage_root(), project_id)
     else:
-        root = pf.project_root(_storage_root(), project_id)
+        root = pf.project_root(deps().storage_root(), project_id)
     return root, None
 
 
@@ -43,8 +40,8 @@ def _revalidate_or_cleanup(project_id):
     directory again and report 404. Whichever side acts last cleans up, so
     no orphan directory survives the race in either interleaving.
     """
-    if _get_db().get_project(project_id) is None:
-        pf.delete_project_root(_storage_root(), project_id)
+    if deps().db.get_project(project_id) is None:
+        pf.delete_project_root(deps().storage_root(), project_id)
         return jsonify({"error": "Project not found"}), 404
     return None
 

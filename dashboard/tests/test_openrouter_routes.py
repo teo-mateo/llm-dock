@@ -16,6 +16,8 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-openrouter")
 
 import config
 from chat import critique, llm_proxy, openrouter, openrouter_catalog
+from chat.deps import install
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.openrouter import DEFAULT_MODELS
 from chat.routes import chat_bp
@@ -116,7 +118,7 @@ def client(tmp_path, monkeypatch):
 
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()

@@ -21,6 +21,8 @@ os.environ.setdefault("DASHBOARD_TOKEN", "test-token-run-routes")
 
 from chat import runtime
 from chat import run_manager as run_manager_module
+from chat.deps import install
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.event_bus import EventBus
 from chat.run_manager import ChatRunManager
@@ -45,11 +47,9 @@ def ctx(tmp_path):
     db = ChatDB(str(tmp_path / "chat.db"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = db
     bus = EventBus()
     manager = ChatRunManager(db, bus, max_workers=2)
-    app.config["CHAT_EVENT_BUS"] = bus
-    app.config["CHAT_RUN_MANAGER"] = manager
+    install(app, **chat_parts(db, bus=bus, run_manager=manager))
     app.register_blueprint(chat_bp)
     app.testing = True
     try:

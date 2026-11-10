@@ -1,13 +1,11 @@
 import json
 import logging
-import os
 import sqlite3
 import uuid
 
-from flask import Blueprint, jsonify, request, current_app, Response, stream_with_context
+from flask import Blueprint, jsonify, request
 
 from auth import require_auth
-from .db import ChatDB
 from .models import (Conversation, Message, Critique, Project,
                      DeleteMessageOutcome)
 from .constants import DEFAULT_MAIN_SYSTEM_PROMPT, DEFAULT_SIDEKICK_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW
@@ -16,66 +14,17 @@ from .tool_loop import stream_with_tools
 from .critique import build_critique_context, request_critique, validate_annotations
 from .mcp_registry import list_available_servers
 from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
-from .event_bus import EventBus
-from .run_manager import ChatRunManager
 from .runs import TERMINAL_STATUSES
 from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, run_start, settings_store, url_retrieval
 from .outcomes import PolicyError
-from .prompt_seed import seed_default_prompts
+from .bootstrap import init_chat  # noqa: F401
+from .deps import deps
 from reasoning_levels import parse_levels
 import sampling_params as sampling
 
 logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint("chat", __name__)
-
-
-def init_chat(app, db_path: str = None):
-    if db_path is None:
-        db_path = os.environ.get("LLM_DOCK_CHAT_DB") or os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "chat.db"
-        )
-    db = ChatDB(db_path)
-    app.config["CHAT_DB"] = db
-    seed_default_prompts(db)
-
-    from .mcp_client import MCPClientManager
-    from . import mcp_config
-    mgr = MCPClientManager()
-    app.config["MCP_MANAGER"] = mgr
-    mcp_config.bind_manager(mgr)
-    mcp_config.reload()
-
-    # Background-run infrastructure: an event bus for live observers and
-    # a manager owning the worker pool. Runs from a previous process that died
-    # mid-flight are marked failed so they don't linger as stuck active runs.
-    # Cap request bodies so Werkzeug rejects an oversized upload DURING
-    # multipart parsing (before it is fully spooled to disk) — covers
-    # chunked bodies that carry no Content-Length. Slightly above the
-    # per-file cap to leave room for multipart framing; an explicit
-    # deployment override is preserved.
-    from .project_files import configure_max_content_length
-    configure_max_content_length(app)
-
-    bus = EventBus()
-    run_manager = ChatRunManager(db, bus)
-    run_manager.recover_interrupted_runs()
-    app.config["CHAT_EVENT_BUS"] = bus
-    app.config["CHAT_RUN_MANAGER"] = run_manager
-
-    logger.info("Chat subsystem initialized")
-
-
-def _get_db() -> ChatDB:
-    return current_app.config["CHAT_DB"]
-
-
-def _get_mcp():
-    return current_app.config["MCP_MANAGER"]
-
-
-def _get_run_manager():
-    return current_app.config["CHAT_RUN_MANAGER"]
 
 
 @chat_bp.route("/api/chat/mcp-servers", methods=["GET"])
@@ -90,7 +39,7 @@ def get_mcp_servers():
 def _url_fetch_probe(servers: list) -> dict:
     """`url_fetch` payload for `?probe=url-fetch` — see chat/url_retrieval.py."""
     try:
-        manager = _get_mcp()
+        manager = deps().mcp
     except LookupError:
         manager = None
 
@@ -401,21 +350,21 @@ def create_project():
     if not isinstance(description, str):
         return jsonify({"error": "description must be a string"}), 400
     project = Project(id=str(uuid.uuid4()), name=name, description=description)
-    project = _get_db().create_project(project)
+    project = deps().db.create_project(project)
     return jsonify(project.to_dict()), 201
 
 
 @chat_bp.route("/api/chat/projects", methods=["GET"])
 @require_auth
 def list_projects():
-    projects = _get_db().list_projects()
+    projects = deps().db.list_projects()
     return jsonify({"projects": [p.to_dict() for p in projects]})
 
 
 @chat_bp.route("/api/chat/projects/<project_id>", methods=["GET"])
 @require_auth
 def get_project(project_id):
-    project = _get_db().get_project(project_id)
+    project = deps().db.get_project(project_id)
     if project is None:
         return jsonify({"error": "Project not found"}), 404
     return jsonify(project.to_dict())
@@ -437,7 +386,7 @@ def update_project(project_id):
         if not isinstance(data["description"], str):
             return jsonify({"error": "description must be a string"}), 400
         updates["description"] = data["description"]
-    db = _get_db()
+    db = deps().db
     if db.get_project(project_id) is None:
         return jsonify({"error": "Project not found"}), 404
     project = db.update_project(project_id, **updates)
@@ -461,10 +410,10 @@ def delete_project(project_id):
     concurrent file write recreated in the window.
     """
     from . import project_files as pf
-    db = _get_db()
+    db = deps().db
     if db.get_project(project_id) is None:
         return jsonify({"error": "Project not found"}), 404
-    storage_root = current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root()
+    storage_root = deps().storage_root()
     try:
         pf.delete_project_root(storage_root, project_id, strict=True)
     except OSError as e:
@@ -488,7 +437,7 @@ def get_sampling_fields():
     endpoint exists to prevent.
     """
     service = request.args.get("service") or ""
-    engine = run_config.service_engine(service)
+    engine = run_config.service_engine(service, deps().services)
     return jsonify({
         "service": service,
         "engine": engine,
@@ -502,12 +451,14 @@ def get_sampling_fields():
 @require_auth
 def create_conversation():
     data = request.get_json() or {}
-    db = _get_db()
+    d = deps()
+    db = d.db
     outcome = conversation_policy.resolve_new_conversation(
         data,
         get_prompt=db.get_prompt,
         get_project=db.get_project,
         default_prompt=settings_store.get_main_system_prompt,
+        services=d.services,
     )
     if isinstance(outcome, PolicyError):
         return http.error_response(outcome)
@@ -542,7 +493,7 @@ def list_conversations():
     # clients that don't support projects (the Android app) opt in so
     # desktop-created project threads never appear in their flat list.
     unfiled = request.args.get("unfiled", "false").lower() in ("true", "1", "yes")
-    convs, total = _get_db().list_conversations(limit=limit, offset=offset, unfiled=unfiled)
+    convs, total = deps().db.list_conversations(limit=limit, offset=offset, unfiled=unfiled)
     return jsonify({
         "conversations": [c.to_dict() for c in convs],
         "total": total,
@@ -552,7 +503,7 @@ def list_conversations():
 @chat_bp.route("/api/chat/conversations/<conv_id>", methods=["GET"])
 @require_auth
 def get_conversation(conv_id):
-    db = _get_db()
+    db = deps().db
     conv = db.get_conversation(conv_id)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
@@ -568,13 +519,15 @@ def get_conversation(conv_id):
 @require_auth
 def update_conversation(conv_id):
     data = request.get_json() or {}
-    db = _get_db()
+    d = deps()
+    db = d.db
     fields = conversation_policy.resolve_conversation_update(
         data,
         conv_id=conv_id,
         get_conversation=db.get_conversation,
         get_prompt=db.get_prompt,
         get_project=db.get_project,
+        services=d.services,
     )
     if isinstance(fields, PolicyError):
         return http.error_response(fields)
@@ -590,7 +543,7 @@ def update_conversation(conv_id):
 @chat_bp.route("/api/chat/conversations/<conv_id>", methods=["DELETE"])
 @require_auth
 def delete_conversation(conv_id):
-    if _get_db().delete_conversation(conv_id):
+    if deps().db.delete_conversation(conv_id):
         return jsonify({"ok": True})
     return jsonify({"error": "Conversation not found"}), 404
 
@@ -602,7 +555,7 @@ def delete_conversations_batch():
     ids = data.get("ids")
     if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
         return jsonify({"error": "ids must be a list of strings"}), 400
-    deleted = _get_db().delete_conversations(ids)
+    deleted = deps().db.delete_conversations(ids)
     return jsonify({"ok": True, "deleted": deleted})
 
 
@@ -613,7 +566,7 @@ def delete_conversations_batch():
 @require_auth
 def list_prompts():
     """Return all managed prompts, ordered by sort_order."""
-    prompts = _get_db().list_prompts()
+    prompts = deps().db.list_prompts()
     return jsonify({"prompts": [p.to_dict() for p in prompts]})
 
 
@@ -629,7 +582,7 @@ def create_prompt():
         return jsonify({"error": "name is required"}), 400
     if not isinstance(content, str) or not content.strip():
         return jsonify({"error": "content is required"}), 400
-    prompt = _get_db().create_prompt(name, content)
+    prompt = deps().db.create_prompt(name, content)
     logger.info("chat prompt created: %s", prompt.id)
     return jsonify(prompt.to_dict()), 201
 
@@ -637,7 +590,7 @@ def create_prompt():
 @chat_bp.route("/api/chat/prompts/<prompt_id>", methods=["GET"])
 @require_auth
 def get_prompt(prompt_id):
-    prompt = _get_db().get_prompt(prompt_id)
+    prompt = deps().db.get_prompt(prompt_id)
     if prompt is None:
         return jsonify({"error": "Prompt not found"}), 404
     return jsonify(prompt.to_dict())
@@ -655,7 +608,7 @@ def update_prompt(prompt_id):
         return jsonify({"error": "name is required"}), 400
     if not isinstance(content, str) or not content.strip():
         return jsonify({"error": "content is required"}), 400
-    db = _get_db()
+    db = deps().db
     if db.get_prompt(prompt_id) is None:
         return jsonify({"error": "Prompt not found"}), 404
     prompt = db.update_prompt(prompt_id, name, content)
@@ -668,7 +621,7 @@ def update_prompt(prompt_id):
 @chat_bp.route("/api/chat/prompts/<prompt_id>", methods=["DELETE"])
 @require_auth
 def delete_prompt(prompt_id):
-    db = _get_db()
+    db = deps().db
     if db.get_prompt(prompt_id) is None:
         return jsonify({"error": "Prompt not found"}), 404
     db.delete_prompt(prompt_id)
@@ -686,7 +639,7 @@ def reorder_prompts():
     ids = data.get("ids")
     if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
         return jsonify({"error": "ids must be a list of strings"}), 400
-    _get_db().reorder_prompts(ids)
+    deps().db.reorder_prompts(ids)
     logger.info("chat prompts reordered (%d ids)", len(ids))
     return jsonify({"ok": True})
 
@@ -695,13 +648,13 @@ def reorder_prompts():
 
 
 def _start_run(conv, user_msg, *, is_first, first_user_content, delete_from_seq=None):
-    from . import project_files as pf
-
+    d = deps()
     result = run_start.start_run(
-        db=_get_db(),
-        run_manager=_get_run_manager(),
-        get_mcp=_get_mcp,
-        storage_root=current_app.config.get("PROJECT_FILES_DIR") or pf.default_storage_root(),
+        db=d.db,
+        run_manager=d.run_manager,
+        get_mcp=lambda: d.mcp,
+        storage_root=d.storage_root(),
+        services=d.services,
         conv=conv,
         user_msg=user_msg,
         is_first=is_first,
@@ -716,7 +669,7 @@ def _start_run(conv, user_msg, *, is_first, first_user_content, delete_from_seq=
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages", methods=["POST"])
 @require_auth
 def send_message(conv_id):
-    db = _get_db()
+    db = deps().db
     conv = db.get_conversation(conv_id)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
@@ -750,7 +703,7 @@ def send_message(conv_id):
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["PUT"])
 @require_auth
 def edit_message(conv_id, msg_id):
-    db = _get_db()
+    db = deps().db
     conv = db.get_conversation(conv_id)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
@@ -788,7 +741,7 @@ def edit_message(conv_id, msg_id):
 @chat_bp.route("/api/chat/conversations/<conv_id>/messages/<msg_id>", methods=["DELETE"])
 @require_auth
 def delete_message(conv_id, msg_id):
-    db = _get_db()
+    db = deps().db
     conv = db.get_conversation(conv_id)
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
@@ -808,7 +761,7 @@ def delete_message(conv_id, msg_id):
 @chat_bp.route("/api/chat/runs/<run_id>", methods=["GET"])
 @require_auth
 def get_run(run_id):
-    run = _get_db().get_chat_run(run_id)
+    run = deps().db.get_chat_run(run_id)
     if run is None:
         return jsonify({"error": "Run not found"}), 404
     return jsonify(run.to_dict())
@@ -825,22 +778,19 @@ def stream_run(run_id):
     path; the observer's DB backstop closes the stream even if the run finishes
     between this check and the subscribe.
     """
-    db = _get_db()
-    manager = _get_run_manager()
+    db = deps().db
+    manager = deps().run_manager
     run = db.get_chat_run(run_id)
     if run is None:
         return jsonify({"error": "Run not found"}), 404
 
-    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-
     if run.status in TERMINAL_STATUSES:
         def terminal():
             yield encode_sse_event("run_status", {"status": run.status, "error": run.error})
-        return Response(terminal(), mimetype="text/event-stream", headers=headers)
+        return http.sse_response(terminal(), wrap=False)
 
     q, replay = manager.subscribe_with_replay(run_id)
-    return Response(stream_with_context(manager.observe(run_id, q, replay)),
-                    mimetype="text/event-stream", headers=headers)
+    return http.sse_response(manager.observe(run_id, q, replay))
 
 
 @chat_bp.route("/api/chat/runs/<run_id>/cancel", methods=["POST"])
@@ -851,7 +801,7 @@ def cancel_run(run_id):
     Cancelling an already-terminal run is a harmless no-op that returns 200
     with the run's existing status (terminal-guarded in the DB).
     """
-    run = _get_run_manager().request_cancel(run_id)
+    run = deps().run_manager.request_cancel(run_id)
     if run is None:
         return jsonify({"error": "Run not found"}), 404
     return jsonify(run.to_dict())
@@ -877,12 +827,12 @@ def cancel_active_run(conv_id):
     match expected_run_id — both harmless no-ops. 404 only if the conversation
     does not exist.
     """
-    db = _get_db()
+    db = deps().db
     if db.get_conversation(conv_id) is None:
         return jsonify({"error": "Conversation not found"}), 404
     body = request.get_json(silent=True) or {}
     expected_run_id = body.get("expected_run_id")
-    run = _get_run_manager().request_cancel_for_conversation(
+    run = deps().run_manager.request_cancel_for_conversation(
         conv_id, expected_run_id=expected_run_id)
     return jsonify({"run": run.to_dict() if run is not None else None})
 
@@ -892,7 +842,7 @@ def cancel_active_run(conv_id):
 @chat_bp.route("/api/chat/messages/<msg_id>/critique", methods=["POST"])
 @require_auth
 def create_critique(msg_id):
-    db = _get_db()
+    db = deps().db
     msg = db.get_message(msg_id)
     if msg is None:
         return jsonify({"error": "Message not found"}), 404
@@ -934,7 +884,7 @@ def create_critique(msg_id):
 @chat_bp.route("/api/chat/messages/<msg_id>/critique", methods=["GET"])
 @require_auth
 def get_critique(msg_id):
-    critique = _get_db().get_critique(msg_id)
+    critique = deps().db.get_critique(msg_id)
     if critique is None:
         return jsonify({"error": "No critique found"}), 404
     return jsonify(critique.to_dict())
@@ -965,8 +915,7 @@ def spinoff():
                 yield encode_sse({"error": event_data["message"]})
                 return
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return http.sse_response(generate())
 
 
 # -- Ghost chat (ephemeral, zero-trace) --
@@ -990,12 +939,14 @@ def ghost_chat():
     if not isinstance(mcp_servers, list):
         return jsonify({"error": "mcp_servers must be a list of server ids"}), 400
 
+    mcp = deps().mcp
+
     def generate():
         # One manager for the whole stream — discovery is cached, so repeated
         # ghost turns against the same servers do not re-spawn the subprocess.
-        tools = _get_mcp().get_all_tools(mcp_servers) if mcp_servers else None
+        tools = mcp.get_all_tools(mcp_servers) if mcp_servers else None
         if tools:
-            stream = stream_with_tools(service_name, messages_array, tools, _get_mcp())
+            stream = stream_with_tools(service_name, messages_array, tools, mcp)
         else:
             stream = stream_chat_completion(service_name, messages_array)
         for event_type, event_data in stream:
@@ -1020,13 +971,11 @@ def ghost_chat():
     # no-store, not just no-cache: ghost replies must never be written to any
     # HTTP cache (browser or intermediate proxy) — the deniability is part of
     # the feature, so a cached body would be a trace.
-    return Response(stream_with_context(generate()), mimetype="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-store, max-age=0, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0",
-                        "X-Accel-Buffering": "no",
-                    })
+    return http.sse_response(generate(), headers={
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
 
 
 # Register admin routes onto chat_bp at module-load time. Importing this

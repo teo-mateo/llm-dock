@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-chat-prompts")
 
+from chat.deps import deps_for
+from tests.chat_support import chat_parts
+from chat.deps import install
 from chat.db import ChatDB
 from chat.routes import chat_bp
 
@@ -26,7 +29,7 @@ def client():
     """Minimal Flask app exposing the chat blueprint with an in-memory DB."""
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()
@@ -204,7 +207,7 @@ def test_update_prompt_updates_timestamp(client):
     # Timestamps are stored at second granularity by SQLite's strftime; backdate
     # the row so the update's refresh is observable without sleeping a second.
     backdated = "2000-01-01T00:00:00Z"
-    db = client.application.config["CHAT_DB"]
+    db = deps_for(client.application).db
     conn = db._get_conn()
     conn.execute(
         "UPDATE chat_prompts SET updated_at = ? WHERE id = ?", (backdated, created["id"])

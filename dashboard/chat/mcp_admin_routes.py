@@ -7,27 +7,22 @@ returned are the configured `command` + `args` (which are paths the user
 already chose) and tool metadata produced by the MCP server itself.
 """
 
-import json
 import logging
 import os
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 
-from flask import current_app, jsonify, request
+from flask import jsonify, request
 
 from auth import require_auth
 from . import mcp_config
-from .mcp_client import MCPClientManager
 from .mcp_registry import MCP_SERVERS as BUILTIN
+from .deps import deps
 from .routes import chat_bp
 
 logger = logging.getLogger(__name__)
 
 DISCOVER_TIMEOUT = 5.0
 CALL_TIMEOUT = 10.0
-
-
-def _get_mcp() -> MCPClientManager:
-    return current_app.config["MCP_MANAGER"]
 
 
 def _registry_view(state: dict) -> dict:
@@ -149,7 +144,7 @@ def test_mcp_registry():
     if cfg is None:
         return jsonify({"error": f"unknown or disabled server '{server_id}'"}), 404
 
-    mgr = _get_mcp()
+    mgr = deps().mcp
 
     if tool_name is None:
         try:

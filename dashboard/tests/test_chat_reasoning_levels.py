@@ -18,6 +18,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-rl-chat")
 
+from chat.deps import replace_deps
+from tests.chat_support import chat_parts
+from chat.deps import install
 from chat.db import ChatDB
 from chat.models import Conversation
 from chat import run_config
@@ -47,7 +50,7 @@ def client(monkeypatch):
                         lambda svc, services=None, _levels=LEVELS: _parse(_levels.get(svc)))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = ChatDB(":memory:")
+    install(app, **chat_parts(ChatDB(":memory:")))
     app.register_blueprint(chat_bp)
     app.testing = True
     return app.test_client()
@@ -305,8 +308,7 @@ def test_run_started_frame_reports_the_resolved_level(client, monkeypatch):
             calls["observe_extra"] = run_started_extra
             return iter([b""])
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
+    replace_deps(client.application, run_manager=_Mgr())
     monkeypatch.setattr(run_config, "effective_reasoning_level",
                         lambda conv, services=None: (None, "Reasoning level 'low' is not offered by this model and was ignored"))
 
@@ -333,8 +335,7 @@ def test_run_started_frame_carries_the_level_when_it_holds(client, monkeypatch):
             calls["observe_extra"] = run_started_extra
             return iter([b""])
 
-    import chat.routes as routes
-    monkeypatch.setattr(routes, "_get_run_manager", lambda: _Mgr())
+    replace_deps(client.application, run_manager=_Mgr())
 
     conv = _create(client, reasoning_level="medium")
     r = client.post(f"{CONVERSATIONS_PATH}/{conv['id']}/messages", json={"content": "hi"},

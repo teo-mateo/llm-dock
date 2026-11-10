@@ -153,3 +153,27 @@ def test_the_sse_helper_sets_the_headers_a_proxy_must_not_buffer():
     assert response.mimetype == "text/event-stream"
     assert response.headers["Cache-Control"] == "no-cache"
     assert response.headers["X-Accel-Buffering"] == "no"
+
+
+def test_extra_headers_override_the_defaults_and_keep_the_rest():
+    from flask import Flask
+    from chat import http
+
+    with Flask(__name__).test_request_context():
+        response = http.sse_response(
+            iter([b"x"]), headers={"Cache-Control": "no-store", "Pragma": "no-cache"}
+        )
+
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["X-Accel-Buffering"] == "no"
+    assert http.SSE_HEADERS["Cache-Control"] == "no-cache"
+
+
+def test_an_unwrapped_body_does_not_need_a_request_context():
+    from flask import Response
+    from chat import http
+
+    response = http.sse_response(iter([b"x"]), wrap=False)
+
+    assert isinstance(response, Response) and response.mimetype == "text/event-stream"

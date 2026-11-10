@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "test-token-ghost")
 
+from chat.deps import install, replace_deps
+from tests.chat_support import chat_parts
 from chat.db import ChatDB
 from chat.routes import chat_bp
 
@@ -29,8 +31,7 @@ def ctx(tmp_path):
     db = ChatDB(str(tmp_path / "chat.db"))
     app = Flask(__name__)
     app.config["DASHBOARD_TOKEN"] = TOKEN
-    app.config["CHAT_DB"] = db
-    app.config["MCP_MANAGER"] = FakeMCP()
+    install(app, **chat_parts(db, mcp=FakeMCP()))
     app.register_blueprint(chat_bp)
     app.testing = True
     yield app, db
@@ -141,8 +142,7 @@ def test_error_event_emits_legacy_frame_and_no_done(ctx, monkeypatch):
 
 
 def test_tool_events_pass_through_in_order(ctx, monkeypatch):
-    monkeypatch.setattr("chat.routes._get_mcp",
-                        lambda: FakeMCP(tools=[{"type": "function", "function": {"name": "render-html__render_html"}}]))
+    replace_deps(ctx[0], mcp=FakeMCP(tools=[{"type": "function", "function": {"name": "render-html__render_html"}}]))
     _patch_stream(monkeypatch, [
         ("tool_call", {"name": "render_html", "arguments": {"html": "<b>x</b>"}, "server_id": "render-html"}),
         ("tool_result", {"name": "render_html", "result": "ok", "server_id": "render-html"}),
@@ -165,7 +165,7 @@ def test_tool_events_pass_through_in_order(ctx, monkeypatch):
 
 def test_tools_are_built_from_the_requested_servers_only(ctx, monkeypatch):
     fake_mcp = FakeMCP(tools=[{"type": "function", "function": {"name": "sympy-math__solve"}}])
-    monkeypatch.setattr("chat.routes._get_mcp", lambda: fake_mcp)
+    replace_deps(ctx[0], mcp=fake_mcp)
     _patch_stream(monkeypatch, [("done", {"content": "ok", "reasoning_content": None})], with_tools=True)
     r = post(ctx, {"service_name": "vllm-test",
                    "messages": [{"role": "user", "content": "hi"}],
@@ -176,7 +176,7 @@ def test_tools_are_built_from_the_requested_servers_only(ctx, monkeypatch):
 
 def test_no_mcp_servers_skips_the_tool_loop(ctx, monkeypatch):
     fake_mcp = FakeMCP(tools=[{"type": "function", "function": {"name": "x"}}])
-    monkeypatch.setattr("chat.routes._get_mcp", lambda: fake_mcp)
+    replace_deps(ctx[0], mcp=fake_mcp)
     fake = _patch_stream(monkeypatch, [("done", {"content": "ok", "reasoning_content": None})])
     r = post(ctx, {"service_name": "vllm-test",
                    "messages": [{"role": "user", "content": "hi"}]})
@@ -190,7 +190,7 @@ def test_no_mcp_servers_skips_the_tool_loop(ctx, monkeypatch):
 
 def test_unknown_mcp_server_degrades_to_plain_stream(ctx, monkeypatch):
     fake_mcp = FakeMCP(tools=[])
-    monkeypatch.setattr("chat.routes._get_mcp", lambda: fake_mcp)
+    replace_deps(ctx[0], mcp=fake_mcp)
     fake = _patch_stream(monkeypatch, [("done", {"content": "ok", "reasoning_content": None})])
     r = post(ctx, {"service_name": "vllm-test",
                    "messages": [{"role": "user", "content": "hi"}],

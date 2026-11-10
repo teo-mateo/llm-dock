@@ -11,6 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from chat.deps import deps_for
 from chat.db import ChatDB
 from chat.prompt_seed import seed_default_prompts, _humanize_name
 
@@ -227,7 +228,7 @@ def test_init_chat_seeds_prompts(tmp_path, monkeypatch):
     app.config["DASHBOARD_TOKEN"] = "test-token-seed"
     init_chat(app, db_path=chat_db_path)
 
-    db = app.config["CHAT_DB"]
+    db = deps_for(app).db
     prompts = db.list_prompts()
     assert len(prompts) == 3
     names = [p.name for p in prompts]
@@ -247,9 +248,9 @@ def test_init_chat_idempotent(tmp_path, monkeypatch):
     app1 = Flask(__name__)
     app1.config["DASHBOARD_TOKEN"] = "test-token-seed2"
     init_chat(app1, db_path=chat_db_path)
-    assert len(app1.config["CHAT_DB"].list_prompts()) == 3
+    assert len(deps_for(app1).db.list_prompts()) == 3
 
     app2 = Flask(__name__)
     app2.config["DASHBOARD_TOKEN"] = "test-token-seed2"
     init_chat(app2, db_path=chat_db_path)
-    assert len(app2.config["CHAT_DB"].list_prompts()) == 3
+    assert len(deps_for(app2).db.list_prompts()) == 3
