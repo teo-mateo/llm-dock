@@ -16,6 +16,8 @@ RECREATE_TIMEOUT_S = 240
 # request that holds SERVICES_DB_LOCK; raising this holds every other write
 # behind them for longer.
 RESTART_TIMEOUT_S = 60
+# An image change can make `up` pull the new image before it recreates.
+IMAGE_CHANGE_TIMEOUT_S = 600
 
 NOT_FOUND = "not_found"
 RECREATE_FAILED = "recreate_failed"
@@ -140,6 +142,7 @@ def restart_if_running(
     status: str,
     rebuild: bool = False,
     finish: Callable[[dict, str], None] = lambda services, name: None,
+    timeout: int = RESTART_TIMEOUT_S,
 ) -> dict:
     compose_mgr = ComposeManager(compose_file)
     result = recreate_service(
@@ -150,7 +153,7 @@ def restart_if_running(
         compose_mgr.rebuild_compose_file if rebuild else (lambda: None),
         finish=finish,
         only_if_running=True,
-        timeout=RESTART_TIMEOUT_S,
+        timeout=timeout,
     )
     if result.code == COMPOSE_REBUILD_FAILED:
         raise ValueError(result.error)

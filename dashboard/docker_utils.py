@@ -8,7 +8,7 @@ from flask import current_app
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
 from port_conflicts import conflicts_for
-from flag_metadata import openwebui_base_url, default_engine_image
+from flag_metadata import openwebui_base_url, effective_image
 from model_discovery import inspect_model
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
@@ -51,6 +51,15 @@ def _image_registry(image_name: str):
     if "." in first or ":" in first or first == "localhost":
         return first
     return "docker.io"
+
+
+def image_presence_warnings(image_name: str | None, lookup=None) -> list[str]:
+    if not image_name:
+        return []
+    info = (lookup or get_image_info)(image_name)
+    if info["exists"] or info.get("error"):
+        return []
+    return [f"Image '{image_name}' is not present locally; it will be pulled when the container starts"]
 
 
 def get_image_info(image_name: str) -> dict:
@@ -153,12 +162,6 @@ def check_docker():
         return False
 
 
-def _service_image(template_type, config):
-    if template_type in ("llamacpp", "ik_llamacpp", "vllm", "sglang"):
-        return config.get("image") or default_engine_image(template_type)
-    return default_engine_image(template_type)
-
-
 def _service_kind(config):
     """Classify a service config as 'chat' or 'embedding' from its params.
 
@@ -235,7 +238,7 @@ def get_docker_services():
             model_name_map[service_name] = config.get("model_name")
             kind_map[service_name] = _service_kind(config)
             favorite_map[service_name] = bool(config.get("favorite", False))
-            image_map[service_name] = _service_image(
+            image_map[service_name] = effective_image(
                 template_type_map[service_name], config
             )
             reasoning_levels_map[service_name] = _parsed_reasoning_levels(

@@ -46,6 +46,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
   const [port, setPort] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [reasoningLevels, setReasoningLevels] = useState('')
+  const [image, setImage] = useState('')
   const [params, setParams] = useState([])
   const [saving, setSaving] = useState(false)
   const [settingGlobalKey, setSettingGlobalKey] = useState(false)
@@ -75,6 +76,7 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
       setPort(String(config.port || ''))
       setApiKey(config.api_key || '')
       setReasoningLevels(config.reasoning_levels || '')
+      setImage(config.image || '')
       setParams(paramsToArray(config.params))
       initialized.current = true
     }
@@ -103,14 +105,16 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
     if (port !== String(config.port || '')) return true
     if (apiKey !== (config.api_key || '')) return true
     if (reasoningLevels !== (config.reasoning_levels || '')) return true
+    if (config.image_override && image.trim() !== (config.image || '')) return true
     return !paramsEqual(paramsToObject(params), config.params)
-  }, [port, apiKey, reasoningLevels, params, config])
+  }, [port, apiKey, reasoningLevels, image, params, config])
 
   const handleDiscard = useCallback(() => {
     if (config) {
       setPort(String(config.port || ''))
       setApiKey(config.api_key || '')
       setReasoningLevels(config.reasoning_levels || '')
+      setImage(config.image || '')
       setParams(paramsToArray(config.params))
     }
   }, [config])
@@ -127,28 +131,33 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
         // omitting it would leave the stored declaration in place.
         reasoning_levels: reasoningLevels.trim(),
       }
+      // Same rule as reasoning_levels: an empty string resets to the engine default.
+      if (config.image_override) payload.image = image.trim()
       if (config.model_path) payload.model_path = config.model_path
       if (config.model_name) payload.model_name = config.model_name
       if (config.alias) payload.alias = config.alias
 
-      await fetchAPI(`/services/${serviceName}`, {
+      const data = await fetchAPI(`/services/${serviceName}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       })
 
       const wasRunning = runtime?.status === 'running'
-      // Nothing to pull here: the PUT broadcasts the new ladder as a metadata
-      // delta, so every consumer's payload updates on its own connection.
-      onSaved(wasRunning
-        ? 'Configuration saved. Container will be recreated.'
-        : 'Configuration saved.'
-      )
+      if (data?.recreate_error) {
+        onSaved(`Configuration saved, but the container was not recreated: ${data.recreate_error}`, 'error')
+      } else if (data?.restarted) {
+        onSaved('Configuration saved. Container recreated.')
+      } else if (wasRunning) {
+        onSaved('Configuration saved. Restart the service to apply changes.')
+      } else {
+        onSaved('Configuration saved.')
+      }
     } catch (err) {
       onError(err.message)
     } finally {
       setSaving(false)
     }
-  }, [config, port, apiKey, params, reasoningLevels, serviceName, runtime, onSaved, onError])
+  }, [config, port, apiKey, params, reasoningLevels, image, serviceName, runtime, onSaved, onError])
 
   const handleUseGlobalKey = useCallback(async () => {
     setSettingGlobalKey(true)
@@ -287,6 +296,28 @@ export default function ServiceConfigPanel({ config, serviceName, runtime, onSav
             </p>
           </div>
         </div>
+
+        {config?.image_override && (
+          <div>
+            <label className="block text-sm font-medium mb-2 text-fg-muted" htmlFor="config-image">
+              Image
+            </label>
+            <input
+              id="config-image"
+              type="text"
+              value={image}
+              onChange={e => setImage(e.target.value)}
+              disabled={saving}
+              placeholder={runtime?.image || ''}
+              className="w-full bg-surface-strong border border-border-strong rounded px-3 py-2 text-fg font-mono text-sm focus:outline-none focus:border-accent disabled:opacity-50"
+            />
+            <p className="mt-1 text-xs text-fg-subtle">
+              Leave empty to use the engine default.
+              {runtime?.image ? ` Currently: ${runtime.image}` : ''}
+              {' '}Changing it recreates a running container.
+            </p>
+          </div>
+        )}
 
         {/* Parameters section */}
         <div>

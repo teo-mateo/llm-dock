@@ -11,7 +11,7 @@ from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
-from docker_utils import get_docker_services, get_service_container, control_service, get_image_info
+from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
 from model_discovery import inspect_model
 from service_templates import generate_api_key
 from key_rotation import rotate_keys_in_db
@@ -20,9 +20,11 @@ from flag_metadata import (
     validate_service_config,
     get_flag_metadata,
     MANDATORY_FIELDS,
+    IMAGE_OVERRIDE_ENGINES,
+    effective_image,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
-from service_recreate import NOT_FOUND, recreate, restart_if_running
+from service_recreate import IMAGE_CHANGE_TIMEOUT_S, NOT_FOUND, RESTART_TIMEOUT_S, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
@@ -49,16 +51,14 @@ _serialize_db = serialize_db
 _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
 
 
-def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
+def _recreate_if_running(service_name, rebuild=False, finish=lambda s, n: None, timeout=RESTART_TIMEOUT_S):
     container = get_service_container(service_name)
     status = container.status if container else "not-created"
-    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish)
+    return restart_if_running(COMPOSE_FILE, service_name, status, rebuild, finish, timeout)
 
 
-def _rebuild_and_restart(compose_mgr, service_name):
-    return _recreate_if_running(
-        service_name, rebuild=True, finish=lambda services, name: proxy_supervisor.sync()
-    )
+def _rebuild_and_restart(compose_mgr, service_name, timeout=RESTART_TIMEOUT_S):
+    return _recreate_if_running(service_name, True, lambda s, n: proxy_supervisor.sync(), timeout)
 
 
 # ============================================
@@ -103,6 +103,7 @@ def get_service(service_name):
         config["model_size_str"] = model_info["model_size_str"]
         config["model_missing"] = not model_info["model_present"]
         config["model_host_path"] = model_info["model_host_path"]
+        config["image_override"] = config.get("template_type") in IMAGE_OVERRIDE_ENGINES
 
         return jsonify({"service_name": service_name, "config": config}), 200
 
@@ -296,6 +297,7 @@ def create_service():
         ]
         if warnings:
             logger.warning(f"Service create with unknown {template_type} flags: {warnings}")
+        warnings += image_presence_warnings(data.get("image"))
 
         # Generate service name from alias
         service_name = gen_service_name(template_type, data.get("alias"))
@@ -324,6 +326,7 @@ def create_service():
             "service_name": service_name,
             "port": port,
             "api_key": data["api_key"],
+            "image": effective_image(template_type, data),
             "message": f'Service "{service_name}" created successfully',
         }
         if warnings:
@@ -398,7 +401,10 @@ def update_service(service_name):
 
         # Update in database — merge into existing to preserve fields not
         # sent by the client (favorite, etc.)
+        old_image = effective_image(template_type, existing)
         existing.update(data)
+        new_image = effective_image(template_type, existing)
+        image_changed = old_image != new_image
         compose_mgr.update_service_in_db(service_name, existing)
 
         # Advisory, over the MERGED params: a typo stored before this check
@@ -412,12 +418,17 @@ def update_service(service_name):
         if warnings:
             logger.warning(f"Service {service_name} update with unknown {template_type} flags: {warnings}")
 
-        # Rebuild compose file
-        compose_mgr.rebuild_compose_file()
-
-        # The update may have moved the public port out from under a running
-        # inspector proxy; sync() is a no-op when nothing is inspected.
-        proxy_supervisor.sync()
+        if image_changed:
+            warnings += image_presence_warnings(existing.get("image"))
+            recreate_result = _rebuild_and_restart(compose_mgr, service_name, IMAGE_CHANGE_TIMEOUT_S)
+        else:
+            compose_mgr.rebuild_compose_file()
+            # The update may have moved the public port out from under a running
+            # inspector proxy; sync() is a no-op when nothing is inspected.
+            proxy_supervisor.sync()
+            recreate_result = {"restarted": False}
+        restarted = recreate_result["restarted"]
+        announce = image_changed and (restarted or get_service_container(service_name) is None)
 
         # Broadcast the ladder to every SSE consumer: chat reads it off the
         # service payload, not off this config fetch, and rejects a level the
@@ -430,6 +441,7 @@ def update_service(service_name):
             "container_id": None,
             "metadata": {
                 "reasoning_levels": parse_levels(existing.get("reasoning_levels")),
+                **({"image": new_image} if announce else {}),
             },
             "timestamp": time.time(),
         })
@@ -440,7 +452,11 @@ def update_service(service_name):
             "success": True,
             "service_name": service_name,
             "message": f'Service "{service_name}" updated successfully',
+            "image": new_image,
+            "restarted": restarted,
         }
+        if recreate_result.get("error"):
+            response["recreate_error"] = recreate_result["error"]
         if warnings:
             response["warnings"] = warnings
         return jsonify(response), 200

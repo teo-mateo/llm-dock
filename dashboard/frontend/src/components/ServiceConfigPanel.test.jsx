@@ -178,3 +178,125 @@ describe('ServiceConfigPanel reasoning levels', () => {
     expect(sseHookCalls.count).toBe(0)
   })
 })
+
+describe('ServiceConfigPanel image override', () => {
+  const OVERRIDE = { ...BASE, image_override: true, image: 'mine:1' }
+
+  function renderPanel(config, { runtime = { status: 'running', image: 'llm-dock-llamacpp' }, response = {} } = {}) {
+    fetchAPIMock.mockReset()
+    fetchAPIMock.mockResolvedValue(response)
+    const onSaved = vi.fn()
+    const onError = vi.fn()
+    render(
+      <ServiceConfigPanel
+        config={config}
+        serviceName="llamacpp-x"
+        runtime={runtime}
+        onSaved={onSaved}
+        onError={onError}
+        flagMetadata={{}}
+      />
+    )
+    return { onSaved, onError }
+  }
+
+  const imageInput = () => screen.getByLabelText('Image')
+  const save = () => fireEvent.click(screen.getByRole('button', { name: /^Save/ }))
+  const putBody = () => JSON.parse(fetchAPIMock.mock.calls[0][1].body)
+
+  it('shows the field only when the engine honours an image', () => {
+    renderPanel(OVERRIDE)
+    expect(imageInput()).toBeTruthy()
+    cleanup()
+
+    renderPanel({ ...BASE, image_override: false })
+    expect(screen.queryByLabelText('Image')).toBeNull()
+    cleanup()
+
+    renderPanel(BASE)
+    expect(screen.queryByLabelText('Image')).toBeNull()
+  })
+
+  it('prefills the stored override and shows the effective image', () => {
+    renderPanel(OVERRIDE)
+
+    expect(imageInput().value).toBe('mine:1')
+    expect(screen.getByText(/Currently: llm-dock-llamacpp/)).toBeTruthy()
+  })
+
+  it('uses the effective image as the placeholder when there is no override', () => {
+    renderPanel({ ...BASE, image_override: true })
+
+    expect(imageInput().value).toBe('')
+    expect(imageInput().placeholder).toBe('llm-dock-llamacpp')
+  })
+
+  it('is dirty after an image change only, and Discard restores it', () => {
+    renderPanel(OVERRIDE)
+    expect(screen.getByRole('button', { name: /^Save/ }).disabled).toBe(true)
+
+    fireEvent.change(imageInput(), { target: { value: 'mine:2' } })
+    expect(screen.getByRole('button', { name: /^Save/ }).disabled).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: /Discard/ }))
+    expect(imageInput().value).toBe('mine:1')
+  })
+
+  it('sends the trimmed image, and an empty string when cleared', async () => {
+    renderPanel(OVERRIDE)
+    fireEvent.change(imageInput(), { target: { value: '  mine:2  ' } })
+    save()
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalled())
+    expect(putBody().image).toBe('mine:2')
+
+    cleanup()
+    renderPanel(OVERRIDE)
+    fireEvent.change(imageInput(), { target: { value: '' } })
+    save()
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalled())
+    expect(putBody().image).toBe('')
+  })
+
+  it('sends no image for an engine that does not honour one', async () => {
+    renderPanel({ ...BASE, image_override: false })
+    fireEvent.change(screen.getByLabelText('Reasoning levels'), { target: { value: 'off' } })
+    save()
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalled())
+
+    expect('image' in putBody()).toBe(false)
+  })
+
+  it('says the container was recreated when the server recreated it', async () => {
+    const { onSaved } = renderPanel(OVERRIDE, { response: { restarted: true } })
+    fireEvent.change(imageInput(), { target: { value: 'mine:2' } })
+    save()
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Configuration saved. Container recreated.'))
+  })
+
+  it('reports a failed recreation as an error, not as applied', async () => {
+    const { onSaved } = renderPanel(OVERRIDE, { response: { restarted: false, recreate_error: 'pull access denied' } })
+    fireEvent.change(imageInput(), { target: { value: 'mine:2' } })
+    save()
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(
+      'Configuration saved, but the container was not recreated: pull access denied', 'error',
+    ))
+  })
+
+  it('tells a running service with an unchanged image to restart instead of claiming a recreate', async () => {
+    const { onSaved } = renderPanel(OVERRIDE, { response: { restarted: false } })
+    fireEvent.change(screen.getByLabelText('Reasoning levels'), { target: { value: 'off' } })
+    save()
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Configuration saved. Restart the service to apply changes.'))
+  })
+
+  it('keeps the plain message for a stopped service', async () => {
+    const { onSaved } = renderPanel(OVERRIDE, { runtime: { status: 'exited' }, response: { restarted: false } })
+    fireEvent.change(imageInput(), { target: { value: 'mine:2' } })
+    save()
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Configuration saved.'))
+  })
+})
