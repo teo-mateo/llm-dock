@@ -7,7 +7,7 @@ from flask import current_app
 
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
-from port_conflicts import duplicate_ports
+from port_conflicts import conflicts_for
 from flag_metadata import openwebui_base_url, default_engine_image
 from model_discovery import inspect_model
 from openwebui_integration import get_openwebui_registered_urls
@@ -348,14 +348,10 @@ def get_docker_services():
                 }
             )
 
-    conflicts = duplicate_ports(declared_map)
+    conflicts = conflicts_for(declared_map)
     for service in services:
-        others = sorted(
-            {n for names in conflicts.values() if service["name"] in names for n in names}
-            - {service["name"]}
-        )
-        if others:
-            service["port_conflicts"] = others
+        if service["name"] in conflicts:
+            service["port_conflicts"] = conflicts[service["name"]]
 
     # Sort by port number (ascending)
     services.sort(key=lambda s: s["host_port"])

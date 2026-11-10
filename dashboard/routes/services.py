@@ -21,7 +21,8 @@ from flag_metadata import (
     get_flag_metadata,
     MANDATORY_FIELDS,
 )
-from port_conflicts import find_port_owner, next_free_port, port_in_use_body, start_blocker
+from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.ports import allocate_upstream_port
@@ -39,7 +40,6 @@ services_bp = Blueprint("services", __name__)
 # Module constant so tests can pin a free port instead of colliding with the
 # live 3301 slot on the machine the suite runs on.
 PUBLIC_SLOT_PORT = 3301
-DASHBOARD_PORT = 3399
 
 # Shared across all blueprints — see db_lock.py. Aliased to preserve the
 # existing private-looking names used throughout this module.
@@ -129,17 +129,6 @@ def get_service(service_name):
 # ============================================
 
 
-def _start_port_conflict(service_name: str) -> dict | None:
-    services = ComposeManager(COMPOSE_FILE).list_services_in_db()
-    if service_name not in services:
-        return None
-    statuses = {s["name"]: s["status"] for s in get_docker_services()}
-    owner = start_blocker(services, service_name, lambda n: statuses.get(n) == "running")
-    if owner is None:
-        return None
-    return port_in_use_body(services[service_name]["port"], owner)
-
-
 @services_bp.route("/api/services/<service_name>/start", methods=["POST"])
 @require_auth
 @_serialize_db
@@ -151,13 +140,15 @@ def start_service(service_name):
     the just-revoked key (rotation only stops the containers it snapshotted
     as running, so such a container would otherwise be missed).
     """
-    blocked = _start_port_conflict(service_name)
+    services = ComposeManager(COMPOSE_FILE).list_services_in_db()
+    blocked = check_start(services, service_name, current_statuses())
     if blocked:
         return jsonify({"success": False, **blocked}), 400
 
     result = control_service(service_name, "start")
 
     if result["success"]:
+        finish_start(services, service_name)
         logger.info(f"Started service: {service_name}")
         return jsonify(result)
     else:
@@ -700,40 +691,25 @@ def set_public_port(service_name):
                 }
             ), 200
 
-        # Find service currently using the public slot
         all_services = compose_mgr.list_services_in_db()
-        conflicting_service = None
-        conflicting_service_name = None
+        displaced = [
+            name
+            for name, cfg in all_services.items()
+            if name != service_name and cfg.get("port") == PUBLIC_SLOT_PORT
+        ]
 
-        for svc_name, svc_config in all_services.items():
-            if svc_config.get("port") == PUBLIC_SLOT_PORT:
-                conflicting_service = svc_config
-                conflicting_service_name = svc_name
-                break
-
-        # Prepare updates
         updates_made = []
 
-        if conflicting_service:
-            # Reassign conflicting service to the lowest free 33XX port
-            new_port = compose_mgr.get_next_available_port(
-                start_port=3300, end_port=3399
+        for displaced_name in displaced:
+            new_port = next_free_port(
+                all_services, compose_mgr.get_used_ports(), start=3300, end=3399
             )
-            if find_port_owner(all_services, new_port, exclude=conflicting_service_name):
-                new_port = next_free_port(
-                    all_services,
-                    compose_mgr.get_used_ports() | {DASHBOARD_PORT},
-                    start=3300,
-                    end=3399,
-                )
-            conflicting_service["port"] = new_port
-            compose_mgr.update_service_in_db(
-                conflicting_service_name, conflicting_service
-            )
+            all_services[displaced_name]["port"] = new_port
+            compose_mgr.update_service_in_db(displaced_name, all_services[displaced_name])
 
             updates_made.append(
                 {
-                    "service": conflicting_service_name,
+                    "service": displaced_name,
                     "old_port": PUBLIC_SLOT_PORT,
                     "new_port": new_port,
                 }
@@ -750,9 +726,7 @@ def set_public_port(service_name):
         # Rebuild compose file and restart affected services
         compose_mgr.rebuild_compose_file()
 
-        services_to_restart = [service_name]
-        if conflicting_service_name:
-            services_to_restart.append(conflicting_service_name)
+        services_to_restart = [service_name, *displaced]
 
         restart_results = []
         for svc in services_to_restart:

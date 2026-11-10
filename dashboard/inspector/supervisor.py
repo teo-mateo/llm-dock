@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 import config
 from compose_manager import ComposeManager
-from port_conflicts import duplicate_ports
+from port_conflicts import conflicts_for, holds_port
 
 from .db import InspectorDB
 from .proxy import ServiceProxy
@@ -64,26 +64,12 @@ class ProxySupervisor:
                 logger.debug("Inspector sync: compose file not found; nothing to reconcile")
                 return
 
-            contested = {
-                port: names
-                for port, names in duplicate_ports(
-                    {n: {"port": c.get("port")} for n, c in services.items()}
-                ).items()
-            }
-            running = self._running_services() if contested else set()
+            running = self._running_services() if conflicts_for(services) else set()
 
             desired: Dict[str, dict] = {}
             for name, cfg in services.items():
                 if not cfg.get("inspect"):
                     continue
-                if cfg.get("port") is not None and int(cfg["port"]) in contested:
-                    if name not in running:
-                        logger.warning(
-                            "Inspector: port %s is claimed by %s; not holding it for "
-                            "stopped service '%s'",
-                            cfg["port"], contested[int(cfg["port"])], name,
-                        )
-                        continue
                 port = cfg.get("port")
                 upstream = cfg.get("inspect_upstream_port")
                 if not port or not upstream:
@@ -91,6 +77,13 @@ class ProxySupervisor:
                         "Inspector: service '%s' has inspect enabled but no "
                         "port/inspect_upstream_port; its proxy is not started",
                         name,
+                    )
+                    continue
+                if not holds_port(services, name, running.__contains__):
+                    logger.warning(
+                        "Inspector: port %s is claimed by another service; not holding "
+                        "it for stopped service '%s'",
+                        cfg.get("port"), name,
                     )
                     continue
                 desired[name] = {

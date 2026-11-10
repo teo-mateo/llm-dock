@@ -93,34 +93,6 @@ class ComposeManager:
 
         return used_ports
 
-    def get_next_available_port(
-        self, start_port: int = 3301, end_port: int = 3400
-    ) -> int:
-        """
-        Find next available port in range.
-
-        Args:
-            start_port: Starting port (default: 3301)
-            end_port: Ending port (default: 3400)
-
-        Returns:
-            Next available port number
-
-        Raises:
-            ValueError: If no ports available in range
-        """
-        used_ports = self.get_used_ports()
-        # Also reserve dashboard port
-        used_ports.add(3399)
-
-        port = start_port
-        while port <= end_port:
-            if port not in used_ports:
-                return port
-            port += 1
-
-        raise ValueError(f"No available ports in range {start_port}-{end_port}")
-
     def _read_compose(self) -> Dict[str, Any]:
         """Read and parse docker-compose.yml"""
         with open(self.compose_path, "r") as f:

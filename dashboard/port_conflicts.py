@@ -3,7 +3,10 @@ from typing import Callable, Iterable
 
 PORT_IN_USE = "port_in_use"
 
+DASHBOARD_PORT = 3399
+
 COMPOSE_OWNER = "another compose service"
+DASHBOARD_OWNER = "the dashboard"
 
 
 @dataclass(frozen=True)
@@ -14,6 +17,8 @@ class PortOwner:
     def describe(self) -> str:
         if self.kind == "compose":
             return COMPOSE_OWNER
+        if self.kind == "reserved":
+            return DASHBOARD_OWNER
         if self.kind == "inspect_upstream_port":
             return f"the inspector upstream port of service '{self.service}'"
         return f"service '{self.service}'"
@@ -35,6 +40,8 @@ def find_port_owner(
     compose_ports: Iterable[int] = (),
 ) -> PortOwner | None:
     port = int(port)
+    if port == DASHBOARD_PORT:
+        return PortOwner(DASHBOARD_OWNER, "reserved")
     for name, config in services.items():
         if name == exclude:
             continue
@@ -54,6 +61,23 @@ def duplicate_ports(services: dict) -> dict[int, list[str]]:
     return {p: names for p, names in claimants.items() if len(names) > 1}
 
 
+def conflicts_for(services: dict) -> dict[str, list[str]]:
+    result: dict[str, set[str]] = {}
+    for names in duplicate_ports(services).values():
+        for name in names:
+            result.setdefault(name, set()).update(set(names) - {name})
+    return {name: sorted(others) for name, others in result.items()}
+
+
+def holds_port(services: dict, name: str, is_running: Callable[[str], bool]) -> bool:
+    if is_running(name):
+        return True
+    config = services[name]
+    if not config.get("inspect") or config.get("port") is None:
+        return False
+    return find_port_owner(services, config["port"], exclude=name) is None
+
+
 def start_blocker(
     services: dict, name: str, is_running: Callable[[str], bool]
 ) -> PortOwner | None:
@@ -65,7 +89,7 @@ def start_blocker(
         if other == name:
             continue
         if config.get("port") is not None and int(config["port"]) == port:
-            if is_running(other) or config.get("inspect"):
+            if holds_port(services, other, is_running):
                 return PortOwner(other, "port")
         upstream = config.get("inspect_upstream_port")
         if upstream is not None and int(upstream) == port and is_running(other):
@@ -76,7 +100,7 @@ def start_blocker(
 def next_free_port(
     services: dict, compose_ports: Iterable[int], start: int, end: int
 ) -> int:
-    taken = set(compose_ports)
+    taken = set(compose_ports) | {DASHBOARD_PORT}
     for config in services.values():
         taken.update(p for p, _ in _declared_ports(config))
     for port in range(start, end + 1):

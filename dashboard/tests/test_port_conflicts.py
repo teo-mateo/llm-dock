@@ -6,9 +6,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from port_conflicts import (
+    DASHBOARD_PORT,
     PORT_IN_USE,
     PortOwner,
+    conflicts_for,
     duplicate_ports,
+    holds_port,
     find_port_owner,
     next_free_port,
     port_in_use_body,
@@ -68,12 +71,6 @@ def test_start_blocked_by_a_running_owner():
     assert start_blocker(services, "a", lambda n: n == "b") == PortOwner("b", "port")
 
 
-def test_start_blocked_by_a_stopped_inspected_owner():
-    services = {"a": {"port": 3301}, "b": {"port": 3301, "inspect": True}}
-
-    assert start_blocker(services, "a", lambda n: False) == PortOwner("b", "port")
-
-
 def test_start_not_blocked_by_a_stopped_plain_owner():
     services = {"a": {"port": 3301}, "b": {"port": 3301}}
 
@@ -101,3 +98,56 @@ def test_body_is_flat_with_a_machine_code_and_names_the_owner():
     body = port_in_use_body(3301, PortOwner("a", "port"))
 
     assert body == {"error": "Port 3301 is already in use by service 'a'", "code": PORT_IN_USE}
+
+
+def test_dashboard_port_is_reserved():
+    owner = find_port_owner({}, DASHBOARD_PORT)
+
+    assert owner is not None and owner.kind == "reserved"
+    assert "dashboard" in port_in_use_body(DASHBOARD_PORT, owner)["error"]
+
+
+def test_next_free_port_never_returns_the_dashboard_port():
+    with pytest.raises(ValueError):
+        next_free_port({}, set(), DASHBOARD_PORT, DASHBOARD_PORT)
+
+
+def test_conflicts_for_maps_each_service_to_its_other_claimants():
+    services = {
+        "a": {"port": 3301},
+        "b": {"port": 3301},
+        "c": {"port": 3302, "inspect_upstream_port": 3301},
+        "d": {"port": 3303},
+    }
+
+    assert conflicts_for(services) == {"a": ["b", "c"], "b": ["a", "c"], "c": ["a", "b"]}
+
+
+def test_a_running_service_holds_its_port():
+    assert holds_port({"a": {"port": 3301}}, "a", lambda n: True) is True
+
+
+def test_a_stopped_uncontested_inspected_service_holds_its_port():
+    assert holds_port({"a": {"port": 3301, "inspect": True}}, "a", lambda n: False) is True
+
+
+def test_a_stopped_contested_inspected_service_does_not_hold_its_port():
+    services = {"a": {"port": 3301, "inspect": True}, "b": {"port": 3301}}
+
+    assert holds_port(services, "a", lambda n: False) is False
+
+
+def test_a_stopped_plain_service_does_not_hold_its_port():
+    assert holds_port({"a": {"port": 3301}}, "a", lambda n: False) is False
+
+
+def test_contested_through_an_upstream_port_also_counts():
+    services = {"a": {"port": 3301, "inspect": True}, "b": {"port": 3302, "inspect_upstream_port": 3301}}
+
+    assert holds_port(services, "a", lambda n: False) is False
+
+
+def test_start_not_blocked_by_a_skipped_contested_inspected_service():
+    services = {"a": {"port": 3301}, "b": {"port": 3301, "inspect": True}}
+
+    assert start_blocker(services, "a", lambda n: False) is None

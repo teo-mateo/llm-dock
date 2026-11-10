@@ -126,10 +126,7 @@ class TestStartRoute:
     def docker(self, monkeypatch):
         calls = []
         statuses = {}
-        monkeypatch.setattr(
-            services_route, "get_docker_services",
-            lambda: [{"name": n, "status": s} for n, s in statuses.items()],
-        )
+        monkeypatch.setattr(services_route, "current_statuses", lambda: dict(statuses))
         monkeypatch.setattr(
             services_route, "control_service",
             lambda name, action: calls.append((name, action)) or {"success": True},
@@ -148,7 +145,7 @@ class TestStartRoute:
         assert body["code"] == "port_in_use" and "svc-b" in body["error"]
         assert calls == []
 
-    def test_start_is_refused_when_a_stopped_inspected_service_holds_the_port(self, env, docker):
+    def test_start_is_not_blocked_by_a_stopped_inspected_service_the_supervisor_skips(self, env, docker):
         calls, statuses = docker
         env["write"]({
             "svc-a": _svc(3301, "svc-a"),
@@ -158,8 +155,8 @@ class TestStartRoute:
 
         resp = env["client"].post("/api/services/svc-a/start", headers=_auth())
 
-        assert resp.status_code == 400
-        assert calls == []
+        assert resp.status_code == 200
+        assert calls == [("svc-a", "start")]
 
     def test_start_goes_through_when_nothing_holds_the_port(self, env, docker):
         calls, statuses = docker
@@ -190,21 +187,63 @@ class TestSetPublicPort:
         claimed += [stored[n]["inspect_upstream_port"] for n in stored if "inspect_upstream_port" in stored[n]]
         assert len(claimed) == len(set(claimed))
 
-    def test_picker_collision_with_services_json_falls_back_to_a_free_port(self, env, monkeypatch):
+    def test_every_holder_of_the_public_slot_is_moved_off_it(self, env, monkeypatch):
         monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
-        monkeypatch.setattr(ComposeManager, "get_next_available_port", lambda self, **kw: 3302)
         env["write"]({
             "svc-a": _svc(3302, "svc-a"),
             "svc-b": _svc(3301, "svc-b"),
+            "svc-c": _svc(3301, "svc-c"),
         })
-        monkeypatch.setattr(ComposeManager, "get_used_ports", lambda self: set())
 
         resp = env["client"].post("/api/services/svc-a/set-public-port", json={}, headers=_auth())
 
         assert resp.status_code == 200
         stored = env["read"]()
-        assert stored["svc-a"]["port"] == 3301
-        assert stored["svc-b"]["port"] not in (3301, 3302)
+        ports = {n: stored[n]["port"] for n in stored}
+        assert ports["svc-a"] == 3301
+        assert len(set(ports.values())) == 3
+        assert {u["service"] for u in resp.get_json()["updates"]} == {"svc-a", "svc-b", "svc-c"}
+
+
+class TestDashboardPort:
+    def test_create_on_the_dashboard_port_is_refused(self, env):
+        env["write"]({})
+
+        resp = env["client"].post("/api/services", json=_create_body(3399), headers=_auth())
+
+        assert resp.status_code == 400
+        assert resp.get_json()["code"] == "port_in_use"
+
+
+class TestStartSyncsInspector:
+    def test_starting_a_skipped_contested_inspected_service_syncs_the_proxy(self, env, monkeypatch):
+        syncs = []
+        monkeypatch.setattr(proxy_supervisor, "sync", lambda: syncs.append(1))
+        monkeypatch.setattr(
+            services_route, "current_statuses", lambda: {"svc-a": "exited", "svc-b": "exited"}
+        )
+        monkeypatch.setattr(services_route, "control_service", lambda n, a: {"success": True})
+        env["write"]({
+            "svc-a": _svc(3305, "svc-a", inspect=True, inspect_upstream_port=34000),
+            "svc-b": _svc(3305, "svc-b"),
+        })
+
+        resp = env["client"].post("/api/services/svc-a/start", headers=_auth())
+
+        assert resp.status_code == 200
+        assert syncs == [1]
+
+    def test_a_failed_start_does_not_sync(self, env, monkeypatch):
+        syncs = []
+        monkeypatch.setattr(proxy_supervisor, "sync", lambda: syncs.append(1))
+        monkeypatch.setattr(services_route, "current_statuses", lambda: {})
+        monkeypatch.setattr(services_route, "control_service", lambda n, a: {"success": False, "error": "x"})
+        env["write"]({"svc-a": _svc(3305, "svc-a", inspect=True, inspect_upstream_port=34000)})
+
+        resp = env["client"].post("/api/services/svc-a/start", headers=_auth())
+
+        assert resp.status_code == 400
+        assert syncs == []
 
 
 class TestRename:
