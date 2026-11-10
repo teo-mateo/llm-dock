@@ -3,9 +3,9 @@ package com.hpz.llmdockchat.core.attachment
 import com.hpz.llmdockchat.core.prefs.DraftStore
 
 /**
- * The write half of staged conversation content: what a picker or a new-chat
- * sheet files into a conversation before its thread opens. The read half is
- * [ConversationAttachments] and [AutoSendClaimStore].
+ * Filing staged content into a conversation before its thread opens — what a
+ * picker or a new-chat sheet does. The thread's own copy of that content is
+ * [ConversationAttachments], which both reads and edits it.
  *
  * Every method reports whether the write landed. A caller that spends its own
  * source record — the pending share, a staged claim — must wait for that result,

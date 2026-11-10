@@ -80,13 +80,39 @@ class ThreadViewModel(
             override suspend fun setReasoningLevel(level: String?) =
                 conversationsRepository.setReasoningLevel(conversationId, level)
 
-            override suspend fun setMainService(wireValue: String) =
-                repository.updateMainService(conversationId, wireValue)
         },
         scope = viewModelScope,
-        onSnapshot = ::applySettings,
         onReasoningConfirmed = ::closeReasoningPicker,
+        onError = ::showSettingsError,
+        onSnapshot = ::applySettings,
     )
+
+    private fun showSettingsError(message: String) {
+        loaded()?.let { _state.value = it.copy(actionError = message) }
+    }
+
+    /** The one Send gate: the composer and the edit confirmation both read it. */
+    internal val sendGate = SendGate { settingsWriter.pending }
+
+    /**
+     * One place where a server copy of the conversation becomes the screen's
+     * settings: the writer takes it as the confirmed values, and the state is
+     * rebuilt from the writer's snapshot rather than from the copy that was
+     * captured before the seed ran.
+     */
+    private fun applyServerConversation(conversation: ConversationDetail) {
+        settingsWriter.seed(conversation.promptId, conversation.mcpServers, conversation.reasoningLevel)
+        val settings = settingsWriter.current
+        loaded()?.let {
+            _state.value = it.copy(
+                conversation = it.conversation.copy(
+                    promptId = settings.promptId,
+                    mcpServers = settings.mcpServers,
+                    reasoningLevel = settings.reasoningLevel,
+                ),
+            )
+        }
+    }
 
     private fun applySettings(settings: SettingsSnapshot) {
         val current = loaded() ?: return
@@ -97,12 +123,7 @@ class ThreadViewModel(
                 reasoningLevel = settings.reasoningLevel,
             ),
             settingsPending = settings.pending,
-            reasoningPicker = when {
-                settings.reasoningPending -> (current.reasoningPicker ?: ReasoningPickerState()).copy(writePending = true)
-                current.reasoningPicker != null -> current.reasoningPicker.copy(writePending = false)
-                else -> null
-            },
-            actionError = settings.error ?: current.actionError,
+            reasoningPicker = current.reasoningPicker?.copy(writePending = settings.reasoningPending),
         )
     }
 
@@ -200,7 +221,7 @@ class ThreadViewModel(
         staged: List<String> = emptyList(),
     ): ThreadUiState.Loaded {
         val current = _state.value as? ThreadUiState.Loaded
-        settingsWriter.seed(conversation.promptId, conversation.mcpServers, conversation.reasoningLevel)
+        applyServerConversation(conversation)
         val edit = reconcileEdit(current, conversation)
         return ThreadUiState.Loaded(
             conversation = conversation,
@@ -321,7 +342,9 @@ class ThreadViewModel(
     fun openReasoningPicker() {
         val current = loaded() ?: return
         if (!current.canSwitchModel) return
-        _state.value = current.copy(reasoningPicker = ReasoningPickerState())
+        _state.value = current.copy(
+            reasoningPicker = ReasoningPickerState(writePending = settingsWriter.current.reasoningPending),
+        )
         viewModelScope.launch { refreshLadders() }
     }
 
@@ -336,6 +359,11 @@ class ThreadViewModel(
             closeReasoningPicker()
             return
         }
+        // The picker exists because the user just tapped a level in it; the
+        // writer's snapshot only ever updates one that is already open.
+        _state.value = current.copy(
+            reasoningPicker = current.reasoningPicker ?: ReasoningPickerState(writePending = true),
+        )
         settingsWriter.selectReasoningLevel(level)
     }
 
@@ -423,7 +451,7 @@ class ThreadViewModel(
     private suspend fun reloadConversation() {
         val conversation = repository.load(conversationId).getOrNull() ?: return
         val current = loaded() ?: return
-        settingsWriter.seed(conversation.promptId, conversation.mcpServers, conversation.reasoningLevel)
+        applyServerConversation(conversation)
         val edit = reconcileEdit(current, conversation)
         _state.value = current.copy(
             conversation = conversation,
@@ -520,9 +548,14 @@ class ThreadViewModel(
     fun switchModel(ref: ModelRef) {
         val current = loaded() ?: return
         if (current.runActive) return
-        settingsWriter.switchModel(ref.wireValue) {
-            closeModelPicker()
-            reloadConversation()
+        settingsWriter.guard {
+            repository.updateMainService(conversationId, ref.wireValue).fold(
+                onSuccess = {
+                    closeModelPicker()
+                    reloadConversation()
+                },
+                onFailure = { failure -> showSettingsError(failure.appError.displayMessage) },
+            )
         }
     }
 
@@ -623,7 +656,7 @@ class ThreadViewModel(
     fun requestEditConfirm() {
         val current = loaded() ?: return
         val target = current.editingMessage ?: return
-        if (settingsWriter.pending) return
+        if (sendGate.blocked()) return
         if (current.composer.isBlank() && current.attachments.isEmpty()) return
         _state.value = current.copy(
             pendingEdit = PendingEdit(
@@ -891,7 +924,7 @@ class ThreadViewModel(
             return
         }
 
-        settingsWriter.seed(refetched.promptId, refetched.mcpServers, refetched.reasoningLevel)
+        applyServerConversation(refetched)
         _state.value = latest.copy(
             sending = false,
             conversation = refetched,

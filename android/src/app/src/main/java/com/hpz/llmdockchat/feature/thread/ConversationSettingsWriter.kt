@@ -7,22 +7,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** The three settings writes a thread performs, as the writer needs them. */
+/** The settings writes a thread performs, as the writer needs them. */
 interface SettingsWrites {
     suspend fun setPrompt(promptId: String?): Result<Unit>
     suspend fun setMcpServers(serverIds: List<String>): Result<Unit>
     suspend fun setReasoningLevel(level: String?): Result<Unit>
-    suspend fun setMainService(wireValue: String): Result<Unit>
 }
 
-/** What the screen renders: the values in play, and whether the server has them yet. */
+/**
+ * The values in play and whether the server has them yet. A failure is not here:
+ * it is an event, delivered once through the writer's error callback, so a
+ * banner the user dismissed cannot come back on the next publish.
+ */
 data class SettingsSnapshot(
     val promptId: String? = null,
     val mcpServers: List<String> = emptyList(),
     val reasoningLevel: String? = null,
     val pending: Boolean = false,
     val reasoningPending: Boolean = false,
-    val error: String? = null,
 )
 
 /**
@@ -37,6 +39,7 @@ class ConversationSettingsWriter(
     private val writes: SettingsWrites,
     private val scope: CoroutineScope,
     private val onReasoningConfirmed: () -> Unit = {},
+    private val onError: (String) -> Unit = {},
     private val onSnapshot: (SettingsSnapshot) -> Unit,
 ) {
     private var snapshot = SettingsSnapshot()
@@ -44,13 +47,17 @@ class ConversationSettingsWriter(
     private val promptLock = Mutex()
     private var latestPrompt = 0L
     private var confirmedPrompt: String? = null
+    private var promptBusy = false
 
     private val toolsLock = Mutex()
     private var latestTools = 0L
+    private var confirmedTools: List<String> = emptyList()
+    private var toolsBusy = false
 
     private val levelLock = Mutex()
     private var latestLevel = 0L
     private var confirmedLevel: String? = null
+    private var levelBusy = false
 
     /**
      * Settings writes the server has not confirmed. Counted by [submit] before it
@@ -62,16 +69,30 @@ class ConversationSettingsWriter(
 
     val pending: Boolean get() = inFlight > 0
 
-    /** Takes the values a full conversation read just returned as the confirmed ones. */
+    val current: SettingsSnapshot get() = snapshot
+
+    /**
+     * Takes the values a full conversation read returned as the confirmed ones.
+     * A setting with a write outstanding keeps the value the user chose: the
+     * server's copy of it is older than the write in flight.
+     */
     fun seed(promptId: String?, mcpServers: List<String>, reasoningLevel: String?) {
         confirmedPrompt = promptId
+        confirmedTools = mcpServers
         confirmedLevel = reasoningLevel
-        publish(snapshot.copy(promptId = promptId, mcpServers = mcpServers, reasoningLevel = reasoningLevel))
+        publish(
+            snapshot.copy(
+                promptId = if (promptBusy) snapshot.promptId else promptId,
+                mcpServers = if (toolsBusy) snapshot.mcpServers else mcpServers,
+                reasoningLevel = if (levelBusy) snapshot.reasoningLevel else reasoningLevel,
+            ),
+        )
     }
 
     fun selectPrompt(promptId: String?) {
         val write = ++latestPrompt
-        publish(snapshot.copy(promptId = promptId, error = null))
+        promptBusy = true
+        publish(snapshot.copy(promptId = promptId))
         submit {
             promptLock.withLock {
                 if (write != latestPrompt) return@withLock
@@ -79,10 +100,12 @@ class ConversationSettingsWriter(
                     onSuccess = { confirmedPrompt = promptId },
                     onFailure = { failure ->
                         if (write != latestPrompt) return@fold
-                        publish(snapshot.copy(promptId = confirmedPrompt, error = failure.appError.displayMessage))
+                        publish(snapshot.copy(promptId = confirmedPrompt))
+                        onError(failure.appError.displayMessage)
                     },
                 )
             }
+            promptBusy = false
         }
     }
 
@@ -90,55 +113,51 @@ class ConversationSettingsWriter(
         val previous = snapshot.mcpServers
         val next = if (serverId in previous) previous - serverId else previous + serverId
         val write = ++latestTools
-        publish(snapshot.copy(mcpServers = next, error = null))
+        toolsBusy = true
+        publish(snapshot.copy(mcpServers = next))
         submit {
             toolsLock.withLock {
                 writes.setMcpServers(next).fold(
-                    onSuccess = {},
+                    onSuccess = { confirmedTools = next },
                     onFailure = { failure ->
                         if (write != latestTools) return@fold
-                        publish(snapshot.copy(mcpServers = previous, error = failure.appError.displayMessage))
+                        publish(snapshot.copy(mcpServers = confirmedTools))
+                        onError(failure.appError.displayMessage)
                     },
                 )
             }
+            toolsBusy = false
         }
     }
 
     fun selectReasoningLevel(level: String?) {
-        val previous = snapshot.reasoningLevel
         val write = ++latestLevel
-        publish(snapshot.copy(reasoningLevel = level, reasoningPending = true, error = null))
+        levelBusy = true
+        publish(snapshot.copy(reasoningLevel = level, reasoningPending = true))
         submit {
             levelLock.withLock {
                 writes.setReasoningLevel(level).fold(
                     onSuccess = {
                         confirmedLevel = level
-                        publish(snapshot.copy(reasoningPending = false))
-                        onReasoningConfirmed()
+                        if (write == latestLevel) {
+                            publish(snapshot.copy(reasoningPending = false))
+                            onReasoningConfirmed()
+                        }
                     },
                     onFailure = { failure ->
                         if (write != latestLevel) return@fold
-                        publish(
-                            snapshot.copy(
-                                reasoningLevel = confirmedLevel ?: previous,
-                                reasoningPending = false,
-                                error = failure.appError.displayMessage,
-                            ),
-                        )
+                        publish(snapshot.copy(reasoningLevel = confirmedLevel, reasoningPending = false))
+                        onError(failure.appError.displayMessage)
                     },
                 )
             }
+            levelBusy = false
         }
     }
 
-    /** Switching the model has no rollback: a success reloads, a failure reports. */
-    fun switchModel(wireValue: String, onSwitched: suspend () -> Unit) {
-        submit {
-            writes.setMainService(wireValue).fold(
-                onSuccess = { onSwitched() },
-                onFailure = { failure -> publish(snapshot.copy(error = failure.appError.displayMessage)) },
-            )
-        }
+    /** Runs [block] under the same in-flight accounting, for a write that has no rollback of its own. */
+    fun guard(block: suspend () -> Unit) {
+        submit(block)
     }
 
     private fun submit(block: suspend () -> Unit) {
@@ -153,8 +172,6 @@ class ConversationSettingsWriter(
             }
         }
     }
-
-    internal fun snapshotForTest(): SettingsSnapshot = snapshot
 
     private fun publish(next: SettingsSnapshot) {
         snapshot = next
