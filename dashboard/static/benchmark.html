@@ -220,10 +220,19 @@ function getToken() {
     return localStorage.getItem('dashboard_token');
 }
 
+let redirecting = false;
+
+function redirectToLogin() {
+    if (redirecting) return;
+    redirecting = true;
+    const target = window.location.pathname + window.location.search;
+    window.location.replace(`/login?redirect=${encodeURIComponent(target)}`);
+}
+
 async function fetchAPI(endpoint, options = {}) {
     const token = getToken();
     if (!token) {
-        showToast('Not authenticated. Please log in from the dashboard first.', 'error');
+        redirectToLogin();
         throw new Error('Not authenticated');
     }
     const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -235,7 +244,8 @@ async function fetchAPI(endpoint, options = {}) {
         },
     });
     if (response.status === 401) {
-        showToast('Authentication expired. Please log in from the dashboard.', 'error');
+        localStorage.removeItem('dashboard_token');
+        redirectToLogin();
         throw new Error('Auth expired');
     }
     return response;

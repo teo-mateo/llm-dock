@@ -267,6 +267,7 @@ cd dashboard && pytest tests/ -n auto
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DASHBOARD_TOKEN` | (required) | Bearer token for API auth |
+| `DASHBOARD_TRUST_PROXY_HEADERS` | unset (off) | Trust `X-Forwarded-Proto` from a TLS-terminating proxy so the session cookie gets `Secure` |
 | `DASHBOARD_PORT` | `3399` | Dashboard HTTP port |
 | `DASHBOARD_HOST` | `0.0.0.0` | Bind address |
 | `COMPOSE_PROJECT_NAME` | `llm-dock` | Docker Compose project name |
@@ -325,8 +326,8 @@ there or its size and existence stop resolving.
 
 ### Authentication
 All API routes use the `@require_auth` decorator from `auth.py` except
-`GET /api/health` and the two token-issuing endpoints in the table below.
-Clients send:
+`GET /api/health` and the public auth endpoints (`/api/auth/session`,
+`/api/auth/login`, `/api/auth/logout`). Clients send:
 ```
 Authorization: Bearer <token>
 ```
@@ -335,16 +336,28 @@ session token. Comparison uses `secrets.compare_digest()` for
 constant-time safety.
 
 **Two ways to obtain a session token**, both returning
-`{token: "totp-…", expires_in: 28800}`:
+`{token: "totp-…", expires_in: 28800}` and setting the `llm_dock_session`
+cookie:
 
 | Endpoint | Credential | Used by |
 |---|---|---|
 | `POST /api/auth/session` | `Authorization: Bearer <DASHBOARD_TOKEN>` | the login page's "password" field |
 | `POST /api/auth/login` | `X-TOTP-Code: <6 digits>` header | the login page's TOTP tab |
 
-What the login UI calls a **password is `DASHBOARD_TOKEN`** from
-`dashboard/.env` — the page posts it as a bearer to `/api/auth/session`
-and stores only the session token it gets back.
+What the login page calls a **password is `DASHBOARD_TOKEN`** from
+`dashboard/.env` — it posts it as a bearer to `/api/auth/session` and stores
+only the session token it gets back, in `localStorage['dashboard_token']` and
+in the `HttpOnly` cookie.
+
+**The cookie gates page delivery only.** `auth.install(app)` registers a
+fail-closed guard: every `GET`/`HEAD` outside `/api` and `/login` needs a valid
+session cookie. Anonymous pages get `200` with `static/login.html` (served in
+place at the requested URL); anonymous assets get `401`. `/login` is the public
+login page; `POST /api/auth/logout` clears the cookie and revokes the token
+when the request carries a valid credential, and sets no cookie otherwise. The
+API never accepts the cookie, so bearer clients are unchanged and there is no
+CSRF on writes. The session token is also in `localStorage` for the bearer API,
+so `HttpOnly` protects only the cookie copy.
 
 Gotchas:
 
@@ -353,9 +366,13 @@ Gotchas:
   secret to config. Using it to sign in is impossible.
 - Session tokens live in a **process-memory dict** (`auth._totp_sessions`),
   so restarting the dashboard invalidates every one of them.
-- Expiry **slides**: each authenticated request pushes it out another 8 h.
+- Expiry **slides**: each authenticated request pushes it out another 8 h. The
+  cookie is re-issued only on a request that already carried it (browser
+  same-origin fetch); Android and scripts get no `Set-Cookie`.
 - `require_auth` also accepts a raw `X-TOTP-Code` header on any route,
   answering with a fresh token in the `X-TOTP-Token` response header.
+- `DASHBOARD_TRUST_PROXY_HEADERS` is off by default; enable it only behind a
+  TLS-terminating proxy that sets `X-Forwarded-Proto`.
 
 ### Docker Compose Management (`compose_manager.py`)
 - Services are defined in `services.json` (the source of truth)

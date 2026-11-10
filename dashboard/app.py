@@ -5,7 +5,9 @@ import logging
 from flask import Flask, send_from_directory, abort
 from flask_cors import CORS
 
+import auth
 from config import init_config, DASHBOARD_HOST, DASHBOARD_PORT, LOG_LEVEL
+from page_paths import is_asset_path
 from routes import (
     gpu_bp,
     services_bp,
@@ -23,17 +25,6 @@ from model_proxy.supervisor import model_proxy_supervisor
 from pi_remote.supervisor import pi_remote_supervisor
 from services import event_manager
 
-_SPA_ASSET_SUFFIXES = (
-    ".js", ".mjs", ".css", ".map", ".json", ".txt", ".html", ".xml",
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
-    ".mp4", ".webm", ".m4a", ".mp3", ".ogg",
-    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".wasm", ".webmanifest",
-)
-
-
-def _is_asset_request(path: str) -> bool:
-    return path.lower().endswith(_SPA_ASSET_SUFFIXES)
-
 
 def create_app(config=None):
     """Application factory."""
@@ -45,6 +36,8 @@ def create_app(config=None):
 
     if config:
         app.config.update(config)
+
+    auth.install(app)
 
     # Store token on app config for request-time access
     from config import DASHBOARD_TOKEN, COMPOSE_FILE
@@ -96,6 +89,10 @@ def create_app(config=None):
     )
     pi_remote_supervisor.start()
 
+    @app.route("/login")
+    def login():
+        return auth.login_page()
+
     @app.route("/")
     def index():
         """Serve the frontend"""
@@ -139,7 +136,7 @@ def create_app(config=None):
         # dots (service names like 'llamacpp-glm-5.3-flash-q2kxl'), so an asset
         # request is recognized by its suffix. Asset requests must 404 so
         # browsers don't cache HTML as a JS/CSS resource after deploys.
-        if _is_asset_request(whatever):
+        if is_asset_path(whatever):
             abort(404)
         return send_from_directory("frontend/dist", "index.html")
 

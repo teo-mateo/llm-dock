@@ -26,7 +26,7 @@ async function startServicesStream() {
         });
         if (response.status === 401) {
             clearToken();
-            showLoginModal();
+            redirectToLogin();
             return;
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

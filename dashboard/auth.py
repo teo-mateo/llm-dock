@@ -4,11 +4,12 @@ import secrets
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from flask import current_app, jsonify, make_response, request
 
 import pyotp
+from flask import current_app, g, jsonify, make_response, request, send_from_directory
 
 import config
+from page_paths import PageAccess, is_page_path, page_access
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,9 @@ _totp_sessions: OrderedDict[str, datetime] = OrderedDict()
 MAX_SESSIONS = 1000
 
 TOTP_TOKEN_EXPIRY_SECONDS = 28800  # 8 hours
+
+SESSION_COOKIE_NAME = "llm_dock_session"
+SESSION_COOKIE_PATH = "/"
 
 
 def _cleanup_sessions():
@@ -29,12 +33,116 @@ def _cleanup_sessions():
         _totp_sessions.popitem(last=False)
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def issue_session() -> str:
+    token = f"totp-{secrets.token_urlsafe(16)}"
+    _totp_sessions[token] = _now() + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
+    return token
+
+
+def session_valid(token: str) -> bool:
+    if not token:
+        return False
+    expiry = _totp_sessions.get(token)
+    return bool(expiry and expiry > _now())
+
+
+def touch_session(token: str) -> bool:
+    if not session_valid(token):
+        _totp_sessions.pop(token, None)
+        return False
+    _totp_sessions[token] = _now() + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
+    return True
+
+
+def revoke_session(token: str) -> None:
+    if token and token.startswith("totp-"):
+        _totp_sessions.pop(token, None)
+
+
 def verify_totp_code(code: str) -> bool:
     """Verify a TOTP code against the configured secret."""
     if not config.TOTP_SECRET:
         return False
     totp = pyotp.TOTP(config.TOTP_SECRET)
     return totp.verify(code)
+
+
+def _cookie_secure() -> bool:
+    if request.is_secure:
+        return True
+    if not config.TRUST_PROXY_HEADERS:
+        return False
+    proto = request.headers.get("X-Forwarded-Proto", "")
+    return proto.split(",")[0].strip().lower() == "https"
+
+
+def set_session_cookie(response, token: str):
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=TOTP_TOKEN_EXPIRY_SECONDS,
+        path=SESSION_COOKIE_PATH,
+        httponly=True,
+        samesite="Strict",
+        secure=_cookie_secure(),
+    )
+    return response
+
+
+def clear_session_cookie(response):
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path=SESSION_COOKIE_PATH,
+        httponly=True,
+        samesite="Strict",
+        secure=_cookie_secure(),
+    )
+    return response
+
+
+def login_page():
+    response = make_response(send_from_directory("static", "login.html"))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _unauthorized_401():
+    response = jsonify({"error": "Authentication required"})
+    response.status_code = 401
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def install(app):
+    @app.before_request
+    def _page_guard():
+        if request.method == "OPTIONS":
+            return None
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        authenticated = bool(token) and touch_session(token)
+        decision = page_access(request.path, authenticated=authenticated)
+        if decision is PageAccess.LOGIN:
+            if request.method not in ("GET", "HEAD"):
+                return _unauthorized_401()
+            return login_page()
+        if decision is PageAccess.UNAUTHORIZED:
+            return _unauthorized_401()
+        if authenticated and request.method in ("GET", "HEAD") and is_page_path(request.path):
+            g.session_token = token
+        return None
+
+    @app.after_request
+    def _session_cookie(response):
+        token = getattr(g, "session_token", None)
+        if token and request.cookies.get(SESSION_COOKIE_NAME) == token:
+            set_session_cookie(response, token)
+        if is_page_path(request.path) and response.mimetype == "text/html":
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
 
 def require_auth(f):
@@ -44,46 +152,30 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         _cleanup_sessions()
 
-        # Try bearer token first
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
 
-            # Check if this is a short-lived TOTP session token
             if token.startswith("totp-"):
-                expiry = _totp_sessions.get(token)
-                if expiry and expiry > datetime.now(timezone.utc):
-                    # Extend expiry (sliding window) without rotating the
-                    # token, so concurrent requests with the same token
-                    # all succeed.
-                    _totp_sessions[token] = (
-                        datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
-                    )
+                if touch_session(token):
+                    g.session_token = token
                     logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                     return f(*args, **kwargs)
-                else:
-                    _totp_sessions.pop(token, None)
-                    return jsonify({"error": "TOTP session expired"}), 401
+                return jsonify({"error": "TOTP session expired"}), 401
 
-            # Check against configured credentials
             dashboard_token = current_app.config["DASHBOARD_TOKEN"]
             if secrets.compare_digest(token, dashboard_token):
                 logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, token[:8])
                 return f(*args, **kwargs)
 
-        # Try TOTP code via X-TOTP-Code header
         totp_code = request.headers.get("X-TOTP-Code")
-        if totp_code:
-            if verify_totp_code(totp_code):
-                # Issue short-lived token for convenience
-                short_token = f"totp-{secrets.token_urlsafe(16)}"
-                _totp_sessions[short_token] = (
-                    datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
-                )
-                logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, short_token[:8])
-                response = make_response(f(*args, **kwargs))
-                response.headers["X-TOTP-Token"] = short_token
-                return response
+        if totp_code and verify_totp_code(totp_code):
+            short_token = issue_session()
+            g.session_token = short_token
+            logger.debug("Authenticated request from %s to %s (token: %s...)", request.remote_addr, request.path, short_token[:8])
+            response = make_response(f(*args, **kwargs))
+            response.headers["X-TOTP-Token"] = short_token
+            return response
 
         logger.warning(f"Authentication failed from {request.remote_addr}")
         return (

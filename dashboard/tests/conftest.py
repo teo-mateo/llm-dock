@@ -76,6 +76,15 @@ def pytest_sessionfinish(session, exitstatus):
         _hermetic_base = None
 
 
+@pytest.fixture(autouse=True)
+def _clear_totp_sessions():
+    from auth import _totp_sessions
+
+    _totp_sessions.clear()
+    yield
+    _totp_sessions.clear()
+
+
 @pytest.fixture
 def db():
     """Provide an in-memory BenchmarkDB for testing."""

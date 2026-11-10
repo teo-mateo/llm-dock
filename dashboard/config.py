@@ -11,6 +11,12 @@ load_dotenv(DOTENV_PATH)
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", 3305))
 DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN")
+TRUST_PROXY_HEADERS = os.getenv("DASHBOARD_TRUST_PROXY_HEADERS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 COMPOSE_FILE = os.getenv("COMPOSE_FILE", "../docker-compose.yml")
 COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT_NAME", "dockerized-models")
