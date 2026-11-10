@@ -30,8 +30,9 @@ already act as the user, so the cookie adds no new exposure.
 
 ### Fail-closed guard
 
-`dashboard/page_paths.py` owns the path vocabulary: `is_api_path`, `is_asset_path`,
-`LOGIN_PATH` and `PUBLIC_PATHS`. `dashboard/auth.py` owns the decision:
+`dashboard/page_paths.py` owns the path vocabulary (`is_api_path`, `is_asset_path`,
+`is_page_path`, `LOGIN_PATH`, `PUBLIC_PATHS`) and the pure decision (`PageAccess`,
+`page_access`). `dashboard/auth.py` wires it into the request hooks:
 
 ```python
 def page_access(path, *, authenticated):
@@ -41,12 +42,14 @@ def page_access(path, *, authenticated):
     return LOGIN
 ```
 
-Every `GET`/`HEAD` outside `/api` and `/login` is guarded. A future page route is
-protected automatically; a new public non-`/api` route must be added to `PUBLIC_PATHS`
-explicitly. An anonymous page request gets `200` with `static/login.html` served **in
+Every request outside `/api` and `/login` is guarded. A future page route is protected
+automatically; a new public non-`/api` route must be added to `PUBLIC_PATHS` explicitly.
+An anonymous `GET`/`HEAD` page request gets `200` with `static/login.html` served **in
 place** at the requested URL (a deep link works after login without a redirect
-parameter); an anonymous asset request gets `401` with `Cache-Control: no-store`. The
-guard runs before routing, so Flask's built-in `/static` route is covered too.
+parameter); an anonymous asset request or an anonymous non-`GET` request gets `401` with
+`Cache-Control: no-store`. `OPTIONS` passes through so CORS preflight still works. Cookie
+sliding stays `GET`/`HEAD` only. The guard runs before routing, so Flask's built-in
+`/static` route is covered too.
 
 `/login` is also a public route. It is the explicit entry for v1/v2 401 bounces and
 bookmarks; the login page's `?redirect=` is honored only there, validated as same-origin

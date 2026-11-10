@@ -8,7 +8,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app import create_app
-from auth import PageAccess, SESSION_COOKIE_NAME, _totp_sessions, page_access
+from auth import SESSION_COOKIE_NAME, _totp_sessions
+from page_paths import PUBLIC_PATHS, PageAccess, page_access
 
 TOKEN = "test-token"
 
@@ -156,24 +157,36 @@ def test_page_access_table():
 
 def _token_key(text):
     match = re.search(r"TOKEN_KEY\s*=\s*['\"]([^'\"]+)['\"]", text)
+    if not match:
+        match = re.search(
+            r"localStorage\.(?:getItem|removeItem)\(['\"]([^'\"]+)['\"]\)", text
+        )
     assert match, text
     return match.group(1)
 
 
 def test_login_page_token_key_matches_frontend():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(root, "static", "login.html"), encoding="utf-8") as f:
-        login_html = f.read()
-    with open(os.path.join(root, "frontend", "src", "api.js"), encoding="utf-8") as f:
-        frontend_api = f.read()
-    assert _token_key(login_html) == _token_key(frontend_api) == "dashboard_token"
+    paths = [
+        os.path.join(root, "static", "login.html"),
+        os.path.join(root, "frontend", "src", "api.js"),
+        os.path.join(root, "static", "js", "api.js"),
+        os.path.join(root, "static", "benchmark.html"),
+    ]
+    keys = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            keys.append(_token_key(f.read()))
+    assert keys == ["dashboard_token"] * len(paths)
+
+
+def test_public_paths_are_exactly_login():
+    assert PUBLIC_PATHS == frozenset({"/login"})
 
 
 def test_every_non_api_route_is_guarded(app, client):
     for rule in app.url_map.iter_rules():
         if rule.rule.startswith("/api/") or rule.rule in ("/api", "/login"):
-            continue
-        if "GET" not in rule.methods:
             continue
         if rule.rule.startswith("/static/"):
             path = "/static/js/services.js"
@@ -181,7 +194,37 @@ def test_every_non_api_route_is_guarded(app, client):
             path = "/v2/chat/x"
         else:
             path = rule.rule
-        response = client.get(path)
-        assert response.status_code in (200, 401), (rule.rule, response.status_code)
-        if response.status_code == 200:
-            assert 'id="password-form"' in response.get_data(as_text=True), rule.rule
+        for method in rule.methods - {"OPTIONS"}:
+            response = client.open(path, method=method)
+            if method in ("GET", "HEAD") and not path.startswith("/static/"):
+                assert response.status_code == 200, (rule.rule, method)
+                if method == "GET":
+                    assert 'id="password-form"' in response.get_data(as_text=True), rule.rule
+            else:
+                assert response.status_code == 401, (rule.rule, method)
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH"])
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/benchmark", "/design-preview", "/v2/chat/x", "/static/js/services.js", "/nope"],
+)
+def test_anonymous_non_get_non_api_is_401(client, path, method):
+    response = client.open(path, method=method)
+    assert response.status_code == 401, (path, method)
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("HEAD", "/"),
+        ("GET", "/login/"),
+        ("GET", "/LOGIN"),
+        ("GET", "/v2/../etc/passwd"),
+    ],
+)
+def test_guard_edge_paths(client, method, path):
+    response = client.open(path, method=method)
+    assert response.status_code in (200, 401), (path, response.status_code)
+    if response.status_code == 200 and method == "GET":
+        assert 'id="password-form"' in response.get_data(as_text=True), path

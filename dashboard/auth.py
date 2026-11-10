@@ -3,14 +3,13 @@ import logging
 import secrets
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from functools import wraps
 
 import pyotp
 from flask import current_app, g, jsonify, make_response, request, send_from_directory
 
 import config
-from page_paths import PUBLIC_PATHS, is_api_path, is_asset_path
+from page_paths import PageAccess, is_page_path, page_access
 
 logger = logging.getLogger(__name__)
 
@@ -72,22 +71,6 @@ def verify_totp_code(code: str) -> bool:
     return totp.verify(code)
 
 
-class PageAccess(Enum):
-    ALLOW = "allow"
-    LOGIN = "login"
-    UNAUTHORIZED = "unauthorized"
-
-
-def page_access(path: str, *, authenticated: bool) -> PageAccess:
-    if is_api_path(path) or path in PUBLIC_PATHS:
-        return PageAccess.ALLOW
-    if authenticated:
-        return PageAccess.ALLOW
-    if is_asset_path(path):
-        return PageAccess.UNAUTHORIZED
-    return PageAccess.LOGIN
-
-
 def _cookie_secure() -> bool:
     if request.is_secure:
         return True
@@ -127,7 +110,7 @@ def login_page():
     return response
 
 
-def _asset_401():
+def _unauthorized_401():
     response = jsonify({"error": "Authentication required"})
     response.status_code = 401
     response.headers["Cache-Control"] = "no-store"
@@ -137,16 +120,18 @@ def _asset_401():
 def install(app):
     @app.before_request
     def _page_guard():
-        if request.method not in ("GET", "HEAD"):
+        if request.method == "OPTIONS":
             return None
         token = request.cookies.get(SESSION_COOKIE_NAME)
         authenticated = bool(token) and touch_session(token)
         decision = page_access(request.path, authenticated=authenticated)
-        if decision is PageAccess.UNAUTHORIZED:
-            return _asset_401()
         if decision is PageAccess.LOGIN:
+            if request.method not in ("GET", "HEAD"):
+                return _unauthorized_401()
             return login_page()
-        if authenticated and not is_api_path(request.path) and not is_asset_path(request.path):
+        if decision is PageAccess.UNAUTHORIZED:
+            return _unauthorized_401()
+        if authenticated and request.method in ("GET", "HEAD") and is_page_path(request.path):
             g.session_token = token
         return None
 
@@ -155,11 +140,7 @@ def install(app):
         token = getattr(g, "session_token", None)
         if token and request.cookies.get(SESSION_COOKIE_NAME) == token:
             set_session_cookie(response, token)
-        if (
-            not is_api_path(request.path)
-            and not is_asset_path(request.path)
-            and response.mimetype == "text/html"
-        ):
+        if is_page_path(request.path) and response.mimetype == "text/html":
             response.headers["Cache-Control"] = "no-store"
         return response
 
