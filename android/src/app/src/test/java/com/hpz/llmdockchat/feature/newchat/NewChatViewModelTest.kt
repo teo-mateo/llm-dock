@@ -32,6 +32,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
+import com.hpz.llmdockchat.feature.share.SummarizeMessage
 import com.hpz.llmdockchat.feature.share.StagedShare
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import java.nio.file.Files
@@ -97,6 +98,7 @@ class NewChatViewModelTest {
     private fun viewModel(
         preselectedServiceName: String? = null,
         sharedDraftStore: SharedDraftStore? = null,
+        summarizeMode: Boolean = false,
     ) = NewChatViewModel(
         servicesRepository = servicesRepository,
         promptsRepository = promptsRepository,
@@ -107,6 +109,7 @@ class NewChatViewModelTest {
         preferences = preferences,
         servicesStreamRepository = servicesStreamRepository,
         preselectedServiceName = preselectedServiceName,
+        summarizeMode = summarizeMode,
         sharedDraftStore = sharedDraftStore,
     )
 
@@ -495,6 +498,51 @@ class NewChatViewModelTest {
             server.requestCount,
         )
         assertNull(store.pending.value)
+    }
+
+    @Test
+    fun `a failed claim is retried as a claim, so the summarize turn is not lost`() {
+        enqueueLoadResponses(
+            mcpServers = """{"servers": [{"id": "webfetch", "name": "WebFetch"}],
+                "url_fetch": {"available": true,
+                    "servers": [{"id": "webfetch", "name": "WebFetch", "tools": ["fetch_readable"]}],
+                    "failures": []}}""",
+        )
+        val dir = Files.createTempDirectory("new-chat-claim").toFile()
+        val store = SharedDraftStore(dir)
+        val url = "https://example.com/a"
+        store.stage(StagedShare(text = url, url = url))
+        val viewModel = viewModel(summarizeMode = true, sharedDraftStore = store)
+        viewModel.load()
+        val loaded = settled(viewModel) as NewChatUiState.Loaded
+        viewModel.selectModel(loaded.localServices.first { it.serviceName == "llamacpp-gemma-4-26b-a4b-it-q8" })
+        assertEquals(setOf("webfetch"), loaded.selectedMcpServerIds)
+        val blocker = java.io.File(dir, "conv_new-conv-7.autosend.txt.tmp").apply { mkdirs() }
+
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-7"}""").build())
+        server.enqueue(MockResponse.Builder().body("""{"id": "new-conv-7"}""").build())
+        var createdId: String? = null
+        viewModel.create { createdId = it }
+
+        val failed = runBlocking {
+            withTimeout(10_000) {
+                viewModel.state.first { (it as? NewChatUiState.Loaded)?.shareFailure != null }
+            }
+        } as NewChatUiState.Loaded
+        assertEquals(ShareFailureKind.Claim, failed.shareFailure?.kind)
+        assertNull(createdId)
+
+        assertTrue(blocker.delete())
+        var filed: String? = null
+        viewModel.retryShare(FakeDraftStore()) { filed = it }
+
+        runBlocking { withTimeout(10_000) { while (filed == null) kotlinx.coroutines.delay(5) } }
+        assertEquals("new-conv-7", filed)
+        assertEquals(
+            "the retry must file the claim, not a draft",
+            SummarizeMessage.build(url),
+            runBlocking { store.takeAutoSend("new-conv-7") },
+        )
     }
 
     @Test

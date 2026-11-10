@@ -1,6 +1,5 @@
 package com.hpz.llmdockchat.core.prefs
 
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -38,7 +37,16 @@ class SerialWriteQueue(scope: CoroutineScope) {
      */
     fun <T> postConfirmed(write: suspend () -> T): CompletableDeferred<Result<T>> {
         val done = CompletableDeferred<Result<T>>()
-        writes.trySend { done.complete(settled(write)) }
+        writes.trySend {
+            // The write runs on this queue's scope, so a cancellation it throws
+            // is that write's failure, not the caller's: the deferred must be
+            // completed either way or a caller awaiting it waits forever.
+            try {
+                done.complete(Result.success(write()))
+            } catch (failure: Throwable) {
+                done.complete(Result.failure(failure))
+            }
+        }
         return done
     }
 
@@ -51,13 +59,4 @@ class SerialWriteQueue(scope: CoroutineScope) {
         writes.send { done.complete(Unit) }
         done.await()
     }
-
-    private suspend fun <T> settled(write: suspend () -> T): Result<T> =
-        try {
-            Result.success(write())
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Throwable) {
-            Result.failure(failure)
-        }
 }

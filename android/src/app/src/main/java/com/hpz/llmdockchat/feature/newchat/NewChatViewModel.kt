@@ -101,8 +101,18 @@ sealed interface NewChatUiState {
 /** [conversationId] already exists server-side — see [NewChatUiState.Loaded.toolsFailure]. */
 data class ToolsFailure(val conversationId: String, val message: String)
 
-/** [conversationId] already exists server-side — see [NewChatUiState.Loaded.shareFailure]. */
-data class ShareFailure(val conversationId: String, val message: String)
+/**
+ * [conversationId] already exists server-side — see [NewChatUiState.Loaded.shareFailure].
+ * [kind] is what the retry re-runs: a draft filing and an auto-send claim are
+ * different writes, and retrying the wrong one loses the share silently.
+ */
+data class ShareFailure(
+    val conversationId: String,
+    val message: String,
+    val kind: ShareFailureKind,
+)
+
+enum class ShareFailureKind { Draft, Claim }
 
 class NewChatViewModel(
     private val servicesRepository: ServicesRepository,
@@ -297,7 +307,11 @@ class NewChatViewModel(
                     updateLoaded {
                         it.copy(
                             creating = false,
-                            shareFailure = ShareFailure(conversationId, SHARE_SAVE_FAILED),
+                            shareFailure = ShareFailure(
+                                conversationId,
+                                SHARE_SAVE_FAILED,
+                                ShareFailureKind.Claim,
+                            ),
                         )
                     }
                     return@fold
@@ -336,7 +350,11 @@ class NewChatViewModel(
                     updateLoaded {
                         it.copy(
                             creating = false,
-                            shareFailure = ShareFailure(conversationId, SHARE_SAVE_FAILED),
+                            shareFailure = ShareFailure(
+                                conversationId,
+                                SHARE_SAVE_FAILED,
+                                ShareFailureKind.Draft,
+                            ),
                         )
                     }
                 },
@@ -344,10 +362,45 @@ class NewChatViewModel(
         }
     }
 
-    /** Re-files the share for the thread that already exists. */
+    /** Re-runs the write that failed, against the thread that already exists. */
     fun retryShare(drafts: DraftStore, onFiled: (String) -> Unit) {
         val failure = (_state.value as? NewChatUiState.Loaded)?.shareFailure ?: return
-        fileShare(failure.conversationId, drafts, onFiled)
+        when (failure.kind) {
+            ShareFailureKind.Draft -> fileShare(failure.conversationId, drafts, onFiled)
+            ShareFailureKind.Claim -> retryClaim(failure.conversationId, onFiled)
+        }
+    }
+
+    /** Opens the thread with the share still staged, for a filing that keeps failing. */
+    fun openAfterShareFailure(onCreated: (String) -> Unit) {
+        val failure = (_state.value as? NewChatUiState.Loaded)?.shareFailure ?: return
+        onCreated(failure.conversationId)
+    }
+
+    private fun retryClaim(conversationId: String, onFiled: (String) -> Unit) {
+        val current = _state.value as? NewChatUiState.Loaded ?: return
+        if (current.creating) return
+        _state.value = current.copy(creating = true, shareFailure = null)
+        viewModelScope.launch {
+            stageSummarizeClaim(conversationId).fold(
+                onSuccess = {
+                    updateLoaded { it.copy(creating = false) }
+                    onFiled(conversationId)
+                },
+                onFailure = {
+                    updateLoaded {
+                        it.copy(
+                            creating = false,
+                            shareFailure = ShareFailure(
+                                conversationId,
+                                SHARE_SAVE_FAILED,
+                                ShareFailureKind.Claim,
+                            ),
+                        )
+                    }
+                },
+            )
+        }
     }
 
     /** Claim instead of draft: the thread sends the turn on opening. */

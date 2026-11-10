@@ -95,6 +95,7 @@ fun NewChatScreen(
                     onStart = { viewModel.create(onConversationCreated) },
                     onRetryTools = { viewModel.retryTools(onConversationCreated) },
                     onRetryShare = { viewModel.retryShare(drafts, onConversationCreated) },
+                    onOpenAfterShareFailure = { viewModel.openAfterShareFailure(onConversationCreated) },
                     onOpenAnyway = { viewModel.openAnyway(onConversationCreated) },
                 )
             }
@@ -137,6 +138,7 @@ private fun NewChatSheetBody(
     onStart: () -> Unit,
     onRetryTools: () -> Unit,
     onRetryShare: () -> Unit,
+    onOpenAfterShareFailure: () -> Unit,
     onOpenAnyway: () -> Unit,
 ) {
     val colors = LlmTheme.colors
@@ -196,11 +198,11 @@ private fun NewChatSheetBody(
             )
         } else if (shareFailure != null) {
             RetryableFailureBanner(
-                message = shareFailure.message,
+                message = "${shareFailure.message} The share stays on the share screen.",
                 creating = state.creating,
                 tag = "new_chat_share_failure",
                 onRetry = onRetryShare,
-                onOpenAnyway = onOpenAnyway,
+                onOpenAnyway = onOpenAfterShareFailure,
             )
         } else {
             state.createError?.let { error ->
