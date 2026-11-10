@@ -367,6 +367,9 @@ class SharedDraftStoreTest {
         try {
             val queued = SharedDraftStore(other, scope)
             queued.stage(StagedShare(text = "shared", attachments = listOf("data:image/jpeg;base64,AAA")))
+            // stage() only queues the record; without this the observation below
+            // races the write it is asserting about.
+            runBlocking { queued.awaitPendingWrites() }
 
             val result = runBlocking {
                 withTimeout(5_000) {
