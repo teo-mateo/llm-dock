@@ -461,7 +461,8 @@ private fun NewChatDestination(
                     servicesStreamRepository = container.servicesStreamRepository,
                     preselectedServiceName = preselectedServiceName,
                     summarizeMode = summarizeMode,
-                    sharedDraftStore = container.sharedDraftStore,
+                    summarizeUrl = if (summarizeMode) container.sharedDraftStore.pending.value?.url else null,
+                    attachmentStaging = container.sharedDraftStore,
                 )
             }
         },

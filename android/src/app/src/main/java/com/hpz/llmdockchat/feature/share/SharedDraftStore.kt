@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.AttachmentStaging
 import com.hpz.llmdockchat.core.attachment.AutoSendClaimStore
 import com.hpz.llmdockchat.core.attachment.ConversationAttachments
 import com.hpz.llmdockchat.core.prefs.DraftStore
@@ -51,7 +52,7 @@ import java.io.IOException
 class SharedDraftStore(
     private val dir: File,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined),
-) : ConversationAttachments, AutoSendClaimStore {
+) : ConversationAttachments, AutoSendClaimStore, AttachmentStaging {
 
     private val _pending = MutableStateFlow<StagedShare?>(readPending())
     val pending: StateFlow<StagedShare?> = _pending.asStateFlow()
@@ -163,7 +164,7 @@ class SharedDraftStore(
      * in here is returned instead of thrown, and leaves the share on the picker
      * rather than losing it.
      */
-    suspend fun reassign(conversationId: String, drafts: DraftStore): Result<Unit> {
+    override suspend fun reassign(conversationId: String, drafts: DraftStore): Result<Unit> {
         val share = _pending.value ?: return Result.success(Unit)
         // A placeholder is not content: spending it would hand the user an empty
         // composer and throw the incoming bytes away.
@@ -191,7 +192,7 @@ class SharedDraftStore(
      * into that directory and [attachments] reads all of them back — a claim
      * filed there would be handed to the composer as a staged image.
      */
-    suspend fun stageForAutoSend(conversationId: String, message: String): Result<Unit> {
+    override suspend fun stageForAutoSend(conversationId: String, message: String): Result<Unit> {
         val share = _pending.value
         return withContext(NonCancellable) {
             confirmed {
@@ -223,7 +224,7 @@ class SharedDraftStore(
      * All-or-nothing: a write that fails deletes what this call already wrote,
      * so a retry starts at the same index instead of appending a second copy.
      */
-    suspend fun appendAttachments(conversationId: String, attachments: List<String>): Result<Unit> {
+    override suspend fun appendAttachments(conversationId: String, attachments: List<String>): Result<Unit> {
         if (attachments.isEmpty()) return Result.success(Unit)
         return confirmed {
             val convDir = conversationDir(conversationId)
@@ -366,10 +367,3 @@ internal fun mergedDraft(existing: String, shared: String): String {
     if (current.endsWith(incoming)) return existing
     return "$current\n\n$incoming"
 }
-
-/**
- * Shown when the staged share could not be filed into a conversation. The
- * pending record is untouched, so the same pick can be retried.
- */
-internal const val SHARE_SAVE_FAILED =
-    "Couldn't save the share to this conversation \u2014 nothing was lost. Try again."

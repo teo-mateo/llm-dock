@@ -42,7 +42,6 @@ class ArchitectureDependencyTest {
         ("models" to "thread") to "control",
         ("newchat" to "conversations") to "list",
         ("newchat" to "modelpicker") to "picker",
-        ("newchat" to "share") to "share",
         ("newchat" to "toolspicker") to "picker",
         ("share" to "conversations") to "row",
         ("share" to "modelpicker") to "model",

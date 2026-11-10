@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.SHARE_SAVE_FAILED
 import com.hpz.llmdockchat.core.auth.SessionState
 import com.hpz.llmdockchat.core.net.ApiClient
 import com.hpz.llmdockchat.core.net.ApiJson
