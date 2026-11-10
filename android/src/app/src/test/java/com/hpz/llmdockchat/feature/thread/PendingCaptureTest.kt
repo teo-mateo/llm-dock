@@ -51,6 +51,37 @@ class PendingCaptureTest {
     }
 
     @Test
+    fun `accepting an import stages the capture and deletes nothing`() {
+        val pending = PendingCapture(destination = "content://a")
+
+        val accepted = pending.accept(pending.consume(saved = true))
+
+        assertEquals("content://a", accepted.inFlight)
+        assertNull("the destination is spent", accepted.destination)
+    }
+
+    @Test
+    fun `a capture is deleted only once no import is running`() {
+        val pending = PendingCapture(inFlight = "content://a")
+
+        val (running, whileRunning) = pending.afterImport(importing = true)
+        assertEquals("content://a", running.inFlight)
+        assertNull("deleting mid-read is how a photo becomes unreadable", whileRunning)
+
+        val (done, stale) = running.afterImport(importing = false)
+        assertEquals("content://a", stale)
+        assertNull(done.inFlight)
+    }
+
+    @Test
+    fun `a capture left by a dead process is deleted on the first observation`() {
+        val (next, stale) = PendingCapture(inFlight = "content://a").afterImport(importing = false)
+
+        assertEquals("content://a", stale)
+        assertNull(next.inFlight)
+    }
+
+    @Test
     fun `a spent capture cannot import the same photo twice`() {
         val pending = PendingCapture(destination = "content://a")
 

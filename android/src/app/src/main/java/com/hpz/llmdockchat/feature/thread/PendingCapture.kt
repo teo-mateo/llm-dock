@@ -17,7 +17,11 @@ data class PendingCapture(
     val inFlight: String? = null,
 ) {
 
-    /** What the camera's result means, before anything is done about it. */
+    /**
+     * What the camera's result means. The destination is spent by the caller
+     * before anything is done with the outcome, so a result handled twice cannot
+     * import the same photo twice.
+     */
     fun consume(saved: Boolean): CaptureOutcome = when {
         destination == null -> CaptureOutcome.Unrecoverable
         !saved -> CaptureOutcome.Discard(destination)
@@ -26,6 +30,25 @@ data class PendingCapture(
 
     /** The state after a result has been handled: the destination is spent. */
     fun spent(): PendingCapture = copy(destination = null)
+
+    /**
+     * The state after [outcome] was acted on. Deliberately returns no capture to
+     * delete: the import it starts has not read the file yet.
+     */
+    fun accept(outcome: CaptureOutcome): PendingCapture = when (outcome) {
+        is CaptureOutcome.Import -> spent().copy(inFlight = outcome.uri)
+        is CaptureOutcome.Discard, CaptureOutcome.Unrecoverable -> spent()
+    }
+
+    /**
+     * The state once the composer's import flag is known, plus the capture to
+     * delete. A capture is only ever deleted here, and only when no import is
+     * running: deleting one mid-read is how a photo becomes "could not be read".
+     */
+    fun afterImport(importing: Boolean): Pair<PendingCapture, String?> = when {
+        importing || inFlight == null -> this to null
+        else -> copy(inFlight = null) to inFlight
+    }
 
     companion object {
         val Saver: Saver<PendingCapture, Any> = listSaver(

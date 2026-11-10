@@ -854,28 +854,23 @@ private fun ThreadComposer(
         mutableStateOf(PendingCapture())
     }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        // Consumed before anything is done with it: a result handled twice must
-        // not import the same photo twice.
         val outcome = pending.consume(saved)
-        pending = pending.spent()
+        pending = pending.accept(outcome)
         when (outcome) {
-            is CaptureOutcome.Import -> {
-                pending = pending.copy(inFlight = outcome.uri)
-                onImportAttachment(outcome.uri, ShareImport.PHOTO_UNREADABLE)
-            }
+            is CaptureOutcome.Import -> onImportAttachment(outcome.uri, ShareImport.PHOTO_UNREADABLE)
             is CaptureOutcome.Discard -> discardCapture(context, outcome.uri.toUri())
             CaptureOutcome.Unrecoverable -> onAttachmentFailed(ShareImport.PHOTO_UNREADABLE)
         }
     }
 
-    // The capture file is ours, so it goes away — but not while the import still
-    // holds the Uri: deleting it mid-read is how a photo turns into "could not be
-    // read", which the synchronous version of this callback could not do.
-    LaunchedEffect(state.attachmentImporting, pending.inFlight) {
-        if (state.attachmentImporting) return@LaunchedEffect
-        val capture = pending.inFlight ?: return@LaunchedEffect
-        pending = pending.copy(inFlight = null)
-        discardCapture(context, capture.toUri())
+    // Keyed on the import flag alone, never on the capture: accepting a result
+    // sets the capture before the import has started, and an effect that ran on
+    // that change would delete the file the import is about to read. The first
+    // composition still covers a capture left behind by a dead process.
+    LaunchedEffect(state.attachmentImporting) {
+        val (next, stale) = pending.afterImport(state.attachmentImporting)
+        pending = next
+        stale?.let { discardCapture(context, it.toUri()) }
     }
 
     Column(
