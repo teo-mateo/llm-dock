@@ -107,7 +107,7 @@ class ChatRunManager:
         effective_project_id is the conversation's resolved project,
         snapshotted at run creation (run_config.effective_project_id) — the
         runner consumes it verbatim instead of re-resolving. reasoning_level
-        is snapshotted the same way (routes._start_run_response), already
+        is snapshotted the same way (run_start.start_run), already
         re-checked against the service's current declaration.
         """
         self._executor.submit(
