@@ -1,4 +1,4 @@
-package com.hpz.llmdockchat.feature.thread
+package com.hpz.llmdockchat.core.attachment
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

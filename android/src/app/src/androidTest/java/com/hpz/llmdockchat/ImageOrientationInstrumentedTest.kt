@@ -9,10 +9,10 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.hpz.llmdockchat.feature.share.ContentResolverShareReader
-import com.hpz.llmdockchat.feature.thread.MAX_ATTACHMENT_EDGE_PX
-import com.hpz.llmdockchat.feature.thread.decodeDataUrl
-import com.hpz.llmdockchat.feature.thread.readImage
+import com.hpz.llmdockchat.core.attachment.ContentResolverAttachmentReader
+import com.hpz.llmdockchat.core.attachment.MAX_ATTACHMENT_EDGE_PX
+import com.hpz.llmdockchat.core.attachment.decodeDataUrl
+import com.hpz.llmdockchat.core.attachment.readImage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -78,7 +78,7 @@ class ImageOrientationInstrumentedTest {
     fun theEncodedAttachmentCarriesNoOrientationAndStillLooksUpright() {
         val uri = writeQuadrantFixture("oriented_6.jpg", "6")
         val bitmap = readImage(resolver, uri)!!
-        val dataUrl = ContentResolverShareReader(resolver).readImageAttachment(uri.toString())!!
+        val dataUrl = ContentResolverAttachmentReader(resolver).readImageAttachment(uri.toString())!!
 
         val redecoded = decodeDataUrl(dataUrl)!!
         assertEquals(storedHeight, redecoded.width)
@@ -109,7 +109,7 @@ class ImageOrientationInstrumentedTest {
             maxOf(decoded.width, decoded.height) <= 2000,
         )
 
-        val dataUrl = ContentResolverShareReader(resolver).readImageAttachment(uri.toString())!!
+        val dataUrl = ContentResolverAttachmentReader(resolver).readImageAttachment(uri.toString())!!
         val encoded = decodeDataUrl(dataUrl)!!
         assertTrue(
             "the encoded attachment must respect the max edge (was ${encoded.width}x${encoded.height})",

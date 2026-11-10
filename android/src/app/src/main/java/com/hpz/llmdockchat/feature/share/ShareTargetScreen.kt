@@ -47,7 +47,7 @@ import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.data.model.ConversationSummary
 import com.hpz.llmdockchat.feature.conversations.ConversationRowBody
 import com.hpz.llmdockchat.core.ui.icons.AppIcons
-import com.hpz.llmdockchat.feature.thread.decodeDataUrl
+import com.hpz.llmdockchat.core.attachment.decodeDataUrl
 
 /**
  * The share-target picker: a full-screen list of conversations, most

@@ -3,8 +3,9 @@ package com.hpz.llmdockchat.feature.share
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
-import com.hpz.llmdockchat.feature.thread.readImage
-import com.hpz.llmdockchat.feature.thread.toDataUrl
+import com.hpz.llmdockchat.core.attachment.AttachmentReader
+import com.hpz.llmdockchat.core.attachment.FILE_UNREADABLE
+import com.hpz.llmdockchat.core.attachment.IMAGE_UNREADABLE
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -24,13 +25,13 @@ data class ShareRequest(
     val text: String? = null,
     val title: String? = null,
     val subject: String? = null,
-    /** `EXTRA_STREAM` as a string; [SharedContentReader] re-parses it. */
+    /** `EXTRA_STREAM` as a string; [AttachmentReader] re-parses it. */
     val streamUri: String? = null,
     /**
      * `Uri.lastPathSegment`, available without a provider query. A name hint for
      * nothing but the placeholder's refusal message — content URIs usually end
      * in an opaque id, so the authoritative name always comes from
-     * [SharedContentReader.displayName].
+     * [AttachmentReader.displayName].
      */
     val streamHint: String? = null,
 ) {
@@ -38,55 +39,6 @@ data class ShareRequest(
 
     fun streamName(fallback: String): String =
         streamHint?.substringAfterLast('/').takeUnless { it.isNullOrBlank() } ?: fallback
-}
-
-/**
- * The provider I/O a share needs. Every method may block for as long as the
- * provider takes — a cloud-backed document can stall for seconds — which is why
- * none of them is called from the main thread.
- */
-interface SharedContentReader {
-    fun displayName(uri: String): String?
-
-    /** The stream's start, decoded as UTF-8 and capped at [SharedKindParser.MAX_INLINE_BYTES]. */
-    fun readInlineText(uri: String): String?
-
-    /** The image as a downscaled `data:image/jpeg;base64,…` URL, or null if it could not be read. */
-    fun readImageAttachment(uri: String): String?
-}
-
-/** The production reader: one `ContentResolver`, three blocking reads. */
-class ContentResolverShareReader(private val resolver: ContentResolver) : SharedContentReader {
-
-    override fun displayName(uri: String): String? = runCatching {
-        resolver.query(
-            Uri.parse(uri),
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-    }.getOrNull()
-
-    override fun readInlineText(uri: String): String? = runCatching {
-        resolver.openInputStream(Uri.parse(uri))?.use(::readCapped)
-    }.getOrNull()
-
-    override fun readImageAttachment(uri: String): String? =
-        runCatching { readImage(resolver, Uri.parse(uri))?.toDataUrl() }.getOrNull()
-
-    /** Bounded read — a huge file is truncated at the inline cap, not loaded whole. */
-    private fun readCapped(stream: java.io.InputStream): String {
-        val max = SharedKindParser.MAX_INLINE_BYTES
-        val buffer = ByteArray(max + 1)
-        var total = 0
-        while (total <= max) {
-            val n = stream.read(buffer, total, max + 1 - total)
-            if (n < 0) break
-            total += n
-        }
-        return String(buffer, 0, minOf(total, max), Charsets.UTF_8)
-    }
 }
 
 /** What intake can decide before touching a provider. */
@@ -107,9 +59,6 @@ sealed interface ShareImportPlan {
  * bytes behind `EXTRA_STREAM` are read later, on [io].
  */
 object ShareImport {
-    const val IMAGE_UNREADABLE = "That image could not be read."
-    const val PHOTO_UNREADABLE = "That photo could not be read."
-    const val FILE_UNREADABLE = "That file could not be read."
 
     fun plan(request: ShareRequest): ShareImportPlan {
         if (SharedKindParser.readFor(request.action, request.mimeType, request.text) != SharedRead.None) {
@@ -119,7 +68,7 @@ object ShareImport {
     }
 
     /** Reads and encodes. Never throws: a failed read is the share that says so. */
-    suspend fun resolve(request: ShareRequest, reader: SharedContentReader, io: CoroutineDispatcher): StagedShare =
+    suspend fun resolve(request: ShareRequest, reader: AttachmentReader, io: CoroutineDispatcher): StagedShare =
         withContext(io) {
             val uri = request.streamUri ?: return@withContext StagedShare(error = FILE_UNREADABLE)
             val name = attempt { reader.displayName(uri) } ?: request.streamName(FALLBACK_NAME)
@@ -187,7 +136,7 @@ object ShareImport {
  */
 class ShareIntakeCoordinator(
     private val scope: CoroutineScope,
-    private val reader: SharedContentReader,
+    private val reader: AttachmentReader,
     private val store: SharedDraftStore,
     private val io: CoroutineDispatcher,
 ) {

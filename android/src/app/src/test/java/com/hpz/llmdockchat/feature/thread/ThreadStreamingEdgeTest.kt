@@ -18,6 +18,8 @@ import com.hpz.llmdockchat.data.OpenRouterModelsRepository
 import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
+import com.hpz.llmdockchat.testing.NoOpConversationAttachments
+import com.hpz.llmdockchat.testing.NoOpAutoSendClaims
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
 import com.hpz.llmdockchat.testing.FakeSseTransport
@@ -122,6 +124,8 @@ class ThreadStreamingEdgeTest {
                     conversationId = CONVERSATION_ID,
                     repository = repository,
                     drafts = drafts,
+                    conversationAttachments = NoOpConversationAttachments(),
+                    autoSendClaims = NoOpAutoSendClaims(),
                     servicesStreamRepository = servicesStreamRepository,
                     servicesRepository = servicesRepository,
                     openRouterModelsRepository = openRouterModelsRepository,

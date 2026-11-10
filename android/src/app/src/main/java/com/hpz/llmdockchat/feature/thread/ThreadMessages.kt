@@ -48,6 +48,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.Image
+import com.hpz.llmdockchat.core.attachment.decodeDataUrl
+import com.hpz.llmdockchat.core.ui.render.FullScreenBitmapViewer
+import com.hpz.llmdockchat.core.ui.render.MarkdownBody
+import com.hpz.llmdockchat.core.ui.render.ReasoningBlock
 import com.hpz.llmdockchat.core.ui.theme.LlmTheme
 import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
 import com.hpz.llmdockchat.data.model.ArtifactRecord
@@ -164,46 +168,6 @@ fun AssistantBubble(
         artifacts.forEach { ArtifactCard(it) }
         error?.let { ErrorNote(it) }
         trailing?.invoke()
-    }
-}
-
-/**
- * Collapsed by default, and never mixed into the answer body. Absent
- * entirely when the model emitted no reasoning, so a non-thinking model shows
- * no empty block.
- */
-@Composable
-internal fun ReasoningBlock(reasoning: String) {
-    val colors = LlmTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(colors.sunken)
-            .clickable { expanded = !expanded }
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .testTag("reasoning_block"),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(if (expanded) "▾" else "▸", color = colors.subtle, style = MaterialTheme.typography.labelSmall)
-            Text(
-                "Reasoning",
-                color = colors.muted,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.weight(1f),
-            )
-            Text("${reasoning.length} chars", color = colors.subtle, style = MaterialTheme.typography.labelSmall)
-        }
-        if (expanded) {
-            Text(
-                reasoning,
-                color = colors.muted,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag("reasoning_text"),
-            )
-        }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.hpz.llmdockchat.feature.share
 
+import com.hpz.llmdockchat.core.attachment.MAX_INLINE_BYTES
 import kotlinx.serialization.Serializable
 
 /**
@@ -67,8 +68,6 @@ enum class SharedRead { None, Stream }
 object SharedKindParser {
     const val ACTION_SEND = "android.intent.action.SEND"
 
-    /** Cap per-file inlined text — the web's `MAX_INLINE_BYTES` (`ChatInput.jsx`). */
-    const val MAX_INLINE_BYTES = 512 * 1024
 
     /** `ChatInput.jsx`'s `ALLOWED_EXT`, plus the code MIME types it accepts. */
     private val CODE_MIME_TYPES = setOf(
@@ -159,15 +158,15 @@ object SharedKindParser {
 /**
  * Renders a text file the way the web does (`ChatInput.jsx`'s `buildMessage`):
  * `**Attached file: \`name\`**` plus a fenced code block, truncated to
- * [SharedKindParser.MAX_INLINE_BYTES] with the same visible marker. The fence
+ * [MAX_INLINE_BYTES] with the same visible marker. The fence
  * is [pickFence]'d — at least three backticks, one more than the longest run
  * in the content — so content containing backticks never breaks the fence.
  */
 object SharedInlineFormatter {
     fun inlineFile(name: String, content: String): String {
-        val truncated = content.length > SharedKindParser.MAX_INLINE_BYTES
-        val capped = if (truncated) content.take(SharedKindParser.MAX_INLINE_BYTES) else content
-        val note = if (truncated) " (truncated to ${SharedKindParser.MAX_INLINE_BYTES} bytes)" else ""
+        val truncated = content.length > MAX_INLINE_BYTES
+        val capped = if (truncated) content.take(MAX_INLINE_BYTES) else content
+        val note = if (truncated) " (truncated to ${MAX_INLINE_BYTES} bytes)" else ""
         val lang = langHint(name)
         val fence = pickFence(capped)
         return "**Attached file: `$name`**$note\n\n$fence$lang\n$capped\n$fence"

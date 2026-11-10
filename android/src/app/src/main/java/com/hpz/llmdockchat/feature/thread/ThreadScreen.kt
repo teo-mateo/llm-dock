@@ -85,7 +85,10 @@ import com.hpz.llmdockchat.data.model.ModelOption
 import com.hpz.llmdockchat.data.model.ModelRef
 import com.hpz.llmdockchat.data.model.displayName
 import com.hpz.llmdockchat.feature.modelpicker.ModelPickerSheet
-import com.hpz.llmdockchat.feature.share.ShareImport
+import com.hpz.llmdockchat.core.attachment.IMAGE_UNREADABLE
+import com.hpz.llmdockchat.core.attachment.PHOTO_UNREADABLE
+import com.hpz.llmdockchat.core.attachment.discardCapture
+import com.hpz.llmdockchat.core.attachment.newCaptureUri
 import kotlinx.coroutines.launch
 
 /**
@@ -842,7 +845,7 @@ private fun ThreadComposer(
     val context = LocalContext.current
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) onImportAttachment(uri.toString(), ShareImport.IMAGE_UNREADABLE)
+        if (uri != null) onImportAttachment(uri.toString(), IMAGE_UNREADABLE)
     }
 
     // `TakePicturePreview` returns the camera app's *thumbnail*
@@ -857,9 +860,9 @@ private fun ThreadComposer(
         val outcome = pending.consume(saved)
         pending = pending.accept(outcome)
         when (outcome) {
-            is CaptureOutcome.Import -> onImportAttachment(outcome.uri, ShareImport.PHOTO_UNREADABLE)
+            is CaptureOutcome.Import -> onImportAttachment(outcome.uri, PHOTO_UNREADABLE)
             is CaptureOutcome.Discard -> discardCapture(context, outcome.uri.toUri())
-            CaptureOutcome.Unrecoverable -> onAttachmentFailed(ShareImport.PHOTO_UNREADABLE)
+            CaptureOutcome.Unrecoverable -> onAttachmentFailed(PHOTO_UNREADABLE)
         }
     }
 

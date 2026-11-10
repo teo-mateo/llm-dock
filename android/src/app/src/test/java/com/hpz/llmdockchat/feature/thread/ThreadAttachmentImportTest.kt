@@ -10,6 +10,8 @@ import com.hpz.llmdockchat.core.net.ApiClient
 import com.hpz.llmdockchat.core.net.ApiJson
 import com.hpz.llmdockchat.core.net.AuthInterceptor
 import com.hpz.llmdockchat.core.net.SessionAuthenticator
+import com.hpz.llmdockchat.core.attachment.AttachmentImporter
+import com.hpz.llmdockchat.core.attachment.AttachmentReader
 import com.hpz.llmdockchat.data.ChatRepository
 import com.hpz.llmdockchat.data.ConversationsRepository
 import com.hpz.llmdockchat.data.McpServersRepository
@@ -18,7 +20,6 @@ import com.hpz.llmdockchat.data.ProviderModelsRepository
 import com.hpz.llmdockchat.data.PromptsRepository
 import com.hpz.llmdockchat.data.ServicesRepository
 import com.hpz.llmdockchat.data.ServicesStreamRepository
-import com.hpz.llmdockchat.feature.share.SharedContentReader
 import com.hpz.llmdockchat.feature.share.SharedDraftStore
 import com.hpz.llmdockchat.testing.FakeDraftStore
 import com.hpz.llmdockchat.testing.FakeServerUrlStore
@@ -52,7 +53,7 @@ import org.junit.Test
 
 /** A reader with a canned answer, so the test is about the composer's states. */
 private class StubReader(private val attachment: String? = null, private val block: (() -> Unit)? = null) :
-    SharedContentReader {
+    AttachmentReader {
     var imagesRead = 0
 
     override fun displayName(uri: String): String? = null
@@ -141,7 +142,7 @@ class ThreadAttachmentImportTest {
         server.enqueue(MockResponse.Builder().body(body).build())
     }
 
-    private fun viewModel(reader: SharedContentReader?): ThreadViewModel {
+    private fun viewModel(reader: AttachmentReader?): ThreadViewModel {
         val importer = reader?.let { AttachmentImporter(it, Dispatchers.IO) }
         return ViewModelProvider.create(
             store,
@@ -151,7 +152,8 @@ class ThreadAttachmentImportTest {
                         conversationId = CONVERSATION_ID,
                         repository = repository,
                         drafts = drafts,
-                        attachmentStore = attachmentStore,
+                        conversationAttachments = attachmentStore,
+                        autoSendClaims = attachmentStore,
                         servicesStreamRepository = servicesStreamRepository,
                         servicesRepository = servicesRepository,
                         openRouterModelsRepository = openRouterModelsRepository,
