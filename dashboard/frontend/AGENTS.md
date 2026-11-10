@@ -108,14 +108,14 @@ npm test -- src/components/chat/ChatArea.test.jsx
 
 ## Authentication
 
-The React v2 app has **no login screen of its own**. It assumes a valid
-session token already exists in `localStorage` under `dashboard_token`
-(`TOKEN_KEY` in `api.js`) and sends it as `Authorization: Bearer <token>`
-on every request. Getting that token happens in the **legacy v1 dashboard**
-(vanilla JS served by Flask): the login page's "password" field is the
-`DASHBOARD_TOKEN` from `dashboard/.env`, posted to `POST /api/auth/session`
-(or a TOTP code via `POST /api/auth/login`); the response token is stored
-under the same `dashboard_token` key.
+The React v2 app has **no login screen of its own**. The dashboard serves
+`/v2` only after the session cookie passes the page guard; an anonymous
+navigation gets the standalone `login.html` at `/login` (or in place at the
+requested URL). The login page stores the session token in
+`localStorage['dashboard_token']` (`TOKEN_KEY` in `api.js`), and the SPA sends
+it as `Authorization: Bearer <token>` on every request. The `HttpOnly` session
+cookie is a separate copy used only by the page guard; the API never accepts
+it.
 
 Key mechanics:
 
@@ -123,9 +123,10 @@ Key mechanics:
   the frontend never mints a token, only reads, refreshes and clears it.
 - **Sliding refresh** — `fetchAPI` (`api.js`) reads the `X-TOTP-Token`
   response header on every reply and writes it back to localStorage, so the
-  token's 8-hour window keeps sliding while the app is used.
+  token's 8-hour window keeps sliding while the app is used. The server also
+  re-issues the cookie on a same-origin request that carried it.
 - **401 → `handleAuthFailure()`** — clear the token and full-page-navigate to
-  the v1 login page (`?redirect=<current path>`, built by the pure-exported
+  `/login?redirect=<current path>` (built by the pure-exported
   `buildLoginRedirectUrl`). A module-level `redirecting` flag makes the bounce
   happen once per page life, since many hooks authenticate on mount and a
   single 401 would otherwise start a redirect storm. `fetchAPI` takes the same
@@ -135,7 +136,9 @@ Key mechanics:
   `fetchAPI`: `services/sse.js`, `services/chat.js` (upload/download),
   `services/mcpRegistry.js`, and all three SSE hooks call it on a 401 response.
 - **Explicit sign-out is `logout()`** (`api.js`), wired to the sign-out button
-  in `Sidebar.jsx`. Unlike `handleAuthFailure` it always navigates.
+  in `Sidebar.jsx`. It `POST`s `/api/auth/logout` with the bearer (revoking the
+  session server-side), clears the token and navigates to `/login`; unlike
+  `handleAuthFailure` it always navigates.
 - **SSE hooks read the token directly** — `useServicesSSE`, `useGpuSSE`,
   `useServiceLogsSSE`, and `services/sse.js` call `getToken()` themselves
   (they use raw `fetch`, not `fetchAPI`). `useServicesSSE` listens for the
@@ -150,8 +153,13 @@ Key mechanics:
   these strings except in `ServicesTable`'s connection-dot logic.
 - **TOTP in Settings is enrollment, not login.** `components/TOTPSetup.jsx`
   calls `/totp/setup`, `/totp/verify`, `/totp/disable` to configure a
-  second factor for the *v1 login flow*. It requires an already-valid token
-  and does not sign you in.
+  second factor for the login page. It requires an already-valid token and
+  does not sign you in.
+- **Dev mode** — the page guard is Flask-only. The Vite dev server on `:5173`
+  serves the SPA unguarded and the SPA keeps using the bearer against `:3399`
+  (CORS). `localStorage` is per-origin including port, so the dev origin keeps
+  its own token: log in on `:3399` and copy `dashboard_token`, or use the
+  `:3399` build.
 
 ## Architecture & Code Map
 

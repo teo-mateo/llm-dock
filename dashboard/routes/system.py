@@ -1,12 +1,22 @@
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
-from flask import Blueprint, current_app, jsonify, request
+from datetime import datetime
+from flask import Blueprint, current_app, jsonify, make_response, request
 
 import config as config_module
 import pyotp
 
-from auth import require_auth, _totp_sessions, TOTP_TOKEN_EXPIRY_SECONDS, _cleanup_sessions
+from auth import (
+    SESSION_COOKIE_NAME,
+    TOTP_TOKEN_EXPIRY_SECONDS,
+    _cleanup_sessions,
+    clear_session_cookie,
+    issue_session,
+    require_auth,
+    revoke_session,
+    session_valid,
+    set_session_cookie,
+)
 from docker_utils import check_docker, check_nvidia_smi, get_image_info
 from engine_catalogue import build_catalogue
 from flag_metadata import ENGINE_IMAGES
@@ -49,15 +59,13 @@ def login_with_totp():
     if not totp.verify(totp_code):
         return jsonify({"error": "Invalid TOTP code"}), 401
 
-    # Issue short-lived token for convenience
-    short_token = f"totp-{secrets.token_urlsafe(16)}"
-    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
-    _totp_sessions[short_token] = expiry
+    short_token = issue_session()
     logger.info("TOTP login successful")
-    return jsonify({
+    response = make_response(jsonify({
         "token": short_token,
         "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
-    })
+    }))
+    return set_session_cookie(response, short_token)
 
 
 @system_bp.route("/api/auth/verify", methods=["POST"])
@@ -83,14 +91,34 @@ def exchange_for_session():
     if not secrets.compare_digest(token, current_app.config["DASHBOARD_TOKEN"]):
         return jsonify({"error": "Invalid token"}), 401
 
-    short_token = f"totp-{secrets.token_urlsafe(16)}"
-    expiry = datetime.now(timezone.utc) + timedelta(seconds=TOTP_TOKEN_EXPIRY_SECONDS)
-    _totp_sessions[short_token] = expiry
+    short_token = issue_session()
     logger.info("Static token exchanged for session token")
-    return jsonify({
+    response = make_response(jsonify({
         "token": short_token,
         "expires_in": TOTP_TOKEN_EXPIRY_SECONDS,
-    })
+    }))
+    return set_session_cookie(response, short_token)
+
+
+@system_bp.route("/api/auth/logout", methods=["POST"])
+def logout():
+    tokens = set()
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        bearer = auth_header[7:]
+        if session_valid(bearer) or secrets.compare_digest(
+            bearer, current_app.config["DASHBOARD_TOKEN"]
+        ):
+            tokens.add(bearer)
+    cookie = request.cookies.get(SESSION_COOKIE_NAME)
+    if cookie and session_valid(cookie):
+        tokens.add(cookie)
+    for token in tokens:
+        revoke_session(token)
+    response = make_response("", 204)
+    if tokens:
+        clear_session_cookie(response)
+    return response
 
 
 @system_bp.route("/api/images/metadata", methods=["GET"])

@@ -98,9 +98,9 @@ describe('auth failure redirect', () => {
   it('builds a login URL carrying the current path back', async () => {
     const api = await import('./api')
     expect(api.buildLoginRedirectUrl('/v2/chat/abc123'))
-      .toBe('http://localhost:3399/?redirect=%2Fv2%2Fchat%2Fabc123')
+      .toBe('http://localhost:3399/login?redirect=%2Fv2%2Fchat%2Fabc123')
     expect(api.buildLoginRedirectUrl('/v2/services/foo'))
-      .toBe('http://localhost:3399/?redirect=%2Fv2%2Fservices%2Ffoo')
+      .toBe('http://localhost:3399/login?redirect=%2Fv2%2Fservices%2Ffoo')
   })
 
   it('clears the token and throws on 401', async () => {
@@ -131,9 +131,11 @@ describe('auth failure redirect', () => {
 // Explicit logout: clears the token and navigates to the login page carrying
 // the current path back.
 describe('logout', () => {
-  it('clears the token and navigates to login with the current path', async () => {
+  it('revokes the session, clears the token and navigates to login', async () => {
     const api = await import('./api')
     localStorage.setItem(api.TOKEN_KEY, 'test-token')
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
 
     // jsdom can't read back a real navigation, so swap in a plain fake
     // location object and read back the href assignment.
@@ -147,9 +149,16 @@ describe('logout', () => {
       value: fakeLocation,
     })
 
-    api.logout()
+    await api.logout()
 
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:3399/api/auth/logout',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-token' },
+      })
+    )
     expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
-    expect(fakeLocation.href).toBe('http://localhost:3399/?redirect=%2Fv2%2Fchat%2Fabc123')
+    expect(fakeLocation.href).toBe('http://localhost:3399/login?redirect=%2Fv2%2Fchat%2Fabc123')
   })
 })

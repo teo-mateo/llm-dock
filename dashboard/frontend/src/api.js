@@ -10,7 +10,7 @@ export function getToken() {
 
 // Login page URL derived from the API origin so it works in dev (Vite serves
 // the SPA on a different port than Flask) and in prod (same origin as /api).
-const LOGIN_URL = `${API_BASE.replace(/\/api$/, '')}/`
+const LOGIN_URL = `${API_BASE.replace(/\/api$/, '')}/login`
 
 // Redirect-once guard: many hooks fire authenticated requests on mount, so a
 // single 401 would otherwise trigger a redirect storm. The full-page navigation
@@ -27,8 +27,8 @@ export function buildLoginRedirectUrl(path) {
 }
 
 /**
- * Clear the token and bounce the user to the login page (the v1 dashboard at
- * '/', whose login modal shows automatically when no token is present).
+ * Clear the token and bounce the user to the login page, carrying the current
+ * path back via ?redirect=.
  */
 export function handleAuthFailure() {
   localStorage.removeItem(TOKEN_KEY)
@@ -38,13 +38,22 @@ export function handleAuthFailure() {
 }
 
 /**
- * Explicit logout: drop the token and send the user to the login page,
- * preserving the current path so re-login returns them to where they were.
- * Unlike handleAuthFailure, this is a deliberate user action, so it always
- * navigates regardless of the redirect-once guard.
+ * Explicit logout: revoke the session server-side, drop the token and send the
+ * user to the login page, preserving the current path so re-login returns them
+ * to where they were. Unlike handleAuthFailure, this is a deliberate user
+ * action, so it always navigates regardless of the redirect-once guard.
  */
-export function logout() {
+export async function logout() {
+  const token = getToken()
   localStorage.removeItem(TOKEN_KEY)
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+  } catch {
+    // Navigate anyway; the guard/login page handles a stale cookie.
+  }
   window.location.href = buildLoginRedirectUrl(window.location.pathname + window.location.search)
 }
 

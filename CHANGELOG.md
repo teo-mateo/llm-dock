@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-11-10
+- **Login page and page guard (#496)** - Anonymous page loads now get a standalone `login.html` (password or TOTP) instead of the full app shell; `/login` is the explicit entry and the guard serves the same page in place for deep links. One `HttpOnly`, `SameSite=Strict` session cookie gates HTML delivery only, so the API stays bearer-only and Android/scripts/curl are unchanged. Anonymous app assets answer `401`; `POST /api/auth/logout` revokes the session and clears the cookie only when the request carries a valid credential. The v1 login modal is deleted; v1/v2/benchmark redirect to `/login` on a missing or rejected token. `DASHBOARD_TRUST_PROXY_HEADERS` (default off) gates `Secure` behind a TLS proxy.
 - **Service image override** - The v2 config panel can pin or clear a per-service image on the engines whose templates honour one (llama.cpp, ik_llama.cpp, vLLM, SGLang, Maya). Changing the effective image recreates a running container, with the result reported honestly: a failed recreate is shown as not applied, and the live image only updates once it is true. A non-local image warns at save time instead of failing at start; a non-empty image on ds4, TabbyAPI or NInfer is refused. One rule, `effective_image()`, now feeds both the compose render and the service payload, which fixes a stored empty image rendering an empty `image:` line and a Maya override being ignored by the payload.
 
 ## 2026-10-30
