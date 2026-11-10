@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import set_public_port
 from service_ops.deps import Infra, SetPublicPortDeps
-from service_ops.hooks import Phase, PublicPortContext, ServiceHook, run_phase
+from service_ops.hooks import Cause, Phase, ServiceHook, ServicesChangedContext, run_phase
 from service_ops.outcomes import AlreadyPublic, OpError, PublicPortSet
 from service_ops.subsystems import InspectorHook
 
@@ -161,13 +161,14 @@ def test_the_inspector_failing_after_the_recreates_is_fatal_and_leaves_the_compo
     assert harness.names().count("recreate") == 3 and "rebuild" in harness.names()
 
 
-def test_the_public_port_phase_reaches_hooks_with_the_displaced_services():
+def test_the_services_changed_phase_reaches_hooks_with_cause_and_affected_services():
     seen = []
 
     class Recording(ServiceHook):
-        def after_public_port(self, ctx):
-            seen.append((ctx.subject, list(ctx.displaced)))
+        def after_services_changed(self, ctx):
+            seen.append((ctx.subject, ctx.cause, list(ctx.affected)))
 
-    run_phase([Recording()], Phase.AFTER_PUBLIC_PORT, PublicPortContext("a", ["b", "c"]))
+    ctx = ServicesChangedContext("a", Cause.PUBLIC_PORT, ["a", "b", "c"])
+    run_phase([Recording()], Phase.AFTER_SERVICES_CHANGED, ctx)
 
-    assert seen == [("a", ["b", "c"])]
+    assert seen == [("a", Cause.PUBLIC_PORT, ["a", "b", "c"])]

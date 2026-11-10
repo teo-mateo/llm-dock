@@ -21,6 +21,7 @@ from flag_metadata import (
     MANDATORY_FIELDS, IMAGE_OVERRIDE_ENGINES, effective_image, plan_image_change,
     FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
+import port_conflicts
 from port_conflicts import find_port_owner, port_in_use_body
 import service_ops
 from service_ops import wiring
@@ -35,10 +36,6 @@ from inspector.supervisor import proxy_supervisor
 logger = logging.getLogger(__name__)
 
 services_bp = Blueprint("services", __name__)
-
-# Module constant so tests can pin a free port instead of colliding with the
-# live 3301 slot on the machine the suite runs on.
-PUBLIC_SLOT_PORT = 3301
 
 # Shared across all blueprints — see db_lock.py. Aliased to preserve the
 # existing private-looking names used throughout this module.
@@ -555,7 +552,7 @@ def set_public_port(service_name):
     """
     try:
         outcome = service_ops.set_public_port(
-            wiring.set_public_port_deps(COMPOSE_FILE), service_name, PUBLIC_SLOT_PORT
+            wiring.set_public_port_deps(COMPOSE_FILE), service_name, port_conflicts.PUBLIC_SLOT_PORT
         )
         if isinstance(outcome, OpError):
             return jsonify(outcome.body()), outcome.status

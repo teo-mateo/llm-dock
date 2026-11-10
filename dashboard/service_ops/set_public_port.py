@@ -1,7 +1,7 @@
 import logging
 
 from .deps import SetPublicPortDeps
-from .hooks import Phase, PublicPortContext, run_phase
+from .hooks import Cause, Phase, ServicesChangedContext, run_phase
 from .outcomes import AlreadyPublic, OpError, PublicPortSet
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,10 @@ def set_public_port(deps: SetPublicPortDeps, name: str, public_port: int) -> Pub
         except Exception as e:
             restarts.append({"service": affected, "restarted": False, "error": str(e)})
 
-    run_phase(infra.hooks, Phase.AFTER_PUBLIC_PORT, PublicPortContext(name, displaced))
+    run_phase(
+        infra.hooks,
+        Phase.AFTER_SERVICES_CHANGED,
+        ServicesChangedContext(name, Cause.PUBLIC_PORT, [name, *displaced]),
+    )
     logger.info(f"Service {name} now on public port {public_port}")
     return PublicPortSet(name, public_port, updates, restarts)

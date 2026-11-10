@@ -5,6 +5,9 @@ PORT_IN_USE = "port_in_use"
 
 DASHBOARD_PORT = 3399
 
+PUBLIC_SLOT_PORT = 3301
+PUBLIC_PORT_RANGE = (3300, 3399)
+
 COMPOSE_OWNER = "another compose service"
 DASHBOARD_OWNER = "the dashboard"
 

@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import port_conflicts
 import routes.services as services_route
 from service_ops import wiring
 from compose_manager import ComposeManager
@@ -263,7 +264,7 @@ class TestWritePathSync:
         monkeypatch.setattr(wiring, "recreate_if_running", lambda *a, **k: {"restarted": False})
 
         public_port = _free_port()
-        monkeypatch.setattr(services_route, "PUBLIC_SLOT_PORT", public_port)
+        monkeypatch.setattr(port_conflicts, "PUBLIC_SLOT_PORT", public_port)
 
         # Pin the displaced service's replacement port: the picker scans
         # 3300-3399 against declared and compose ports only, which knows nothing

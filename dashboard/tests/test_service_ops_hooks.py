@@ -5,7 +5,15 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from service_ops.hooks import DeleteContext, Phase, RenameContext, ServiceHook, run_phase
+from service_ops.hooks import (
+    PHASE_METHODS,
+    Cause,
+    Phase,
+    RenameContext,
+    ServiceHook,
+    ServicesChangedContext,
+    run_phase,
+)
 from service_ops.outcomes import Deleted, OpError, Renamed
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
@@ -25,6 +33,10 @@ class Recording(ServiceHook):
 
 def _ctx(**config):
     return RenameContext("old", "new", {"template_type": "llamacpp", "port": 3301, "api_key": "k", **config})
+
+
+def _changed(cause, subject="old"):
+    return ServicesChangedContext(subject, cause, [subject])
 
 
 def test_hooks_run_in_registration_order():
@@ -56,7 +68,7 @@ def test_a_hook_that_is_not_best_effort_aborts_with_its_exception():
 
 def test_a_phase_a_hook_does_not_implement_is_a_no_op():
     run_phase([ServiceHook()], Phase.BEFORE_RENAME, _ctx())
-    run_phase([ServiceHook()], Phase.AFTER_DELETE, DeleteContext("old", {}))
+    run_phase([ServiceHook()], Phase.AFTER_SERVICES_CHANGED, _changed(Cause.DELETE))
 
 
 def test_the_outcomes_are_plain_values():
@@ -126,9 +138,10 @@ def test_the_inspector_hook_renames_captures_then_syncs_and_is_fatal():
     hook = InspectorHook(lambda old, new: log.append(("rename", old, new)), lambda: log.append(("sync",)))
 
     hook.after_rename(_ctx())
-    hook.after_delete(DeleteContext("old", {}))
+    for cause in (Cause.DELETE, Cause.PUBLIC_PORT, Cause.INSPECT, Cause.KEY_ROTATION):
+        hook.after_services_changed(_changed(cause))
 
-    assert log == [("rename", "old", "new"), ("sync",), ("sync",)]
+    assert log == [("rename", "old", "new")] + [("sync",)] * 5
     assert hook.best_effort is False
 
 
@@ -145,18 +158,36 @@ def test_the_key_file_hook_removes_on_delete_only():
     hook = KeyFileHook(log.append)
 
     hook.after_rename(_ctx())
-    hook.after_delete(DeleteContext("svc", {}))
+    for cause in (Cause.PUBLIC_PORT, Cause.INSPECT, Cause.KEY_ROTATION):
+        hook.after_services_changed(_changed(cause, "other"))
+    hook.after_services_changed(_changed(Cause.DELETE, "svc"))
 
     assert log == ["svc"]
 
 
 @pytest.mark.parametrize("phase", list(Phase))
 def test_every_phase_is_defined_on_the_hook_base(phase):
-    assert callable(getattr(ServiceHook, phase.value))
+    assert callable(getattr(ServiceHook, PHASE_METHODS[phase]))
+
+
+def test_a_misspelt_phase_method_fails_when_the_hook_class_is_created():
+    with pytest.raises(TypeError, match="after_renmae"):
+
+        class Typo(ServiceHook):
+            def after_renmae(self, ctx):
+                pass
+
+
+def test_a_hook_may_define_helpers_outside_the_phase_namespace():
+    class Fine(ServiceHook):
+        def helper(self):
+            return 1
+
+    assert Fine().helper() == 1
 
 
 def test_a_string_instead_of_a_phase_fails_loudly():
-    with pytest.raises(AttributeError):
+    with pytest.raises(KeyError):
         run_phase([ServiceHook()], "after_rename", _ctx())
 
 
@@ -171,7 +202,7 @@ def test_a_hook_missing_a_phase_method_fails_loudly_even_when_best_effort():
 
 def test_each_context_names_its_subject_for_the_log():
     assert _ctx().subject == "old"
-    assert DeleteContext("svc", {}).subject == "svc"
+    assert _changed(Cause.DELETE, "svc").subject == "svc"
 
 
 def test_hook_state_is_namespaced_by_hook_name():
