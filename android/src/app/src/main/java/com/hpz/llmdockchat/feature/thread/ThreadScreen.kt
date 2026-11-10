@@ -50,6 +50,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.core.net.toUri
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.hpz.llmdockchat.core.ui.theme.MonoFontFamily
@@ -848,28 +850,32 @@ private fun ThreadComposer(
     // a vision model. `TakePicture` writes the real capture to a Uri we own,
     // which then goes through exactly the same read-and-downscale path as a
     // gallery pick.
-    var pendingPhoto by remember { mutableStateOf<Uri?>(null) }
-    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
+    var pending by rememberSaveable(stateSaver = PendingCapture.Saver) {
+        mutableStateOf(PendingCapture())
+    }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        val uri = pendingPhoto
-        pendingPhoto = null
-        if (uri == null) return@rememberLauncherForActivityResult
-        if (saved) {
-            pendingCapture = uri
-            onImportAttachment(uri.toString(), ShareImport.PHOTO_UNREADABLE)
-        } else {
-            discardCapture(context, uri)
+        // Consumed before anything is done with it: a result handled twice must
+        // not import the same photo twice.
+        val outcome = pending.consume(saved)
+        pending = pending.spent()
+        when (outcome) {
+            is CaptureOutcome.Import -> {
+                pending = pending.copy(inFlight = outcome.uri)
+                onImportAttachment(outcome.uri, ShareImport.PHOTO_UNREADABLE)
+            }
+            is CaptureOutcome.Discard -> discardCapture(context, outcome.uri.toUri())
+            CaptureOutcome.Unrecoverable -> onAttachmentFailed(ShareImport.PHOTO_UNREADABLE)
         }
     }
 
     // The capture file is ours, so it goes away — but not while the import still
     // holds the Uri: deleting it mid-read is how a photo turns into "could not be
     // read", which the synchronous version of this callback could not do.
-    LaunchedEffect(state.attachmentImporting) {
+    LaunchedEffect(state.attachmentImporting, pending.inFlight) {
         if (state.attachmentImporting) return@LaunchedEffect
-        val capture = pendingCapture
-        pendingCapture = null
-        capture?.let { discardCapture(context, it) }
+        val capture = pending.inFlight ?: return@LaunchedEffect
+        pending = pending.copy(inFlight = null)
+        discardCapture(context, capture.toUri())
     }
 
     Column(
@@ -976,7 +982,7 @@ private fun ThreadComposer(
                 if (uri == null) {
                     onAttachmentFailed("The camera could not be opened.")
                 } else {
-                    pendingPhoto = uri
+                    pending = pending.copy(destination = uri.toString())
                     takePhoto.launch(uri)
                 }
             },
