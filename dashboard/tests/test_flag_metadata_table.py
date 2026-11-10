@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -158,5 +159,5 @@ def test_every_engine_renders_a_minimal_service(tmp_path, monkeypatch, engine):
 
     rendered = ComposeManager(str(compose))._render_service(f"{engine}-svc", _minimal_service(engine))
 
-    assert f"{engine}-svc" in rendered
-    assert ENGINE_IMAGES[engine] in rendered
+    image_lines = re.findall(r"^\s+image:\s*(\S+)\s*$", rendered, re.M)
+    assert image_lines == [ENGINE_IMAGES[engine]]

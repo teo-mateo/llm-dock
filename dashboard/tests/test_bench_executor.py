@@ -5,25 +5,34 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from benchmarking.db import BenchmarkDB
-from benchmarking.executor import BenchmarkExecutor, LLAMA_BENCH_PATH, LLAMACPP_IMAGE
+from benchmarking.executor import BenchmarkExecutor, LLAMA_BENCH_PATH
+from flag_metadata import ENGINE_IMAGES
+
+IMAGE = ENGINE_IMAGES["llamacpp"]
 
 
 @pytest.fixture
-def executor(db):
-    return BenchmarkExecutor(db, compose_file="../docker-compose.yml")
+def executor(db, tmp_path):
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services: {}\n")
+    (tmp_path / "services.json").write_text(json.dumps({
+        "llamacpp-test": {"template_type": "llamacpp", "alias": "t", "port": 3345,
+                          "api_key": "k", "model_path": "/models/test.gguf", "params": {}},
+    }))
+    return BenchmarkExecutor(db, compose_file=str(compose))
 
 
 class TestBuildDockerCmd:
     def test_basic_command_fallback(self, executor):
         """When no compose config found, uses fallback defaults"""
-        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {"-p": "512", "-n": "128"})
+        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {"-p": "512", "-n": "128"}, IMAGE)
 
         assert cmd[0] == "docker"
         assert cmd[1] == "run"
         assert "--rm" in cmd
         assert "--gpus" in cmd
         assert "all" in cmd
-        assert LLAMACPP_IMAGE in cmd
+        assert IMAGE in cmd
         assert LLAMA_BENCH_PATH in cmd
 
         m_idx = cmd.index("-m")
@@ -39,7 +48,7 @@ class TestBuildDockerCmd:
         assert cmd[n_idx + 1] == "128"
 
     def test_boolean_flag(self, executor):
-        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {"-fa": ""})
+        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {"-fa": ""}, IMAGE)
         assert "-fa" in cmd
         fa_idx = cmd.index("-fa")
         # Next element should not be an empty string
@@ -50,6 +59,7 @@ class TestBuildDockerCmd:
             "llamacpp-test",
             "/models/test.gguf",
             {"-m": "/evil/path", "-o": "csv", "-p": "256"},
+            IMAGE,
         )
         # -m should appear only once (the one we pass, not the user's)
         m_count = cmd.count("-m")
@@ -66,7 +76,7 @@ class TestBuildDockerCmd:
 
     def test_volume_mounts_fallback(self, executor):
         """When no compose config found, uses default volume mounts"""
-        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {})
+        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {}, IMAGE)
         v_indices = [i for i, x in enumerate(cmd) if x == "-v"]
         assert len(v_indices) == 2
 
@@ -102,7 +112,7 @@ class TestBuildDockerCmd:
             yaml.dump(compose_content, f)
 
         executor.compose_file = str(compose_file)
-        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {})
+        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {}, IMAGE)
 
         v_indices = [i for i, x in enumerate(cmd) if x == "-v"]
         assert len(v_indices) == 3
@@ -133,7 +143,7 @@ class TestBuildDockerCmd:
             yaml.dump(compose_content, f)
 
         executor.compose_file = str(compose_file)
-        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {})
+        cmd = executor._build_docker_cmd("llamacpp-test", "/models/test.gguf", {}, IMAGE)
 
         gpus_idx = cmd.index("--gpus")
         assert cmd[gpus_idx + 1] == "1"

@@ -291,6 +291,7 @@ class ComposeManager:
             # Optional per-service bind mounts are needed for narrowly scoped
             # runtime overlays (for example, quantized PLE support in vLLM).
             "extra_volumes": config.get("volumes", []),
+            "image": effective_image(template_type, config),
         }
 
         # Add mandatory fields based on template type
@@ -299,20 +300,14 @@ class ComposeManager:
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
             context["mmproj_path"] = config.get("mmproj_path")
-            # Without this the template's hardcoded image wins the rebuild and
-            # silently reverts pinned builds that carry architectures upstream
-            # llama.cpp does not have yet.
-            context["image"] = effective_image(template_type, config)
         elif template_type == "vllm":
             context["model_name"] = config["model_name"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            context["image"] = effective_image(template_type, config)
         elif template_type == "sglang":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            context["image"] = effective_image(template_type, config)
             # Compose accepts argv directly. Preserve paths/keys containing
             # whitespace rather than parsing them as part of a folded command.
             context["sglang_args"] = [
@@ -341,8 +336,7 @@ class ComposeManager:
             # track the override and Docker would create a directory at the mount.
             context["key_file"] = str(key_path)
         elif template_type == "ninfer":
-            # One .ninfer artifact file, named positionally in the template; the
-            # image is fixed at llm-dock-ninfer, so there is no image override.
+            # One .ninfer artifact file, named positionally in the template.
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
@@ -350,9 +344,6 @@ class ComposeManager:
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
-            # A service can run its own build (another Maya commit, from
-            # MAYA_IMAGE=... ./build-maya.sh) beside the default image.
-            context["image"] = effective_image(template_type, config)
             # The container runs as the host user because it writes into the host's
             # ~/.cache/maya packs; a bind source Docker has to create itself would be
             # root-owned and unwritable for that user, so it exists before compose runs.
