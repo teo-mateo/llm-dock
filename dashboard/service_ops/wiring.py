@@ -90,7 +90,7 @@ def set_public_port_deps(compose_file: str, next_port=None, recreate=None, **ove
 def set_inspect_deps(compose_file: str, allocate=None, recreate=None, status=None, **overrides) -> SetInspectDeps:
     return SetInspectDeps(
         replace(build_infra(compose_file), **overrides),
-        allocate_upstream_port=allocate or (lambda services, name: allocate_upstream_port(services, name)),
+        allocate_upstream_port=allocate or allocate_upstream_port,
         recreate_if_running=recreate or (lambda name: recreate_if_running(compose_file, name)),
         proxy_status=status or (lambda: proxy_supervisor.status()),
     )

@@ -68,7 +68,8 @@ def test_a_hook_that_is_not_best_effort_aborts_with_its_exception():
 
 def test_a_phase_a_hook_does_not_implement_is_a_no_op():
     run_phase([ServiceHook()], Phase.BEFORE_RENAME, _ctx())
-    run_phase([ServiceHook()], Phase.AFTER_SERVICES_CHANGED, _changed(Cause.DELETE))
+    run_phase([ServiceHook()], Phase.AFTER_CONTAINER_SWAP, _changed(Cause.DELETE))
+    run_phase([ServiceHook()], Phase.BEFORE_CONTAINER_SWAP, _changed(Cause.INSPECT))
 
 
 def test_the_outcomes_are_plain_values():
@@ -138,10 +139,11 @@ def test_the_inspector_hook_renames_captures_then_syncs_and_is_fatal():
     hook = InspectorHook(lambda old, new: log.append(("rename", old, new)), lambda: log.append(("sync",)))
 
     hook.after_rename(_ctx())
-    for cause in (Cause.DELETE, Cause.PUBLIC_PORT, Cause.INSPECT, Cause.KEY_ROTATION):
-        hook.after_services_changed(_changed(cause))
+    for cause in Cause:
+        run_phase([hook], Phase.BEFORE_CONTAINER_SWAP, _changed(cause))
+        run_phase([hook], Phase.AFTER_CONTAINER_SWAP, _changed(cause))
 
-    assert log == [("rename", "old", "new")] + [("sync",)] * 5
+    assert log == [("rename", "old", "new")] + [("sync",)] * (1 + 2 * len(Cause))
     assert hook.best_effort is False
 
 
@@ -158,9 +160,9 @@ def test_the_key_file_hook_removes_on_delete_only():
     hook = KeyFileHook(log.append)
 
     hook.after_rename(_ctx())
-    for cause in (Cause.PUBLIC_PORT, Cause.INSPECT, Cause.KEY_ROTATION):
-        hook.after_services_changed(_changed(cause, "other"))
-    hook.after_services_changed(_changed(Cause.DELETE, "svc"))
+    for cause in Cause:
+        run_phase([hook], Phase.BEFORE_CONTAINER_SWAP, _changed(cause, "svc"))
+        run_phase([hook], Phase.AFTER_CONTAINER_SWAP, _changed(cause, "svc"))
 
     assert log == ["svc"]
 
@@ -213,3 +215,32 @@ def test_hook_state_is_namespaced_by_hook_name():
 
     assert ctx.state == {"a": {"flag": 1}, "b": {"flag": 2}}
     assert ctx.state_for("a") is ctx.state_for("a")
+
+
+def test_run_phase_skips_a_hook_that_does_not_follow_the_cause():
+    log = []
+
+    class OnlyInspect(ServiceHook):
+        causes = frozenset({Cause.INSPECT})
+
+        def after_container_swap(self, ctx):
+            log.append(ctx.cause)
+
+    for cause in Cause:
+        run_phase([OnlyInspect()], Phase.AFTER_CONTAINER_SWAP, _changed(cause))
+
+    assert log == [Cause.INSPECT]
+
+
+def test_causes_never_filter_the_rename_phases():
+    log = []
+
+    class NoCauses(ServiceHook):
+        causes = frozenset()
+
+        def after_rename(self, ctx):
+            log.append("renamed")
+
+    run_phase([NoCauses()], Phase.AFTER_RENAME, _ctx())
+
+    assert log == ["renamed"]

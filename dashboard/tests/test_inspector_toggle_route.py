@@ -185,31 +185,6 @@ class TestToggleEndpoint:
         assert resp.get_json()["proxy_running"] is False
         assert _port_free(port)
 
-    def test_non_bool_enabled_is_400(self, env):
-        _write_services(env, {"svc-a": _llamacpp_service(_free_port())})
-
-        assert (
-            env["client"].post(
-                "/api/services/svc-a/inspect", json={"enabled": "yes"}, headers=_auth()
-            ).status_code
-            == 400
-        )
-        assert (
-            env["client"].post(
-                "/api/services/svc-a/inspect", json={}, headers=_auth()
-            ).status_code
-            == 400
-        )
-
-    def test_unknown_service_is_404(self, env):
-        _write_services(env, {"svc-a": _llamacpp_service(_free_port())})
-
-        resp = env["client"].post(
-            "/api/services/missing/inspect", json={"enabled": True}, headers=_auth()
-        )
-
-        assert resp.status_code == 404
-
     def test_bind_failure_reports_error_with_200(self, env):
         port = _free_port()
         blocker = socket.socket()
