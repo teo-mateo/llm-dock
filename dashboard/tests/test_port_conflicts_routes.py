@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+from service_ops import wiring
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
 
@@ -39,6 +40,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(services_route, "COMPOSE_FILE", str(compose_path))
     monkeypatch.setattr(ComposeManager, "rebuild_compose_file", lambda self: None)
     monkeypatch.setattr(services_route, "_recreate_if_running", lambda name: {"restarted": False})
+    monkeypatch.setattr(wiring, "recreate_if_running", lambda *a, **k: {"restarted": False})
     monkeypatch.setattr(proxy_supervisor, "sync", lambda: None)
 
     from app import create_app
@@ -171,7 +173,7 @@ class TestStartRoute:
 
 class TestSetPublicPort:
     def test_never_leaves_two_services_on_one_port(self, env, monkeypatch):
-        monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "get_service_container", lambda name: None)
         env["write"]({
             "svc-a": _svc(3302, "svc-a"),
             "svc-b": _svc(3301, "svc-b", inspect=True, inspect_upstream_port=3303),
@@ -188,7 +190,7 @@ class TestSetPublicPort:
         assert len(claimed) == len(set(claimed))
 
     def test_every_holder_of_the_public_slot_is_moved_off_it(self, env, monkeypatch):
-        monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "get_service_container", lambda name: None)
         env["write"]({
             "svc-a": _svc(3302, "svc-a"),
             "svc-b": _svc(3301, "svc-b"),
@@ -248,7 +250,7 @@ class TestStartSyncsInspector:
 
 class TestRename:
     def test_rename_neither_introduces_nor_clears_a_port_conflict(self, env, monkeypatch):
-        monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "get_service_container", lambda name: None)
         env["write"]({"llamacpp-a": _svc(3301, "a"), "llamacpp-b": _svc(3302, "b")})
 
         resp = env["client"].post(

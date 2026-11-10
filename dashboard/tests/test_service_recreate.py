@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+from service_ops import wiring
 import service_recreate as service_recreate_module
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
@@ -278,7 +279,7 @@ def test_route_maps_a_timeout_to_its_own_code(env, monkeypatch):
 
 
 def test_recreate_if_running_does_nothing_for_a_stopped_service(env, monkeypatch):
-    monkeypatch.setattr(services_route, "get_service_container", lambda n: None)
+    monkeypatch.setattr(wiring, "get_service_container", lambda n: None)
     monkeypatch.setattr(service_recreate_module, "run_compose", lambda *a: pytest.fail("docker called"))
 
     assert services_route._recreate_if_running("svc-a") == {"restarted": False}
@@ -291,7 +292,7 @@ def test_recreate_if_running_still_raises_when_the_compose_rebuild_fails(env, mo
     def broken(self):
         raise ValueError("generated compose file is invalid")
 
-    monkeypatch.setattr(services_route, "get_service_container", lambda n: Running())
+    monkeypatch.setattr(wiring, "get_service_container", lambda n: Running())
     monkeypatch.setattr(ComposeManager, "rebuild_compose_file", broken)
 
     with pytest.raises(ValueError, match="invalid"):
