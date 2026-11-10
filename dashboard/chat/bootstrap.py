@@ -2,7 +2,7 @@ import logging
 import os
 
 from .db import ChatDB
-from .deps import install
+from .deps import default_services, install
 from .event_bus import EventBus
 from .project_files import configure_max_content_length
 from .prompt_seed import seed_default_prompts
@@ -38,5 +38,5 @@ def init_chat(app, db_path: str = None):
     run_manager = ChatRunManager(db, bus)
     run_manager.recover_interrupted_runs()
 
-    install(app, db=db, mcp=mgr, run_manager=run_manager, bus=bus)
+    install(app, db=db, mcp=mgr, run_manager=run_manager, bus=bus, services=default_services)
     logger.info("Chat subsystem initialized")
