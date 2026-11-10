@@ -6,6 +6,7 @@ import { registerAskUser } from "./ask-user.ts";
 import { createActivity } from "./activity.ts";
 import { detectPiVersion, loadConfig, readExtVersion } from "./config.ts";
 import { handleRemoteCommand } from "./remote-command-handler.ts";
+import { parentSessionIdFrom } from "./pi-adapter.ts";
 import { createSessionRuntime, type SessionRuntime } from "./session-runtime.ts";
 import { sessionIdFromFile } from "./session.ts";
 import { registerEventSubscriptions } from "./subscriptions.ts";
@@ -14,6 +15,7 @@ export default function (pi: ExtensionAPI) {
   const config = loadConfig();
   const extVersion = readExtVersion(new URL("../package.json", import.meta.url));
   const piVersion = detectPiVersion();
+  const parentSessionId = parentSessionIdFrom(process.env);
   const activity = createActivity();
   let runtime: SessionRuntime | undefined;
 
@@ -34,6 +36,7 @@ export default function (pi: ExtensionAPI) {
       extVersion,
       piVersion,
       previousSessionId,
+      parentSessionId,
       activity,
     });
   });

@@ -24,6 +24,7 @@ const helloFields = () => ({
   thinking_level: "high",
   reason: "startup" as const,
   previous_session_id: "previous-session",
+  parent_session_id: null,
   pi_version: "1.0.4",
   ext_version: "0.1.0",
 });

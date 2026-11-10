@@ -24,6 +24,8 @@ fun PiSessionsScreen(
     onSwipeDelete: (PiSession) -> Unit,
     onUndoDelete: () -> Unit,
     cacheLabels: PiCacheLabels = PiCacheLabels(),
+    projectToggles: Map<String, Boolean> = emptyMap(),
+    onToggleProject: (PiSection, String) -> Unit = { _, _ -> },
 ) {
     val colors = LlmTheme.colors
     val loaded = state as? PiSessionsUiState.Loaded
@@ -83,6 +85,7 @@ fun PiSessionsScreen(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator(color = colors.accent) }
                 is PiSessionsUiState.Loaded -> {
+                    val tree = state.tree
                     if (state.stale) {
                         Text(
                             "Reconnecting…",
@@ -106,22 +109,26 @@ fun PiSessionsScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
                         ) {
-                            if (state.visibleLive.isNotEmpty()) {
-                                item(key = "live_header") {
-                                    Text("Live", color = colors.muted, style = MaterialTheme.typography.labelMedium)
-                                }
-                                items(state.visibleLive, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionSwipeRow(it, cacheLabels.sizes[it.key], onOpen, onSwipeDelete)
-                                }
-                            }
-                            if (state.visibleEnded.isNotEmpty()) {
-                                item(key = "ended_header") {
-                                    Text("Ended", color = colors.muted, style = MaterialTheme.typography.labelMedium)
-                                }
-                                items(state.visibleEnded, key = { "${it.key.sessionId}/${it.key.instanceId}" }) {
-                                    PiSessionSwipeRow(it, cacheLabels.sizes[it.key], onOpen, onSwipeDelete)
-                                }
-                            }
+                            piSectionRows(
+                                PiSection.LIVE,
+                                "Live",
+                                tree.live,
+                                projectToggles,
+                                cacheLabels,
+                                onOpen,
+                                onSwipeDelete,
+                                onToggleProject,
+                            )
+                            piSectionRows(
+                                PiSection.ENDED,
+                                "Ended",
+                                tree.ended,
+                                projectToggles,
+                                cacheLabels,
+                                onOpen,
+                                onSwipeDelete,
+                                onToggleProject,
+                            )
                         }
                     }
                 }
@@ -162,7 +169,7 @@ private fun PiSessionsEmptyState() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PiSessionSwipeRow(
+internal fun PiSessionSwipeRow(
     session: PiSession,
     cachedSize: String?,
     onOpen: (PiSessionKey) -> Unit,
@@ -186,30 +193,10 @@ private fun PiSessionSwipeRow(
 }
 
 @Composable
-private fun DeleteSwipeBackground() {
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LlmTheme.colors.red.copy(alpha = 0.85f))
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Delete", color = Color.White, fontFamily = MonoFontFamily)
-    }
-}
-@Composable
 fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit, cachedSize: String? = null) {
     val colors = LlmTheme.colors
-    val status = when (session.state) {
-        PiState.WORKING -> "working"
-        PiState.IDLE -> "idle"
-        PiState.ENDED -> "ended"
-    }
-    val statusColor = when (session.state) {
-        PiState.WORKING -> colors.amber
-        PiState.IDLE -> colors.green
-        PiState.ENDED -> colors.subtle
-    }
+    val status = piStatusLabel(session)
+    val statusColor = piStatusColor(session.state)
     val name = piSessionTitle(session)
     val nowMs = remember { System.currentTimeMillis() }
     val emphasis = if (session.state == PiState.ENDED) 0.72f else 1f
@@ -257,7 +244,7 @@ fun PiSessionRow(session: PiSession, onOpen: (PiSessionKey) -> Unit, cachedSize:
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                piSessionMetaHead(session.cwd, session.model),
+                piSessionMetaHead(session.project, session.model),
                 color = colors.muted,
                 style = MaterialTheme.typography.labelSmall,
                 fontFamily = MonoFontFamily,

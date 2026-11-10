@@ -41,6 +41,7 @@ export type HelloFields = {
   thinking_level: string | null;
   reason: SessionReason;
   previous_session_id: string | null;
+  parent_session_id: string | null;
   pi_version: string | null;
   ext_version: string;
 };

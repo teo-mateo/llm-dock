@@ -4,7 +4,15 @@ from .bus import BusMessage, EventBus, SessionKey, Subscription
 from .command_queue import CommandQueue
 from .commands import CommandResult
 from .limits import RateLimiter
-from .read_model import EventPage, SessionSummary, clamp_limit, event_page, session_summary
+from .publishing import bus_publisher, publish_children
+from .read_model import (
+    EventPage,
+    SessionSummary,
+    clamp_limit,
+    event_page,
+    resolve_parent,
+    session_summary,
+)
 from .registry import PresenceRegistry
 from .store import PiRemoteDB
 
@@ -37,18 +45,22 @@ class PiRemoteClient:
             return None
         presence = self.registry.get(key[0], key[1], self.clock())
         prompts = self.store.prompts.open_for(key[0], key[1])
-        return session_summary(row, presence, prompts)
+        parents = resolve_parent(self.store.sessions.list())
+        return session_summary(row, presence, prompts, parents)
 
     def sessions(self) -> List[SessionSummary]:
         now = self.clock()
         grouped = self.store.prompts.open_by_session()
+        rows = self.store.sessions.list()
+        parents = resolve_parent(rows)
         summaries = [
             session_summary(
                 row,
                 self.registry.get(row["session_id"], row["instance_id"], now),
                 grouped.get((row["session_id"], row["instance_id"]), []),
+                parents,
             )
-            for row in self.store.sessions.list()
+            for row in rows
         ]
         return sorted(summaries, key=lambda summary: (not summary.live, -summary.last_seen))
 
@@ -81,6 +93,7 @@ class PiRemoteClient:
         self.store.commands.drop([command.command_id for command in pending], now)
         self.store.sessions.delete(key[0], key[1])
         self.bus.publish(BusMessage("removed", key))
+        publish_children(self.store, self.registry, bus_publisher(self.bus), key[0], now)
         return None
 
     def send_command(

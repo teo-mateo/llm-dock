@@ -26,6 +26,7 @@ def hello(instance_id="i1"):
         thinking_level="high",
         reason="startup",
         previous_session_id=None,
+        parent_session_id=None,
         pi_version="1.0.4",
         ext_version="0.1.0",
     )
@@ -117,6 +118,29 @@ def test_delete_session_publishes_the_removal(env):
     assert message is not None
     assert message.kind == "removed"
     assert message.key == ("s1", "i1")
+
+
+def test_deleting_one_parent_instance_republishes_the_child(env):
+    env["store"].sessions.upsert(hello("old"), 1000)
+    env["store"].sessions.end("s1", "old", "bye", 1100)
+    env["store"].sessions.upsert(hello("new"), 2000)
+    env["store"].sessions.end("s1", "new", "bye", 2100)
+    child = replace(hello("c1"), session_id="child", parent_session_id="s1")
+    env["store"].sessions.upsert(child, 2200)
+    env["store"].sessions.end("child", "c1", "bye", 2300)
+    subscription = env["client"].subscribe()
+
+    assert env["client"].delete_session(("s1", "new")) is None
+
+    messages = []
+    while True:
+        message = subscription.get(0.2)
+        if message is None:
+            break
+        messages.append(message)
+    sessions = {message.key: message.summary for message in messages if message.kind == "session"}
+    assert sessions[("child", "c1")].parent_session_id == "s1"
+    assert sessions[("child", "c1")].parent_instance_id == "old"
 
 
 def _hello_body():

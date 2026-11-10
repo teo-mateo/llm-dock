@@ -1,5 +1,8 @@
 package com.hpz.llmdockchat.feature.pi
 
+import com.hpz.llmdockchat.data.model.PiSession
+import com.hpz.llmdockchat.data.model.PiSessionKey
+import com.hpz.llmdockchat.data.model.PiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -43,31 +46,20 @@ class PiFormattingTest {
     }
 
     @Test
-    fun `session meta head leads with the model and shortens the cwd`() {
+    fun `session meta head leads with the model and uses the server project label`() {
         assertEquals(
             "llm-dock/pennyroyal-qwen3-8-flash-next · forgejo/tubevault",
-            piSessionMetaHead("/forgejo/tubevault", "llm-dock/pennyroyal-qwen3-8-flash-next"),
+            piSessionMetaHead("forgejo/tubevault", "llm-dock/pennyroyal-qwen3-8-flash-next"),
         )
     }
 
     @Test
-    fun `session meta head keeps only the last two cwd segments`() {
-        assertEquals(
-            "mistral-vibe/mistral-large-4 · teo-mateo/llm-dock",
-            piSessionMetaHead("/github/teo-mateo/llm-dock", "mistral-vibe/mistral-large-4"),
-        )
-        assertEquals(
-            "mistral-vibe/mistral-large-4 · teo-mateo/llm-dock",
-            piSessionMetaHead("/github/teo-mateo/llm-dock/", "mistral-vibe/mistral-large-4"),
-        )
-    }
-
-    @Test
-    fun `session meta head omits an unknown model instead of faking one`() {
-        assertEquals("repo", piSessionMetaHead("/repo", null))
-        assertEquals("repo", piSessionMetaHead("/repo", "  "))
-        assertEquals("", piSessionMetaHead("", null))
-        assertEquals("model", piSessionMetaHead("", "model"))
+    fun `session meta head omits an unknown model or project instead of faking one`() {
+        assertEquals("repo", piSessionMetaHead("repo", null))
+        assertEquals("repo", piSessionMetaHead("repo", "  "))
+        assertEquals("model", piSessionMetaHead(null, "model"))
+        assertEquals("model", piSessionMetaHead("  ", "model"))
+        assertEquals("", piSessionMetaHead(null, null))
     }
 
     @Test
@@ -95,5 +87,27 @@ class PiFormattingTest {
         val jumped = FollowState(following = false, seen = "a").jump("b")
         assertTrue(jumped.following)
         assertFalse(jumped.hasUnseen("b"))
+    }
+
+    private fun session(state: PiState) = PiSession(
+        key = PiSessionKey("s1", "i1"),
+        name = null,
+        cwd = "/repo",
+        model = null,
+        thinkingLevel = null,
+        firstSeen = 0,
+        lastSeen = 0,
+        endedAt = null,
+        endReason = null,
+        live = state != PiState.ENDED,
+        state = state,
+        contextPercent = null,
+    )
+
+    @Test
+    fun `status label names every state`() {
+        assertEquals("working", piStatusLabel(session(PiState.WORKING)))
+        assertEquals("idle", piStatusLabel(session(PiState.IDLE)))
+        assertEquals("ended", piStatusLabel(session(PiState.ENDED)))
     }
 }

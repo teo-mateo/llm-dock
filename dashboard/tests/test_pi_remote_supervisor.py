@@ -62,6 +62,7 @@ def _hello():
         thinking_level=None,
         reason="startup",
         previous_session_id=None,
+        parent_session_id=None,
         pi_version=None,
         ext_version="0.1.0",
     )

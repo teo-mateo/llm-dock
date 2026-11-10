@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .events import StoredEvent
 from .prompts import PromptRow
@@ -21,6 +21,9 @@ class SessionSummary:
     live: bool
     state: Optional[str]
     context_percent: Optional[float]
+    parent_session_id: Optional[str]
+    parent_instance_id: Optional[str]
+    project: str
     prompts: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -39,16 +42,92 @@ class EventPage:
     has_more: bool
 
 
+SessionKey = Tuple[str, str]
+
+
+def project_label(cwd: str) -> str:
+    segments = [segment for segment in cwd.replace("\\", "/").split("/") if segment]
+    return "/".join(segments[-2:]) if segments else "/"
+
+
+def row_key(row: Mapping[str, Any]) -> SessionKey:
+    return (row["session_id"], row["instance_id"])
+
+
+def _parent_candidate(
+    row: Mapping[str, Any],
+    by_session: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> Optional[SessionKey]:
+    parent_session_id = row.get("parent_session_id")
+    if not parent_session_id:
+        return None
+    candidates = [
+        candidate
+        for candidate in by_session.get(parent_session_id, ())
+        if row_key(candidate) != row_key(row)
+    ]
+    if not candidates:
+        return None
+    best = min(
+        candidates,
+        key=lambda candidate: (
+            candidate.get("ended_at") is not None,
+            -candidate["last_seen"],
+            -candidate["first_seen"],
+            candidate["instance_id"],
+        ),
+    )
+    return row_key(best)
+
+
+def children_to_republish(
+    rows: Sequence[Mapping[str, Any]], session_id: str
+) -> List[SessionKey]:
+    return [
+        row_key(row) for row in rows if row.get("parent_session_id") == session_id
+    ]
+
+
+def resolve_parent(rows: Sequence[Mapping[str, Any]]) -> Dict[SessionKey, SessionKey]:
+    by_session: Dict[str, List[Mapping[str, Any]]] = {}
+    for row in rows:
+        by_session.setdefault(row["session_id"], []).append(row)
+
+    direct = {row_key(row): _parent_candidate(row, by_session) for row in rows}
+    resolved: Dict[SessionKey, SessionKey] = {}
+    for key, parent in direct.items():
+        if parent is None or _reaches_a_cycle(key, direct):
+            continue
+        resolved[key] = parent
+    return resolved
+
+
+def _reaches_a_cycle(
+    key: SessionKey,
+    direct: Mapping[SessionKey, Optional[SessionKey]],
+) -> bool:
+    visited = {key}
+    current = direct.get(key)
+    while current is not None:
+        if current in visited:
+            return True
+        visited.add(current)
+        current = direct.get(current)
+    return False
+
+
 def session_summary(
     row: Mapping[str, Any],
     presence: Optional[PresenceEntry],
     prompts: Sequence[PromptRow] = (),
+    parents: Optional[Mapping[SessionKey, SessionKey]] = None,
 ) -> SessionSummary:
     provider = row.get("model_provider")
     model_id = row.get("model_id")
     model = f"{provider}/{model_id}" if provider and model_id else None
     live = presence is not None
     context = presence.context if presence is not None else None
+    parent = (parents or {}).get(row_key(row))
     return SessionSummary(
         session_id=row["session_id"],
         instance_id=row["instance_id"],
@@ -63,6 +142,9 @@ def session_summary(
         live=live,
         state=presence.state if presence is not None else None,
         context_percent=context.percent if context is not None else None,
+        parent_session_id=row.get("parent_session_id"),
+        parent_instance_id=parent[1] if parent is not None else None,
+        project=project_label(row["cwd"]),
         prompts=[prompt.question() for prompt in prompts if prompt.status == "open"],
     )
 

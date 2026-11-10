@@ -34,6 +34,7 @@ export type SessionRuntimeOptions = {
   extVersion: string;
   piVersion: string | null;
   previousSessionId: string | null;
+  parentSessionId: string | null;
   activity: Activity;
 };
 
@@ -67,6 +68,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions): SessionRun
       extVersion: options.extVersion,
       piVersion: options.piVersion,
       previousSessionId: options.previousSessionId,
+      parentSessionId: options.parentSessionId,
       reason: options.event.reason,
     }),
     heartbeatSample: () => heartbeatSampleFrom(options.ctx, options.activity),

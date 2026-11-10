@@ -8,7 +8,7 @@ from pi_remote.event_store import RETENTION_MS
 from pi_remote.store import PiRemoteDB
 
 
-def hello(instance_id="i1", reason="startup", name="probe"):
+def hello(instance_id="i1", reason="startup", name="probe", parent_session_id=None):
     return HelloFrame(
         session_id="s1",
         instance_id=instance_id,
@@ -20,6 +20,7 @@ def hello(instance_id="i1", reason="startup", name="probe"):
         thinking_level="high",
         reason=reason,
         previous_session_id=None,
+        parent_session_id=parent_session_id,
         pi_version="1.0.4",
         ext_version="0.1.0",
     )
@@ -143,18 +144,26 @@ def test_old_session_schema_is_migrated(tmp_path):
     old = SCHEMA_SQL.replace(
         "    acked_seq           INTEGER NOT NULL DEFAULT 0,\n", ""
     ).replace("    gap_from     INTEGER,\n", "").replace("    gap_to       INTEGER,\n", "")
+    old = old.replace("    parent_session_id   TEXT,\n", "")
     connection = sqlite3.connect(db_path)
     connection.executescript(old)
+    connection.execute(
+        """INSERT INTO pi_sessions
+           (session_id, instance_id, cwd, pid, reason, ext_version, first_seen, last_seen)
+           VALUES ('s0', 'i0', '/tmp', 1, 'startup', '0.1.0', 1, 1)"""
+    )
     connection.commit()
     connection.close()
 
     store = PiRemoteDB(db_path)
+    assert store.sessions.get("s0", "i0")["parent_session_id"] is None
     store.close()
     connection = sqlite3.connect(db_path)
     session_columns = {row[1] for row in connection.execute("PRAGMA table_info(pi_sessions)")}
     event_columns = {row[1] for row in connection.execute("PRAGMA table_info(pi_events)")}
     connection.close()
     assert "acked_seq" in session_columns
+    assert "parent_session_id" in session_columns
     assert {"gap_from", "gap_to"} <= event_columns
 
 
@@ -218,4 +227,17 @@ def test_ingest_reports_only_inserted_rows(tmp_path):
     )
     assert duplicate.acked_seq == 2
     assert duplicate.inserted == ()
+    store.close()
+
+
+def test_parent_session_id_is_stored_and_overwritten(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    store.sessions.upsert(hello(parent_session_id="root"), 1000)
+    assert store.sessions.get("s1", "i1")["parent_session_id"] == "root"
+
+    store.sessions.upsert(hello(parent_session_id="other"), 2000)
+    assert store.sessions.get("s1", "i1")["parent_session_id"] == "other"
+
+    store.sessions.upsert(hello(), 3000)
+    assert store.sessions.get("s1", "i1")["parent_session_id"] is None
     store.close()

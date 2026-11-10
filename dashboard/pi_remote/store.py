@@ -55,6 +55,7 @@ class PiRemoteDB:
             conn.executescript(SCHEMA_SQL)
             for table, column, definition in (
                 ("pi_sessions", "acked_seq", "INTEGER NOT NULL DEFAULT 0"),
+                ("pi_sessions", "parent_session_id", "TEXT"),
                 ("pi_events", "gap_from", "INTEGER"),
                 ("pi_events", "gap_to", "INTEGER"),
                 ("pi_prompts", "applied_seq", "INTEGER NOT NULL DEFAULT 0"),

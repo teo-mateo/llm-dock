@@ -35,6 +35,9 @@ def _summary(session_id="s1", instance_id="i1", live=True):
         live=live,
         state="idle" if live else None,
         context_percent=None,
+        parent_session_id=None,
+        parent_instance_id=None,
+        project="tmp",
     )
 
 

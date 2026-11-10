@@ -36,6 +36,7 @@ test("runtime pauses the mirror, resumes, and stops with bye", { timeout: 10000 
     extVersion: "0.1.0",
     piVersion: null,
     previousSessionId: null,
+    parentSessionId: null,
     activity: createActivity(),
   });
 
@@ -91,6 +92,7 @@ test("a switched runtime gets a fresh instance stream", { timeout: 10000 }, asyn
     extVersion: "0.1.0",
     piVersion: null,
     previousSessionId: null,
+    parentSessionId: null,
     activity: createActivity(),
   };
   const first = createSessionRuntime(options);
@@ -142,6 +144,7 @@ test("answer_prompt is dispatched through the command poller", { timeout: 10000 
     extVersion: "0.1.0",
     piVersion: null,
     previousSessionId: null,
+    parentSessionId: null,
     activity: createActivity(),
   });
 

@@ -1,6 +1,7 @@
 package com.hpz.llmdockchat.feature.pi
 
 import com.hpz.llmdockchat.data.model.PiSession
+import com.hpz.llmdockchat.data.model.PiState
 
 fun formatAgo(nowMs: Long, thenMs: Long): String {
     val elapsed = nowMs - thenMs
@@ -23,15 +24,17 @@ fun piSessionTitle(session: PiSession): String =
         ?: session.cwd.trimEnd('/').split('/').lastOrNull()?.takeIf { it.isNotBlank() }
         ?: session.cwd
 
-fun piSessionMetaHead(cwd: String, model: String?): String =
-    listOfNotNull(model?.takeIf { it.isNotBlank() }, shortCwd(cwd)).joinToString(" · ")
-
-private fun shortCwd(cwd: String): String? {
-    val segments = cwd.trimEnd('/').split('/').filter { it.isNotBlank() }
-    return segments.takeLast(2).joinToString("/").takeIf { it.isNotBlank() }
-}
+fun piSessionMetaHead(project: String?, model: String?): String =
+    listOfNotNull(model?.takeIf { it.isNotBlank() }, project?.takeIf { it.isNotBlank() })
+        .joinToString(" · ")
 
 fun piContextLabel(contextPercent: Double?): String? = contextPercent?.let { "ctx ${Math.round(it)}%" }
+
+fun piStatusLabel(session: PiSession): String = when (session.state) {
+    PiState.WORKING -> "working"
+    PiState.IDLE -> "idle"
+    PiState.ENDED -> "ended"
+}
 
 data class FollowState(val following: Boolean, val seen: Any?) {
     fun hasUnseen(current: Any?): Boolean = !following && current !== seen
