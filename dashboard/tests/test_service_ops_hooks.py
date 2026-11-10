@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from service_ops.hooks import DeleteContext, RenameContext, ServiceHook, run_phase
+from service_ops.hooks import DeleteContext, Phase, RenameContext, ServiceHook, run_phase
 from service_ops.outcomes import Deleted, OpError, Renamed
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
@@ -30,7 +30,7 @@ def _ctx(**config):
 def test_hooks_run_in_registration_order():
     log = []
 
-    run_phase([Recording("a", log), Recording("b", log), Recording("c", log)], "after_rename", _ctx())
+    run_phase([Recording("a", log), Recording("b", log), Recording("c", log)], Phase.AFTER_RENAME, _ctx())
 
     assert log == ["a", "b", "c"]
 
@@ -39,7 +39,7 @@ def test_a_best_effort_hook_failing_is_logged_and_the_rest_still_run():
     log = []
     hooks = [Recording("a", log, fail=RuntimeError("boom")), Recording("b", log)]
 
-    run_phase(hooks, "after_rename", _ctx())
+    run_phase(hooks, Phase.AFTER_RENAME, _ctx())
 
     assert log == ["a", "b"]
 
@@ -49,14 +49,14 @@ def test_a_hook_that_is_not_best_effort_aborts_with_its_exception():
     hooks = [Recording("a", log, fail=RuntimeError("fatal"), best_effort=False), Recording("b", log)]
 
     with pytest.raises(RuntimeError, match="fatal"):
-        run_phase(hooks, "after_rename", _ctx())
+        run_phase(hooks, Phase.AFTER_RENAME, _ctx())
 
     assert log == ["a"]
 
 
 def test_a_phase_a_hook_does_not_implement_is_a_no_op():
-    run_phase([ServiceHook()], "before_rename", _ctx())
-    run_phase([ServiceHook()], "after_delete", DeleteContext("old", {}))
+    run_phase([ServiceHook()], Phase.BEFORE_RENAME, _ctx())
+    run_phase([ServiceHook()], Phase.AFTER_DELETE, DeleteContext("old", {}))
 
 
 def test_the_outcomes_are_plain_values():
@@ -115,8 +115,8 @@ class TestOpenWebUIHook:
         )
         ctx = _ctx()
 
-        run_phase([hook], "before_rename", ctx)
-        run_phase([hook], "after_rename", ctx)
+        run_phase([hook], Phase.BEFORE_RENAME, ctx)
+        run_phase([hook], Phase.AFTER_RENAME, ctx)
 
         assert log == [("new", 3301, "k", "llamacpp")]
 
@@ -148,3 +148,37 @@ def test_the_key_file_hook_removes_on_delete_only():
     hook.after_delete(DeleteContext("svc", {}))
 
     assert log == ["svc"]
+
+
+@pytest.mark.parametrize("phase", list(Phase))
+def test_every_phase_is_defined_on_the_hook_base(phase):
+    assert callable(getattr(ServiceHook, phase.value))
+
+
+def test_a_string_instead_of_a_phase_fails_loudly():
+    with pytest.raises(AttributeError):
+        run_phase([ServiceHook()], "after_rename", _ctx())
+
+
+def test_a_hook_missing_a_phase_method_fails_loudly_even_when_best_effort():
+    class Incomplete:
+        name = "incomplete"
+        best_effort = True
+
+    with pytest.raises(AttributeError, match="after_rename"):
+        run_phase([Incomplete()], Phase.AFTER_RENAME, _ctx())
+
+
+def test_each_context_names_its_subject_for_the_log():
+    assert _ctx().subject == "old"
+    assert DeleteContext("svc", {}).subject == "svc"
+
+
+def test_hook_state_is_namespaced_by_hook_name():
+    ctx = _ctx()
+
+    ctx.state_for("a")["flag"] = 1
+    ctx.state_for("b")["flag"] = 2
+
+    assert ctx.state == {"a": {"flag": 1}, "b": {"flag": 2}}
+    assert ctx.state_for("a") is ctx.state_for("a")

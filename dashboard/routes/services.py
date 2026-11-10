@@ -2,14 +2,12 @@ import json
 import logging
 import threading
 import time
-import subprocess
 from datetime import datetime
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
 from auth import require_auth
 from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
-import tabby_keys
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
@@ -25,20 +23,14 @@ from flag_metadata import (
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
 import service_ops
-from service_ops.deps import ServiceOpsDeps
+from service_ops import wiring
 from service_ops.outcomes import OpError
-from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.ports import allocate_upstream_port
 from inspector.supervisor import proxy_supervisor
-from openwebui_integration import (
-    add_service_to_openwebui,
-    remove_service_from_openwebui,
-    is_service_registered_in_openwebui,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -53,39 +45,6 @@ PUBLIC_SLOT_PORT = 3301
 _SERVICES_DB_LOCK = SERVICES_DB_LOCK
 _serialize_db = serialize_db
 _RECREATE_ERROR_STATUS = {NOT_FOUND: 404}
-
-
-def _service_ops_deps() -> ServiceOpsDeps:
-    from services import event_manager
-
-    def compose_run(action, name, timeout):
-        return subprocess.run(
-            ["docker", "compose", "-f", COMPOSE_FILE, *action, name], capture_output=True, timeout=timeout
-        )
-
-    def rename_benchmarks(old, new):
-        from benchmarking.routes import rename_service as bench_rename
-
-        return bench_rename(old, new)
-
-    return ServiceOpsDeps(
-        compose=lambda: ComposeManager(COMPOSE_FILE),
-        get_container=lambda name: get_service_container(name),
-        stop_container=lambda name: compose_run(["stop"], name, 30),
-        remove_container=lambda name: compose_run(["rm", "-f"], name, 10),
-        hooks=[
-            InspectorHook(lambda old, new: proxy_supervisor.rename_service(old, new), lambda: proxy_supervisor.sync()),
-            BenchmarkHook(rename_benchmarks),
-            KeyFileHook(lambda name: tabby_keys.remove(name)),
-            OpenWebUIHook(
-                lambda name, engine: is_service_registered_in_openwebui(name, engine),
-                lambda name, engine: remove_service_from_openwebui(name, engine),
-                lambda name, port, key, engine: add_service_to_openwebui(name, port, key, engine),
-            ),
-        ],
-        emit=lambda event: event_manager.emit(event),
-        now=time.time,
-    )
 
 
 def _recreate_if_running(service_name, rebuild=False, finish=lambda services, name: None):
@@ -501,7 +460,7 @@ def update_service(service_name):
 def delete_service(service_name):
     """Delete service from database and rebuild compose file"""
     try:
-        outcome = service_ops.delete(_service_ops_deps(), service_name)
+        outcome = service_ops.delete(wiring.delete_deps(COMPOSE_FILE), service_name)
         if isinstance(outcome, OpError):
             return jsonify(outcome.body()), outcome.status
 
@@ -536,7 +495,7 @@ def rename_service(service_name):
         if not data or not data.get("new_name"):
             return jsonify({"error": "new_name is required"}), 400
 
-        outcome = service_ops.rename(_service_ops_deps(), service_name, data["new_name"].strip())
+        outcome = service_ops.rename(wiring.rename_deps(COMPOSE_FILE), service_name, data["new_name"].strip())
         if isinstance(outcome, OpError):
             return jsonify(outcome.body()), outcome.status
 

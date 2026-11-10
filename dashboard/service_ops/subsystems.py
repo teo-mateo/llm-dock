@@ -66,12 +66,12 @@ class OpenWebUIHook(ServiceHook):
     def before_rename(self, ctx: RenameContext) -> None:
         engine = ctx.config.get("template_type", "")
         if engine and self._is_registered(ctx.old_name, engine):
-            ctx.state["openwebui_registered"] = True
+            ctx.state_for(self.name)["registered"] = True
             self._unregister(ctx.old_name, engine)
 
     def after_rename(self, ctx: RenameContext) -> None:
         engine = ctx.config.get("template_type", "")
-        if ctx.state.get("openwebui_registered") and engine:
+        if ctx.state_for(self.name).get("registered") and engine:
             self._register(
                 ctx.new_name, ctx.config.get("port", 0), ctx.config.get("api_key", ""), engine
             )

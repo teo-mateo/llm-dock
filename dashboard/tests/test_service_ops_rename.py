@@ -7,7 +7,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import rename
-from service_ops.deps import ServiceOpsDeps
+from service_ops.deps import Infra, RenameDeps
 from service_ops.outcomes import OpError, Renamed
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
@@ -36,15 +36,17 @@ class Harness:
             def get_service_from_db(self, name):
                 return harness.config
 
+            def list_services_in_db(self):
+                return {"old": {}, "taken": {}}
+
             def rename_service(self, old, new):
                 harness.step("db_rename", old, new)
                 if harness.rename_error:
                     raise harness.rename_error
 
-        return ServiceOpsDeps(
+        return RenameDeps(Infra(
             compose=lambda: Compose(),
             get_container=lambda name: self.container,
-            stop_container=lambda name: self.step("stop", name),
             remove_container=lambda name: self.step("rm", name),
             hooks=[
                 InspectorHook(lambda o, n: self.step("proxy_rename", o, n), lambda: self.step("proxy_sync")),
@@ -58,7 +60,7 @@ class Harness:
             ],
             emit=lambda event: self.step("emit", event),
             now=lambda: 0.0,
-        )
+        ))
 
     def names(self):
         return [entry[0] for entry in self.log]
@@ -80,6 +82,30 @@ def test_the_full_rename_order_through_the_hook_list():
         ("bench_rename", "old", "new"),
         ("owu_register", "new", 3301, "k", "llamacpp"),
     ]
+
+
+@pytest.mark.parametrize(
+    "new_name,message",
+    [
+        ("", "Service name cannot be empty"),
+        ("x" * 64, "Service name too long (max 63 characters)"),
+        ("bad name!", "Service name must start with a letter or digit and contain only alphanumerics, hyphens, underscores or dots"),
+        ("taken", "Service 'taken' already exists"),
+    ],
+)
+def test_a_refused_name_is_a_400_with_no_hook_and_no_container_removal(new_name, message):
+    harness = Harness(container=SimpleNamespace(status="exited"), registered=True)
+
+    outcome = rename(harness.deps(), "old", new_name)
+
+    assert outcome == OpError(400, message)
+    assert harness.log == []
+
+
+def test_a_running_service_is_refused_before_the_name_is_checked():
+    harness = Harness(container=SimpleNamespace(status="running"))
+
+    assert rename(harness.deps(), "old", "bad name!") == OpError(409, "Service must be stopped before renaming")
 
 
 def test_an_unknown_service_is_a_404_before_anything_runs():

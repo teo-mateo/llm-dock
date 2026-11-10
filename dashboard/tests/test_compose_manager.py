@@ -6,7 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from compose_manager import ComposeManager, _SERVICE_NAME_ERROR, _valid_service_name
+from compose_manager import ComposeManager
+from service_names import SERVICE_NAME_ERROR as _SERVICE_NAME_ERROR, valid_service_name as _valid_service_name
 
 TEST_TOKEN = "test-token"
 

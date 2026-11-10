@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+from service_ops import wiring
 import tabby_keys
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
@@ -64,24 +65,24 @@ def seams(tmp_path, monkeypatch):
     }))
     monkeypatch.setattr(services_route, "COMPOSE_FILE", str(compose))
 
-    monkeypatch.setattr(services_route, "get_service_container", lambda name: seams.container)
+    monkeypatch.setattr(wiring, "get_service_container", lambda name: seams.container)
     monkeypatch.setattr(
-        services_route, "is_service_registered_in_openwebui",
+        wiring, "is_service_registered_in_openwebui",
         lambda name, engine: seams.step("owu_check", name, engine, result=seams.registered),
     )
     monkeypatch.setattr(
-        services_route, "remove_service_from_openwebui",
+        wiring, "remove_service_from_openwebui",
         lambda name, engine: seams.step("owu_unregister", name, engine),
     )
     monkeypatch.setattr(
-        services_route, "add_service_to_openwebui",
+        wiring, "add_service_to_openwebui",
         lambda name, port, key, engine: seams.step("owu_register", name, port, key, engine),
     )
 
     def fake_run(command, *args, **kwargs):
         seams.step(f"compose_{command[4]}", command[-1])
 
-    monkeypatch.setattr(services_route.subprocess, "run", fake_run)
+    monkeypatch.setattr(wiring.subprocess, "run", fake_run)
 
     def rename(self, old, new):
         seams.step("db_rename", old, new)
@@ -213,6 +214,28 @@ class TestRename:
 
         assert (response.status_code, response.get_json()) == (400, {"error": "Service 'svc-b' already exists"})
         assert _names(seams) == ["owu_check", "db_rename"]
+
+    @pytest.mark.parametrize(
+        "new_name,message",
+        [
+            ("bad name!", "Service name must start with a letter or digit and contain only alphanumerics, hyphens, underscores or dots"),
+            ("x" * 64, "Service name too long (max 63 characters)"),
+            ("no-engine", "Service 'no-engine' already exists"),
+        ],
+    )
+    def test_a_refused_name_is_a_400_before_any_side_effect(self, seams, new_name, message):
+        seams.container = Container("exited")
+        seams.registered = True
+
+        response = _post(seams, "svc-a", {"new_name": new_name})
+
+        assert (response.status_code, response.get_json()) == (400, {"error": message})
+        assert seams.log == []
+
+    def test_a_running_service_is_a_409_even_for_a_refused_name(self, seams):
+        seams.container = Container("running")
+
+        assert _post(seams, "svc-a", {"new_name": "bad name!"}).status_code == 409
 
     def test_any_other_failure_of_the_rename_is_a_500(self, seams):
         seams.rename_error = RuntimeError("disk full")

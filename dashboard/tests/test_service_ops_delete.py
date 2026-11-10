@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from service_ops import delete
-from service_ops.deps import ServiceOpsDeps
+from service_ops.deps import DeleteDeps, Infra
 from service_ops.outcomes import Deleted, OpError
 from service_ops.subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
@@ -36,10 +36,9 @@ class Harness:
             def rebuild_compose_file(self):
                 harness.step("rebuild")
 
-        return ServiceOpsDeps(
+        return DeleteDeps(Infra(
             compose=lambda: Compose(),
             get_container=lambda name: None,
-            stop_container=lambda name: self.step("stop", name),
             remove_container=lambda name: self.step("rm", name),
             hooks=[
                 InspectorHook(lambda o, n: self.step("proxy_rename", o, n), lambda: self.step("proxy_sync")),
@@ -53,7 +52,7 @@ class Harness:
             ],
             emit=lambda event: self.step("emit", event),
             now=lambda: 1234.5,
-        )
+        ), stop_container=lambda name: self.step("stop", name))
 
     def names(self):
         return [entry[0] for entry in self.log]

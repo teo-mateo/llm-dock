@@ -3,7 +3,6 @@ Docker Compose file manager with safe atomic updates.
 """
 
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +15,7 @@ import logging
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from flag_metadata import render_cli_flag, get_bool_cli_flags, effective_image
 import tabby_keys
+from service_names import validate_rename
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +34,6 @@ END_DYNAMIC_MARKER = "# >>>>>>> END DYNAMIC"
 # Mirrors Docker's container-name rule: a name this accepts that Docker does not
 # fails only later, at container create, because `docker compose config` does not
 # check container_name against the engine's rule.
-_SERVICE_NAME_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*")
-_SERVICE_NAME_ERROR = (
-    "Service name must start with a letter or digit and contain only "
-    "alphanumerics, hyphens, underscores or dots"
-)
-
-
-def _valid_service_name(name: str) -> bool:
-    return _SERVICE_NAME_PATTERN.fullmatch(name) is not None
-
-
 class ComposeManager:
     """Manages docker-compose.yml with atomic updates and rollback"""
 
@@ -216,19 +205,11 @@ class ComposeManager:
         Raises:
             ValueError: If old service doesn't exist or new name is invalid/taken
         """
-        if not new_name:
-            raise ValueError("Service name cannot be empty")
-        if len(new_name) > 63:
-            raise ValueError("Service name too long (max 63 characters)")
-        if not _valid_service_name(new_name):
-            raise ValueError(_SERVICE_NAME_ERROR)
-
         services = self._load_services_db()
 
-        if old_name not in services:
-            raise ValueError(f"Service '{old_name}' not found in database")
-        if new_name in services:
-            raise ValueError(f"Service '{new_name}' already exists")
+        error = validate_rename(old_name, new_name, services)
+        if error:
+            raise ValueError(error)
 
         # Pop old key and insert under new key
         config = services.pop(old_name)

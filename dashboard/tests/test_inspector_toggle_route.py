@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+from service_ops import wiring
 from compose_manager import ComposeManager
 from inspector.db import InspectorDB
 from inspector.models import Capture
@@ -230,9 +231,9 @@ class TestWritePathSync:
     def test_rename_moves_captures_and_leaves_one_proxy(self, env, monkeypatch):
         import uuid
 
-        monkeypatch.setattr(services_route, "get_service_container", lambda name: None)
+        monkeypatch.setattr(wiring, "get_service_container", lambda name: None)
         monkeypatch.setattr("benchmarking.routes.rename_service", lambda old, new: 0)
-        monkeypatch.setattr(services_route, "is_service_registered_in_openwebui", lambda *a, **k: False)
+        monkeypatch.setattr(wiring, "is_service_registered_in_openwebui", lambda *a, **k: False)
 
         port = _free_port()
         _write_services(env, {"svc-a": _llamacpp_service(port)})
@@ -298,7 +299,7 @@ class TestWritePathSync:
     def test_delete_stops_proxy_and_keeps_captures(self, env, monkeypatch):
         import subprocess as _subprocess
 
-        monkeypatch.setattr(services_route.subprocess, "run", lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout="", stderr=""))
+        monkeypatch.setattr(wiring.subprocess, "run", lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout="", stderr=""))
 
         port = _free_port()
         _write_services(env, {"svc-a": _llamacpp_service(port)})

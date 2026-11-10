@@ -1,23 +1,45 @@
 import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
 
+class Phase(Enum):
+    BEFORE_RENAME = "before_rename"
+    AFTER_RENAME = "after_rename"
+    AFTER_DELETE = "after_delete"
+
+
+class HookContext:
+    state: dict
+
+    def state_for(self, hook_name: str) -> dict:
+        return self.state.setdefault(hook_name, {})
+
+
 @dataclass
-class RenameContext:
+class RenameContext(HookContext):
     old_name: str
     new_name: str
     config: dict
     state: dict = field(default_factory=dict)
 
+    @property
+    def subject(self) -> str:
+        return self.old_name
+
 
 @dataclass
-class DeleteContext:
+class DeleteContext(HookContext):
     name: str
     config: dict
     state: dict = field(default_factory=dict)
+
+    @property
+    def subject(self) -> str:
+        return self.name
 
 
 class ServiceHook:
@@ -26,8 +48,9 @@ class ServiceHook:
     A phase a hook does not need stays a no-op. best_effort means a failure is
     logged and the operation continues; a hook that sets it False aborts the
     operation with its exception. Every phase runs the hooks in registration
-    order, so the order of the list passed to ServiceOpsDeps is the order of
-    the side effects.
+    order, so the order of the list given to the operation's deps is the order
+    of the side effects. A hook keeps what it learns in one phase for a later
+    one in ctx.state_for(self.name).
     """
 
     name = "hook"
@@ -43,11 +66,12 @@ class ServiceHook:
         pass
 
 
-def run_phase(hooks: Iterable[ServiceHook], phase: str, ctx) -> None:
+def run_phase(hooks: Iterable[ServiceHook], phase: Phase, ctx) -> None:
     for hook in hooks:
+        method = getattr(hook, phase.value)
         try:
-            getattr(hook, phase)(ctx)
+            method(ctx)
         except Exception as e:
             if not hook.best_effort:
                 raise
-            logger.warning(f"{hook.name} {phase} failed for '{getattr(ctx, 'name', None) or ctx.old_name}': {e}")
+            logger.warning(f"{hook.name} {phase.value} failed for '{ctx.subject}': {e}")
