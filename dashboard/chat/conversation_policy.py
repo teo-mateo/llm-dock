@@ -44,8 +44,8 @@ def integrity_error(error: sqlite3.IntegrityError) -> PolicyError:
     return PolicyError(400, PROJECT_NOT_FOUND)
 
 
-def _level_error(main_service, data, services) -> PolicyError | None:
-    message = run_config.reasoning_level_error(main_service, data["reasoning_level"], services)
+def _level_error(main_service, reasoning_level, services) -> PolicyError | None:
+    message = run_config.reasoning_level_error(main_service, reasoning_level, services)
     if message:
         return PolicyError(400, message, run_config.INVALID_LEVEL_CODE)
     return None
@@ -107,7 +107,7 @@ def resolve_new_conversation(
         return PolicyError(400, MAIN_SERVICE_REQUIRED)
 
     if "reasoning_level" in data:
-        error = _level_error(main_service, data, services)
+        error = _level_error(main_service, data["reasoning_level"], services)
         if error:
             return error
     error = _sampling_error(data.get("sampling_params"))
@@ -157,12 +157,20 @@ def resolve_conversation_update(
     and drops the reference, as on create.
     """
     fields = dict(data)
+    loaded = []
+
+    def conversation():
+        if not loaded:
+            loaded.append(get_conversation(conv_id))
+        return loaded[0]
 
     if "reasoning_level" in fields and fields["reasoning_level"] is not None:
-        existing = get_conversation(conv_id)
+        existing = conversation()
         if existing is None:
             return PolicyError(404, CONVERSATION_NOT_FOUND)
-        error = _level_error(fields.get("main_service") or existing.main_service, fields, services)
+        error = _level_error(
+            fields.get("main_service") or existing.main_service, fields["reasoning_level"], services
+        )
         if error:
             return error
 
@@ -176,7 +184,7 @@ def resolve_conversation_update(
         error = _project_id_type_error(fields["project_id"])
         if error:
             return error
-        existing = get_conversation(conv_id)
+        existing = conversation()
         if existing is None:
             return PolicyError(404, CONVERSATION_NOT_FOUND)
         error = _check_project(

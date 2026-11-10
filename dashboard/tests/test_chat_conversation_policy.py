@@ -129,6 +129,18 @@ class TestUpdate:
 
         assert seen == ["c1"]
 
+    def test_an_update_carrying_a_level_and_a_project_reads_the_conversation_once(self):
+        seen = []
+
+        def lookup(conv_id):
+            seen.append(conv_id)
+            return SimpleNamespace(main_service="svc", parent_conversation_id=None)
+
+        out = _update({"reasoning_level": "low", "project_id": "proj"}, get_conversation=lookup)
+
+        assert out == {"reasoning_level": "low", "project_id": "proj"}
+        assert seen == ["c1"]
+
     def test_the_input_is_not_mutated(self):
         data = {"sampling_params": {"seed": 1}}
 
