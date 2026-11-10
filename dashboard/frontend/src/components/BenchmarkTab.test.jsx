@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testi
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import BenchmarkTab from './BenchmarkTab'
 import ServiceDetailsPage from './ServiceDetailsPage'
+import { resetEngineCatalogue } from '../hooks/useEngineCatalogue'
+import { ENGINES_RESPONSE } from '../test/engineCatalogue'
 
 const { fetchAPIMock, serviceDetailsMock } = vi.hoisted(() => ({
   fetchAPIMock: vi.fn(),
@@ -22,6 +24,7 @@ const BENCH_ONLY = ['-m', '-o', '-p', '-n', '-r', '-pg', '-d', '-oe', '-v', '--d
 function routeFetch() {
   fetchAPIMock.mockImplementation((endpoint, options = {}) => {
     const method = options.method || 'GET'
+    if (endpoint === '/engines') return Promise.resolve(ENGINES_RESPONSE)
     if (endpoint === `/benchmarks/service-defaults/${SERVICE}`) {
       return Promise.resolve({ params: { '-p': '512', '-n': '128', '-r': '5', '-ngl': '99' } })
     }
@@ -78,6 +81,7 @@ function renderTab() {
 }
 
 beforeEach(() => {
+  resetEngineCatalogue()
   fetchAPIMock.mockReset()
   fetchAPIMock.mockResolvedValue({})
   vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -251,11 +255,66 @@ describe('ServiceDetailsPage benchmark gating', () => {
       </MemoryRouter>
     )
 
+    routeFetch()
+
     const llamacpp = renderPage('llamacpp-x', '')
-    expect(llamacpp.getByText('Benchmark')).toBeInTheDocument()
+    expect(await llamacpp.findByText('Benchmark')).toBeInTheDocument()
     cleanup()
 
     const vllm = renderPage('vllm-x', '')
+    // The catalogue is cached, so the tab bar is final once the page has rendered.
+    expect(await vllm.findByText('Metrics')).toBeInTheDocument()
     expect(vllm.queryByText('Benchmark')).not.toBeInTheDocument()
+  })
+
+  it('offers the Metrics tab only to engines the catalogue marks metrics-capable', async () => {
+    const mocks = {}
+    serviceDetailsMock.mockImplementation((name) => {
+      if (!mocks[name]) {
+        mocks[name] = {
+          config: { template_type: name, model_path: '/m' },
+          runtime: { status: 'running' },
+          loading: false, error: null, transitioning: false, refetchConfig: vi.fn(),
+          actions: { start: vi.fn(), stop: vi.fn(), restart: vi.fn(), rename: vi.fn(), deleteService: vi.fn(), setPublicPort: vi.fn(), fetchYamlPreview: vi.fn(), registerOpenWebUI: vi.fn(), unregisterOpenWebUI: vi.fn() },
+        }
+      }
+      return mocks[name]
+    })
+    routeFetch()
+    const renderPage = (name) => render(
+      <MemoryRouter initialEntries={[`/services/${name}`]}>
+        <Routes><Route path="/services/:serviceName/*" element={<ServiceDetailsPage />} /></Routes>
+      </MemoryRouter>
+    )
+
+    const capable = renderPage('vllm')
+    expect(await capable.findByText('Metrics')).toBeInTheDocument()
+    cleanup()
+
+    const forkEngine = renderPage('ik_llamacpp')
+    await waitFor(() => expect(fetchAPIMock).toHaveBeenCalledWith('/engines'))
+    expect(await forkEngine.findByText('Logs')).toBeInTheDocument()
+    expect(forkEngine.queryByText('Metrics')).not.toBeInTheDocument()
+  })
+
+  it('says why the Metrics and Benchmark tabs are missing when the catalogue cannot load', async () => {
+    const stable = {
+      config: { template_type: 'llamacpp', model_path: '/m' }, runtime: { status: 'running' },
+      loading: false, error: null, transitioning: false, refetchConfig: vi.fn(),
+      actions: { start: vi.fn(), stop: vi.fn(), restart: vi.fn(), rename: vi.fn(), deleteService: vi.fn(), setPublicPort: vi.fn(), fetchYamlPreview: vi.fn(), registerOpenWebUI: vi.fn(), unregisterOpenWebUI: vi.fn() },
+    }
+    serviceDetailsMock.mockImplementation(() => stable)
+    fetchAPIMock.mockImplementation((endpoint) => (
+      endpoint === '/engines' ? Promise.reject(new Error('HTTP 502')) : Promise.resolve({})
+    ))
+
+    render(
+      <MemoryRouter initialEntries={['/services/llamacpp-x']}>
+        <Routes><Route path="/services/:serviceName/*" element={<ServiceDetailsPage />} /></Routes>
+      </MemoryRouter>
+    )
+
+    expect((await screen.findAllByRole('alert')).map(a => a.textContent).join(' ')).toMatch(/Couldn't load the engine list \(HTTP 502\)/)
+    expect(screen.queryByText('Benchmark')).not.toBeInTheDocument()
   })
 })

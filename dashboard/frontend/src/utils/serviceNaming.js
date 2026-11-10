@@ -1,12 +1,8 @@
-// Client-side mirror of the server's service naming: flag_metadata's
-// generate_service_name (prefix table) + service_templates.sanitize_service_name.
-// Used only for the live name preview in the create-service modal — the server
-// is the owner of the actual name, so any drift here costs a preview, not a write.
-
-export const SERVICE_NAME_PREFIXES = {
-  ik_llamacpp: "ik",
-  tabbyapi: "exl3",
-}
+// Client-side mirror of the server's service naming: the prefix comes from the
+// engine catalogue (flag_metadata's SERVICE_NAME_PREFIXES) and
+// service_templates.sanitize_service_name does the rest. Used only for the live
+// name preview in the create-service modal — the server is the owner of the
+// actual name, so any drift here costs a preview, not a write.
 
 export function sanitizeServiceName(name) {
   let n = String(name).toLowerCase()
@@ -18,9 +14,8 @@ export function sanitizeServiceName(name) {
   return n
 }
 
-export function generateServiceName(templateType, alias) {
-  const prefix = SERVICE_NAME_PREFIXES[templateType] || templateType
-  return sanitizeServiceName(`${prefix}-${alias}`)
+export function generateServiceName(templateType, alias, prefix = templateType) {
+  return sanitizeServiceName(`${prefix || templateType}-${alias}`)
 }
 
 export function aliasFromModelName(modelName) {

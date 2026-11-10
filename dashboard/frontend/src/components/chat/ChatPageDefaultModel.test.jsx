@@ -26,6 +26,11 @@ const { mockServicesSSE, mockOpenRouterModels, servicesRef } = vi.hoisted(() => 
 mockServicesSSE.mockImplementation(() => ({ services: servicesRef.current, loading: false }))
 vi.mock('../../hooks/useServicesSSE', () => ({ default: (...a) => mockServicesSSE(...a) }))
 vi.mock('../../hooks/useOpenRouterModels', () => ({ default: (...a) => mockOpenRouterModels(...a) }))
+vi.mock('../../hooks/useEngineCatalogue', async () => {
+  const { SAMPLE_ENGINES } = await import('../../test/engineCatalogue')
+  const value = { status: 'ready', engines: SAMPLE_ENGINES, error: null, byType: {}, retry: () => {} }
+  return { default: () => value }
+})
 const { providerGroupsRef } = vi.hoisted(() => ({ providerGroupsRef: { current: [] } }))
 vi.mock('../../hooks/useProviderModels', () => ({ default: () => ({ groups: providerGroupsRef.current, providers: [], loading: false }) }))
 

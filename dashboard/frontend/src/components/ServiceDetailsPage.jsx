@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import useServiceDetails from '../hooks/useServiceDetails'
+import useEngineCatalogue from '../hooks/useEngineCatalogue'
 import { fetchAPI } from '../api'
 import ServiceDetailsHeader from './ServiceDetailsHeader'
 import ServiceConfigPanel from './ServiceConfigPanel'
@@ -25,7 +26,7 @@ function Toast({ message, type, onDone }) {
   )
 }
 
-function TabBar({ serviceName, isLogsRoute, isMetricsRoute, isBenchmarkRoute, showBenchmark }) {
+function TabBar({ serviceName, isLogsRoute, isMetricsRoute, isBenchmarkRoute, showMetrics, showBenchmark }) {
   const isActive = (route) => {
     if (route === 'config') return !isLogsRoute && !isMetricsRoute && !isBenchmarkRoute
     if (route === 'logs') return isLogsRoute
@@ -40,7 +41,7 @@ function TabBar({ serviceName, isLogsRoute, isMetricsRoute, isBenchmarkRoute, sh
     <div className="flex gap-6 border-b border-border mb-6">
       <Link to={`/services/${serviceName}`} className={tabClass('config')}>Configuration</Link>
       <Link to={`/services/${serviceName}/logs`} className={tabClass('logs')}>Logs</Link>
-      <Link to={`/services/${serviceName}/metrics`} className={tabClass('metrics')}>Metrics</Link>
+      {showMetrics && <Link to={`/services/${serviceName}/metrics`} className={tabClass('metrics')}>Metrics</Link>}
       {showBenchmark && <Link to={`/services/${serviceName}/benchmark`} className={tabClass('benchmark')}>Benchmark</Link>}
     </div>
   )
@@ -127,6 +128,8 @@ export default function ServiceDetailsPage() {
   const isMetricsRoute = location.pathname.endsWith('/metrics')
   const isBenchmarkRoute = location.pathname.endsWith('/benchmark')
   const templateType = config?.template_type
+  const { status: catalogueStatus, error: catalogueError, byType } = useEngineCatalogue()
+  const engine = byType[templateType]
 
   // Fetch flag metadata at page level for both ConfigPanel and ParameterReference
   useEffect(() => {
@@ -182,19 +185,26 @@ export default function ServiceDetailsPage() {
         onError={handleError}
       />
 
+      {catalogueStatus === 'error' && (
+        <p role="alert" className="mb-3 text-xs text-danger-fg">
+          Couldn&apos;t load the engine list ({catalogueError}); the Metrics and Benchmark tabs are unavailable.
+        </p>
+      )}
+
       <TabBar
         serviceName={serviceName}
         isLogsRoute={isLogsRoute}
         isMetricsRoute={isMetricsRoute}
         isBenchmarkRoute={isBenchmarkRoute}
-        showBenchmark={templateType === 'llamacpp'}
+        showMetrics={!!engine?.metrics}
+        showBenchmark={!!engine?.benchmark}
       />
 
       {isMetricsRoute ? (
         <div className="flex-1 overflow-auto">
-          <MetricsPanel serviceName={serviceName} enabled={(templateType === 'sglang' || templateType === 'vllm' || templateType === 'llamacpp' || templateType === 'ik_llamacpp' || templateType === 'ninfer') && runtime?.status === 'running'} />
+          <MetricsPanel serviceName={serviceName} enabled={!!engine?.metrics && runtime?.status === 'running'} />
         </div>
-      ) : isBenchmarkRoute && templateType === 'llamacpp' ? (
+      ) : isBenchmarkRoute && engine?.benchmark ? (
         <div className="flex-1 overflow-auto">
           <BenchmarkTab serviceName={serviceName} modelPath={config?.model_path} />
         </div>
