@@ -8,7 +8,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chat import conversation_policy as policy
-from chat.conversation_policy import NewConversation, PolicyError
+from chat.conversation_policy import NewConversation
+from chat.outcomes import PolicyError
 from reasoning_levels import parse_levels
 
 SERVICES = lambda: [{"name": "svc", "reasoning_levels": parse_levels("off,low")}]
@@ -30,7 +31,8 @@ def _new(data, **overrides):
 
 def _update(data, existing=SimpleNamespace(main_service="svc", parent_conversation_id=None), **overrides):
     kwargs = dict(
-        get_conversation=lambda: existing,
+        conv_id="c1",
+        get_conversation=lambda conv_id: existing,
         get_prompt=PROMPTS.get,
         get_project=PROJECTS.get,
         services=SERVICES,
@@ -58,10 +60,8 @@ class TestNewConversation:
 
         assert (out.main_system_prompt, out.prompt_id) == (DEFAULT, None)
 
-    def test_an_empty_prompt_id_falls_through_to_the_default(self):
-        out = _new({"main_service": "svc", "prompt_id": ""})
-
-        assert (out.main_system_prompt, out.prompt_id) == (DEFAULT, "")
+    def test_an_empty_prompt_id_names_no_prompt_and_is_a_404(self):
+        assert _new({"main_service": "svc", "prompt_id": ""}) == PolicyError(404, "Prompt not found")
 
     def test_a_missing_prompt_is_a_404(self):
         assert _new({"main_service": "svc", "prompt_id": "nope"}) == PolicyError(404, "Prompt not found")
@@ -118,6 +118,17 @@ class TestUpdate:
     def test_fields_pass_through_untouched_when_nothing_carries_policy(self):
         assert _update({"title": "t"}) == {"title": "t"}
 
+    def test_the_conversation_is_looked_up_by_id(self):
+        seen = []
+
+        def lookup(conv_id):
+            seen.append(conv_id)
+            return SimpleNamespace(main_service="svc", parent_conversation_id=None)
+
+        _update({"reasoning_level": "low"}, get_conversation=lookup)
+
+        assert seen == ["c1"]
+
     def test_the_input_is_not_mutated(self):
         data = {"sampling_params": {"seed": 1}}
 
@@ -137,7 +148,7 @@ class TestUpdate:
         assert _update({"reasoning_level": "low"}, existing=None) == PolicyError(404, "Conversation not found")
 
     def test_a_null_level_clears_without_a_lookup(self):
-        out = _update({"reasoning_level": None}, get_conversation=lambda: pytest.fail("looked up"))
+        out = _update({"reasoning_level": None}, get_conversation=lambda conv_id: pytest.fail("looked up"))
 
         assert out == {"reasoning_level": None}
 
@@ -154,6 +165,7 @@ class TestUpdate:
         assert _update({"project_id": None}) == {"project_id": None}
         assert _update({"project_id": "proj"}) == {"project_id": "proj"}
         assert _update({"project_id": 3}).status == 400
+        assert _update({"project_id": 3}, existing=None).status == 400
         assert _update({"project_id": "gone"}) == PolicyError(400, "Project not found")
         assert _update({"project_id": "proj"}, existing=None) == PolicyError(404, "Conversation not found")
 
@@ -182,6 +194,16 @@ class TestIntegrityError:
 
         assert policy.integrity_error(err) == PolicyError(404, "Prompt not found")
 
+    def test_the_marker_is_the_one_the_db_trigger_raises(self):
+        from chat.db import ChatDB
+        from chat.models import Conversation
+
+        db = ChatDB(":memory:")
+        with pytest.raises(sqlite3.IntegrityError) as raised:
+            db.create_conversation(Conversation(id="c", title="t", main_service="s", prompt_id="ghost"))
+
+        assert policy.integrity_error(raised.value) == PolicyError(404, "Prompt not found")
+
     def test_anything_else_is_a_project_not_found(self):
         err = sqlite3.IntegrityError("FOREIGN KEY constraint failed")
 
@@ -191,3 +213,13 @@ class TestIntegrityError:
 def test_the_error_body_carries_a_code_only_when_there_is_one():
     assert PolicyError(400, "x").body() == {"error": "x"}
     assert PolicyError(400, "x", "c").body() == {"error": "x", "code": "c"}
+
+
+def test_the_http_helper_maps_an_outcome_to_json_and_status():
+    from flask import Flask
+    from chat import http
+
+    with Flask(__name__).app_context():
+        response, status = http.error_response(PolicyError(409, "busy", "code"))
+
+    assert status == 409 and response.get_json() == {"error": "busy", "code": "code"}

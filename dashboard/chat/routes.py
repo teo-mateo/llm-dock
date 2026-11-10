@@ -19,7 +19,8 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import conversation_policy, openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
+from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
+from .outcomes import PolicyError
 from .prompt_seed import seed_default_prompts
 from reasoning_levels import parse_levels
 import sampling_params as sampling
@@ -531,10 +532,6 @@ def get_sampling_fields():
 
 # -- Conversations CRUD --
 
-def _policy_error_response(error):
-    return jsonify(error.body()), error.status
-
-
 @chat_bp.route("/api/chat/conversations", methods=["POST"])
 @require_auth
 def create_conversation():
@@ -546,8 +543,8 @@ def create_conversation():
         get_project=db.get_project,
         default_prompt=settings_store.get_main_system_prompt,
     )
-    if isinstance(outcome, conversation_policy.PolicyError):
-        return _policy_error_response(outcome)
+    if isinstance(outcome, PolicyError):
+        return http.error_response(outcome)
 
     conv = Conversation(
         id=str(uuid.uuid4()),
@@ -566,7 +563,7 @@ def create_conversation():
     try:
         conv = db.create_conversation(conv)
     except sqlite3.IntegrityError as e:
-        return _policy_error_response(conversation_policy.integrity_error(e))
+        return http.error_response(conversation_policy.integrity_error(e))
     return jsonify(conv.to_dict(include_messages=True)), 201
 
 
@@ -608,16 +605,17 @@ def update_conversation(conv_id):
     db = _get_db()
     fields = conversation_policy.resolve_conversation_update(
         data,
-        get_conversation=lambda: db.get_conversation(conv_id),
+        conv_id=conv_id,
+        get_conversation=db.get_conversation,
         get_prompt=db.get_prompt,
         get_project=db.get_project,
     )
-    if isinstance(fields, conversation_policy.PolicyError):
-        return _policy_error_response(fields)
+    if isinstance(fields, PolicyError):
+        return http.error_response(fields)
     try:
         conv = db.update_conversation(conv_id, **fields)
     except sqlite3.IntegrityError as e:
-        return _policy_error_response(conversation_policy.integrity_error(e))
+        return http.error_response(conversation_policy.integrity_error(e))
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
     return jsonify(conv.to_dict())
