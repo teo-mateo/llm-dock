@@ -6,7 +6,6 @@ import com.hpz.llmdockchat.core.error.displayMessage
 import com.hpz.llmdockchat.core.net.ReconnectBackoff
 import com.hpz.llmdockchat.core.net.RunEvent
 import com.hpz.llmdockchat.core.net.appError
-import com.hpz.llmdockchat.core.net.isTransient
 import com.hpz.llmdockchat.core.prefs.DraftStore
 import com.hpz.llmdockchat.core.prefs.EditSession
 import com.hpz.llmdockchat.core.prefs.EditStateStore
@@ -31,12 +30,12 @@ import com.hpz.llmdockchat.core.attachment.AttachmentImporter
 import com.hpz.llmdockchat.core.attachment.AutoSendClaimStore
 import com.hpz.llmdockchat.core.attachment.ConversationAttachments
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -707,91 +706,30 @@ class ThreadViewModel(
     ) {
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
-            var source: Flow<RunEvent> = first
-            var runId: String? = initialRunId
-            var failureMessage: String? = null
-            var sawAnyFrame = false
-            var sawTerminal = false
-            var error: Throwable?
-            var refetch: Result<ConversationDetail>? = null
-            val backoff = ReconnectBackoff(reconnectInitialMs, reconnectMaxMs)
-
-            while (true) {
-                val attempt = collectAttempt(source, runId)
-                runId = attempt.runId ?: runId
-                failureMessage = attempt.failureMessage ?: failureMessage
-                sawAnyFrame = sawAnyFrame || attempt.sawAnyFrame
-                sawTerminal = sawTerminal || attempt.sawTerminal
-                error = attempt.error
-
-                if (sawTerminal) break
-
-                val id = runId
-                val transient = error != null && error.appError.isTransient()
-                if (transient && id != null) {
-                    if (attempt.sawAnyFrame) backoff.reset()
-                    setReconnecting(true)
-                    delay(backoff.next())
-                    source = repository.reattach(id)
-                    continue
-                }
-                if (error == null) {
-                    if (attempt.sawAnyFrame) backoff.reset()
-                    setReconnecting(true)
-                    val reconciled = reconcileAfterEof(backoff)
-                    val conversation = reconciled.getOrNull()
-                    if (conversation == null) {
-                        refetch = reconciled
-                        break
-                    }
-                    val active = conversation.activeRun?.takeIf { conversation.isGenerating }
-                    if (active == null) {
-                        refetch = reconciled
-                        break
-                    }
-                    runId = active.id
-                    source = repository.reattach(active.id)
-                    continue
-                }
-                break
-            }
+            val supervision = RunSupervisor(
+                reattach = { repository.reattach(it) },
+                load = { repository.load(conversationId) },
+                collectAttempt = ::collectAttempt,
+                setReconnecting = ::setReconnecting,
+                backoff = ReconnectBackoff(reconnectInitialMs, reconnectMaxMs),
+            ).supervise(first, initialRunId)
 
             finishRun(
-                error = error,
-                sawAnyFrame = sawAnyFrame,
-                failureMessage = failureMessage,
+                error = supervision.error,
+                sawAnyFrame = supervision.sawAnyFrame,
+                failureMessage = supervision.failureMessage,
                 restoreOnEarlyFailure = restoreOnEarlyFailure,
                 messagesBeforeEdit = messagesBeforeEdit,
                 reattach = reattach,
-                refetch = refetch,
+                refetch = supervision.refetch,
             )
         }
     }
 
-    /**
-     * A close without a terminal frame is the transport's verdict, not the run's:
-     * a proxy or a server restart drops a healthy observer, and a cancel closes
-     * the stream with no frame at all. Only the run's own status settles it, so
-     * the conversation is refetched — and a server that cannot answer keeps the
-     * turn *not done* rather than making it done, retrying on the same capped
-     * backoff that governs reattachment.
-     *
-     * A failure the server will repeat (a deleted conversation, an unreadable
-     * body) is returned instead of retried, so the caller can end the turn.
-     */
-    private suspend fun reconcileAfterEof(backoff: ReconnectBackoff): Result<ConversationDetail> {
-        while (true) {
-            val result = repository.load(conversationId)
-            val error = result.exceptionOrNull()?.appError
-            if (error == null || !error.isTransient()) return result
-            delay(backoff.next())
-        }
-    }
-
-    private suspend fun CoroutineScope.collectAttempt(
+    private suspend fun collectAttempt(
         source: Flow<RunEvent>,
         knownRunId: String?,
-    ): RunAttempt {
+    ): RunAttempt = coroutineScope {
         val accumulator = TurnAccumulator(loaded()?.thread?.streaming?.userMessage, knownRunId)
         var failureMessage: String? = null
         var terminal = false
@@ -851,7 +789,7 @@ class ThreadViewModel(
 
         if (accumulator.takeDirty()) publishTurn(accumulator)
 
-        return RunAttempt(
+        RunAttempt(
             error = error,
             runId = accumulator.runId,
             failureMessage = failureMessage,
@@ -967,14 +905,6 @@ private class ReconciledEdit(
     val composer: String?,
     val attachments: List<String>?,
     val cancelNotice: String?,
-)
-
-private class RunAttempt(
-    val error: Throwable?,
-    val runId: String?,
-    val failureMessage: String?,
-    val sawAnyFrame: Boolean,
-    val sawTerminal: Boolean,
 )
 
 private class TurnAccumulator(
