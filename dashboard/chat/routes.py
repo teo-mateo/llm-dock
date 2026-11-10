@@ -4,7 +4,7 @@ import os
 import sqlite3
 import uuid
 
-from flask import Blueprint, jsonify, request, current_app, Response, stream_with_context
+from flask import Blueprint, jsonify, request, current_app
 
 from auth import require_auth
 from .db import ChatDB
@@ -831,16 +831,13 @@ def stream_run(run_id):
     if run is None:
         return jsonify({"error": "Run not found"}), 404
 
-    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-
     if run.status in TERMINAL_STATUSES:
         def terminal():
             yield encode_sse_event("run_status", {"status": run.status, "error": run.error})
-        return Response(terminal(), mimetype="text/event-stream", headers=headers)
+        return http.sse_response(terminal(), wrap=False)
 
     q, replay = manager.subscribe_with_replay(run_id)
-    return Response(stream_with_context(manager.observe(run_id, q, replay)),
-                    mimetype="text/event-stream", headers=headers)
+    return http.sse_response(manager.observe(run_id, q, replay))
 
 
 @chat_bp.route("/api/chat/runs/<run_id>/cancel", methods=["POST"])
@@ -965,8 +962,7 @@ def spinoff():
                 yield encode_sse({"error": event_data["message"]})
                 return
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return http.sse_response(generate())
 
 
 # -- Ghost chat (ephemeral, zero-trace) --
@@ -1020,13 +1016,11 @@ def ghost_chat():
     # no-store, not just no-cache: ghost replies must never be written to any
     # HTTP cache (browser or intermediate proxy) — the deniability is part of
     # the feature, so a cached body would be a trace.
-    return Response(stream_with_context(generate()), mimetype="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-store, max-age=0, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0",
-                        "X-Accel-Buffering": "no",
-                    })
+    return http.sse_response(generate(), headers={
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
 
 
 # Register admin routes onto chat_bp at module-load time. Importing this
