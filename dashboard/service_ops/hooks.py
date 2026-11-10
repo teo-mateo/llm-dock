@@ -9,8 +9,14 @@ logger = logging.getLogger(__name__)
 class Phase(Enum):
     BEFORE_RENAME = "before_rename"
     AFTER_RENAME = "after_rename"
-    AFTER_DELETE = "after_delete"
-    AFTER_PUBLIC_PORT = "after_public_port"
+    AFTER_SERVICES_CHANGED = "after_services_changed"
+
+
+class Cause(Enum):
+    DELETE = "delete"
+    PUBLIC_PORT = "public_port"
+    INSPECT = "inspect"
+    KEY_ROTATION = "key_rotation"
 
 
 class HookContext:
@@ -33,40 +39,37 @@ class RenameContext(HookContext):
 
 
 @dataclass
-class DeleteContext(HookContext):
-    name: str
-    config: dict
+class ServicesChangedContext(HookContext):
+    subject: str
+    cause: Cause
+    affected: list
     state: dict = field(default_factory=dict)
-
-    @property
-    def subject(self) -> str:
-        return self.name
-
-
-@dataclass
-class PublicPortContext(HookContext):
-    name: str
-    displaced: list
-    state: dict = field(default_factory=dict)
-
-    @property
-    def subject(self) -> str:
-        return self.name
 
 
 class ServiceHook:
-    """A subsystem that keeps per-service state and follows a rename or delete.
+    """A subsystem that keeps per-service state and follows a change to services.json.
 
-    A phase a hook does not need stays a no-op. best_effort means a failure is
-    logged and the operation continues; a hook that sets it False aborts the
-    operation with its exception. Every phase runs the hooks in registration
-    order, so the order of the list given to the operation's deps is the order
-    of the side effects. A hook keeps what it learns in one phase for a later
-    one in ctx.state_for(self.name).
+    A phase a hook does not need stays a no-op. Rename has a before and an
+    after phase because they carry distinct data; every other change is one
+    AFTER_SERVICES_CHANGED phase whose ctx.cause says what happened and
+    ctx.affected which services. best_effort means a failure is logged and the
+    operation continues; a hook that sets it False aborts the operation with
+    its exception. Every phase runs the hooks in registration order, so the
+    order of the list given to the operation's deps is the order of the side
+    effects. A hook keeps what it learns in one phase for a later one in
+    ctx.state_for(self.name).
+
+    PHASE_METHODS is the only place a Phase is tied to the method it calls; a
+    before_*/after_* method outside it fails at class creation, so a misspelt
+    override cannot silently never run.
     """
 
     name = "hook"
     best_effort = True
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        _check_phase_methods(cls)
 
     def before_rename(self, ctx: RenameContext) -> None:
         pass
@@ -74,16 +77,33 @@ class ServiceHook:
     def after_rename(self, ctx: RenameContext) -> None:
         pass
 
-    def after_delete(self, ctx: DeleteContext) -> None:
+    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
         pass
 
-    def after_public_port(self, ctx: PublicPortContext) -> None:
-        pass
+
+PHASE_METHODS = {
+    Phase.BEFORE_RENAME: "before_rename",
+    Phase.AFTER_RENAME: "after_rename",
+    Phase.AFTER_SERVICES_CHANGED: "after_services_changed",
+}
+
+
+def _check_phase_methods(cls) -> None:
+    missing = [p for p in Phase if p not in PHASE_METHODS]
+    if missing:
+        raise TypeError(f"Phase without a method in PHASE_METHODS: {missing}")
+    known = set(PHASE_METHODS.values())
+    for attr in dir(cls):
+        if attr.startswith(("before_", "after_")) and callable(getattr(cls, attr)) and attr not in known:
+            raise TypeError(f"{cls.__name__}.{attr} is not a hook phase; known: {sorted(known)}")
+
+
+_check_phase_methods(ServiceHook)
 
 
 def run_phase(hooks: Iterable[ServiceHook], phase: Phase, ctx) -> None:
     for hook in hooks:
-        method = getattr(hook, phase.value)
+        method = getattr(hook, PHASE_METHODS[phase])
         try:
             method(ctx)
         except Exception as e:

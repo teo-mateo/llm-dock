@@ -1,7 +1,7 @@
 import logging
 
 from .deps import DeleteDeps
-from .hooks import DeleteContext, Phase, run_phase
+from .hooks import Cause, Phase, ServicesChangedContext, run_phase
 from .outcomes import Deleted, OpError
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,10 @@ def delete(deps: DeleteDeps, name: str) -> Deleted | OpError:
 
     compose.remove_service_from_db(name)
     compose.rebuild_compose_file()
-    run_phase(infra.hooks, Phase.AFTER_DELETE, DeleteContext(name, config))
+    run_phase(
+        infra.hooks, Phase.AFTER_SERVICES_CHANGED,
+        ServicesChangedContext(name, Cause.DELETE, [name]),
+    )
 
     infra.emit({
         "service_name": name,

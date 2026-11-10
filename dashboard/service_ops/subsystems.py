@@ -1,7 +1,7 @@
 import logging
 from typing import Callable
 
-from .hooks import DeleteContext, PublicPortContext, RenameContext, ServiceHook
+from .hooks import Cause, RenameContext, ServiceHook, ServicesChangedContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,7 @@ class InspectorHook(ServiceHook):
         self._rename_captures(ctx.old_name, ctx.new_name)
         self._sync()
 
-    def after_delete(self, ctx: DeleteContext) -> None:
-        self._sync()
-
-    def after_public_port(self, ctx: PublicPortContext) -> None:
+    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
         self._sync()
 
 
@@ -49,8 +46,9 @@ class KeyFileHook(ServiceHook):
     def __init__(self, remove: Callable[[str], object]):
         self._remove = remove
 
-    def after_delete(self, ctx: DeleteContext) -> None:
-        self._remove(ctx.name)
+    def after_services_changed(self, ctx: ServicesChangedContext) -> None:
+        if ctx.cause is Cause.DELETE:
+            self._remove(ctx.subject)
 
 
 class OpenWebUIHook(ServiceHook):

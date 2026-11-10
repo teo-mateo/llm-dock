@@ -54,3 +54,11 @@ class SetPublicPortDeps:
     infra: Infra
     next_free_port: Callable[[Mapping[str, Any], Collection[int]], int]
     recreate_if_running: Callable[[str], dict]
+
+
+@dataclass(frozen=True)
+class SetInspectDeps:
+    infra: Infra
+    allocate_upstream_port: Callable[[Mapping[str, Any], str], int]
+    recreate_if_running: Callable[[str], dict]
+    proxy_status: Callable[[], Sequence[Mapping[str, Any]]]

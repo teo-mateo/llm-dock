@@ -5,7 +5,9 @@ from dataclasses import replace
 import tabby_keys
 from compose_manager import ComposeManager
 from docker_utils import get_service_container
+from inspector.ports import allocate_upstream_port
 from inspector.supervisor import proxy_supervisor
+import port_conflicts
 from port_conflicts import next_free_port
 from service_recreate import restart_if_running
 from openwebui_integration import (
@@ -14,7 +16,7 @@ from openwebui_integration import (
     remove_service_from_openwebui,
 )
 
-from .deps import DeleteDeps, Infra, RenameDeps, SetPublicPortDeps
+from .deps import DeleteDeps, Infra, RenameDeps, SetInspectDeps, SetPublicPortDeps
 from .subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 
@@ -75,14 +77,20 @@ def recreate_if_running(compose_file: str, name: str, rebuild: bool = False, fin
     return restart_if_running(compose_file, name, status, rebuild, finish)
 
 
-PUBLIC_PORT_RANGE = (3300, 3399)
-
-
 def set_public_port_deps(compose_file: str, next_port=None, recreate=None, **overrides) -> SetPublicPortDeps:
     return SetPublicPortDeps(
         replace(build_infra(compose_file), **overrides),
         next_free_port=next_port or (
-            lambda services, used: next_free_port(services, used, *PUBLIC_PORT_RANGE)
+            lambda services, used: next_free_port(services, used, *port_conflicts.PUBLIC_PORT_RANGE)
         ),
         recreate_if_running=recreate or (lambda name: recreate_if_running(compose_file, name)),
+    )
+
+
+def set_inspect_deps(compose_file: str, allocate=None, recreate=None, status=None, **overrides) -> SetInspectDeps:
+    return SetInspectDeps(
+        replace(build_infra(compose_file), **overrides),
+        allocate_upstream_port=allocate or (lambda services, name: allocate_upstream_port(services, name)),
+        recreate_if_running=recreate or (lambda name: recreate_if_running(compose_file, name)),
+        proxy_status=status or (lambda: proxy_supervisor.status()),
     )
