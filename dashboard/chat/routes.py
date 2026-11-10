@@ -19,7 +19,8 @@ from .event_codec import DONE, encode_sse, encode_sse_event, encode_sse_delta
 from .event_bus import EventBus
 from .run_manager import ChatRunManager
 from .runs import ChatRunStatus, TERMINAL_STATUSES
-from . import openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
+from . import conversation_policy, http, openrouter, openrouter_catalog, run_config, settings_store, url_retrieval
+from .outcomes import PolicyError
 from .prompt_seed import seed_default_prompts
 from reasoning_levels import parse_levels
 import sampling_params as sampling
@@ -535,82 +536,34 @@ def get_sampling_fields():
 @require_auth
 def create_conversation():
     data = request.get_json() or {}
-    main_service = data.get("main_service")
-    if not main_service:
-        return jsonify({"error": "main_service is required"}), 400
-
-    # Re-checked at run creation too: the declaration can change between here
-    # and the first message.
-    if "reasoning_level" in data:
-        level_error = run_config.reasoning_level_error(main_service, data["reasoning_level"])
-        if level_error:
-            return jsonify({"error": level_error, "code": run_config.INVALID_LEVEL_CODE}), 400
-    reasoning_level = data.get("reasoning_level")
-    # Whole-blob replace: the body carries the complete set, and anything absent
-    # from it is unset rather than left at a previous value.
-    sampling_error = run_config.sampling_params_error(data.get("sampling_params"))
-    if sampling_error:
-        return jsonify({"error": sampling_error, "code": run_config.INVALID_SAMPLING_CODE}), 400
-
-    project_id = data.get("project_id")
-    if project_id is not None:
-        if not isinstance(project_id, str):
-            return jsonify({"error": "project_id must be a string or null"}), 400
-        # Membership is root-only: spin-offs follow their parent's project.
-        if data.get("parent_conversation_id"):
-            return jsonify({"error": "Spin-off conversations inherit their parent's project"}), 400
-        if _get_db().get_project(project_id) is None:
-            return jsonify({"error": "Project not found"}), 400
-
-    # Resolve the system prompt for the new conversation. Precedence:
-    # 1. An explicit main_system_prompt in the request body wins outright.
-    # 2. Otherwise, if a prompt_id is given, fetch that managed prompt's
-    #    content from the DB (404 if it doesn't exist) and record the id.
-    # 3. Otherwise fall back to the global default system prompt.
-    # The id is stored only where the text was actually resolved from it:
-    # it names the prompt the stored copy came from, so a body that carries
-    # its own text establishes no reference.
-    prompt_id = data.get("prompt_id")
-    if prompt_id is not None and not isinstance(prompt_id, str):
-        return jsonify({"error": "prompt_id must be a string or null"}), 400
-    if "main_system_prompt" in data:
-        main_system_prompt = data["main_system_prompt"]
-        prompt_id = None
-    elif prompt_id:
-        prompt = _get_db().get_prompt(prompt_id)
-        if prompt is None:
-            logger.info("create_conversation: prompt_id %s not found", prompt_id)
-            return jsonify({"error": "Prompt not found"}), 404
-        main_system_prompt = prompt.content
-        prompt_id = prompt.id
-    else:
-        main_system_prompt = settings_store.get_main_system_prompt()
+    db = _get_db()
+    outcome = conversation_policy.resolve_new_conversation(
+        data,
+        get_prompt=db.get_prompt,
+        get_project=db.get_project,
+        default_prompt=settings_store.get_main_system_prompt,
+    )
+    if isinstance(outcome, PolicyError):
+        return http.error_response(outcome)
 
     conv = Conversation(
         id=str(uuid.uuid4()),
         title=data.get("title", "New Conversation"),
-        main_service=main_service,
+        main_service=outcome.main_service,
         sidekick_service=data.get("sidekick_service"),
-        main_system_prompt=main_system_prompt,
+        main_system_prompt=outcome.main_system_prompt,
         sidekick_system_prompt=data.get("sidekick_system_prompt", DEFAULT_SIDEKICK_SYSTEM_PROMPT),
         parent_conversation_id=data.get("parent_conversation_id"),
         selected_text=data.get("selected_text"),
-        project_id=project_id,
-        prompt_id=prompt_id,
-        reasoning_level=reasoning_level,
-        sampling_params_json=sampling.to_storage(data.get("sampling_params")),
+        project_id=outcome.project_id,
+        prompt_id=outcome.prompt_id,
+        reasoning_level=outcome.reasoning_level,
+        sampling_params_json=outcome.sampling_params_json,
     )
     try:
-        conv = _get_db().create_conversation(conv)
+        conv = db.create_conversation(conv)
     except sqlite3.IntegrityError as e:
-        # A prompt deleted between the existence check above and the insert
-        # — the DB trigger rejected the orphan reference (same race as
-        # projects).
-        if "prompt not found" in str(e):
-            return jsonify({"error": "Prompt not found"}), 404
-        # The project was deleted between the existence check above and the
-        # insert — the DB trigger rejected the orphan reference.
-        return jsonify({"error": "Project not found"}), 400
+        return http.error_response(conversation_policy.integrity_error(e))
     return jsonify(conv.to_dict(include_messages=True)), 201
 
 
@@ -650,62 +603,19 @@ def get_conversation(conv_id):
 def update_conversation(conv_id):
     data = request.get_json() or {}
     db = _get_db()
-    # null clears it; a non-null level must be offered by the service the
-    # conversation ends up on, which is the requested main_service when both
-    # keys arrive.
-    if "reasoning_level" in data and data["reasoning_level"] is not None:
-        existing = db.get_conversation(conv_id)
-        if existing is None:
-            return jsonify({"error": "Conversation not found"}), 404
-        level_error = run_config.reasoning_level_error(
-            data.get("main_service") or existing.main_service, data["reasoning_level"]
-        )
-        if level_error:
-            return jsonify({"error": level_error, "code": run_config.INVALID_LEVEL_CODE}), 400
-    if "sampling_params" in data:
-        # null and {} both clear: the column keeps one empty state, NULL.
-        sampling_error = run_config.sampling_params_error(data["sampling_params"])
-        if sampling_error:
-            return jsonify({"error": sampling_error, "code": run_config.INVALID_SAMPLING_CODE}), 400
-        data["sampling_params_json"] = sampling.to_storage(data.pop("sampling_params"))
-    # project_id: null detaches (back to unfiled); a non-null value must be
-    # a string naming an existing project, and only root conversations can
-    # be assigned — spin-offs follow their parent's project.
-    if "project_id" in data and data["project_id"] is not None:
-        if not isinstance(data["project_id"], str):
-            return jsonify({"error": "project_id must be a string or null"}), 400
-        existing = db.get_conversation(conv_id)
-        if existing is None:
-            return jsonify({"error": "Conversation not found"}), 404
-        if existing.parent_conversation_id:
-            return jsonify({"error": "Spin-off conversations inherit their parent's project"}), 400
-        if db.get_project(data["project_id"]) is None:
-            return jsonify({"error": "Project not found"}), 400
-    # prompt_id: null detaches (the stored text stays, which is exactly the
-    # hand-written case); a non-null value resolves the prompt's content into
-    # main_system_prompt, so the run path keeps reading the stored copy. An
-    # explicit main_system_prompt in the same body wins and establishes no
-    # reference — same precedence as create.
-    if "prompt_id" in data and data["prompt_id"] is not None:
-        if not isinstance(data["prompt_id"], str):
-            return jsonify({"error": "prompt_id must be a string or null"}), 400
-        if "main_system_prompt" in data:
-            data.pop("prompt_id")
-        else:
-            prompt = db.get_prompt(data["prompt_id"])
-            if prompt is None:
-                return jsonify({"error": "Prompt not found"}), 404
-            data["main_system_prompt"] = prompt.content
+    fields = conversation_policy.resolve_conversation_update(
+        data,
+        conv_id=conv_id,
+        get_conversation=db.get_conversation,
+        get_prompt=db.get_prompt,
+        get_project=db.get_project,
+    )
+    if isinstance(fields, PolicyError):
+        return http.error_response(fields)
     try:
-        conv = db.update_conversation(conv_id, **data)
+        conv = db.update_conversation(conv_id, **fields)
     except sqlite3.IntegrityError as e:
-        # A prompt deleted between the existence check above and the write —
-        # the DB trigger rejected the orphan reference.
-        if "prompt not found" in str(e):
-            return jsonify({"error": "Prompt not found"}), 404
-        # The project was deleted between the existence check above and the
-        # write — the DB trigger rejected the orphan reference.
-        return jsonify({"error": "Project not found"}), 400
+        return http.error_response(conversation_policy.integrity_error(e))
     if conv is None:
         return jsonify({"error": "Conversation not found"}), 404
     return jsonify(conv.to_dict())

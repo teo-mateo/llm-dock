@@ -125,6 +125,8 @@ llm-dock/
 │   │   ├── settings_store.py    # Chat settings singleton (chat_settings.json)
 │   │   ├── openrouter.py        # OpenRouter model resolution
 │   │   ├── openrouter_catalog.py # Proxied + TTL-cached OpenRouter model catalog
+│   │   ├── run_config.py        # Effective run configuration (reasoning, sampling, project), no Flask
+│   │   ├── conversation_policy.py # Create/update policy: prompt precedence, project rules, validation
 │   │   ├── prompt_builder.py    # System prompt assembly
 │   │   ├── prompt_seed.py       # Default prompt seeding
 │   │   ├── project_files.py     # Project filesystem layer

@@ -108,6 +108,8 @@ CREATE INDEX IF NOT EXISTS idx_prompt_sort ON chat_prompts(sort_order);
 # IntegrityError('project not found') instead of persisting an orphan id.
 # delete_project detaches conversations in the same transaction as the
 # project row's deletion, so the triggers never fire on that path.
+PROMPT_ORPHAN_MARKER = "prompt not found"
+
 TRIGGERS_SQL = """
 CREATE TRIGGER IF NOT EXISTS trg_conversations_project_fk_insert
 BEFORE INSERT ON conversations
