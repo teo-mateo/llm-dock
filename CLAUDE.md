@@ -61,6 +61,7 @@ llm-dock/
 │   ├── service_templates.py     # API key generation + Docker-safe name sanitizer
 │   ├── flag_metadata.py         # Engine flag definitions & CLI rendering
 │   ├── engine_catalogue.py      # Per-engine UI catalogue served by GET /api/engines
+│   ├── service_ops/             # Service lifecycle operations (rename, delete) on injected deps; subsystems follow as hooks
 │   ├── metrics_catalogue.py     # Curated Prometheus families per engine (the one owner of metrics support)
 │   ├── reasoning_levels.py      # Reasoning-level grammar, lookup, per-engine request mapping
 │   ├── key_rotation.py          # Default API-key rotation over services.json

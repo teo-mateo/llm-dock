@@ -353,6 +353,33 @@ describe('useServiceMetrics while the engine catalogue loads', () => {
   })
 })
 
+describe('useServiceMetrics after a catalogue retry', () => {
+  it('clears the catalogue error before polling again', async () => {
+    catalogue.status = 'error'
+    catalogue.error = 'HTTP 502'
+    catalogue.byType = {}
+    mockFetchAPI.mockResolvedValue({ metrics: mockMetrics, scraped_at: '2026-01-01T00:00:00Z' })
+
+    const { result, rerender } = renderHook(() => useServiceMetrics({ serviceName: 'svc', enabled: true }))
+    await act(async () => { vi.advanceTimersByTime(100) })
+    expect(result.current.error).toMatch(/HTTP 502/)
+
+    catalogue.status = 'loading'
+    catalogue.error = null
+    rerender()
+    expect(result.current.error).toBeNull()
+    expect(result.current.loading).toBe(true)
+
+    catalogue.status = 'ready'
+    catalogue.byType = Object.fromEntries(SAMPLE_ENGINES.map(e => [e.type, e]))
+    rerender()
+    await act(async () => { vi.advanceTimersByTime(100) })
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.history.length).toBe(1)
+  })
+})
+
 describe('useServiceMetrics llama.cpp slots', () => {
   it('derives live generation rate from slot n_decoded deltas', async () => {
     queueLlamaCpp({

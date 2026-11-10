@@ -2,14 +2,12 @@ import json
 import logging
 import threading
 import time
-import subprocess
 from datetime import datetime
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
 from auth import require_auth
 from db_lock import SERVICES_DB_LOCK, serialize_db
 import config
-import tabby_keys
 from config import COMPOSE_FILE
 from compose_manager import ComposeManager
 from docker_utils import get_docker_services, get_service_container, control_service, get_image_info, image_presence_warnings
@@ -24,17 +22,15 @@ from flag_metadata import (
     FLAG_METADATA_BY_TYPE, SERVICE_ENGINES, flag_metadata_types_message, service_engines_message,
 )
 from port_conflicts import find_port_owner, next_free_port, port_in_use_body
+import service_ops
+from service_ops import wiring
+from service_ops.outcomes import OpError
 from service_recreate import NOT_FOUND, apply_update_effects, recreate, restart_if_running
 from service_start_guard import check_start, current_statuses, finish_start
 from reasoning_levels import parse_levels
 import flag_surfaces
 from inspector.ports import allocate_upstream_port
 from inspector.supervisor import proxy_supervisor
-from openwebui_integration import (
-    add_service_to_openwebui,
-    remove_service_from_openwebui,
-    is_service_registered_in_openwebui,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -464,61 +460,14 @@ def update_service(service_name):
 def delete_service(service_name):
     """Delete service from database and rebuild compose file"""
     try:
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check if service exists
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Stop and remove container if running
-        try:
-            subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "stop", service_name],
-                capture_output=True,
-                timeout=30,
-            )
-            subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "rm", "-f", service_name],
-                capture_output=True,
-                timeout=10,
-            )
-            logger.info(f"Stopped and removed container for: {service_name}")
-        except Exception as e:
-            logger.warning(f"Error stopping container (may not be running): {e}")
-
-        # Remove from database
-        compose_mgr.remove_service_from_db(service_name)
-
-        # Rebuild compose file
-        compose_mgr.rebuild_compose_file()
-
-        # Drop the inspector proxy if any; its capture rows stay, because
-        # deleting them is a deliberate action in the Inspector UI.
-        proxy_supervisor.sync()
-
-        # A service that never had a key file (every engine but TabbyAPI) is a no-op;
-        # one that did must not leave its api/admin keys on disk.
-        try:
-            tabby_keys.remove(service_name)
-        except Exception as e:
-            logger.warning(f"Failed to remove key file for '{service_name}': {e}")
-
-        from services import event_manager
-        event_manager.emit({
-            "service_name": service_name,
-            "action": "service-deleted",
-            "status": "deleted",
-            "container_id": "",
-            "timestamp": time.time(),
-        })
-
-        logger.info(f"Service deleted: {service_name}")
+        outcome = service_ops.delete(wiring.delete_deps(COMPOSE_FILE), service_name)
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
 
         return jsonify(
             {
                 "success": True,
-                "message": f'Service "{service_name}" deleted successfully',
+                "message": f'Service "{outcome.name}" deleted successfully',
             }
         ), 200
 
@@ -546,85 +495,19 @@ def rename_service(service_name):
         if not data or not data.get("new_name"):
             return jsonify({"error": "new_name is required"}), 400
 
-        new_name = data["new_name"].strip()
-
-        compose_mgr = ComposeManager(COMPOSE_FILE)
-
-        # Check service exists
-        service_config = compose_mgr.get_service_from_db(service_name)
-        if not service_config:
-            return jsonify({"error": f'Service "{service_name}" not found'}), 404
-
-        # Check service is not running
-        container = get_service_container(service_name)
-        if container and container.status == "running":
-            return jsonify(
-                {"error": "Service must be stopped before renaming"}
-            ), 409
-
-        # Handle Open WebUI: unregister old name (best-effort)
-        engine = service_config.get("template_type", "")
-        owu_was_registered = False
-        if engine:
-            try:
-                if is_service_registered_in_openwebui(service_name, engine):
-                    owu_was_registered = True
-                    remove_service_from_openwebui(service_name, engine)
-            except Exception as e:
-                logger.warning(f"Failed to unregister old name from Open WebUI: {e}")
-
-        # Remove old container if it exists (stopped/exited)
-        if container:
-            try:
-                subprocess.run(
-                    ["docker", "compose", "-f", COMPOSE_FILE, "rm", "-f", service_name],
-                    capture_output=True,
-                    timeout=10,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to remove old container: {e}")
-
-        # Rename in services DB and rebuild compose
-        compose_mgr.rename_service(service_name, new_name)
-
-        # Move the capture history so the service filter keeps matching, then
-        # reconcile the proxy (stops the old-name listener, starts the new one).
-        proxy_supervisor.rename_service(service_name, new_name)
-        proxy_supervisor.sync()
-
-        # Rename in benchmark DB
-        from benchmarking.routes import rename_service as bench_rename
-
-        try:
-            updated = bench_rename(service_name, new_name)
-            logger.info(
-                f"Updated {updated} benchmark records from '{service_name}' to '{new_name}'"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to rename benchmarks (non-fatal): {e}")
-
-        # Re-register with Open WebUI under new name (best-effort)
-        if owu_was_registered and engine:
-            try:
-                port = service_config.get("port", 0)
-                api_key = service_config.get("api_key", "")
-                add_service_to_openwebui(new_name, port, api_key, engine)
-            except Exception as e:
-                logger.warning(f"Failed to re-register new name with Open WebUI: {e}")
-
-        logger.info(f"Service renamed: {service_name} -> {new_name}")
+        outcome = service_ops.rename(wiring.rename_deps(COMPOSE_FILE), service_name, data["new_name"].strip())
+        if isinstance(outcome, OpError):
+            return jsonify(outcome.body()), outcome.status
 
         return jsonify(
             {
                 "success": True,
-                "old_name": service_name,
-                "new_name": new_name,
-                "message": f'Service renamed from "{service_name}" to "{new_name}"',
+                "old_name": outcome.old_name,
+                "new_name": outcome.new_name,
+                "message": f'Service renamed from "{outcome.old_name}" to "{outcome.new_name}"',
             }
         ), 200
 
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error(f"Failed to rename service: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500

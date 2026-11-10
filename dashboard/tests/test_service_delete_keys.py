@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import routes.services as services_route
+from service_ops import wiring
 import tabby_keys
 from compose_manager import ComposeManager
 from inspector.supervisor import proxy_supervisor
@@ -35,7 +36,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(services_route, "COMPOSE_FILE", str(compose))
     monkeypatch.setattr(ComposeManager, "rebuild_compose_file", lambda self: None)
     monkeypatch.setattr(proxy_supervisor, "sync", lambda: None)
-    monkeypatch.setattr(services_route.subprocess, "run", MagicMock())
+    monkeypatch.setattr(wiring.subprocess, "run", MagicMock())
     from app import create_app
 
     app = create_app(config={"TESTING": True, "DASHBOARD_TOKEN": TOKEN})
