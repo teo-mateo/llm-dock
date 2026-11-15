@@ -16,6 +16,7 @@ export const EVENT_TYPES = [
   "run_end",
   "model_changed",
   "thinking_changed",
+  "session_info_changed",
   "compaction",
   "gap",
   "prompt_open",
@@ -58,6 +59,9 @@ export type ModelChangedEvent = EventBase & {
 export type ThinkingChangedEvent = EventBase & {
   type: "thinking_changed"; level: string | null; previous: string | null;
 };
+export type SessionInfoChangedEvent = EventBase & {
+  type: "session_info_changed"; name: string | null;
+};
 export type CompactionEvent = EventBase & {
   type: "compaction"; summary: string; tokens_before: number | null; reason: string;
 };
@@ -75,6 +79,7 @@ export type WireEvent =
   | RunEndEvent
   | ModelChangedEvent
   | ThinkingChangedEvent
+  | SessionInfoChangedEvent
   | CompactionEvent
   | GapEvent
   | PromptOpenEvent
@@ -91,6 +96,7 @@ export type TurnEndBody = Omit<TurnEndEvent, "seq" | "ts">;
 export type RunEndBody = Omit<RunEndEvent, "seq" | "ts">;
 export type ModelChangedBody = Omit<ModelChangedEvent, "seq" | "ts">;
 export type ThinkingChangedBody = Omit<ThinkingChangedEvent, "seq" | "ts">;
+export type SessionInfoChangedBody = Omit<SessionInfoChangedEvent, "seq" | "ts">;
 export type CompactionBody = Omit<CompactionEvent, "seq" | "ts">;
 
 export type EventBody =
@@ -105,6 +111,7 @@ export type EventBody =
   | RunEndBody
   | ModelChangedBody
   | ThinkingChangedBody
+  | SessionInfoChangedBody
   | CompactionBody
   | PromptOpenBody
   | PromptClosedBody;
@@ -184,6 +191,9 @@ export function modelChangedBody(model: ModelRef | null, previous: ModelRef | nu
 }
 export function thinkingChangedBody(level: string | null, previous: string | null): ThinkingChangedBody {
   return { type: "thinking_changed", level, previous };
+}
+export function sessionInfoChangedBody(name: string | null): SessionInfoChangedBody {
+  return { type: "session_info_changed", name };
 }
 export function compactionBody(summary: string, tokensBefore: number | null, reason: string): CompactionBody {
   return { type: "compaction", summary, tokens_before: tokensBefore, reason };

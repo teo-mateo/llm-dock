@@ -20,7 +20,7 @@ test("prompt event types are known and listed", () => {
   assert.ok(EVENT_TYPES.includes("prompt_closed"));
   assert.equal(isKnownEventType("prompt_open"), true);
   assert.equal(isKnownEventType("prompt_closed"), true);
-  assert.equal(EVENT_TYPES.length, 15);
+  assert.equal(EVENT_TYPES.length, 16);
 });
 
 test("prompt_open body carries the whole spec", () => {

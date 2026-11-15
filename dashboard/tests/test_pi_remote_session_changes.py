@@ -30,3 +30,19 @@ def test_latest_change_wins_regardless_of_input_order():
 def test_null_model_clears_both_columns():
     changes = session_changes([event(1, "model_changed", model=None, previous=None)])
     assert changes == {"model_provider": None, "model_id": None}
+
+
+def test_session_info_change_sets_the_name():
+    assert session_changes([event(1, "session_info_changed", name="my-session")]) == {"name": "my-session"}
+
+
+def test_session_info_change_with_null_name_clears_it():
+    assert session_changes([event(1, "session_info_changed", name=None)]) == {"name": None}
+
+
+def test_latest_name_wins_regardless_of_input_order():
+    changes = session_changes([
+        event(3, "session_info_changed", name="newer"),
+        event(2, "session_info_changed", name="older"),
+    ])
+    assert changes == {"name": "newer"}

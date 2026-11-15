@@ -6,6 +6,7 @@ import type {
   MessageUpdateEvent,
   ModelSelectEvent,
   SessionCompactEvent,
+  SessionInfoChangedEvent as PiSessionInfoChangedEvent,
   ThinkingLevelSelectEvent,
   ToolExecutionEndEvent,
   ToolExecutionStartEvent,
@@ -25,6 +26,7 @@ import {
   compactionBody,
   modelChangedBody,
   runEndBody,
+  sessionInfoChangedBody,
   stateBody,
   thinkingChangedBody,
   toolEndBody,
@@ -79,6 +81,7 @@ export class EventMirror {
       case "turn_end": this.onTurnEnd(event); break;
       case "model_select": this.onModelSelect(event); break;
       case "thinking_level_select": this.onThinkingSelect(event); break;
+      case "session_info_changed": this.onSessionInfoChanged(event); break;
       case "session_compact": this.onCompact(event); break;
     }
   }
@@ -176,6 +179,10 @@ export class EventMirror {
 
   private onThinkingSelect(event: ThinkingLevelSelectEvent): void {
     this.emitBody(thinkingChangedBody(event.level, event.previousLevel));
+  }
+
+  private onSessionInfoChanged(event: PiSessionInfoChangedEvent): void {
+    this.emitBody(sessionInfoChangedBody(event.name ?? null));
   }
 
   private onCompact(event: SessionCompactEvent): void {
