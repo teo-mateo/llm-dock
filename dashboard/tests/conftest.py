@@ -57,6 +57,7 @@ def pytest_configure(config):
     os.environ["LLM_DOCK_CHAT_DB"] = os.path.join(storage, "chat.db")
     os.environ["LLM_DOCK_BENCHMARKS_DB"] = os.path.join(storage, "benchmarks.db")
     os.environ["LLM_DOCK_MAYA_STATE_DIR"] = os.path.join(storage, "maya")
+    os.environ["LLM_DOCK_LITELLM_DIR"] = os.path.join(storage, "litellm")
     os.environ["LLM_DOCK_PROVIDERS_FILE"] = os.path.join(storage, "providers.json")
     os.environ["LLM_DOCK_PI_REMOTE_SOCKET"] = os.path.join(storage, "pi-remote.sock")
     os.environ["LLM_DOCK_PI_REMOTE_DB"] = os.path.join(storage, "pi_remote.db")

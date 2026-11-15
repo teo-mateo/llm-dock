@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import litellm_gateway
 from docker_utils import image_presence_warnings, reported_image
 from service_recreate import IMAGE_CHANGE_TIMEOUT_S, restart_if_running
 
@@ -15,4 +16,5 @@ def update_deps(compose_file: str, **overrides) -> UpdateDeps:
             compose_file, name, status, True, lambda services, n: finish(), timeout=IMAGE_CHANGE_TIMEOUT_S
         ),
         reported_image=reported_image,
+        route_warnings=lambda config, services: litellm_gateway.route_warnings(config, services),
     )

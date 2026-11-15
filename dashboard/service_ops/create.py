@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
-from flag_metadata import SERVICE_ENGINES, effective_image, generate_service_name, service_engines_message
+from flag_metadata import GATEWAY_ENGINES, SERVICE_ENGINES, effective_image, generate_service_name, service_engines_message
 
 from .config_checks import PortInUse, ValidationFailed, port_conflict, unknown_flag_warnings, validate
 from .deps import Infra
@@ -16,6 +16,7 @@ class CreateDeps:
     infra: Infra
     generate_key: Callable[[], str]
     image_presence_warnings: Callable[[str | None], list]
+    route_warnings: Callable[[dict, dict], list] = lambda config, services: []
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,9 @@ def create(deps: CreateDeps, data: dict) -> Created | ValidationFailed | PortInU
     conflict = port_conflict(compose, port)
     if conflict:
         return conflict
+
+    if template_type in GATEWAY_ENGINES:
+        warnings += deps.route_warnings(data, compose.list_services_in_db())
 
     compose.add_service_to_db(name, data)
     compose.rebuild_compose_file()

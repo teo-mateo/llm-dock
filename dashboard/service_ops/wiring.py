@@ -27,9 +27,10 @@ from .rotate_key import RotateKeyDeps
 from .set_inspect import SetInspectDeps
 from .set_public_port import SetPublicPortDeps
 from .preview_key_rotation import PreviewKeyRotationDeps
-from .subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
+from .subsystems import BenchmarkHook, GatewayFilesHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
 import litellm_gateway
+from flag_metadata import GATEWAY_ENGINES
 
 
 def _rename_benchmarks(old_name: str, new_name: str) -> int:
@@ -38,12 +39,30 @@ def _rename_benchmarks(old_name: str, new_name: str) -> int:
     return rename_service(old_name, new_name)
 
 
-def _hooks():
+def _rewrite_gateway_routes(compose_file: str, old_name: str, new_name: str) -> list:
+    compose = ComposeManager(compose_file)
+    services = compose.list_services_in_db()
+    changed = litellm_gateway.rename_routed_service(services, old_name, new_name)
+    if changed:
+        compose.save_services_db(services)
+        compose.rebuild_compose_file()
+    return changed
+
+
+def gateway_files_hook(compose_file: str) -> GatewayFilesHook:
+    return GatewayFilesHook(
+        lambda old, new: _rewrite_gateway_routes(compose_file, old, new),
+        lambda name: litellm_gateway.remove(name),
+        lambda config: config.get("template_type") in GATEWAY_ENGINES,
+    )
+
+
+def _hooks(compose_file: str):
     return [
         InspectorHook(lambda old, new: proxy_supervisor.rename_service(old, new), lambda: proxy_supervisor.sync()),
         BenchmarkHook(lambda old, new: _rename_benchmarks(old, new)),
         KeyFileHook(lambda name: tabby_keys.remove(name)),
-        KeyFileHook(lambda name: litellm_gateway.remove(name), name="gateway config"),
+        gateway_files_hook(compose_file),
         OpenWebUIHook(
             lambda name, engine: is_service_registered_in_openwebui(name, engine),
             lambda name, engine: remove_service_from_openwebui(name, engine),
@@ -69,7 +88,7 @@ def build_infra(compose_file: str, emit=None) -> Infra:
         remove_container=lambda name: _compose_run(compose_file, ["rm", "-f"], name, 10),
         emit=emit,
         now=time.time,
-        hooks=_hooks(),
+        hooks=_hooks(compose_file),
     )
 
 

@@ -216,13 +216,10 @@ class ComposeManager:
         # Pop old key and insert under new key
         config = services.pop(old_name)
         services[new_name] = config
-        litellm_gateway.rename_routed_service(services, old_name, new_name)
         self._save_services_db(services)
 
         # Rebuild compose file
         self.rebuild_compose_file()
-        if config.get("template_type") == "litellm":
-            litellm_gateway.remove(old_name)
 
     def get_service_from_db(self, service_name: str) -> Optional[Dict[str, Any]]:
         """Get service config from database"""
@@ -244,7 +241,9 @@ class ComposeManager:
     # TEMPLATE RENDERING METHODS
     # ============================================
 
-    def _render_service(self, service_name: str, config: Dict[str, Any]) -> str:
+    def _render_service(
+        self, service_name: str, config: Dict[str, Any], services_db: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
         Render service YAML from template and config.
 
@@ -327,19 +326,9 @@ class ComposeManager:
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
         elif template_type == "litellm":
-            # Config-driven gateway: routes are resolved against the whole
-            # service database (and providers.json) at render time, so every
-            # rename/rotation lands here too. Upstream keys go to gateway.env
-            # (0600, gitignored); config.yaml holds only os.environ/ refs.
-            context["alias"] = config["alias"]
-            context["api_key"] = config["api_key"]
-            gateway_config, gateway_env, warnings = litellm_gateway.ensure(
-                service_name, config, self._load_services_db()
-            )
-            context["gateway_config"] = str(gateway_config)
-            context["gateway_env"] = str(gateway_env)
-            for warning in warnings:
-                logger.warning(f"litellm '{service_name}': {warning}")
+            context.update(litellm_gateway.compose_context(
+                service_name, config, services_db if services_db is not None else self._load_services_db()
+            ))
         elif template_type == "maya":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
@@ -519,7 +508,7 @@ class ComposeManager:
         # Render each service
         for service_name, config in services_db.items():
             try:
-                rendered = self._render_service(service_name, config)
+                rendered = self._render_service(service_name, config, services_db)
                 sections.append(rendered)
                 sections.append("\n")
             except Exception as e:

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import flag_surfaces
 import litellm_gateway
-from flag_metadata import validate_service_config
+from flag_metadata import GATEWAY_ENGINES, validate_service_config
 from port_conflicts import PortOwner, find_port_owner
 
 from .deps import ComposeStore
@@ -21,7 +21,7 @@ class PortInUse:
 
 def validate(template_type: str, data: dict) -> ValidationFailed | None:
     valid, errors = validate_service_config(template_type, data)
-    if template_type == "litellm" and data.get("routes"):
+    if template_type in GATEWAY_ENGINES and data.get("routes"):
         errors = errors + litellm_gateway.validate_routes(data["routes"])
     return ValidationFailed(errors) if errors else None
 

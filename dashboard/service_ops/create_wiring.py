@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import litellm_gateway
 from docker_utils import image_presence_warnings
 from service_templates import generate_api_key
 
@@ -12,4 +13,5 @@ def create_deps(compose_file: str, **overrides) -> CreateDeps:
         replace(build_infra(compose_file), **overrides),
         generate_key=lambda: generate_api_key(),
         image_presence_warnings=lambda image: image_presence_warnings(image),
+        route_warnings=lambda config, services: litellm_gateway.route_warnings(config, services),
     )

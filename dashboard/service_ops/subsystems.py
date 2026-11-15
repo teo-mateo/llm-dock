@@ -47,9 +47,35 @@ class KeyFileHook(ServiceHook):
     name = "key file"
     causes = frozenset({Cause.DELETE})
 
-    def __init__(self, remove: Callable[[str], object], name: str = "key file"):
+    def __init__(self, remove: Callable[[str], object]):
         self._remove = remove
-        self.name = name
+
+    def after_container_swap(self, ctx: ServicesChangedContext) -> None:
+        self._remove(ctx.subject)
+
+
+class GatewayFilesHook(ServiceHook):
+    """Keeps gateway routes and generated files following the services they
+    name. ComposeManager.rename_service rebuilds before this runs, so a renamed
+    upstream is briefly a skipped route until rewrite_routes rebuilds again."""
+
+    name = "gateway files"
+    causes = frozenset({Cause.DELETE})
+
+    def __init__(
+        self,
+        rewrite_routes: Callable[[str, str], object],
+        remove: Callable[[str], object],
+        is_gateway: Callable[[dict], bool],
+    ):
+        self._rewrite_routes = rewrite_routes
+        self._remove = remove
+        self._is_gateway = is_gateway
+
+    def after_rename(self, ctx: RenameContext) -> None:
+        self._rewrite_routes(ctx.old_name, ctx.new_name)
+        if self._is_gateway(ctx.config):
+            self._remove(ctx.old_name)
 
     def after_container_swap(self, ctx: ServicesChangedContext) -> None:
         self._remove(ctx.subject)
