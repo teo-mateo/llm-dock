@@ -120,8 +120,12 @@ describe('parseLook', () => {
         { nick: 'teodor', bot: false },
       ],
     })
-    expect(tool('chatterbox_look', parseLook, '{}', confirmed).view).toMatchObject({ lines: null, people: null })
-    expect(parseLook(null, parseToolResult(null))).toMatchObject({ what: null, lines: null })
+    expect(tool('chatterbox_look', parseLook, '{"what":"status"}', confirmed).view).toMatchObject({ lines: null, people: null })
+  })
+
+  it('is null when the look carries nothing to show, so the generic view takes it', () => {
+    expect(tool('chatterbox_look', parseLook, '{}', confirmed).view).toBeNull()
+    expect(parseLook(null, parseToolResult(null))).toBeNull()
   })
 })
 

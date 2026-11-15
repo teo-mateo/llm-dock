@@ -17,6 +17,17 @@ describe('toolViews', () => {
     for (const name of ['read', 'write', 'process']) expect(toolEntry(name)).not.toBe(GENERIC_VIEW)
   })
 
+  it('chatterbox join and leave keep the generic body under their own summary', () => {
+    const join = tool('chatterbox_join', { channel: '#hof' }, null)
+    expect(viewFor(join).Body).toBe(GenericToolBody)
+    expect(toolSummary(join)).toBe('join #hof')
+    expect(toolSummary(tool('chatterbox_leave', {}, null))).toBe('leave')
+  })
+
+  it('a chatterbox look with nothing to show falls back to generic', () => {
+    expect(viewFor(tool('chatterbox_look', {}, null))).toBe(GENERIC_VIEW)
+  })
+
   it('an unknown tool gets the generic view', () => {
     expect(toolEntry('web_search').Body).toBe(GenericToolBody)
     expect(viewFor(tool('web_search', { q: 1 }, null))).toBe(GENERIC_VIEW)

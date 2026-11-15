@@ -30,8 +30,8 @@ const TOOL_VIEWS = {
   process: { parse: parseProcess, summary: processSummary, Body: ProcessToolBody },
   chatterbox_send: { parse: parseSend, summary: sendSummary, Body: ChatterboxSendBody },
   chatterbox_look: { parse: parseLook, summary: lookSummary, Body: ChatterboxLookBody },
-  chatterbox_join: { parse: null, summary: joinSummary, Body: GenericToolBody },
-  chatterbox_leave: { parse: null, summary: leaveSummary, Body: GenericToolBody },
+  chatterbox_join: { ...GENERIC_VIEW, summary: joinSummary },
+  chatterbox_leave: { ...GENERIC_VIEW, summary: leaveSummary },
 }
 
 export function toolEntry(name, views = TOOL_VIEWS) {

@@ -8,6 +8,10 @@ export function splitPath(path) {
   return { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) }
 }
 
+export function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
 export function stringField(object, key) {
   const value = object?.[key]
   return typeof value === 'string' ? value : null
@@ -20,7 +24,16 @@ export function intField(object, key) {
 
 export function objectField(object, key) {
   const value = object?.[key]
-  return value != null && typeof value === 'object' && !Array.isArray(value) ? value : null
+  return isPlainObject(value) ? value : null
+}
+
+export function boolField(object, key) {
+  return object?.[key] === true
+}
+
+export function arrayField(object, key) {
+  const value = object?.[key]
+  return Array.isArray(value) ? value : null
 }
 
 export function numberText(text, firstLine) {

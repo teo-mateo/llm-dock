@@ -1,8 +1,6 @@
-import { useState } from 'react'
-import { cappedSlice } from './lineCap'
+import Capped from './Capped'
 import ChatText from './ChatText'
 import ResultMessage from './ResultMessage'
-import ShowAllToggle from './ShowAllToggle'
 import ToolChip from './ToolChip'
 import ToolMeta from './ToolMeta'
 
@@ -32,25 +30,17 @@ function ChatLineView({ line }) {
 }
 
 function ChatLines({ lines }) {
-  const [expanded, setExpanded] = useState(false)
   if (lines.length === 0) return <p className="m-0 text-xs text-fg-muted">(no messages)</p>
-  const { capped, shown } = cappedSlice(lines, expanded)
   return (
-    <div className="flex min-w-0 flex-col items-start gap-1">
-      <ul className="m-0 flex w-full min-w-0 list-none flex-col gap-1 p-0">
-        {shown.map((line, index) => (
-          <ChatLineView key={index} line={line} />
-        ))}
-      </ul>
-      {capped && (
-        <ShowAllToggle
-          expanded={expanded}
-          total={lines.length}
-          noun="messages"
-          onToggle={() => setExpanded((value) => !value)}
-        />
+    <Capped items={lines} noun="messages">
+      {(shown) => (
+        <ul className="m-0 flex w-full min-w-0 list-none flex-col gap-1 p-0">
+          {shown.map((line, index) => (
+            <ChatLineView key={index} line={line} />
+          ))}
+        </ul>
       )}
-    </div>
+    </Capped>
   )
 }
 
@@ -72,7 +62,7 @@ export default function ChatterboxLookBody({ tool }) {
   return (
     <>
       <ToolMeta item={item}>
-        <span className="font-semibold text-fg">look {view.what ?? 'status'}</span>
+        <span className="font-semibold text-fg">{view.what ? `look ${view.what}` : 'look'}</span>
       </ToolMeta>
       <ResultMessage tool={tool} when="error" />
       {view.lines != null ? (

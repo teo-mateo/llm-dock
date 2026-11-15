@@ -49,7 +49,7 @@ describe('ChatterboxLookBody', () => {
     render(<ChatterboxLookBody tool={tool('{"what":"who"}', who)} />)
     expect(screen.getByText('architect')).toHaveClass('text-info-fg')
     cleanup()
-    render(<ChatterboxLookBody tool={tool('{}', '{"content":[{"type":"text","text":"Connected as architect."}]}')} />)
+    render(<ChatterboxLookBody tool={tool('{"what":"status"}', '{"content":[{"type":"text","text":"Connected as architect."}]}')} />)
     expect(screen.getByText('look status')).toBeInTheDocument()
     expect(screen.getByText('Connected as architect.')).toBeInTheDocument()
   })

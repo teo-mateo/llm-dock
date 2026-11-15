@@ -1,14 +1,5 @@
 import { genericSummary } from './summary'
-import { firstCollapsedLine, intField, stringField } from './text'
-
-function boolField(object, key) {
-  return object?.[key] === true
-}
-
-function arrayField(object, key) {
-  const value = object?.[key]
-  return Array.isArray(value) ? value : null
-}
+import { arrayField, boolField, firstCollapsedLine, intField, isPlainObject, stringField } from './text'
 
 export function sendTarget(args) {
   const to = stringField(args, 'to')
@@ -54,7 +45,7 @@ export function chatTime(iso) {
 }
 
 function chatLine(entry) {
-  if (entry == null || typeof entry !== 'object' || Array.isArray(entry)) return null
+  if (!isPlainObject(entry)) return null
   return {
     time: chatTime(stringField(entry, 'time')),
     from: stringField(entry, 'from') ?? '',
@@ -77,12 +68,13 @@ function present(entries, map) {
 
 export function parseLook(args, result) {
   const details = result?.details ?? null
-  return {
+  const view = {
     what: stringField(args, 'what'),
     count: intField(args, 'count'),
     lines: present(arrayField(details, 'items'), chatLine),
     people: present(arrayField(details, 'people'), person),
   }
+  return view.what == null && view.lines == null && view.people == null ? null : view
 }
 
 export function lookSummary(tool) {
