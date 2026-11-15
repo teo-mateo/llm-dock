@@ -29,17 +29,19 @@ export default function PiSessionHeader({ summary, onBack }) {
 
   return (
     <header className="flex flex-col gap-2 border-b border-border px-4 py-3 md:px-6 md:py-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:flex-nowrap">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="-ml-1 rounded px-1 text-sm font-semibold text-accent-fg md:hidden"
+            className="-ml-1 whitespace-nowrap rounded px-1 text-sm font-semibold text-accent-fg md:hidden"
           >
             ‹ Sessions
           </button>
         )}
-        <PageTitle className="min-w-0 truncate">{sessionName(summary)}</PageTitle>
+        <PageTitle className="min-w-0 truncate max-md:order-last max-md:basis-full max-md:whitespace-normal max-md:break-words">
+          {sessionName(summary)}
+        </PageTitle>
         <span
           className={`inline-flex flex-none items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeClass(status)}`}
         >

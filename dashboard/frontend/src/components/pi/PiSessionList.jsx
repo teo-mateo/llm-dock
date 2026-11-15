@@ -80,11 +80,13 @@ export default function PiSessionList({
                     aria-hidden="true"
                     className={`h-2 w-2 flex-none rounded-full ${statusDotClass(status)}`}
                   ></span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">
-                    {sessionName(session)}
-                  </span>
-                  <span className="min-w-0 shrink-[3] truncate font-mono text-xs text-fg-muted block sm:hidden">
-                    {pathTail(session.cwd)}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-semibold text-fg max-sm:whitespace-normal max-sm:break-words">
+                      {sessionName(session)}
+                    </span>
+                    <span className="truncate font-mono text-xs text-fg-muted sm:hidden">
+                      {pathTail(session.cwd)}
+                    </span>
                   </span>
                   {pending > 0 && (
                     <span

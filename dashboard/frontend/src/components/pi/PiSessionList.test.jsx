@@ -91,7 +91,7 @@ describe('PiSessionList', () => {
     )
   })
 
-  it('lets a long path yield before the name and the controls', () => {
+  it('stacks the path under a wrapping name on phones, keeping the controls fixed', () => {
     setup({
       sessions: [
         session({
@@ -104,8 +104,9 @@ describe('PiSessionList', () => {
     const row = screen.getByRole('button', { name: /a-pretty-long-session-name/ })
     const name = row.querySelectorAll('span.truncate')[0]
     const path = row.querySelectorAll('span.truncate')[1]
-    expect(name).toHaveClass('flex-1')
-    expect(path.className).toContain('shrink-[3]')
+    expect(name.parentElement).toHaveClass('flex-1', 'flex-col')
+    expect(path.parentElement).toBe(name.parentElement)
+    expect(name).toHaveClass('max-sm:whitespace-normal', 'max-sm:break-words')
     expect(path).toHaveClass('sm:hidden')
     expect(screen.getByLabelText('2 questions waiting')).toHaveClass('flex-none')
     expect(row.lastElementChild).toHaveClass('flex-none')

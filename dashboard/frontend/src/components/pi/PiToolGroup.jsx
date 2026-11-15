@@ -18,7 +18,12 @@ function PiToolRow({ item }) {
   const tool = { ...parsed, item }
   return (
     <li className="border-b border-border last:border-b-0">
-      <div className="flex items-center gap-2 px-3 py-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="group flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-muted"
+      >
         <span
           role="img"
           aria-label={toolStatusText(item)}
@@ -28,15 +33,10 @@ function PiToolRow({ item }) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">
           {toolSummary(tool)}
         </span>
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-          className="shrink-0 text-xs font-semibold text-accent hover:underline"
-        >
+        <span className="shrink-0 text-xs font-semibold text-accent group-hover:underline">
           {open ? 'Hide' : 'Details'}
-        </button>
-      </div>
+        </span>
+      </button>
       {open && <PiToolDetails tool={tool} />}
     </li>
   )
