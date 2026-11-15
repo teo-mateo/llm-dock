@@ -243,11 +243,10 @@ def ensure(
     if errors:
         raise ValueError("; ".join(errors))
 
+    # Unresolvable routes never raise here: this runs inside every compose
+    # rebuild, so raising would block deleting or renaming the gateway's last
+    # upstream. The gateway then serves an empty model list until fixed.
     resolved, warnings = resolve_routes(config.get("routes"), services_db)
-    if not resolved:
-        raise ValueError(
-            "no renderable routes: " + ("; ".join(warnings) or "routes empty")
-        )
 
     directory = service_dir(service_name)
     _atomic_write(
@@ -263,6 +262,25 @@ def ensure(
         f"({len(resolved)} routes, {len(warnings)} skipped)"
     )
     return directory / "config.yaml", directory / "gateway.env", warnings
+
+
+def rename_routed_service(
+    services_db: Dict[str, Any], old_name: str, new_name: str
+) -> List[str]:
+    """Point every gateway route at `old_name` to `new_name`, in place.
+    Returns the gateways whose routes changed."""
+    changed = []
+    for name, cfg in services_db.items():
+        if cfg.get("template_type") != "litellm":
+            continue
+        hit = False
+        for route in cfg.get("routes") or []:
+            if isinstance(route, dict) and route.get("service") == old_name:
+                route["service"] = new_name
+                hit = True
+        if hit:
+            changed.append(name)
+    return changed
 
 
 def remove(service_name: str) -> Optional[Path]:

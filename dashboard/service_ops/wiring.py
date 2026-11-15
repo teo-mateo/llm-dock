@@ -43,8 +43,7 @@ def _hooks():
         InspectorHook(lambda old, new: proxy_supervisor.rename_service(old, new), lambda: proxy_supervisor.sync()),
         BenchmarkHook(lambda old, new: _rename_benchmarks(old, new)),
         KeyFileHook(lambda name: tabby_keys.remove(name)),
-        # A deleted gateway leaves its generated config + env behind otherwise.
-        KeyFileHook(lambda name: litellm_gateway.remove(name)),
+        KeyFileHook(lambda name: litellm_gateway.remove(name), name="gateway config"),
         OpenWebUIHook(
             lambda name, engine: is_service_registered_in_openwebui(name, engine),
             lambda name, engine: remove_service_from_openwebui(name, engine),

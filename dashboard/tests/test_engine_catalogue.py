@@ -79,7 +79,7 @@ def test_the_presentation_table_has_one_row_per_service_engine():
 
 def test_model_sources_and_the_picker_are_consistent():
     for entry in build_catalogue():
-        assert entry["model_source"] in {"file", "directory", "repo"}
+        assert entry["model_source"] in {"file", "directory", "repo", "none"}
         assert not entry["gguf_picker"] or entry["model_source"] == "file"
         assert entry["label"] and entry["hint"] and entry["placeholder"]
 

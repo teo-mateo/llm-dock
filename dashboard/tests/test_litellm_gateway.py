@@ -236,10 +236,24 @@ class TestEnsure:
         with pytest.raises(ValueError, match="exactly one"):
             litellm_gateway.ensure("litellm-gateway", config, SERVICES_DB)
 
-    def test_all_routes_skipped_raises(self):
+    def test_all_routes_skipped_renders_empty_model_list(self):
         config = gateway_config([{"model": "a", "service": "gone"}])
-        with pytest.raises(ValueError, match="no renderable routes"):
-            litellm_gateway.ensure("litellm-gateway", config, SERVICES_DB)
+        config_path, _, warnings = litellm_gateway.ensure("litellm-gateway", config, SERVICES_DB)
+        assert yaml.safe_load(config_path.read_text())["model_list"] == []
+        assert warnings
+
+    def test_rename_routed_service_rewrites_only_matching_routes(self):
+        db = {
+            "llamacpp-x": {"template_type": "llamacpp"},
+            "gw": gateway_config([
+                {"model": "x", "service": "llamacpp-x"},
+                {"model": "m", "provider": "mistral", "upstream_model": "m"},
+            ]),
+        }
+        assert litellm_gateway.rename_routed_service(db, "llamacpp-x", "llamacpp-y") == ["gw"]
+        assert db["gw"]["routes"][0]["service"] == "llamacpp-y"
+        assert "service" not in db["gw"]["routes"][1]
+        assert litellm_gateway.rename_routed_service(db, "nope", "other") == []
 
     def test_remove(self, routes_dir):
         config = gateway_config([{"model": "a", "service": "vllm-model-a"}])
@@ -287,3 +301,80 @@ class TestComposeRendering:
         assert "key-upstream-a" not in gateway_block
         assert "gateway.env" in gateway_block
         assert "3377:4000" in gateway_block
+
+
+def _manager_with_gateway(tmp_path, routes):
+    from compose_manager import ComposeManager
+
+    compose_path = tmp_path / "compose.yml"
+    compose_path.write_text(
+        "services:\n"
+        "  # <<<<<<< BEGIN DYNAMIC\n"
+        "  # >>>>>>> END DYNAMIC\n"
+        "\nnetworks:\n  llm-network:\n    driver: bridge\n"
+    )
+    manager = ComposeManager(str(compose_path), services_db_file=str(tmp_path / "services.json"))
+    services = {k: dict(v) for k, v in SERVICES_DB.items() if k != "litellm-gateway"}
+    services["litellm-gateway"] = gateway_config(routes)
+    manager.save_services_db(services)
+    manager.rebuild_compose_file()
+    return manager
+
+
+class TestRename:
+    def test_renaming_the_only_upstream_follows_the_route(self, routes_dir, tmp_path):
+        manager = _manager_with_gateway(tmp_path, [{"model": "a", "service": "vllm-model-a"}])
+
+        manager.rename_service("vllm-model-a", "vllm-model-a2")
+
+        route = manager.get_service_from_db("litellm-gateway")["routes"][0]
+        assert route["service"] == "vllm-model-a2"
+        config = yaml.safe_load((routes_dir / "litellm-gateway" / "config.yaml").read_text())
+        assert config["model_list"][0]["litellm_params"]["api_base"].startswith("http://vllm-model-a2:")
+
+    def test_renaming_the_gateway_moves_its_generated_dir(self, routes_dir, tmp_path):
+        manager = _manager_with_gateway(tmp_path, [{"model": "a", "service": "vllm-model-a"}])
+
+        manager.rename_service("litellm-gateway", "litellm-gw2")
+
+        assert not (routes_dir / "litellm-gateway").exists()
+        assert (routes_dir / "litellm-gw2" / "gateway.env").exists()
+
+    def test_deleting_the_only_upstream_still_rebuilds(self, routes_dir, tmp_path):
+        manager = _manager_with_gateway(tmp_path, [{"model": "a", "service": "vllm-model-a"}])
+
+        manager.remove_service_from_db("vllm-model-a")
+        manager.rebuild_compose_file()
+
+        config = yaml.safe_load((routes_dir / "litellm-gateway" / "config.yaml").read_text())
+        assert config["model_list"] == []
+
+
+class TestWriteValidation:
+    def test_create_rejects_bad_route_grammar(self):
+        from service_ops.config_checks import validate
+
+        failed = validate("litellm", gateway_config([{"model": "a"}]))
+
+        assert failed and any("exactly one of 'service' or 'provider'" in e for e in failed.details)
+
+    def test_create_requires_routes(self):
+        from service_ops.config_checks import validate
+
+        config = gateway_config([])
+        failed = validate("litellm", config)
+
+        assert failed and "Missing mandatory field: routes" in failed.details
+
+    def test_params_are_rejected(self):
+        from service_ops.config_checks import validate
+
+        config = gateway_config([{"model": "a", "service": "x"}])
+        config["params"] = {"--num_workers": "4"}
+
+        assert validate("litellm", config).details == ["litellm services take no params"]
+
+    def test_valid_gateway_passes(self):
+        from service_ops.config_checks import validate
+
+        assert validate("litellm", gateway_config([{"model": "a", "service": "x"}])) is None

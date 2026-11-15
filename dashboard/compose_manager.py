@@ -216,10 +216,13 @@ class ComposeManager:
         # Pop old key and insert under new key
         config = services.pop(old_name)
         services[new_name] = config
+        litellm_gateway.rename_routed_service(services, old_name, new_name)
         self._save_services_db(services)
 
         # Rebuild compose file
         self.rebuild_compose_file()
+        if config.get("template_type") == "litellm":
+            litellm_gateway.remove(old_name)
 
     def get_service_from_db(self, service_name: str) -> Optional[Dict[str, Any]]:
         """Get service config from database"""

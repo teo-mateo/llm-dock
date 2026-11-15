@@ -23,7 +23,7 @@ MANDATORY_FIELDS = {
     "maya": ["port", "model_path", "alias", "api_key"],
     # The gateway has no model files: it is config-driven (routes in
     # services.json, rendered by litellm_gateway.ensure()).
-    "litellm": ["port", "alias", "api_key"],
+    "litellm": ["port", "alias", "api_key", "routes"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
@@ -2329,6 +2329,7 @@ FLAG_METADATA_BY_TYPE: Dict[str, Dict[str, Any]] = {
     "ninfer": NINFER_FLAGS,
     "sglang": SGLANG_FLAGS,
     "maya": MAYA_FLAGS,
+    "litellm": {},
 }
 
 
@@ -2347,6 +2348,16 @@ BENCHMARK_ENGINES = frozenset({"llamacpp"})
 # receive none: a string they do not advertise can regress engines that
 # validate it.
 MODEL_FIELD_ENGINES = frozenset({"ninfer", "sglang"})
+
+# Engines whose api_key is a credential of their own that clients are configured
+# with (the gateway's master key), not the shared default key. Default-key
+# rotation leaves it alone; folding it into the default would hand every model
+# key to gateway clients and break their config on each rotation.
+OWN_KEY_ENGINES = frozenset({"litellm"})
+
+# Engines with no CLI params: the gateway's template renders none, so a param
+# would be accepted and then silently dropped.
+PARAMLESS_ENGINES = frozenset({"litellm"})
 
 # Engines whose server serves a browsable web UI at its root (linked from the
 # services table).
@@ -2524,6 +2535,9 @@ def validate_service_config(
             )
         elif any(ch.isspace() for ch in image):
             errors.append("image must not contain whitespace")
+
+    if template_type in PARAMLESS_ENGINES and params:
+        errors.append(f"{template_type} services take no params")
 
     if template_type == "maya":
         for flag in ("--pack", "--glm-pack", "--serve", "--model-name", "--api-key", "--port"):

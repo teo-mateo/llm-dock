@@ -12,6 +12,7 @@ without Docker.
 
 import logging
 
+from flag_metadata import OWN_KEY_ENGINES
 from service_templates import generate_api_key
 
 logger = logging.getLogger(__name__)
@@ -45,12 +46,17 @@ def rotate_keys_in_db(compose_mgr, new_key: str | None = None) -> dict:
     services = compose_mgr.list_services_in_db()
     original = compose_mgr.list_services_in_db()
 
+    rotated = {
+        name: cfg
+        for name, cfg in services.items()
+        if cfg.get("template_type") not in OWN_KEY_ENGINES
+    }
     updated = [
         name
-        for name, cfg in services.items()
+        for name, cfg in rotated.items()
         if cfg.get("api_key") != new_key
     ]
-    for cfg in services.values():
+    for cfg in rotated.values():
         cfg["api_key"] = new_key
 
     compose_mgr.save_services_db(services)
