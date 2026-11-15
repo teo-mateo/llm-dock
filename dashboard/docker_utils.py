@@ -8,7 +8,7 @@ from flask import current_app
 from config import COMPOSE_FILE, COMPOSE_PROJECT
 from compose_manager import ComposeManager
 from port_conflicts import conflicts_for
-from flag_metadata import openwebui_base_url, effective_image
+from flag_metadata import openwebui_base_url, effective_image, service_kind
 from model_discovery import inspect_model
 from openwebui_integration import get_openwebui_registered_urls
 from reasoning_levels import parse_levels, validate_levels
@@ -168,29 +168,6 @@ def check_docker():
         return False
 
 
-def _service_kind(config):
-    """Classify a service config as 'chat' or 'embedding' from its params.
-
-    Embedding services are identified by vLLM's pooling runner / embed
-    convert flags or by llama.cpp's --embedding flag. Everything else
-    (instruct/chat models, base completion models) is treated as 'chat'
-    for the purposes of the chat composer's default-model selection.
-    """
-    # A gateway is neither a chat model nor an embedding model: it must stay
-    # out of the chat pickers (web and Android both filter on kind == "chat")
-    # while still appearing in the service list.
-    if (config or {}).get("template_type") == "litellm":
-        return "gateway"
-    params = (config or {}).get("params") or {}
-    if params.get("--runner") == "pooling":
-        return "embedding"
-    if params.get("--convert") == "embed":
-        return "embedding"
-    if "--embedding" in params or "--embeddings" in params:
-        return "embedding"
-    return "chat"
-
-
 # (service, raw, reason) triples already warned about below.
 _level_warned: set = set()
 
@@ -247,7 +224,7 @@ def get_docker_services():
             alias_map[service_name] = config.get("alias", "")
             model_path_map[service_name] = config.get("model_path")
             model_name_map[service_name] = config.get("model_name")
-            kind_map[service_name] = _service_kind(config)
+            kind_map[service_name] = service_kind(config)
             favorite_map[service_name] = bool(config.get("favorite", False))
             image_map[service_name] = effective_image(
                 template_type_map[service_name], config

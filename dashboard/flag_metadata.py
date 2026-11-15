@@ -2355,6 +2355,23 @@ MODEL_FIELD_ENGINES = frozenset({"ninfer", "sglang"})
 # key to gateway clients and break their config on each rotation.
 OWN_KEY_ENGINES = frozenset({"litellm"})
 
+# Engines that proxy other services instead of serving a model.
+GATEWAY_ENGINES = frozenset({"litellm"})
+
+
+def service_kind(config) -> str:
+    """'gateway', 'embedding' or 'chat'. Web and Android chat pickers offer only
+    'chat', so a gateway or an embedder must never classify as one."""
+    config = config or {}
+    if config.get("template_type") in GATEWAY_ENGINES:
+        return "gateway"
+    params = config.get("params") or {}
+    if params.get("--runner") == "pooling" or params.get("--convert") == "embed":
+        return "embedding"
+    if "--embedding" in params or "--embeddings" in params:
+        return "embedding"
+    return "chat"
+
 # Engines with no CLI params: the gateway's template renders none, so a param
 # would be accepted and then silently dropped.
 PARAMLESS_ENGINES = frozenset({"litellm"})

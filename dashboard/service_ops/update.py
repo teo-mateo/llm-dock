@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
-from flag_metadata import plan_image_change
+from flag_metadata import GATEWAY_ENGINES, plan_image_change
 from reasoning_levels import parse_levels
 
 from .config_checks import PortInUse, ValidationFailed, port_conflict, unknown_flag_warnings, validate
@@ -23,6 +23,7 @@ class UpdateDeps:
     image_presence_warnings: Callable[[str | None], list]
     recreate_for_image: Callable[[str, str, Callable[[], None]], dict]
     reported_image: Callable[[str | None, str], str]
+    route_warnings: Callable[[dict, dict], list] = lambda config, services: []
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,8 @@ def update(deps: UpdateDeps, name: str, data: dict) -> Updated | ValidationFaile
         logger.warning(f"Service {name} update with unknown {template_type} flags: {warnings}")
     if plan.changed:
         warnings += deps.image_presence_warnings(existing.get("image"))
+    if template_type in GATEWAY_ENGINES:
+        warnings += deps.route_warnings(existing, compose.list_services_in_db())
 
     container = infra.get_container(name)
 
