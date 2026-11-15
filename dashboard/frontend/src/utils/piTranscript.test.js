@@ -212,6 +212,18 @@ describe('buildTranscript', () => {
     expect(items.map((item) => item.change)).toEqual([undefined, undefined])
   })
 
+  it('session name notices', () => {
+    const { items } = buildTranscript([
+      event(1, 'session_info_changed', { name: 'my-session' }),
+      event(2, 'session_info_changed', { name: null }),
+    ])
+    expect(items.map((item) => item.text)).toEqual([
+      'Session named “my-session”',
+      'Session name cleared',
+    ])
+    expect(items.map((item) => item.change)).toEqual([undefined, undefined])
+  })
+
   it('gap notice counts missing events', () => {
     const { items } = buildTranscript([
       event(1, 'gap', { from_seq: 5, to_seq: 7 }),

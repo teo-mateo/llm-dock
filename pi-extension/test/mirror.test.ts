@@ -170,6 +170,17 @@ test("run end, turn end, model, thinking and compaction", () => {
   assert.equal(activity.working, false);
 });
 
+test("session rename and clear emit session_info_changed", () => {
+  const { emitted, mirror } = makeMirror();
+
+  mirror.handle({ type: "session_info_changed", name: "my-session" } as any);
+  mirror.handle({ type: "session_info_changed", name: undefined } as any);
+
+  assert.deepEqual(emitted.map((event) => event.type), ["session_info_changed", "session_info_changed"]);
+  assert.equal(emitted[0].type === "session_info_changed" && emitted[0].name, "my-session");
+  assert.equal(emitted[1].type === "session_info_changed" && emitted[1].name, null);
+});
+
 test("an aborted turn sets the run end outcome", () => {
   const { emitted, mirror } = makeMirror();
   mirror.handle({ type: "agent_start" } as any);

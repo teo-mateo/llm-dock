@@ -14,7 +14,9 @@ import {
 test("event types are a typed set", () => {
   assert.ok(EVENT_TYPES.includes("state"));
   assert.ok(EVENT_TYPES.includes("assistant_message"));
+  assert.ok(EVENT_TYPES.includes("session_info_changed"));
   assert.equal(isKnownEventType("state"), true);
+  assert.equal(isKnownEventType("session_info_changed"), true);
   assert.equal(isKnownEventType("unknown"), false);
 });
 

@@ -207,6 +207,50 @@ def test_model_and_thinking_changes_update_the_session_and_publish_it(tmp_path):
     store.close()
 
 
+def test_session_info_change_updates_the_name_and_publishes_it(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    published = []
+    handler = PiRemoteHandler(
+        PresenceRegistry(), store,
+        publish=lambda kind, key, events, summary: published.append((kind, summary)),
+    )
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    published.clear()
+    body = {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": [
+            {"type": "session_info_changed", "seq": 1, "ts": 2000, "name": "renamed-session"},
+        ],
+    }
+    assert handler.handle("POST", "/v1/events", body, 2000).status == 200
+    row = store.sessions.get("s1", "i1")
+    assert row["name"] == "renamed-session"
+    sessions = [summary for kind, summary in published if kind == "session"]
+    assert len(sessions) == 1
+    assert sessions[0].name == "renamed-session"
+    store.close()
+
+
+def test_session_info_change_rejects_a_non_string_name(tmp_path):
+    store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
+    handler = PiRemoteHandler(PresenceRegistry(), store)
+    handler.handle("POST", "/v1/hello", HELLO, 1000)
+    body = {
+        "protocol": 1,
+        "type": "events",
+        "session_id": "s1",
+        "instance_id": "i1",
+        "events": [
+            {"type": "session_info_changed", "seq": 1, "ts": 2000, "name": 42},
+        ],
+    }
+    assert handler.handle("POST", "/v1/events", body, 2000).status == 400
+    store.close()
+
+
 def test_plain_events_do_not_publish_a_session(tmp_path):
     store = PiRemoteDB(str(tmp_path / "pi_remote.db"))
     published = []

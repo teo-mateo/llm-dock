@@ -125,6 +125,8 @@ def _valid_payload(event_type: str, body: Dict[str, Any]) -> bool:
         return is_nullable_model(body.get("model")) and is_nullable_model(body.get("previous"))
     if event_type == "thinking_changed":
         return is_nullable_str(body.get("level")) and is_nullable_str(body.get("previous"))
+    if event_type == "session_info_changed":
+        return is_nullable_str(body.get("name"))
     if event_type == "compaction":
         return (
             isinstance(body.get("summary"), str)

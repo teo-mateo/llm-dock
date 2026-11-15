@@ -17,5 +17,6 @@ export function registerEventSubscriptions(
   pi.on("turn_end", forward);
   pi.on("model_select", forward);
   pi.on("thinking_level_select", forward);
+  pi.on("session_info_changed", forward);
   pi.on("session_compact", forward);
 }

@@ -3,7 +3,7 @@ from typing import Any, Dict, Iterable, Optional
 from .events import StoredEvent
 
 SESSION_CHANGE_TYPES = frozenset(
-    {"model_changed", "thinking_changed", "prompt_open", "prompt_closed"}
+    {"model_changed", "thinking_changed", "session_info_changed", "prompt_open", "prompt_closed"}
 )
 
 
@@ -20,4 +20,6 @@ def session_changes(events: Iterable[StoredEvent]) -> Dict[str, Optional[str]]:
             changes.update(_model_columns(event.payload.get("model")))
         elif event.type == "thinking_changed":
             changes["thinking_level"] = event.payload.get("level")
+        elif event.type == "session_info_changed":
+            changes["name"] = event.payload.get("name")
     return changes

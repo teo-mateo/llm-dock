@@ -51,6 +51,9 @@ function noticePayload(type, payload) {
       },
     }
   }
+  if (type === 'session_info_changed') {
+    return { text: payload.name ? `Session named “${payload.name}”` : 'Session name cleared' }
+  }
   if (type === 'compaction') {
     const tokens =
       payload.tokens_before === null || payload.tokens_before === undefined
