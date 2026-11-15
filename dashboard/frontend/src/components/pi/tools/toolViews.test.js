@@ -11,9 +11,10 @@ const views = {
 const tool = (name, args, view) => ({ item: { name, args: JSON.stringify(args) }, args, result: null, view })
 
 describe('toolViews', () => {
-  it('bash and edit have their own viewers', () => {
+  it('bash, edit, read, write and process have their own viewers', () => {
     expect(toolEntry('bash').Body).toBe(BashToolBody)
     expect(toolEntry('edit').Body).toBe(EditToolBody)
+    for (const name of ['read', 'write', 'process']) expect(toolEntry(name)).not.toBe(GENERIC_VIEW)
   })
 
   it('an unknown tool gets the generic view', () => {

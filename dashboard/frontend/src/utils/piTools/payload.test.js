@@ -39,6 +39,11 @@ describe('parseToolResult', () => {
     expect(result.images).toEqual([{ mimeType: 'image/png', base64: 'QUJD' }])
   })
 
+  it('images are normalized once: lowercase type, no whitespace in the data', () => {
+    const result = parseToolResult('{"content":[{"type":"image","data":"QU\\nJD ","mimeType":"IMAGE/JPEG"}]}')
+    expect(result.images).toEqual([{ mimeType: 'image/jpeg', base64: 'QUJD' }])
+  })
+
   it('envelope keeps structured content, details and the error flag', () => {
     const result = parseToolResult(
       '{"content":[{"type":"text","text":"boom"}],"structuredContent":{"output":"boom","exit_code":1},"details":{"diff":"+a"},"isError":true}',
