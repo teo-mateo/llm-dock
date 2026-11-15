@@ -320,14 +320,62 @@ describe('ChatArea — /model slash command', () => {
     })
   })
 
-  it('resolves a stale exact openrouter: string even when no longer curated', async () => {
-    const { container } = renderWithConversation()
+  it('resolves an exact openrouter: string that is the current model (no-op)', async () => {
+    const { container } = renderWithConversation(vi.fn(), {
+      conversation: { id: 'conv-1', main_service: 'openrouter:old/model-x', mcp_servers: [] },
+    })
     typeCommand(container, '/model openrouter:old/model-x')
 
     await waitFor(() => {
       expect(mockUpdateConversation)
         .toHaveBeenCalledWith('conv-1', { main_service: 'openrouter:old/model-x' })
     })
+  })
+
+  it('rejects an exact openrouter: string that is unoffered and not current', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model openrouter:old/model-x')
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Unknown model "openrouter:old/model-x"')
+    })
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('shows an error notice when the switch fails and does not reload', async () => {
+    mockUpdateConversation.mockRejectedValueOnce(new Error('boom'))
+    const { onReloadConversation, container } = renderWithConversation()
+    typeCommand(container, '/model llamacpp-27b')
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("Couldn't switch to llamacpp-27b: boom")
+    })
+    expect(onReloadConversation).not.toHaveBeenCalled()
+  })
+
+  it('matches curated labels case-insensitively', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model claude sonnet 5')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation)
+        .toHaveBeenCalledWith('conv-1', { main_service: 'openrouter:anthropic/claude-sonnet-5' })
+    })
+  })
+
+  it('names the candidates when a label matches several models', async () => {
+    slashState.providerGroups = [
+      { id: 'mistral', name: 'Mistral', models: [{ id: 'm1', label: 'Claude Sonnet 5' }] },
+    ]
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model Claude Sonnet 5')
+
+    await waitFor(() => expect(container.textContent).toContain('matches several models'))
+    expect(container.textContent).toContain('openrouter:anthropic/claude-sonnet-5')
+    expect(container.textContent).toContain('mistral:m1')
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
   })
 
   it('shows an error notice for an unknown ref and changes nothing', async () => {
@@ -360,6 +408,28 @@ describe('ChatArea — /model slash command', () => {
     expect(container.textContent).not.toContain('vllm-nomic-embed')
     expect(mockUpdateConversation).not.toHaveBeenCalled()
     expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('keeps the bare-/model list until it is dismissed', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model')
+    await waitFor(() => expect(container.textContent).toContain('Local models:'))
+
+    fireEvent.click(container.querySelector('button[aria-label="Dismiss model notice"]'))
+    await waitFor(() => expect(container.textContent).not.toContain('Local models:'))
+  })
+
+  it('clears the list notice on the next send', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model')
+    await waitFor(() => expect(container.textContent).toContain('Local models:'))
+
+    const composer = container.querySelector('textarea')
+    fireEvent.change(composer, { target: { value: 'hello' } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
+    expect(container.textContent).not.toContain('Local models:')
   })
 
   it('passes non-command text through to the normal send', async () => {

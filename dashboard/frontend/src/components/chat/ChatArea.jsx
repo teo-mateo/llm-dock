@@ -79,15 +79,25 @@ export default function ChatArea({
     services: (allServices || []).filter(s => isChatService(s, engines)),
     openRouterModels: openRouterModels || [],
     providerGroups,
-  }), [allServices, engines, openRouterModels, providerGroups])
+    currentService: conversation?.main_service ?? selectedModel ?? null,
+  }), [allServices, engines, openRouterModels, providerGroups, conversation, selectedModel])
 
   const [slashNotice, setSlashNotice] = useState(null)
   const slashNoticeTimer = useRef(null)
-  const showSlashNotice = useCallback((text) => {
-    setSlashNotice(text)
+  const dismissSlashNotice = useCallback(() => {
+    setSlashNotice(null)
     if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
-    slashNoticeTimer.current = setTimeout(() => setSlashNotice(null), 6000)
+    slashNoticeTimer.current = null
   }, [])
+  const showSlashNotice = useCallback((text, sticky = false) => {
+    setSlashNotice({ text, sticky })
+    if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
+    slashNoticeTimer.current = sticky ? null : setTimeout(dismissSlashNotice, 6000)
+  }, [dismissSlashNotice])
+  const activeConversationId = conversation ? conversation.id : null
+  useEffect(() => {
+    dismissSlashNotice()
+  }, [activeConversationId, dismissSlashNotice])
   useEffect(() => () => {
     if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
   }, [])
@@ -142,6 +152,7 @@ export default function ChatArea({
   }, [])
 
   async function handleComposerSend(msg, images) {
+    dismissSlashNotice()
     const hasImages = Array.isArray(images) && images.length > 0
     const cmd = hasImages ? null : parseModelCommand(msg)
     if (!cmd) {
@@ -154,16 +165,28 @@ export default function ChatArea({
       return
     }
     if (cmd.arg === null) {
-      showSlashNotice(formatModelList(slashModels).join('\n'))
+      // sticky: a 15-model list unread within 6 s is useless, so it stays
+      // until the next send, a conversation change, or the close button
+      showSlashNotice(formatModelList(slashModels).join('\n'), true)
       return
     }
-    const resolved = resolveModelRef(cmd.arg, slashModels)
-    if (!resolved) {
+    const resolution = resolveModelRef(cmd.arg, slashModels)
+    if (!resolution) {
       showSlashNotice(`Unknown model "${cmd.arg}". Type /model to list available models.`)
       return
     }
+    if (resolution.ambiguous) {
+      showSlashNotice(`"${cmd.arg}" matches several models:\n${resolution.ambiguous.join("\n")}`)
+      return
+    }
+    const resolved = resolution.service
     if (conversation) {
-      await updateConversation(conversation.id, { main_service: resolved })
+      try {
+        await updateConversation(conversation.id, { main_service: resolved })
+      } catch (err) {
+        showSlashNotice(`Couldn't switch to ${resolved}: ${err.message}`)
+        return
+      }
       onReloadConversation?.(conversation.id)
       showSlashNotice(`Switched main model to ${resolved}`)
     } else {
@@ -173,8 +196,16 @@ export default function ChatArea({
   }
 
   const slashNoticeEl = slashNotice ? (
-    <div className="mx-4 mb-2 px-3 py-2 bg-elevated border border-border rounded text-xs text-fg-muted whitespace-pre-line">
-      {slashNotice}
+    <div className="mx-4 mb-2 px-3 py-2 bg-elevated border border-border rounded text-xs text-fg-muted flex items-start gap-2">
+      <span className="flex-1 whitespace-pre-line">{slashNotice.text}</span>
+      <button
+        type="button"
+        onClick={dismissSlashNotice}
+        aria-label="Dismiss model notice"
+        className="text-fg-muted hover:text-fg"
+      >
+        <i className="fa-solid fa-xmark"></i>
+      </button>
     </div>
   ) : null
 

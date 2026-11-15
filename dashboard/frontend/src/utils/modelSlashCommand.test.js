@@ -67,39 +67,67 @@ describe('parseModelCommand', () => {
 
 describe('resolveModelRef', () => {
   it('resolves exact local service names, running or stopped', () => {
-    expect(resolveModelRef('vllm-qwen', models())).toBe('vllm-qwen')
-    expect(resolveModelRef('llamacpp-27b', models())).toBe('llamacpp-27b')
+    expect(resolveModelRef('vllm-qwen', models())).toEqual({ service: 'vllm-qwen' })
+    expect(resolveModelRef('llamacpp-27b', models())).toEqual({ service: 'llamacpp-27b' })
   })
 
   it('does not resolve a service ChatArea filtered out (embedding)', () => {
     expect(resolveModelRef('vllm-nomic-embed', models())).toBeNull()
   })
 
-  it('resolves a stale exact openrouter: string even when no longer curated', () => {
-    const m = models({ openRouterModels: [] })
-    expect(resolveModelRef('openrouter:old/model-x', m)).toBe('openrouter:old/model-x')
-    expect(resolveModelRef('openrouter:', m)).toBeNull()
+  it('resolves an offered exact openrouter: string', () => {
+    expect(resolveModelRef('openrouter:anthropic/claude-sonnet-5', models()))
+      .toEqual({ service: 'openrouter:anthropic/claude-sonnet-5' })
+  })
+
+  it('rejects an unoffered exact openrouter: string, unless it is the current model', () => {
+    const stale = models({ openRouterModels: [] })
+    expect(resolveModelRef('openrouter:old/model-x', stale)).toBeNull()
+    expect(resolveModelRef('openrouter:old/model-x', {
+      ...stale, currentService: 'openrouter:old/model-x',
+    })).toEqual({ service: 'openrouter:old/model-x' })
+    expect(resolveModelRef('openrouter:', stale)).toBeNull()
   })
 
   it('resolves curated OpenRouter models by id or label', () => {
     expect(resolveModelRef('anthropic/claude-sonnet-5', models()))
-      .toBe('openrouter:anthropic/claude-sonnet-5')
+      .toEqual({ service: 'openrouter:anthropic/claude-sonnet-5' })
     expect(resolveModelRef('Claude Sonnet 5', models()))
-      .toBe('openrouter:anthropic/claude-sonnet-5')
+      .toEqual({ service: 'openrouter:anthropic/claude-sonnet-5' })
+  })
+
+  it('matches labels case-insensitively, ids exactly', () => {
+    expect(resolveModelRef('claude sonnet 5', models()))
+      .toEqual({ service: 'openrouter:anthropic/claude-sonnet-5' })
+    expect(resolveModelRef('MISTRAL-LARGE-LATEST', models())).toBeNull()
   })
 
   it('resolves provider models by exact service string, id, or label', () => {
     expect(resolveModelRef('mistral:mistral-large-latest', models()))
-      .toBe('mistral:mistral-large-latest')
+      .toEqual({ service: 'mistral:mistral-large-latest' })
     expect(resolveModelRef('mistral-large-latest', models()))
-      .toBe('mistral:mistral-large-latest')
+      .toEqual({ service: 'mistral:mistral-large-latest' })
     expect(resolveModelRef('Mistral Large', models()))
-      .toBe('mistral:mistral-large-latest')
+      .toEqual({ service: 'mistral:mistral-large-latest' })
   })
 
-  it('resolves a stale model of a configured provider, but rejects an unknown provider', () => {
-    expect(resolveModelRef('mistral:gone-model', models())).toBe('mistral:gone-model')
+  it('rejects an unoffered model of a configured provider, unless it is the current model', () => {
+    expect(resolveModelRef('mistral:gone-model', models())).toBeNull()
+    expect(resolveModelRef('mistral:gone-model', {
+      ...models(), currentService: 'mistral:gone-model',
+    })).toEqual({ service: 'mistral:gone-model' })
     expect(resolveModelRef('noprovider:model', models())).toBeNull()
+  })
+
+  it('flags labels that match several models as ambiguous', () => {
+    const m = models({
+      providerGroups: [
+        { id: 'mistral', name: 'Mistral', models: [{ id: 'm1', label: 'Claude Sonnet 5' }] },
+      ],
+    })
+    expect(resolveModelRef('Claude Sonnet 5', m)).toEqual({
+      ambiguous: ['openrouter:anthropic/claude-sonnet-5', 'mistral:m1'],
+    })
   })
 
   it('rejects unknown refs and empty input', () => {

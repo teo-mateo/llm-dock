@@ -12,29 +12,49 @@ export function parseModelCommand(text) {
   return { arg: arg || null }
 }
 
+// Exact service strings (openrouter:/provider:) resolve only when offered or
+// already the current model: the server stores main_service unvalidated, so
+// accepting a typo'd string would report a successful switch and only fail at
+// run time — strictly worse than the picker, which cannot produce it.
 export function resolveModelRef(arg, models = {}) {
   if (typeof arg !== 'string' || !arg) return null
-  const { services = [], openRouterModels = [], providerGroups = [] } = models
+  const { services = [], openRouterModels = [], providerGroups = [], currentService } = models
 
   for (const s of services) {
-    if (s.name === arg) return arg
+    if (s.name === arg) return { service: arg }
   }
-  if (isOpenRouterService(arg) && openRouterModelId(arg)) return arg
-  const provider = parseProviderService(arg)
-  if (provider) {
-    const group = providerGroups.find(g => g.id === provider.providerId)
-    if (group) return providerServiceName(provider.providerId, provider.modelId)
+  if (arg.includes(':')) {
+    if (arg === currentService) return { service: arg }
+    if (isOpenRouterService(arg) && openRouterModelId(arg)) {
+      if (openRouterModels.some(m => serviceNameForModel(m.id) === arg)) return { service: arg }
+      return null
+    }
+    const provider = parseProviderService(arg)
+    if (provider) {
+      const group = providerGroups.find(g => g.id === provider.providerId)
+      if (group && (group.models || []).some(m => m.id === provider.modelId)) {
+        return { service: arg }
+      }
+    }
     return null
   }
-  if (arg.includes(':')) return null
 
-  const curated = openRouterModels.find(m => m.id === arg || m.label === arg)
-  if (curated) return serviceNameForModel(curated.id)
-  for (const group of providerGroups) {
-    const model = (group.models || []).find(m => m.id === arg || m.label === arg)
-    if (model) return providerServiceName(group.id, model.id)
+  const candidates = new Set()
+  for (const m of openRouterModels) {
+    if (m.id === arg || fold(m.label) === fold(arg)) candidates.add(serviceNameForModel(m.id))
   }
-  return null
+  for (const group of providerGroups) {
+    for (const m of group.models || []) {
+      if (m.id === arg || fold(m.label) === fold(arg)) candidates.add(providerServiceName(group.id, m.id))
+    }
+  }
+  if (candidates.size === 0) return null
+  if (candidates.size > 1) return { ambiguous: [...candidates] }
+  return { service: candidates.values().next().value }
+}
+
+function fold(s) {
+  return typeof s === 'string' ? s.toLowerCase() : ''
 }
 
 export function formatModelList(models = {}) {
