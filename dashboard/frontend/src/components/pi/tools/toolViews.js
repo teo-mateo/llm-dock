@@ -3,6 +3,16 @@ import { bashSummary, parseBash } from '../../../utils/piTools/bash'
 import { editSummary, parseEdit } from '../../../utils/piTools/edit'
 import { parseRead, parseWrite, readSummary, writeSummary } from '../../../utils/piTools/files'
 import { parseProcess, processSummary } from '../../../utils/piTools/process'
+import {
+  joinSummary,
+  leaveSummary,
+  lookSummary,
+  parseLook,
+  parseSend,
+  sendSummary,
+} from '../../../utils/piTools/chatterbox'
+import ChatterboxLookBody from './ChatterboxLookBody'
+import ChatterboxSendBody from './ChatterboxSendBody'
 import BashToolBody from './BashToolBody'
 import EditToolBody from './EditToolBody'
 import GenericToolBody from './GenericToolBody'
@@ -18,6 +28,10 @@ const TOOL_VIEWS = {
   read: { parse: parseRead, summary: readSummary, Body: ReadToolBody },
   write: { parse: parseWrite, summary: writeSummary, Body: WriteToolBody },
   process: { parse: parseProcess, summary: processSummary, Body: ProcessToolBody },
+  chatterbox_send: { parse: parseSend, summary: sendSummary, Body: ChatterboxSendBody },
+  chatterbox_look: { parse: parseLook, summary: lookSummary, Body: ChatterboxLookBody },
+  chatterbox_join: { parse: null, summary: joinSummary, Body: GenericToolBody },
+  chatterbox_leave: { parse: null, summary: leaveSummary, Body: GenericToolBody },
 }
 
 export function toolEntry(name, views = TOOL_VIEWS) {
