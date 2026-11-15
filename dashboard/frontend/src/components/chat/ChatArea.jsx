@@ -1,5 +1,5 @@
 import PageTitle from '../PageTitle'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import DebugOverlay from './DebugOverlay'
@@ -14,7 +14,12 @@ import TextContextMenu from './TextContextMenu'
 import McpToggle from './McpToggle'
 import useCritique from '../../hooks/useCritique'
 import useChatPrompts from '../../hooks/useChatPrompts'
+import useServicesSSE from '../../hooks/useServicesSSE'
+import useEngineCatalogue from '../../hooks/useEngineCatalogue'
+import useProviderModels from '../../hooks/useProviderModels'
+import { isChatService } from '../../hooks/useRunningServices'
 import { updateConversation } from '../../services/chat'
+import { parseModelCommand, resolveModelRef, formatModelList } from '../../utils/modelSlashCommand'
 
 let spinoffCounter = 0
 
@@ -65,6 +70,38 @@ export default function ChatArea({
   const topZRef = useRef(100)
   const composerRef = useRef(null)
 
+  // The /model list must include stopped services: a conversation may sit on a
+  // stopped one, exactly like the reasoning-level control's list.
+  const { services: allServices } = useServicesSSE()
+  const { engines } = useEngineCatalogue()
+  const { groups: providerGroups } = useProviderModels()
+  const slashModels = useMemo(() => ({
+    services: (allServices || []).filter(s => isChatService(s, engines)),
+    openRouterModels: openRouterModels || [],
+    providerGroups,
+    currentService: conversation?.main_service ?? selectedModel ?? null,
+  }), [allServices, engines, openRouterModels, providerGroups, conversation, selectedModel])
+
+  const [slashNotice, setSlashNotice] = useState(null)
+  const slashNoticeTimer = useRef(null)
+  const dismissSlashNotice = useCallback(() => {
+    setSlashNotice(null)
+    if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
+    slashNoticeTimer.current = null
+  }, [])
+  const showSlashNotice = useCallback((text, sticky = false) => {
+    setSlashNotice({ text, sticky })
+    if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
+    slashNoticeTimer.current = sticky ? null : setTimeout(dismissSlashNotice, 6000)
+  }, [dismissSlashNotice])
+  const activeConversationId = conversation ? conversation.id : null
+  useEffect(() => {
+    dismissSlashNotice()
+  }, [activeConversationId, dismissSlashNotice])
+  useEffect(() => () => {
+    if (slashNoticeTimer.current) clearTimeout(slashNoticeTimer.current)
+  }, [])
+
   const quoteSelection = useCallback((text) => {
     if (!text) return
     const quoted = text.split('\n').map(line => `> ${line}`).join('\n')
@@ -114,6 +151,62 @@ export default function ChatArea({
     setSpinoffs(prev => prev.map(s => s.id === id ? { ...s, zIndex: topZRef.current } : s))
   }, [])
 
+  async function handleComposerSend(msg, images) {
+    dismissSlashNotice()
+    const hasImages = Array.isArray(images) && images.length > 0
+    const cmd = hasImages ? null : parseModelCommand(msg)
+    if (!cmd) {
+      if (conversation) {
+        onSend(msg, images)
+        setPendingInserts([])
+      } else {
+        onCreateAndSend?.(msg, images)
+      }
+      return
+    }
+    if (cmd.arg === null) {
+      showSlashNotice(formatModelList(slashModels).join('\n'), true)
+      return
+    }
+    const resolution = resolveModelRef(cmd.arg, slashModels)
+    if (!resolution) {
+      showSlashNotice(`Unknown model "${cmd.arg}". Type /model to list available models.`)
+      return
+    }
+    if (resolution.ambiguous) {
+      showSlashNotice(`"${cmd.arg}" matches several models:\n${resolution.ambiguous.join('\n')}`)
+      return
+    }
+    const resolved = resolution.service
+    if (conversation) {
+      try {
+        await updateConversation(conversation.id, { main_service: resolved })
+      } catch (err) {
+        showSlashNotice(`Couldn't switch to ${resolved}: ${err.message}`)
+        return
+      }
+      onReloadConversation?.(conversation.id)
+      showSlashNotice(`Switched main model to ${resolved}`)
+    } else {
+      onModelChange?.(resolved)
+      showSlashNotice(`New conversations will start on ${resolved}`)
+    }
+  }
+
+  const slashNoticeEl = slashNotice ? (
+    <div className="mx-4 mb-2 px-3 py-2 bg-elevated border border-border rounded text-xs text-fg-muted flex items-start gap-2">
+      <span className="flex-1 whitespace-pre-line">{slashNotice.text}</span>
+      <button
+        type="button"
+        onClick={dismissSlashNotice}
+        aria-label="Dismiss model notice"
+        className="text-fg-muted hover:text-fg"
+      >
+        <i className="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+  ) : null
+
   // The route points at a conversation whose fetch hasn't resolved yet
   // (direct load, or switching from another conversation). Authoritative
   // over a possibly-stale `conversation`: render loading, never the active
@@ -152,10 +245,11 @@ export default function ChatArea({
               />
             </div>
           )}
+          {slashNoticeEl}
           <div className="w-full">
             <ChatInput
               focusKey="empty-state"
-              onSend={(msg, images) => onCreateAndSend?.(msg, images)}
+              onSend={handleComposerSend}
               disabled={!defaultModelName}
               trailing={
                 <>
@@ -231,11 +325,6 @@ export default function ChatArea({
       : { prompt_id: promptId }
     await updateConversation(conversation.id, body)
     onReloadConversation?.(conversation.id)
-  }
-
-  function handleSend(msg, images) {
-    onSend(msg, images)
-    setPendingInserts([])
   }
 
   return (
@@ -342,11 +431,13 @@ export default function ChatArea({
           </div>
         )}
 
+        {slashNoticeEl}
+
         {/* Input */}
         <ChatInput
           ref={composerRef}
           focusKey={conversation.id}
-          onSend={handleSend}
+          onSend={handleComposerSend}
           disabled={busy || !conversation.main_service}
           pendingInserts={pendingInserts}
           onClearInsert={(idx) => setPendingInserts(prev => prev.filter((_, i) => i !== idx))}

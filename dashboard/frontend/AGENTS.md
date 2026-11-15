@@ -351,6 +351,25 @@ critique panel and delete handling. It is heavily engineered around races:
   otherwise indistinguishable from a model that chose not to think.
 - **Stable callbacks** — `onConversationUpdatedRef` wrapper keeps stream
   callbacks identity-stable so `loadConversation` doesn't loop.
+- **`/model` slash command** — both composers are wrapped by `handleComposerSend`
+  in `ChatArea.jsx`: bare single-line `/model` lists the offered models, and
+  `/model <ref>` switches `main_service` (`PUT /chat/conversations/:id` +
+  `onReloadConversation`, the line is never sent; a failed PUT shows the error
+  and does not reload) or, in the empty state, pre-selects `selectedModel` like
+  the picker (which also clears the reasoning level). Parsing/resolution/
+  formatting are pure in `utils/modelSlashCommand.js`. The offered list is the
+  **unfiltered** `useServicesSSE` list filtered by `isChatService` — not
+  `useRunningServices`: a conversation may sit on a stopped service, so a
+  running-only filter would hide valid targets. Exact `openrouter:<id>` and
+  `<provider>:<model>` strings resolve only when offered or already the
+  conversation's `main_service` (a no-op for a model that left the curated list)
+  — the server stores the string unvalidated, so a typo'd exact string would
+  fail at run time instead of at the command. Bare names match ids exactly or
+  labels case-insensitively; several matches yield an ambiguity notice naming
+  the candidates. With images (or multi-line, or `/modelx`) the input is a
+  normal send. The bare-`/model` list is sticky (close button; cleared by the
+  next send or a conversation change); action notices auto-dismiss after ~6 s.
+  Notices live in `ChatArea` state, not `useChat`.
 
 ### `components/chat/` — chat UI
 
@@ -371,6 +390,7 @@ critique panel and delete handling. It is heavily engineered around races:
 | `McpToggle.jsx` | Enable/disable MCP servers for a conversation |
 | `ReasoningLevelSelect.jsx` | Per-conversation reasoning-level listbox in the composer rail. Reads the **unfiltered** service list from `useServicesSSE()` (a local ladder rides on the service payload) and `openRouterModels[].reasoning_levels` for a remote one — a status filter would hide the control on exactly the conversations that have a level, and the remote half is empty while `OPENROUTER_API_KEY` is unset. Renders nothing with no ladder and nothing stored; a level the model stopped offering stays visible and clearable, flagged "not offered by this model" and never sent |
 | `levelRejection.js` | `isReasoningLevelRejection(err)` — pure test behind ChatPage's create-and-send retry, keyed on `err.code === 'invalid_reasoning_level'`; only a level rejection is worth creating a second conversation for, because any other failure can arrive after the first create succeeded |
+| `modelSlashCommand.js` | The `/model` composer command, pure: `parseModelCommand` (single-line `/model [ref]`; anything else `null`), `resolveModelRef` (`{service} | {ambiguous} | null`: exact local name; exact `openrouter:` / `<provider>:<model>` string only when offered or equal to `currentService`; otherwise curated-or-provider id (exact) or label (case-insensitive)), `formatModelList` (the bare-`/model` notice lines) |
 | `SpinoffWindow.jsx` / `SpinoffTaskbar.jsx` | Spinoff conversation UI |
 | `ChatSidebar.jsx` | Conversation tree grouped by project; rename/delete/select-all, shift-click range selection, bulk move/delete; active-run spinner |
 | `SidebarSplit.jsx` | Resizable chat sidebar wrapper |

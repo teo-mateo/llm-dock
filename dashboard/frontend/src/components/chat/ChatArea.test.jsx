@@ -6,8 +6,29 @@ import ChatArea from './ChatArea'
 // ChatInput-less path is fine, but ChatArea itself doesn't use it). We only
 // exercise the no-conversation branches here, so no router/hook mocking is
 // needed beyond what ChatArea's own imports require.
-vi.mock('../../hooks/useRunningServices', () => ({
+vi.mock('../../hooks/useRunningServices', async (importActual) => ({
+  ...(await importActual()),
   default: () => ({ services: [], loading: false }),
+}))
+
+// Controllable model lists for the /model command: the SSE service list
+// (unfiltered — ChatArea applies isChatService itself), the engine catalogue,
+// and the configured provider groups.
+const { slashState } = vi.hoisted(() => ({
+  slashState: {
+    services: null,
+    engines: [],
+    providerGroups: [],
+  },
+}))
+vi.mock('../../hooks/useServicesSSE', () => ({
+  default: () => ({ services: slashState.services, loading: false }),
+}))
+vi.mock('../../hooks/useEngineCatalogue', () => ({
+  default: () => ({ status: 'ready', engines: slashState.engines, error: null, byType: {}, retry: () => {} }),
+}))
+vi.mock('../../hooks/useProviderModels', () => ({
+  default: () => ({ providers: [], groups: slashState.providerGroups, loading: false, refresh: () => {} }),
 }))
 
 // Heavy children that fetch or need extra context — not under test here.
@@ -222,6 +243,287 @@ describe('ChatArea — prompt selection', () => {
     fireEvent.keyDown(composer, { key: 'Enter' })
 
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
+  })
+})
+
+describe('ChatArea — /model slash command', () => {
+  beforeEach(() => {
+    mockUpdateConversation.mockReset()
+    mockUpdateConversation.mockResolvedValue({ id: 'conv-1' })
+    slashState.services = [
+      { name: 'vllm-qwen', template_type: 'vllm', status: 'running', kind: 'chat' },
+      { name: 'llamacpp-27b', template_type: 'llamacpp', status: 'exited', kind: 'chat' },
+      { name: 'vllm-nomic-embed', template_type: 'vllm', status: 'running', kind: 'embedding' },
+    ]
+    slashState.engines = []
+    slashState.providerGroups = [
+      { id: 'mistral', name: 'Mistral', models: [{ id: 'mistral-large-latest', label: 'Mistral Large' }] },
+    ]
+  })
+
+  const OPENROUTER_MODELS = [{ id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' }]
+
+  function renderWithConversation(onSend = vi.fn(), extra = {}) {
+    const onReloadConversation = vi.fn()
+    const utils = render(
+      <ChatArea
+        conversation={{ id: 'conv-1', main_service: 'vllm-qwen', mcp_servers: [] }}
+        awaitingConversation={false}
+        defaultModelName="vllm-qwen"
+        openRouterModels={OPENROUTER_MODELS}
+        onSend={onSend}
+        onReloadConversation={onReloadConversation}
+        messages={[]}
+        critiques={{}}
+        setCritiques={() => {}}
+        {...extra}
+      />
+    )
+    return { onSend, onReloadConversation, ...utils }
+  }
+
+  function typeCommand(container, text) {
+    const composer = container.querySelector('textarea')
+    fireEvent.change(composer, { target: { value: text } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+  }
+
+  it('switches the main model, reloads the conversation, and never sends', async () => {
+    const { onSend, onReloadConversation, container } = renderWithConversation()
+    typeCommand(container, '/model llamacpp-27b')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation).toHaveBeenCalledWith('conv-1', { main_service: 'llamacpp-27b' })
+      expect(onReloadConversation).toHaveBeenCalledWith('conv-1')
+    })
+    expect(onSend).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('Switched main model to llamacpp-27b')
+  })
+
+  it('resolves a curated OpenRouter label to its openrouter: service string', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model Claude Sonnet 5')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation)
+        .toHaveBeenCalledWith('conv-1', { main_service: 'openrouter:anthropic/claude-sonnet-5' })
+    })
+  })
+
+  it('resolves a provider service string as-is', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model mistral:mistral-large-latest')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation)
+        .toHaveBeenCalledWith('conv-1', { main_service: 'mistral:mistral-large-latest' })
+    })
+  })
+
+  it('resolves an exact openrouter: string that is the current model (no-op)', async () => {
+    const { container } = renderWithConversation(vi.fn(), {
+      conversation: { id: 'conv-1', main_service: 'openrouter:old/model-x', mcp_servers: [] },
+    })
+    typeCommand(container, '/model openrouter:old/model-x')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation)
+        .toHaveBeenCalledWith('conv-1', { main_service: 'openrouter:old/model-x' })
+    })
+  })
+
+  it('rejects an exact openrouter: string that is unoffered and not current', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model openrouter:old/model-x')
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Unknown model "openrouter:old/model-x"')
+    })
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('shows an error notice when the switch fails and does not reload', async () => {
+    mockUpdateConversation.mockRejectedValueOnce(new Error('boom'))
+    const { onReloadConversation, container } = renderWithConversation()
+    typeCommand(container, '/model llamacpp-27b')
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("Couldn't switch to llamacpp-27b: boom")
+    })
+    expect(onReloadConversation).not.toHaveBeenCalled()
+  })
+
+  it('matches curated labels case-insensitively', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model claude sonnet 5')
+
+    await waitFor(() => {
+      expect(mockUpdateConversation)
+        .toHaveBeenCalledWith('conv-1', { main_service: 'openrouter:anthropic/claude-sonnet-5' })
+    })
+  })
+
+  it('names the candidates when a label matches several models', async () => {
+    slashState.providerGroups = [
+      { id: 'mistral', name: 'Mistral', models: [{ id: 'm1', label: 'Claude Sonnet 5' }] },
+    ]
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model Claude Sonnet 5')
+
+    await waitFor(() => expect(container.textContent).toContain('matches several models'))
+    expect(container.textContent).toContain('openrouter:anthropic/claude-sonnet-5')
+    expect(container.textContent).toContain('mistral:m1')
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('shows an error notice for an unknown ref and changes nothing', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model nope')
+
+    await waitFor(() => expect(container.textContent).toContain('Unknown model "nope"'))
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not offer embedding services to the command', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model vllm-nomic-embed')
+
+    await waitFor(() => expect(container.textContent).toContain('Unknown model "vllm-nomic-embed"'))
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('bare /model lists local (with status), OpenRouter, and provider models, and sends nothing', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model')
+
+    await waitFor(() => expect(container.textContent).toContain('Local models:'))
+    expect(container.textContent).toContain('vllm-qwen (running)')
+    expect(container.textContent).toContain('llamacpp-27b (stopped)')
+    expect(container.textContent).toContain('openrouter:anthropic/claude-sonnet-5')
+    expect(container.textContent).toContain('mistral:mistral-large-latest')
+    expect(container.textContent).not.toContain('vllm-nomic-embed')
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('keeps the bare-/model list until it is dismissed', async () => {
+    const { container } = renderWithConversation()
+    typeCommand(container, '/model')
+    await waitFor(() => expect(container.textContent).toContain('Local models:'))
+
+    fireEvent.click(container.querySelector('button[aria-label="Dismiss model notice"]'))
+    await waitFor(() => expect(container.textContent).not.toContain('Local models:'))
+  })
+
+  it('clears the list notice on the next send', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model')
+    await waitFor(() => expect(container.textContent).toContain('Local models:'))
+
+    const composer = container.querySelector('textarea')
+    fireEvent.change(composer, { target: { value: 'hello' } })
+    fireEvent.keyDown(composer, { key: 'Enter' })
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello', undefined))
+    expect(container.textContent).not.toContain('Local models:')
+  })
+
+  it('passes non-command text through to the normal send', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, 'hello /model vllm-qwen')
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('hello /model vllm-qwen', undefined))
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+  })
+
+  it('passes multi-line input through to the normal send', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/model vllm-qwen\nsecond line')
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('/model vllm-qwen\nsecond line', undefined))
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+  })
+
+  it('passes /modelx through to the normal send', async () => {
+    const { onSend, container } = renderWithConversation()
+    typeCommand(container, '/modelx vllm-qwen')
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('/modelx vllm-qwen', undefined))
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+  })
+
+  it('passes a command typed with an image through to the normal send', async () => {
+    const { onSend, container } = renderWithConversation()
+    const fileInput = container.querySelector('input[type="file"]')
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['img'], 'pic.png', { type: 'image/png' })] },
+    })
+    await waitFor(() => expect(container.querySelector('img[alt="pic.png"]')).toBeTruthy())
+
+    typeCommand(container, '/model vllm-qwen')
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled())
+    expect(onSend.mock.calls[0][0]).toBe('/model vllm-qwen')
+    expect(Array.isArray(onSend.mock.calls[0][1])).toBe(true)
+    expect(onSend.mock.calls[0][1]).toHaveLength(1)
+    expect(mockUpdateConversation).not.toHaveBeenCalled()
+  })
+
+  describe('empty-state composer', () => {
+    function renderEmpty(onModelChange, onCreateAndSend) {
+      return render(
+        <ChatArea
+          conversation={null}
+          awaitingConversation={false}
+          defaultModelName="vllm-qwen"
+          selectedModel="vllm-qwen"
+          openRouterModels={OPENROUTER_MODELS}
+          onModelChange={onModelChange}
+          onCreateAndSend={onCreateAndSend}
+          messages={[]}
+          critiques={{}}
+          setCritiques={() => {}}
+        />
+      )
+    }
+
+    it('pre-selects the model without creating a conversation or sending', async () => {
+      const onModelChange = vi.fn()
+      const onCreateAndSend = vi.fn()
+      const { container } = renderEmpty(onModelChange, onCreateAndSend)
+      typeCommand(container, '/model llamacpp-27b')
+
+      await waitFor(() => expect(onModelChange).toHaveBeenCalledWith('llamacpp-27b'))
+      expect(onCreateAndSend).not.toHaveBeenCalled()
+      expect(mockUpdateConversation).not.toHaveBeenCalled()
+      expect(container.textContent).toContain('New conversations will start on llamacpp-27b')
+    })
+
+    it('resolves curated OpenRouter refs the same way in the empty state', async () => {
+      const onModelChange = vi.fn()
+      const onCreateAndSend = vi.fn()
+      const { container } = renderEmpty(onModelChange, onCreateAndSend)
+      typeCommand(container, '/model Claude Sonnet 5')
+
+      await waitFor(() => {
+        expect(onModelChange).toHaveBeenCalledWith('openrouter:anthropic/claude-sonnet-5')
+      })
+      expect(onCreateAndSend).not.toHaveBeenCalled()
+    })
+
+    it('passes normal text through to create-and-send', async () => {
+      const onModelChange = vi.fn()
+      const onCreateAndSend = vi.fn()
+      const { container } = renderEmpty(onModelChange, onCreateAndSend)
+      typeCommand(container, 'hello')
+
+      await waitFor(() => expect(onCreateAndSend).toHaveBeenCalledWith('hello', undefined))
+      expect(onModelChange).not.toHaveBeenCalled()
+    })
   })
 })
 
