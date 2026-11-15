@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import fcntl
 import yaml
+
+import litellm_gateway
 import json
 from pathlib import Path
 from typing import Dict, Any, Set, Optional
@@ -214,10 +216,13 @@ class ComposeManager:
         # Pop old key and insert under new key
         config = services.pop(old_name)
         services[new_name] = config
+        litellm_gateway.rename_routed_service(services, old_name, new_name)
         self._save_services_db(services)
 
         # Rebuild compose file
         self.rebuild_compose_file()
+        if config.get("template_type") == "litellm":
+            litellm_gateway.remove(old_name)
 
     def get_service_from_db(self, service_name: str) -> Optional[Dict[str, Any]]:
         """Get service config from database"""
@@ -321,6 +326,20 @@ class ComposeManager:
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]
             context["api_key"] = config["api_key"]
+        elif template_type == "litellm":
+            # Config-driven gateway: routes are resolved against the whole
+            # service database (and providers.json) at render time, so every
+            # rename/rotation lands here too. Upstream keys go to gateway.env
+            # (0600, gitignored); config.yaml holds only os.environ/ refs.
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
+            gateway_config, gateway_env, warnings = litellm_gateway.ensure(
+                service_name, config, self._load_services_db()
+            )
+            context["gateway_config"] = str(gateway_config)
+            context["gateway_env"] = str(gateway_env)
+            for warning in warnings:
+                logger.warning(f"litellm '{service_name}': {warning}")
         elif template_type == "maya":
             context["model_path"] = config["model_path"]
             context["alias"] = config["alias"]

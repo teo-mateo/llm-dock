@@ -13,6 +13,7 @@ from flag_metadata import (
     FLAG_METADATA_BY_TYPE,
     LLAMACPP_LLAMA_SERVER_FLAGS,
     MANDATORY_FIELDS,
+    PARAMLESS_ENGINES,
     SERVICE_ENGINES,
     flag_metadata_types_message,
     service_engines_message,
@@ -23,13 +24,13 @@ TOKEN = "test-token-flag-metadata-table"
 BENCH = "llamacpp_bench"
 PREVIOUS_MESSAGE = (
     'template_type must be "llamacpp", "ik_llamacpp", "llamacpp_bench", "vllm", '
-    '"ds4", "tabbyapi", "ninfer", "sglang", or "maya"'
+    '"ds4", "tabbyapi", "ninfer", "sglang", "maya", or "litellm"'
 )
 
 
 PREVIOUS_CREATE_MESSAGE = (
     'template_type must be "llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi", '
-    '"ninfer", "sglang", or "maya"'
+    '"ninfer", "sglang", "maya", or "litellm"'
 )
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 
@@ -53,7 +54,7 @@ def test_every_engine_and_the_bench_type_get_their_flag_metadata(client, engine)
     assert response.status_code == 200
     body = response.get_json()
     assert body["template_type"] == engine
-    assert body["optional_flags"]
+    assert bool(body["optional_flags"]) == (engine not in PARAMLESS_ENGINES)
     assert body["mandatory_fields"] == MANDATORY_FIELDS.get(engine, [])
 
 
@@ -142,6 +143,8 @@ def _minimal_service(engine):
         config["model_path"] = "/exl3/model"
     elif engine == "maya":
         config["model_path"] = "/tmp/maya-pack"
+    elif engine == "litellm":
+        config["routes"] = [{"model": "m", "provider": "nope", "upstream_model": "m"}]
     else:
         config["model_path"] = "/models/model.gguf"
     return config
@@ -153,6 +156,7 @@ def test_every_engine_renders_a_minimal_service(tmp_path, monkeypatch, engine):
 
     monkeypatch.setenv("LLM_DOCK_TABBY_KEYS_DIR", str(tmp_path / "keys"))
     monkeypatch.setenv("LLM_DOCK_MAYA_STATE_DIR", str(tmp_path / "maya"))
+    monkeypatch.setenv("LLM_DOCK_LITELLM_DIR", str(tmp_path / "litellm"))
     compose = tmp_path / "docker-compose.yml"
     compose.write_text("services: {}\n")
     (tmp_path / "services.json").write_text("{}")

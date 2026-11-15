@@ -47,8 +47,9 @@ class KeyFileHook(ServiceHook):
     name = "key file"
     causes = frozenset({Cause.DELETE})
 
-    def __init__(self, remove: Callable[[str], object]):
+    def __init__(self, remove: Callable[[str], object], name: str = "key file"):
         self._remove = remove
+        self.name = name
 
     def after_container_swap(self, ctx: ServicesChangedContext) -> None:
         self._remove(ctx.subject)

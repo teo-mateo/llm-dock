@@ -28,7 +28,7 @@ def test_the_infra_overrides_replace_only_what_they_name():
     deps = wiring.rename_deps("c.yml", now=lambda: 7.0)
 
     assert deps.infra.now() == 7.0
-    assert [h.name for h in deps.infra.hooks] == ["inspector", "benchmarks", "key file", "open webui"]
+    assert [h.name for h in deps.infra.hooks] == ["inspector", "benchmarks", "key file", "gateway config", "open webui"]
 
 
 def test_set_public_port_picks_a_free_port_from_the_33xx_range_by_default(monkeypatch):

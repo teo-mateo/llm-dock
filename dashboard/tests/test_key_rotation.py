@@ -590,3 +590,36 @@ def test_set_global_api_key_persists_and_updates_in_process(tmp_path, monkeypatc
     contents = env_path.read_text()
     assert "LLM_DOCK_API_KEY='rotated-key'" in contents or 'LLM_DOCK_API_KEY="rotated-key"' in contents or "LLM_DOCK_API_KEY=rotated-key" in contents
     assert "OTHER=keepme" in contents
+
+
+def test_rotate_leaves_gateway_master_key_alone(compose_manager, tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_DOCK_LITELLM_DIR", str(tmp_path / "gateway"))
+    db = compose_manager.list_services_in_db()
+    db["litellm-gateway"] = {
+        "template_type": "litellm",
+        "alias": "gateway",
+        "port": 3377,
+        "api_key": "sk-dock-master",
+        "routes": [{"model": "a", "service": "svc-a"}],
+    }
+    compose_manager.save_services_db(db)
+
+    result = rotate_keys_in_db(compose_manager, "new-shared-key")
+
+    assert sorted(result["updated"]) == ["svc-a", "svc-b"]
+    db = compose_manager.list_services_in_db()
+    assert db["litellm-gateway"]["api_key"] == "sk-dock-master"
+    assert db["svc-a"]["api_key"] == "new-shared-key"
+    env = (tmp_path / "gateway" / "litellm-gateway" / "gateway.env").read_text()
+    assert "new-shared-key" in env
+
+
+def test_rotation_still_stops_a_running_gateway():
+    from service_ops.affected import affected_services
+
+    state = affected_services(
+        ["svc-a", "litellm-gateway"],
+        [{"name": "litellm-gateway", "status": "running"}, {"name": "svc-a", "status": "exited"}],
+    )
+
+    assert state.running == ["litellm-gateway"]

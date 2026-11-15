@@ -51,6 +51,8 @@ def _cfg(engine, **extra):
     cfg = {"port": 3345, "alias": "svc", "api_key": "k", "template_type": engine, "params": {}}
     if engine == "vllm":
         cfg["model_name"] = "org/model"
+    elif engine == "litellm":
+        cfg["routes"] = [{"model": "m", "service": "x"}]
     else:
         cfg["model_path"] = "/models/m.gguf"
     cfg.update(extra)

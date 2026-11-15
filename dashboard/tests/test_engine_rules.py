@@ -85,6 +85,6 @@ def test_every_engine_has_a_badge_label_and_it_is_what_the_badges_show_today():
 
     assert labels == {
         "llamacpp": "llama.cpp", "ik_llamacpp": "ik_llama", "vllm": "vLLM", "ds4": "DS4",
-        "tabbyapi": "EXL3", "ninfer": "NInfer", "sglang": "SGLang", "maya": "Maya",
+        "tabbyapi": "EXL3", "ninfer": "NInfer", "sglang": "SGLang", "maya": "Maya", "litellm": "Gateway",
     }
     assert all(row["badge_label"] for row in ENGINE_PRESENTATION.values())

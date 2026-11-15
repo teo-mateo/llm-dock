@@ -45,6 +45,10 @@ ENGINE_PRESENTATION = {
         "model_source": "directory", "gguf_picker": False,
         "placeholder": "~/.cache/maya/<model>/<pack> (absolute host path)",
     },
+    "litellm": {
+        "badge_label": "Gateway", "label": "LiteLLM gateway", "hint": "Anthropic /v1/messages over dock + provider models",
+        "model_source": "none", "gguf_picker": False, "placeholder": "no model files: routes pick the models",
+    },
 }
 
 

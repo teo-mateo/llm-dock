@@ -176,6 +176,11 @@ def _service_kind(config):
     (instruct/chat models, base completion models) is treated as 'chat'
     for the purposes of the chat composer's default-model selection.
     """
+    # A gateway is neither a chat model nor an embedding model: it must stay
+    # out of the chat pickers (web and Android both filter on kind == "chat")
+    # while still appearing in the service list.
+    if (config or {}).get("template_type") == "litellm":
+        return "gateway"
     params = (config or {}).get("params") or {}
     if params.get("--runner") == "pooling":
         return "embedding"
