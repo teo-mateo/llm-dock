@@ -33,9 +33,9 @@ describe('PiToolGroup', () => {
   it('output is collapsed until details is opened', () => {
     render(<PiToolGroup group={group([tool(1)])} />)
     expect(screen.queryByText('result 1')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    fireEvent.click(screen.getByRole('button', { name: /Details$/ }))
     expect(screen.getByText('result 1')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /Hide$/ })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('a row parses its call once and stays current when the item is rebuilt', () => {
@@ -43,7 +43,7 @@ describe('PiToolGroup', () => {
     expect(screen.getByRole('img', { name: 'running…' })).toBeInTheDocument()
     rerender(<PiToolGroup group={group([tool(1, { output: 'result 1' })])} />)
     expect(screen.getByRole('img', { name: 'done · 1.2 s' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    fireEvent.click(screen.getByRole('button', { name: /Details$/ }))
     expect(screen.getByText('result 1')).toBeInTheDocument()
   })
 
@@ -54,9 +54,9 @@ describe('PiToolGroup', () => {
 
   it('long runs collapse after three rows until more is tapped', () => {
     render(<PiToolGroup group={group([1, 2, 3, 4, 5].map((id) => tool(id)))} />)
-    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(3)
+    expect(screen.getAllByRole('button', { name: /Details$/ })).toHaveLength(3)
     fireEvent.click(screen.getByRole('button', { name: '2 more…' }))
-    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(5)
+    expect(screen.getAllByRole('button', { name: /Details$/ })).toHaveLength(5)
     expect(screen.queryByText('2 more…')).not.toBeInTheDocument()
   })
 
