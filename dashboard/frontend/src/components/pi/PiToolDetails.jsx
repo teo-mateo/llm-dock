@@ -1,52 +1,29 @@
 import { useState } from 'react'
-import { toolStatusText } from '../../utils/piToolRuns'
+import RawToolBody from './tools/RawToolBody'
+import { toolView } from './tools/toolViews'
 
-const MAX_VISIBLE_LINES = 20
-
-function statusClass(status) {
-  if (status === 'running') return 'text-warning-fg'
-  if (status === 'error') return 'text-error'
-  return 'text-success-fg'
-}
-
-export default function PiToolDetails({ item }) {
-  const [expanded, setExpanded] = useState(false)
-  const output = item.output ?? ''
-  const lines = output.split('\n')
-  const longOutput = lines.length > MAX_VISIBLE_LINES
-  const shown = longOutput && !expanded
-    ? lines.slice(0, MAX_VISIBLE_LINES).join('\n')
-    : output
+export default function PiToolDetails({ tool }) {
+  const [raw, setRaw] = useState(false)
+  const { Body } = toolView(tool.item.name)
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border bg-surface px-3 py-2">
-      <span className={`text-xs ${statusClass(item.status)}`}>{toolStatusText(item)}</span>
-
-      {item.args != null && (
-        <pre className="max-h-60 overflow-auto font-mono text-xs whitespace-pre-wrap break-words text-fg-muted">
-          {item.args}
-        </pre>
-      )}
-
-      {item.output != null && (
-        <pre className="max-h-80 overflow-auto rounded border border-border bg-app px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words text-fg-muted">
-          {shown}
-        </pre>
-      )}
-
-      {longOutput && (
+    <div className="flex min-w-0 flex-col gap-2 border-t border-border bg-surface px-3 py-2 max-sm:px-2">
+      {raw ? <RawToolBody item={tool.item} /> : <Body tool={tool} />}
+      <div className="flex items-center justify-between gap-2">
+        {tool.item.truncated ? (
+          <p className="m-0 text-xs text-warning-fg">output truncated by pi-remote</p>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="self-start text-xs text-accent hover:underline"
+          aria-pressed={raw}
+          onClick={() => setRaw((value) => !value)}
+          className="shrink-0 text-xs text-fg-subtle hover:text-fg"
         >
-          {expanded ? 'Show less' : 'Show all'}
+          {raw ? 'Formatted ▸' : 'Raw ▸'}
         </button>
-      )}
-
-      {item.truncated && (
-        <p className="text-xs text-warning-fg">output truncated by pi-remote</p>
-      )}
+      </div>
     </div>
   )
 }

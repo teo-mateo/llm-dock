@@ -280,8 +280,12 @@ Key mechanics:
 | `pi/PiNotice.jsx` | Notice pill; model/thinking changes render as labelled from→to chips |
 | `pi/PiComposer.jsx` | Send/Stop composer: Enter sends, Shift+Enter newlines, idle vs working placeholder, clear on done/pending, inline rejection status, read-only when ended. Autogrows to its content up to `max-h-[40dvh]` and scrolls internally past that; `fit()` sets the inline height from `scrollHeight + borders + 2px` slack (fractional line boxes would otherwise raise a scrollbar) and re-runs on text change and window resize |
 | `pi/PiMessage.jsx` | User bubbles + assistant markdown (table cells wrap), collapsed thinking, streaming caret; no per-turn token count |
-| `pi/PiToolGroup.jsx` | Consecutive tool calls as one compact block: status dot, name, one-line args, Details toggle |
-| `pi/PiToolDetails.jsx` | A tool's expanded panel: status, full args, output capped at 20 lines, truncation note |
+| `pi/PiToolGroup.jsx` | Consecutive tool calls as one compact block: status dot, name, per-tool summary, Details/Hide toggle. Each row parses its call once (`useMemo` on the `args`/`output` strings — `buildTranscript` rebuilds every item on every event, so memoising on the item would re-parse every tool per streamed token) |
+| `pi/PiToolDetails.jsx` | A tool's expanded panel: the tool's viewer from `toolViews`, a `Raw ▸` toggle back to the payload as sent, truncation note |
+| `pi/tools/toolViews.js` | The one registry from tool name to `{summary, Body}`; unknown tools get the generic view, and `toolSummary` falls back to the flattened args when a summary throws. A new viewer is a parser in `utils/piTools/`, a Body here, and one registry line |
+| `pi/tools/GenericToolBody.jsx` / `RawToolBody.jsx` | Generic viewer (args as a key/value grid, result text, image labels) and the raw payload view |
+| `pi/tools/CappedText.jsx` / `KeyValueGrid.jsx` / `ToolMeta.jsx` | Shared viewer parts: 20-line cap with `Show all N lines`, args grid, status line with chips |
+| `utils/piTools/payload.js` | Pure, never-throwing parse of a tool call: args object, result envelope (`content` text/images, `details`, `structuredContent`, `isError`), verbatim fallback. Ported from Android's `PiToolPayload.kt`, tests included |
 | `utils/piToolRuns.js` | Pure: `groupToolRuns` (empty assistant turns between tools join the group), `argsSummary`, `toolStatusText` |
 | `tools/ToolsPage.jsx` | MCP registry UI: server list (built-in/external), details, test panel |
 | `tools/RegistryEditor.jsx` | JSON editor for `mcp_servers.json` |

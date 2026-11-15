@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { argsSummary, moreLabel, toolStatusText, visibleTools } from '../../utils/piToolRuns'
+import { useMemo, useState } from 'react'
+import { moreLabel, toolStatusText, visibleTools } from '../../utils/piToolRuns'
+import { parseToolArgs, parseToolResult } from '../../utils/piTools/payload'
 import PiToolDetails from './PiToolDetails'
+import { toolSummary } from './tools/toolViews'
 
 function dotClass(status) {
   if (status === 'running') return 'bg-warning animate-pulse'
@@ -10,6 +12,12 @@ function dotClass(status) {
 
 function PiToolRow({ item }) {
   const [open, setOpen] = useState(false)
+  const { args, output } = item
+  const parsed = useMemo(
+    () => ({ args: parseToolArgs(args), result: parseToolResult(output) }),
+    [args, output],
+  )
+  const tool = { ...parsed, item }
   return (
     <li className="border-b border-border last:border-b-0">
       <div className="flex items-center gap-2 px-3 py-1">
@@ -20,7 +28,7 @@ function PiToolRow({ item }) {
         />
         <span className="shrink-0 font-mono text-xs font-semibold text-fg">{item.name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">
-          {argsSummary(item.args)}
+          {toolSummary(tool)}
         </span>
         <button
           type="button"
@@ -28,10 +36,10 @@ function PiToolRow({ item }) {
           onClick={() => setOpen((value) => !value)}
           className="shrink-0 text-xs font-semibold text-accent hover:underline"
         >
-          Details
+          {open ? 'Hide' : 'Details'}
         </button>
       </div>
-      {open && <PiToolDetails item={item} />}
+      {open && <PiToolDetails tool={tool} />}
     </li>
   )
 }
