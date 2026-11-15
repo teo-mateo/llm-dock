@@ -1,0 +1,26 @@
+  {{ service_name }}:
+    image: {{ image }}
+    container_name: {{ service_name }}
+    restart: no
+
+    ports:
+      - "{{ port }}:4000"
+
+    # Master key + one UPSTREAM_<n>_KEY per route, written by
+    # litellm_gateway.ensure() during template rendering. 0600 and gitignored
+    # on the host; secrets never appear in docker-compose.yml.
+    env_file:
+      - {{ gateway_env }}
+
+    volumes:
+      - {{ gateway_config }}:/app/config.yaml:ro
+
+    networks:
+      - llm-network
+
+    # No GPU reservation, no model mounts: the gateway only proxies.
+    # A bind-mounted config change is not seen by a running container, so any
+    # route or upstream-key change needs a gateway restart.
+    command: >
+      --config /app/config.yaml
+      --port 4000

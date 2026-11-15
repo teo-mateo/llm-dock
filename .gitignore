@@ -126,3 +126,6 @@ dashboard/tabby_keys/
 scripts/reasoning-sweep/results/
 scripts/bench/ninfer/results/
 scripts/bench/sglang/results/
+
+# LiteLLM gateway per-service configs (upstream keys live in gateway.env)
+dashboard/litellm/

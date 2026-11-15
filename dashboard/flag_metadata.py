@@ -21,6 +21,9 @@ MANDATORY_FIELDS = {
     "ninfer": ["port", "model_path", "alias", "api_key"],
     "sglang": ["port", "model_path", "alias", "api_key"],
     "maya": ["port", "model_path", "alias", "api_key"],
+    # The gateway has no model files: it is config-driven (routes in
+    # services.json, rendered by litellm_gateway.ensure()).
+    "litellm": ["port", "alias", "api_key"],
 }
 
 # Service-name prefix per template type, where it differs from the type itself.
@@ -42,6 +45,8 @@ ENGINE_INTERNAL_PORTS = {
     "ninfer": 8080,
     "sglang": 8001,
     "maya": 8080,
+    # LiteLLM's proxy listens on 4000 inside the container.
+    "litellm": 4000,
 }
 
 
@@ -62,6 +67,10 @@ ENGINE_IMAGES = {
     "ninfer": "llm-dock-ninfer",
     "sglang": "llm-dock-sglang",
     "maya": "llm-dock-maya",
+    # No local wrapper yet: consumed as the upstream image directly. Pulls
+    # need an anonymous DOCKER_CONFIG when a stale ghcr credential is stored
+    # (see CLAUDE.md "ghcr pulls fail").
+    "litellm": "ghcr.io/berriai/litellm:main-stable",
 }
 
 

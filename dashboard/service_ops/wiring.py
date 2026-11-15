@@ -29,6 +29,8 @@ from .set_public_port import SetPublicPortDeps
 from .preview_key_rotation import PreviewKeyRotationDeps
 from .subsystems import BenchmarkHook, InspectorHook, KeyFileHook, OpenWebUIHook
 
+import litellm_gateway
+
 
 def _rename_benchmarks(old_name: str, new_name: str) -> int:
     from benchmarking.routes import rename_service
@@ -41,6 +43,8 @@ def _hooks():
         InspectorHook(lambda old, new: proxy_supervisor.rename_service(old, new), lambda: proxy_supervisor.sync()),
         BenchmarkHook(lambda old, new: _rename_benchmarks(old, new)),
         KeyFileHook(lambda name: tabby_keys.remove(name)),
+        # A deleted gateway leaves its generated config + env behind otherwise.
+        KeyFileHook(lambda name: litellm_gateway.remove(name)),
         OpenWebUIHook(
             lambda name, engine: is_service_registered_in_openwebui(name, engine),
             lambda name, engine: remove_service_from_openwebui(name, engine),
