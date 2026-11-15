@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bashExitCode, bashOutput, bashSummary, parseBash, splitCdPrefix } from './bash'
+import { bashExitCode, bashOutcome, bashOutput, bashSummary, parseBash, splitCdPrefix } from './bash'
 import { parseToolCall } from './payload'
 
 const success = '{"content":[{"type":"text","text":"ok\\n0\\n"}],"structuredContent":{"output":"ok\\n0\\n"}}'
@@ -66,5 +66,14 @@ describe('bashSummary', () => {
   it('marks a timed out command', () => {
     const output = '{"content":[{"type":"text","text":"Command timed out after 30s"}],"isError":true}'
     expect(bashSummary(tool('{"command":"sleep 60","timeout":30}', output, 'error'))).toBe('$ sleep 60 · timed out')
+  })
+})
+
+describe('bashOutcome', () => {
+  it('classifies exit code and timeout once for the row and the body', () => {
+    expect(bashOutcome(tool('{"command":"ls"}', success))).toEqual({ exitCode: null, failed: false, timedOut: false })
+    expect(bashOutcome(tool('{"command":"ls"}', failed, 'error'))).toEqual({ exitCode: 1, failed: true, timedOut: false })
+    const timedOut = '{"content":[{"type":"text","text":"Command timed out after 30s"}],"isError":true}'
+    expect(bashOutcome(tool('{"command":"sleep 60"}', timedOut)).timedOut).toBe(true)
   })
 })

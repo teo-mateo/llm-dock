@@ -1,10 +1,11 @@
+import { bashOutcome } from '../../../utils/piTools/bash'
 import CappedText from './CappedText'
 import ToolChip from './ToolChip'
 import ToolMeta from './ToolMeta'
 
 function BashMeta({ tool }) {
   const { item, view } = tool
-  const failed = view.exitCode != null && view.exitCode !== 0
+  const outcome = bashOutcome(tool)
   return (
     <ToolMeta
       item={item}
@@ -17,7 +18,8 @@ function BashMeta({ tool }) {
         </>
       }
     >
-      {failed && <ToolChip tone="danger">exit {view.exitCode}</ToolChip>}
+      {outcome.failed && <ToolChip tone="danger">exit {outcome.exitCode}</ToolChip>}
+      {outcome.timedOut && <ToolChip tone="danger">timed out</ToolChip>}
     </ToolMeta>
   )
 }

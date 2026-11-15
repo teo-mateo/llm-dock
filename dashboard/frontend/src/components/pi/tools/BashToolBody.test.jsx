@@ -35,4 +35,10 @@ describe('BashToolBody', () => {
     expect(screen.queryByText('exit 0')).toBeNull()
     expect(screen.getByText('(no output)')).toBeInTheDocument()
   })
+
+  it('a timeout is shown as a chip', () => {
+    const output = '{"content":[{"type":"text","text":"Command timed out after 30s"}],"isError":true}'
+    render(<BashToolBody tool={tool('{"command":"sleep 60"}', output, 'error')} />)
+    expect(screen.getByText('timed out')).toBeInTheDocument()
+  })
 })

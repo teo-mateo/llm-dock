@@ -1,3 +1,4 @@
+import { isToolError } from './payload'
 import { genericSummary } from './summary'
 import { splitPath, stringField } from './text'
 
@@ -16,7 +17,9 @@ export function parsePatch(patch) {
   if (patch === '') return []
   const out = []
   let inHunk = false
-  for (const line of patch.replace(/\r/g, '').split('\n')) {
+  const rows = patch.replace(/\r/g, '').split('\n')
+  if (rows.at(-1) === '') rows.pop()
+  for (const line of rows) {
     const parsed = classify(line, inHunk)
     if (parsed.kind === 'hunk') inHunk = true
     out.push(parsed)
@@ -88,7 +91,7 @@ export function editSummary(tool) {
   const { view } = tool
   if (view?.path == null) return genericSummary(tool)
   const { name } = splitPath(view.path)
-  if (tool.item.status === 'error') return `${name} · failed`
+  if (isToolError(tool)) return `${name} · failed`
   if (!view.hasPatch) return name
   return `${name} +${view.stats.adds} −${view.stats.removes}`
 }

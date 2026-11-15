@@ -38,6 +38,12 @@ describe('parsePatch', () => {
     expect(editStats(lines)).toEqual({ adds: 1, removes: 0 })
   })
 
+  it('a trailing newline adds no line', () => {
+    const lines = numberLines(parsePatch('@@ -1 +1 @@\n-old\n+new\n'))
+    expect(kinds(lines)).toEqual(['hunk', 'remove', 'add'])
+    expect(numberLines(parsePatch('@@ -1,2 +1,2 @@\n a\n \n')).map((line) => line.number)).toEqual([null, 1, 2])
+  })
+
   it('an empty patch has no lines', () => {
     expect(parsePatch('')).toEqual([])
   })
@@ -127,6 +133,11 @@ describe('editSummary', () => {
     expect(editSummary(tool(successResult))).toBe('api.ts +1 −0')
     expect(editSummary(tool(errorResult, 'error'))).toBe('api.ts · failed')
     expect(editSummary(tool(null, 'running'))).toBe('api.ts')
+  })
+
+  it('a result flagged isError counts as failed', () => {
+    const output = JSON.stringify({ content: [{ type: 'text', text: 'no' }], details: { patch }, isError: true })
+    expect(editSummary(tool(output))).toBe('api.ts · failed')
   })
 
   it('falls back to the args when there is no path', () => {

@@ -1,3 +1,4 @@
+import { isToolError } from './payload'
 import { genericSummary } from './summary'
 import { firstCollapsedLine, stringField } from './text'
 
@@ -31,15 +32,21 @@ export function parseBash(args, result) {
   }
 }
 
-function timedOut(tool) {
-  return tool.item.status === 'error' && (tool.result?.text ?? '').includes('timed out')
+export function bashOutcome(tool) {
+  const exitCode = tool.view?.exitCode ?? null
+  return {
+    exitCode,
+    failed: exitCode != null && exitCode !== 0,
+    timedOut: isToolError(tool) && (tool.result?.text ?? '').includes('timed out'),
+  }
 }
 
 export function bashSummary(tool) {
   const { view } = tool
   if (view == null) return genericSummary(tool)
+  const outcome = bashOutcome(tool)
   let text = `$ ${firstCollapsedLine(view.command)}`
-  if (view.exitCode != null && view.exitCode !== 0) text += ` · exit ${view.exitCode}`
-  if (timedOut(tool)) text += ' · timed out'
+  if (outcome.failed) text += ` · exit ${outcome.exitCode}`
+  if (outcome.timedOut) text += ' · timed out'
   return text
 }
