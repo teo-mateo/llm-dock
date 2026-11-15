@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import RawToolBody from './tools/RawToolBody'
-import { toolView } from './tools/toolViews'
+import ToolBodyBoundary from './tools/ToolBodyBoundary'
+import { viewFor } from './tools/toolViews'
 
-export default function PiToolDetails({ tool }) {
+export default function PiToolDetails({ tool, views }) {
   const [raw, setRaw] = useState(false)
-  const { Body } = toolView(tool.item.name)
+  const { Body } = viewFor(tool, views)
 
   return (
     <div className="flex min-w-0 flex-col gap-2 border-t border-border bg-surface px-3 py-2 max-sm:px-2">
-      {raw ? <RawToolBody item={tool.item} /> : <Body tool={tool} />}
+      {raw ? (
+        <RawToolBody item={tool.item} />
+      ) : (
+        <ToolBodyBoundary tool={tool} resetKey={tool.result}>
+          <Body tool={tool} />
+        </ToolBodyBoundary>
+      )}
       <div className="flex items-center justify-between gap-2">
         {tool.item.truncated ? (
           <p className="m-0 text-xs text-warning-fg">output truncated by pi-remote</p>

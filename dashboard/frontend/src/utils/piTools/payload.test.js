@@ -4,6 +4,7 @@ import {
   imageLabel,
   isToolError,
   parseToolArgs,
+  parseToolCall,
   parseToolResult,
 } from './payload'
 
@@ -128,5 +129,28 @@ describe('isToolError', () => {
     expect(isToolError({ item: item('done'), result: { isError: true } })).toBe(true)
     expect(isToolError({ item: item('done'), result: { isError: false } })).toBe(false)
     expect(isToolError({ item: item('running'), result: null })).toBe(false)
+  })
+})
+
+describe('parseToolCall', () => {
+  it('without a tool parser there is no view', () => {
+    expect(parseToolCall('{"a":1}', '"done"', null)).toEqual({
+      args: { a: 1 },
+      result: parseToolResult('"done"'),
+      view: null,
+    })
+  })
+
+  it('runs the tool parser over the parsed args and result', () => {
+    const parse = (args, result) => ({ a: args.a, text: result.text })
+    expect(parseToolCall('{"a":1}', '"done"', parse).view).toEqual({ a: 1, text: 'done' })
+  })
+
+  it('a tool parser that throws or returns nothing gives no view', () => {
+    const throws = () => {
+      throw new Error('bad payload')
+    }
+    expect(parseToolCall('{"a":1}', null, throws).view).toBeNull()
+    expect(parseToolCall('{"a":1}', null, () => undefined).view).toBeNull()
   })
 })

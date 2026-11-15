@@ -53,6 +53,17 @@ export function parseToolResult(raw) {
   return verbatim(raw)
 }
 
+export function parseToolCall(rawArgs, rawOutput, parse) {
+  const args = parseToolArgs(rawArgs)
+  const result = parseToolResult(rawOutput)
+  if (!parse) return { args, result, view: null }
+  try {
+    return { args, result, view: parse(args, result) ?? null }
+  } catch {
+    return { args, result, view: null }
+  }
+}
+
 export function imageByteSize(image) {
   const body = image.base64.replace(/\s/g, '')
   const padding = body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0

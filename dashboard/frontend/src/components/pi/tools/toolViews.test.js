@@ -1,14 +1,34 @@
 import { describe, it, expect } from 'vitest'
 import GenericToolBody from './GenericToolBody'
-import { toolSummary, toolView } from './toolViews'
+import { GENERIC_VIEW, toolEntry, toolSummary, viewFor } from './toolViews'
 
-describe('toolView', () => {
+const Body = () => null
+const views = {
+  bash: { parse: (args) => (args?.command ? { command: args.command } : null), summary: (tool) => `$ ${tool.view.command}`, Body },
+}
+const tool = (name, args, view) => ({ item: { name, args: JSON.stringify(args) }, args, result: null, view })
+
+describe('toolViews', () => {
   it('an unknown tool gets the generic view', () => {
-    expect(toolView('web_search').Body).toBe(GenericToolBody)
+    expect(toolEntry('web_search').Body).toBe(GenericToolBody)
+    expect(viewFor(tool('web_search', { q: 1 }, null))).toBe(GENERIC_VIEW)
   })
 
-  it('the summary falls back to the flattened args', () => {
-    const tool = { item: { name: 'web_search', args: '{"query":"q"}' }, args: { query: 'q' }, result: null }
-    expect(toolSummary(tool)).toBe('query=q')
+  it('a tool named like an object property is still unknown', () => {
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(toolEntry(name)).toBe(GENERIC_VIEW)
+    }
+  })
+
+  it('a registered tool with a parsed view gets its own viewer', () => {
+    const parsed = tool('bash', { command: 'ls' }, { command: 'ls' })
+    expect(viewFor(parsed, views).Body).toBe(Body)
+    expect(toolSummary(parsed, views)).toBe('$ ls')
+  })
+
+  it('a registered tool whose payload did not parse falls back to generic', () => {
+    const unparsed = tool('bash', { cmd: 'ls' }, null)
+    expect(viewFor(unparsed, views)).toBe(GENERIC_VIEW)
+    expect(toolSummary(unparsed, views)).toBe('cmd=ls')
   })
 })

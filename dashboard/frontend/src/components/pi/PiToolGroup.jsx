@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { moreLabel, toolStatusText, visibleTools } from '../../utils/piToolRuns'
-import { parseToolArgs, parseToolResult } from '../../utils/piTools/payload'
+import { parseToolCall } from '../../utils/piTools/payload'
 import PiToolDetails from './PiToolDetails'
-import { toolSummary } from './tools/toolViews'
+import { toolEntry, toolSummary } from './tools/toolViews'
 
 function dotClass(status) {
   if (status === 'running') return 'bg-warning animate-pulse'
@@ -12,11 +12,9 @@ function dotClass(status) {
 
 function PiToolRow({ item }) {
   const [open, setOpen] = useState(false)
-  const { args, output } = item
-  const parsed = useMemo(
-    () => ({ args: parseToolArgs(args), result: parseToolResult(output) }),
-    [args, output],
-  )
+  const { name, args, output } = item
+  const { parse } = toolEntry(name)
+  const parsed = useMemo(() => parseToolCall(args, output, parse), [args, output, parse])
   const tool = { ...parsed, item }
   return (
     <li className="border-b border-border last:border-b-0">

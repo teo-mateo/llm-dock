@@ -55,6 +55,14 @@ describe('PiToolDetails', () => {
     expect(screen.queryByText(/"content"/)).not.toBeInTheDocument()
   })
 
+  it('a tool named like an object property opens in the generic view', () => {
+    for (const name of ['toString', 'constructor', '__proto__']) {
+      render(<PiToolDetails tool={tool({ name, status: 'done', output: 'ok' })} />)
+      expect(screen.getByText('ok')).toBeInTheDocument()
+      cleanup()
+    }
+  })
+
   it('raw toggle shows the payload as sent and back', () => {
     const output = '{"content":[{"type":"text","text":"1. result"}]}'
     render(<PiToolDetails tool={tool({ status: 'done', args: '{"q":1}', output })} />)
