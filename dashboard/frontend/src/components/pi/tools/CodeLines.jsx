@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import { cappedSlice } from './lineCap'
-import ShowAllToggle from './ShowAllToggle'
+import Capped from './Capped'
 
 const ROW_TONES = {
   hunk: 'text-info-fg',
@@ -23,20 +21,17 @@ function CodeRow({ line }) {
 }
 
 export default function CodeLines({ lines }) {
-  const [expanded, setExpanded] = useState(false)
-  const { capped, shown } = cappedSlice(lines, expanded)
   return (
-    <div className="flex min-w-0 flex-col items-start gap-1">
-      <div className="max-h-[32rem] w-full min-w-0 overflow-auto rounded border border-border bg-app py-1 font-mono text-xs">
-        <div className="w-max min-w-full">
-          {shown.map((line, index) => (
-            <CodeRow key={index} line={line} />
-          ))}
+    <Capped items={lines}>
+      {(shown) => (
+        <div className="max-h-[32rem] w-full min-w-0 overflow-auto rounded border border-border bg-app py-1 font-mono text-xs">
+          <div className="w-max min-w-full">
+            {shown.map((line, index) => (
+              <CodeRow key={index} line={line} />
+            ))}
+          </div>
         </div>
-      </div>
-      {capped && (
-        <ShowAllToggle expanded={expanded} total={lines.length} onToggle={() => setExpanded((value) => !value)} />
       )}
-    </div>
+    </Capped>
   )
 }

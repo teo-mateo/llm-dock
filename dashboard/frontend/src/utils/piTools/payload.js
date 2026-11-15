@@ -1,3 +1,5 @@
+import { isPlainObject } from './text'
+
 function parseJson(raw) {
   try {
     return { ok: true, value: JSON.parse(raw) }
@@ -6,16 +8,12 @@ function parseJson(raw) {
   }
 }
 
-function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
 function verbatim(raw) {
   return { text: raw, images: [], details: null, structured: null, isError: false }
 }
 
 function partsOfType(content, type) {
-  return content.filter((part) => isObject(part) && part.type === type)
+  return content.filter((part) => isPlainObject(part) && part.type === type)
 }
 
 function envelope(root) {
@@ -32,8 +30,8 @@ function envelope(root) {
   return {
     text,
     images,
-    details: isObject(root.details) ? root.details : null,
-    structured: isObject(root.structuredContent) ? root.structuredContent : null,
+    details: isPlainObject(root.details) ? root.details : null,
+    structured: isPlainObject(root.structuredContent) ? root.structuredContent : null,
     isError: root.isError === true,
   }
 }
@@ -41,14 +39,14 @@ function envelope(root) {
 export function parseToolArgs(raw) {
   if (raw == null) return null
   const { ok, value } = parseJson(raw)
-  return ok && isObject(value) ? value : null
+  return ok && isPlainObject(value) ? value : null
 }
 
 export function parseToolResult(raw) {
   if (raw == null) return null
   const { ok, value } = parseJson(raw)
   if (!ok) return verbatim(raw)
-  if (isObject(value) && Array.isArray(value.content)) return envelope(value)
+  if (isPlainObject(value) && Array.isArray(value.content)) return envelope(value)
   if (typeof value === 'string') return verbatim(value)
   return verbatim(raw)
 }

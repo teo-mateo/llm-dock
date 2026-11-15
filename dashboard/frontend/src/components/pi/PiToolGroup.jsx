@@ -22,7 +22,7 @@ function PiToolRow({ item }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="group flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-muted"
+        className="group flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-muted max-sm:px-2"
       >
         <span
           role="img"
