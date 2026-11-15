@@ -6,11 +6,12 @@ function statusClass(status) {
   return 'text-fg-muted'
 }
 
-export default function ToolMeta({ item, children }) {
+export default function ToolMeta({ item, children, after }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
       {children}
       <span className={statusClass(item.status)}>{toolStatusText(item)}</span>
+      {after}
     </div>
   )
 }

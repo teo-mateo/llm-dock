@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { argsSummary, groupToolRuns, moreLabel, toolStatusText, visibleTools } from './piToolRuns'
+import { argsSummary, durationText, groupToolRuns, moreLabel, toolStatusText, visibleTools } from './piToolRuns'
 
 const tool = (id) => ({ kind: 'tool', id: `t${id}`, status: 'done' })
 const assistant = (id, text, streaming = false) => ({ kind: 'assistant', id: `a${id}`, text, streaming })
@@ -69,6 +69,18 @@ describe('toolStatusText', () => {
     expect(toolStatusText({ status: 'error' })).toBe('error')
     expect(toolStatusText({ status: 'done', durationMs: 1400 })).toBe('done · 1.4 s')
     expect(toolStatusText({ status: 'done', durationMs: null })).toBe('done')
+    expect(toolStatusText({ status: 'done', durationMs: 0 })).toBe('done')
+    expect(toolStatusText({ status: 'done', durationMs: 3 })).toBe('done · 3 ms')
+  })
+})
+
+describe('durationText', () => {
+  it('uses milliseconds under a second and hides zero', () => {
+    expect(durationText(3)).toBe('3 ms')
+    expect(durationText(999)).toBe('999 ms')
+    expect(durationText(3707)).toBe('3.7 s')
+    expect(durationText(0)).toBe('')
+    expect(durationText(null)).toBe('')
   })
 })
 
