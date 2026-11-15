@@ -165,8 +165,6 @@ export default function ChatArea({
       return
     }
     if (cmd.arg === null) {
-      // sticky: a 15-model list unread within 6 s is useless, so it stays
-      // until the next send, a conversation change, or the close button
       showSlashNotice(formatModelList(slashModels).join('\n'), true)
       return
     }
@@ -176,7 +174,7 @@ export default function ChatArea({
       return
     }
     if (resolution.ambiguous) {
-      showSlashNotice(`"${cmd.arg}" matches several models:\n${resolution.ambiguous.join("\n")}`)
+      showSlashNotice(`"${cmd.arg}" matches several models:\n${resolution.ambiguous.join('\n')}`)
       return
     }
     const resolved = resolution.service
