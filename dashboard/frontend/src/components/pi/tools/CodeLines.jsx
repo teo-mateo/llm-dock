@@ -11,18 +11,18 @@ const ROW_TONES = {
 
 const MARKERS = { add: '+', remove: '-', context: ' ', hunk: '' }
 
-function DiffRow({ line }) {
+function CodeRow({ line }) {
   const gutter = line.kind === 'hunk' ? '⋯' : (line.number ?? '')
   return (
-    <div className={`flex ${ROW_TONES[line.kind]}`} data-kind={line.kind}>
-      <span className="w-10 shrink-0 select-none pr-2 text-right text-fg-subtle">{gutter}</span>
-      <span className="select-none">{MARKERS[line.kind]}</span>
+    <div className={`flex ${ROW_TONES[line.kind] ?? 'text-fg'}`} data-kind={line.kind ?? 'plain'}>
+      <span className="w-12 shrink-0 select-none pr-2 text-right text-fg-subtle">{gutter}</span>
+      {line.kind != null && <span className="select-none">{MARKERS[line.kind]}</span>}
       <span className="whitespace-pre">{line.text}</span>
     </div>
   )
 }
 
-export default function DiffView({ lines }) {
+export default function CodeLines({ lines }) {
   const [expanded, setExpanded] = useState(false)
   const { capped, shown } = cappedSlice(lines, expanded)
   return (
@@ -30,7 +30,7 @@ export default function DiffView({ lines }) {
       <div className="max-h-[32rem] w-full min-w-0 overflow-auto rounded border border-border bg-app py-1 font-mono text-xs">
         <div className="w-max min-w-full">
           {shown.map((line, index) => (
-            <DiffRow key={index} line={line} />
+            <CodeRow key={index} line={line} />
           ))}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { isToolError } from '../../../utils/piTools/payload'
 import CappedText from './CappedText'
-import DiffView from './DiffView'
+import CodeLines from './CodeLines'
 import PathHeader from './PathHeader'
 import ToolChip from './ToolChip'
 import ToolMeta from './ToolMeta'
@@ -29,7 +29,7 @@ export default function EditToolBody({ tool }) {
       {errorText !== '' ? (
         <CappedText text={errorText} tone="error" />
       ) : (
-        view.lines.length > 0 && <DiffView lines={view.lines} />
+        view.lines.length > 0 && <CodeLines lines={view.lines} />
       )}
     </>
   )
