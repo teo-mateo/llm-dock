@@ -1,4 +1,4 @@
-import { splitCdPrefix } from './bash'
+import { splitCdPrefix } from './shell'
 import { isToolError } from './payload'
 import { genericSummary } from './summary'
 import { firstCollapsedLine, intField, objectField, stringField } from './text'

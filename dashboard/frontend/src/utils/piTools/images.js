@@ -5,33 +5,22 @@ import { imageByteSize } from './payload'
 const PREVIEWABLE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'])
 export const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
 
-export function isPreviewable(image) {
-  return PREVIEWABLE_TYPES.has(image.mimeType.toLowerCase()) && imageByteSize(image) <= MAX_PREVIEW_BYTES
+function isPreviewable(image) {
+  return PREVIEWABLE_TYPES.has(image.mimeType) && imageByteSize(image) <= MAX_PREVIEW_BYTES
 }
 
-export function imageBlob(image) {
-  if (!isPreviewable(image)) return null
+function decode(image) {
   try {
-    const binary = atob(image.base64.replace(/\s/g, ''))
+    const binary = atob(image.base64)
     const bytes = new Uint8Array(binary.length)
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-    return new Blob([bytes], { type: image.mimeType.toLowerCase() })
+    return new Blob([bytes], { type: image.mimeType })
   } catch {
     return null
   }
 }
 
-export function imageDataUri(image) {
+export function imagePreview(image) {
   if (!isPreviewable(image)) return null
-  return `data:${image.mimeType.toLowerCase()};base64,${image.base64.replace(/\s/g, '')}`
-}
-
-const OPENED_URL_LIFETIME_MS = 60_000
-
-export function openImage(image, open = window.open) {
-  const blob = imageBlob(image)
-  if (blob == null) return
-  const url = URL.createObjectURL(blob)
-  open(url, '_blank', 'noopener')
-  setTimeout(() => URL.revokeObjectURL(url), OPENED_URL_LIFETIME_MS)
+  return { src: `data:${image.mimeType};base64,${image.base64}`, toBlob: () => decode(image) }
 }

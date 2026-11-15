@@ -26,8 +26,8 @@ function envelope(root) {
   const images = partsOfType(root.content, 'image')
     .filter((part) => typeof part.data === 'string')
     .map((part) => ({
-      mimeType: typeof part.mimeType === 'string' ? part.mimeType : 'image/png',
-      base64: part.data,
+      mimeType: (typeof part.mimeType === 'string' ? part.mimeType : 'image/png').toLowerCase(),
+      base64: part.data.replace(/\s/g, ''),
     }))
   return {
     text,
@@ -65,7 +65,7 @@ export function parseToolCall(rawArgs, rawOutput, parse) {
 }
 
 export function imageByteSize(image) {
-  const body = image.base64.replace(/\s/g, '')
+  const body = image.base64
   const padding = body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0
   return Math.max(0, Math.floor((body.length * 3) / 4) - padding)
 }

@@ -10,10 +10,11 @@ function tool(name, args, output = null) {
 
 describe('rangeText', () => {
   it('names the range, or nothing for a whole file', () => {
-    expect(rangeText(40, 40)).toBe('lines 40–79')
-    expect(rangeText(40, null)).toBe('from line 40')
-    expect(rangeText(null, 60)).toBe('first 60 lines')
-    expect(rangeText(null, null)).toBeNull()
+    const range = (args) => rangeText(parseRead(args, null))
+    expect(range({ offset: 40, limit: 40 })).toBe('lines 40–79')
+    expect(range({ offset: 40 })).toBe('from line 40')
+    expect(range({ limit: 60 })).toBe('first 60 lines')
+    expect(range({})).toBeNull()
   })
 })
 
