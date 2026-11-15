@@ -50,11 +50,17 @@ export function argsSummary(args) {
   return flat.length > MAX_SUMMARY_CHARS ? `${flat.slice(0, MAX_SUMMARY_CHARS)}…` : flat
 }
 
+export function durationText(ms) {
+  if (ms == null || ms <= 0) return ''
+  if (ms < 1000) return `${ms} ms`
+  return `${(ms / 1000).toFixed(1)} s`
+}
+
 export function toolStatusText(item) {
   if (item.status === 'running') return 'running…'
   if (item.status === 'error') return 'error'
-  if (item.durationMs == null) return 'done'
-  return `done · ${(item.durationMs / 1000).toFixed(1)} s`
+  const duration = durationText(item.durationMs)
+  return duration === '' ? 'done' : `done · ${duration}`
 }
 
 export function visibleTools(tools, expanded) {
