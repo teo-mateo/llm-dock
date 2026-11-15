@@ -123,7 +123,7 @@ class TestWriteValidation:
 
     def test_reserved_route_params_are_rejected(self):
         failed = validate("litellm", gateway_config([{"model": "a", "service": "x", "params": {"api_key": "k"}}]))
-        assert failed.details == ["routes[0] ('a'): params may not set api_key"]
+        assert failed.details == ["routes[0] ('a'): unsupported params: api_key"]
 
     def test_valid_gateway_passes(self):
         assert validate("litellm", gateway_config([{"model": "a", "service": "x"}])) is None

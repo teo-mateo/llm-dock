@@ -11,9 +11,24 @@ from flag_metadata import GATEWAY_ENGINES, openwebui_base_url, service_kind
 # base_url.
 _NATIVE_PROVIDER_PREFIXES = {"mistral": "mistral"}
 
-# A route's params must not carry a credential or redirect it: config.yaml is
-# the secret-free file, and api_base/model are what the route itself resolves.
-RESERVED_ROUTE_PARAMS = frozenset({"api_key", "api_base", "model"})
+# An allowlist, not a deny-list: config.yaml is the 0644 secret-free file, and
+# any open-ended option (extra_headers, a nested dict) can carry a credential.
+# Values are scalars or lists of strings for the same reason.
+ROUTE_PARAMS = frozenset({
+    "supports_reasoning",
+    "supports_function_calling",
+    "supports_vision",
+    "reasoning_effort",
+    "merge_reasoning_content_in_choices",
+    "additional_drop_params",
+    "max_tokens",
+    "temperature",
+    "timeout",
+    "stream_timeout",
+    "num_retries",
+    "rpm",
+    "tpm",
+})
 
 
 @dataclass(frozen=True)
@@ -74,10 +89,20 @@ def _params_errors(i: int, model: str, params: Any) -> List[str]:
         return []
     if not isinstance(params, dict):
         return [f"routes[{i}] ('{model}'): params must be an object"]
-    reserved = sorted(RESERVED_ROUTE_PARAMS & set(params))
-    if reserved:
-        return [f"routes[{i}] ('{model}'): params may not set {', '.join(reserved)}"]
-    return []
+    errors = []
+    unknown = sorted(set(params) - ROUTE_PARAMS)
+    if unknown:
+        errors.append(f"routes[{i}] ('{model}'): unsupported params: {', '.join(unknown)}")
+    for key in sorted(set(params) & ROUTE_PARAMS):
+        if not _is_plain_value(params[key]):
+            errors.append(f"routes[{i}] ('{model}'): params.{key} must be a scalar or a list of strings")
+    return errors
+
+
+def _is_plain_value(value: Any) -> bool:
+    if isinstance(value, list):
+        return all(isinstance(item, str) for item in value)
+    return value is None or isinstance(value, (str, int, float, bool))
 
 
 def _dock_skip_reason(services_db: Dict[str, Any], service_name: str) -> Optional[str]:

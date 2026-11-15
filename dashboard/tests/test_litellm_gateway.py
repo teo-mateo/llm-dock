@@ -42,10 +42,14 @@ class TestValidateRoutes:
         errors = validate_routes([{"model": "a", "service": "s1"}, {"model": "a", "service": "s2"}])
         assert any("duplicate" in e for e in errors)
 
-    @pytest.mark.parametrize("reserved", ["api_key", "api_base", "model"])
-    def test_params_may_not_set_credentials_or_targets(self, reserved):
-        errors = validate_routes([{"model": "a", "service": "s", "params": {reserved: "x"}}])
-        assert errors == [f"routes[0] ('a'): params may not set {reserved}"]
+    @pytest.mark.parametrize("key", ["api_key", "api_base", "model", "extra_headers", "aws_secret_access_key"])
+    def test_params_outside_the_allowlist_are_rejected(self, key):
+        errors = validate_routes([{"model": "a", "service": "s", "params": {key: "x"}}])
+        assert errors == [f"routes[0] ('a'): unsupported params: {key}"]
+
+    def test_allowed_params_reject_nested_values(self):
+        errors = validate_routes([{"model": "a", "service": "s", "params": {"timeout": {"Authorization": "Bearer x"}}}])
+        assert errors == ["routes[0] ('a'): params.timeout must be a scalar or a list of strings"]
 
     def test_params_must_be_an_object(self):
         assert validate_routes([{"model": "a", "service": "s", "params": ["x"]}])
