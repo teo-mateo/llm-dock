@@ -114,6 +114,14 @@ def glm_pack(tmp_path):
     return pack
 
 
+@pytest.fixture
+def hy4_pack(tmp_path):
+    pack = tmp_path / "Hy4-Flash-Maya-L" / "maya-hy4"
+    (pack / "tokenizer").mkdir(parents=True)
+    (pack / "hy4.txt").write_text("")
+    return pack
+
+
 def build(pack, *extra, state=Path("/maya-state")):
     return launcher.build_config(["--pack", str(pack), "--model-name", "svc", "--api-key", "k", *extra],
                                  state_dir=state, maya_root=Path("/opt/maya"))
@@ -145,6 +153,19 @@ def test_launcher_picks_the_glm_engine_and_its_defaults(glm_pack):
     assert cfg["exe"] == "/opt/maya/build/maya"
     assert cfg["args"][:2] == ["--glm-pack", str(glm_pack)]
     assert cfg["sampling"]["top_p"] == 0.95
+
+
+def test_launcher_picks_the_hy4_engine_and_tencents_sampling(hy4_pack):
+    cfg, _ = build(hy4_pack, "--max-context", "262144", "--mtp")
+    assert cfg["exe"] == "/opt/maya/build/maya-hy4"
+    assert cfg["args"] == ["--pack", str(hy4_pack), "--max-context", "262144", "--mtp"]
+    assert cfg["sampling"] == {"temperature": 0.9, "top_p": 1.0}
+    assert "vision" not in cfg
+
+
+def test_launcher_sampling_knobs_override_the_family_defaults(hy4_pack):
+    cfg, _ = build(hy4_pack, "--sampling-temperature", "0.6", "--sampling-top-p", "0.9")
+    assert cfg["sampling"] == {"temperature": 0.6, "top_p": 0.9}
 
 
 def glm_vision_files(pack, root):
