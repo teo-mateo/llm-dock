@@ -2113,8 +2113,8 @@ SGLANG_FLAGS = {
 
 # ============================================
 # FLAG METADATA FOR Project Maya (maya/launcher.py)
-# model_path is the pack directory; the launcher picks maya-ds4 (a ds4.txt pack)
-# or maya (GLM). Its own knobs below build server.py's run config; any other
+# model_path is the pack directory; the launcher picks maya-ds4 (a ds4.txt pack),
+# maya (GLM) or maya-hy4 (a hy4.txt pack). Its own knobs below build server.py's run config; any other
 # --flag is passed to the engine verbatim. Defaults are the DeepSeek-V4.1 2.25 bpw
 # DSpark run that was tuned natively (maya-deepseek-2.25-dspark.json).
 # ============================================

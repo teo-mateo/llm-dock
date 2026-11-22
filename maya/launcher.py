@@ -21,10 +21,12 @@ MAYA_ROOT = Path(os.environ.get("MAYA_ROOT", "/opt/maya"))
 STATE_DIR = Path(os.environ.get("MAYA_STATE_DIR", "/maya-state"))
 
 # The pack's own files say which engine reads it: maya-ds4 writes ds4.txt, the
-# GLM packer writes index.txt. top_p is each family's maya.py default.
+# GLM packer writes index.txt, the Hy4 packer hy4.txt. temperature and top_p are
+# each family's maya.py default (tools/maya_quants.py MODEL_DEFAULTS).
 FAMILIES = {
-    "deepseek": {"exe": "build/maya-ds4", "pack_flag": "--pack", "top_p": 1.0},
-    "glm": {"exe": "build/maya", "pack_flag": "--glm-pack", "top_p": 0.95},
+    "deepseek": {"exe": "build/maya-ds4", "pack_flag": "--pack", "temperature": 1.0, "top_p": 1.0},
+    "glm": {"exe": "build/maya", "pack_flag": "--glm-pack", "temperature": 1.0, "top_p": 0.95},
+    "hy4": {"exe": "build/maya-hy4", "pack_flag": "--pack", "temperature": 0.9, "top_p": 1.0},
 }
 
 # Engine flags the launcher owns: the pack is model_path, and --serve is how
@@ -37,7 +39,9 @@ def pack_family(pack: Path) -> str:
         return "deepseek"
     if (pack / "index.txt").is_file():
         return "glm"
-    raise SystemExit(f"[llm-dock] {pack} is not a Maya pack (no ds4.txt or index.txt)")
+    if (pack / "hy4.txt").is_file():
+        return "hy4"
+    raise SystemExit(f"[llm-dock] {pack} is not a Maya pack (no ds4.txt, index.txt or hy4.txt)")
 
 
 VISION_EXE = "build-vision/bin/maya-vision"
@@ -65,7 +69,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--api-key", default="")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--gpu", default="0")
-    p.add_argument("--sampling-temperature", type=float, default=1.0)
+    p.add_argument("--sampling-temperature", type=float)
     p.add_argument("--sampling-top-p", type=float)
     p.add_argument("--reasoning-effort", default="high")
     p.add_argument("--thinking-budget", type=int)
@@ -101,7 +105,8 @@ def build_config(argv: List[str], state_dir: Path = STATE_DIR,
         "model_name": args.model_name,
         "gpu": gpus,
         "sampling": {
-            "temperature": args.sampling_temperature,
+            "temperature": args.sampling_temperature if args.sampling_temperature is not None
+            else family["temperature"],
             "top_p": args.sampling_top_p if args.sampling_top_p is not None else family["top_p"],
         },
         "reasoning_effort": _effort(args.reasoning_effort),
