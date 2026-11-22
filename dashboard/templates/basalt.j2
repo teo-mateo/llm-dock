@@ -1,0 +1,48 @@
+  {{ service_name }}:
+    image: {{ image }}
+    container_name: {{ service_name }}
+    restart: no
+    init: true
+    user: "{{ uid }}:{{ gid }}"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    ports:
+      - "{{ port }}:8080"
+
+    # Experts, prompt checkpoints and parked conversations live in page-locked RAM;
+    # the host's default memlock limit (16 GB) fails those allocations.
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 2gb
+    stop_grace_period: 60s
+
+    environment:
+      - HOME=/data
+      - HF_HUB_OFFLINE=1
+{% for k, v in (extra_env or {}).items() %}
+      - {{ (k ~ '=' ~ v) | tojson }}
+{% endfor %}
+
+    volumes:
+      - ${HOME}/.cache/huggingface:/hf-cache:ro
+      - ${HOME}/.cache/models:/local-models:ro
+      - {{ state_dir }}:/data
+
+    networks:
+      - llm-network
+
+    # The image's entrypoint serves /data/basalt_config.json; the single-model form
+    # takes the pack and every flag on argv instead. api-key cannot live in a config
+    # file. --allowed-host "*": Basalt 403s an unknown Host header, and Open WebUI
+    # dials http://<service>:8080 over llm-network.
+    entrypoint: ["basalt", "serve"]
+    command: {{ basalt_args | tojson }}

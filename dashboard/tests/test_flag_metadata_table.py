@@ -24,13 +24,13 @@ TOKEN = "test-token-flag-metadata-table"
 BENCH = "llamacpp_bench"
 PREVIOUS_MESSAGE = (
     'template_type must be "llamacpp", "ik_llamacpp", "llamacpp_bench", "vllm", '
-    '"ds4", "tabbyapi", "ninfer", "sglang", "maya", or "litellm"'
+    '"ds4", "tabbyapi", "ninfer", "sglang", "maya", "basalt", or "litellm"'
 )
 
 
 PREVIOUS_CREATE_MESSAGE = (
     'template_type must be "llamacpp", "ik_llamacpp", "vllm", "ds4", "tabbyapi", '
-    '"ninfer", "sglang", "maya", or "litellm"'
+    '"ninfer", "sglang", "maya", "basalt", or "litellm"'
 )
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 

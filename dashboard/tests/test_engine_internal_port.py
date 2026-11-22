@@ -45,6 +45,7 @@ def captured_docker_exec(monkeypatch):
         ("ninfer", 8080),
         ("sglang", 8001),
         ("maya", 8080),
+        ("basalt", 8080),
     ],
 )
 def test_table_pins_each_engine(template_type, port):
