@@ -6,7 +6,7 @@ playbook (adding/running models, gotchas, chat subsystem notes).
 
 ## Project Overview
 
-LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference services. It runs eight inference engines — llama.cpp, its `ik_llama.cpp` fork, vLLM, ds4, TabbyAPI (EXL3), NInfer, SGLang / Pennyroyal, and Project Maya — with automatic GPU detection, model discovery, and Open WebUI integration. See [Supported Engines](#supported-engines).
+LLM-Dock is a Docker Compose-based dashboard for managing local LLM inference services. It runs nine inference engines — llama.cpp, its `ik_llama.cpp` fork, vLLM, ds4, TabbyAPI (EXL3), NInfer, SGLang / Pennyroyal, Project Maya, and Basalt — with automatic GPU detection, model discovery, and Open WebUI integration. See [Supported Engines](#supported-engines).
 
 **Access points:**
 - Dashboard: `http://localhost:3399`
@@ -383,7 +383,7 @@ Gotchas:
 
 ### Service Templates
 Services are generated from Jinja2 templates in `templates/`, one per engine:
-`llamacpp.j2`, `ik_llamacpp.j2`, `vllm.j2`, `ds4.j2`, `tabbyapi.j2`, `ninfer.j2`, `sglang.j2`, `maya.j2`. The
+`llamacpp.j2`, `ik_llamacpp.j2`, `vllm.j2`, `ds4.j2`, `tabbyapi.j2`, `ninfer.j2`, `sglang.j2`, `maya.j2`, `basalt.j2`. The
 service's `template_type` selects the template, its file name, and the flag
 metadata used by the config UI. `SERVICE_NAME_PREFIXES` in `flag_metadata.py`
 maps a type to its service-name prefix where they differ (`ik_llamacpp` →
@@ -394,7 +394,7 @@ Registration is explicit, not part of service creation: `POST /api/services/<nam
 
 ## Supported Engines
 
-Eight engines are first-class. "First-class" means all four of: a Jinja template
+Nine engines are first-class. "First-class" means all four of: a Jinja template
 in `dashboard/templates/`, a branch in `ComposeManager._render_service()`
 (image default, mandatory fields, template context), a `template_type` entry in
 `flag_metadata.py` (`MANDATORY_FIELDS`, `get_flag_metadata`), and an image
@@ -511,6 +511,17 @@ Gotchas:
 - **Logs:** `server.py` sends engine stderr only to the config's `log`, so the launcher points it at `/maya-state/engine.log` and tails that onto stdout (`STRATA_SERVER_LOG=0` keeps the server's own lines out of it). The in-app updater is disabled (`MAYA_UPDATE_CHECK=0`).
 - **Chat:** no `model` field is sent (the served id, the alias, is display-only); reasoning levels map to `reasoning_effort` (`off` → `none`; Maya reads none/low/high/max, `medium`→high and `xhigh`→max silently). No ladder is declared on a service until probed.
 - **Not supported:** metrics (Maya's Prometheus is on `/metrics/prometheus`, the scraper reads `/metrics`), benchmarking, flag surface (no `flag_surfaces/maya.json`), the inspector capturing `/v1/messages`. Design and open items: `docs/plans/project-maya-integration.md`.
+
+### Basalt
+- **What it is:** jesdga95's Blackwell-only engine (`github.com/jesdga95/basalt`, MIT, a Strata fork) for Qwen3.8-Flash-Next, DeepSeek-V4.1-Flash, Qwen3.8-27B, Hy4-flash and Inkling 2 Mini. One `.basalt` pack file per model (weights, tokenizer, template, drafter, vision projector), so `model_path` is a *file* like ds4's. OpenAI and Anthropic APIs plus its own web UI on `/`.
+- **Image:** `llm-dock-basalt`, built by `./build-basalt.sh` with upstream's own Dockerfile from a pinned commit (`BASALT_COMMIT`, default the v0.5.5 sha) exported to `~/.cache/llm-dock-basalt-build/<sha>/`. `CUDA_TAG=13.0.2` (the release archives' CUDA; Linux driver floor 580.95.05) rather than upstream's newer default. Labels `llm-dock.basalt-*` carry the commit and version. `BASALT_IMAGE` tags another image, which a service's `image` field runs.
+- **Service:** `template_type: "basalt"`, prefix `basalt-`, port 8080. The template replaces the entrypoint (which wants `/data/basalt_config.json`) with `basalt serve <pack>` and the service fields on argv: `--host 0.0.0.0 --port 8080 --alias --api-key --allowed-host "*"`. Those are `BASALT_RESERVED_FLAGS`, rejected as params. Every other `--flag` param follows verbatim (switches bare).
+- **`--allowed-host "*"` is required:** Basalt 403s a `Host` header it does not know, and Open WebUI dials `http://<service>:8080`.
+- **Mounts:** HF cache at `/hf-cache` (ro), `~/.cache/models` at `/local-models` (ro), and `HOME=/data` on `~/.cache/basalt/llm-dock/<service>` (`LLM_DOCK_BASALT_STATE_DIR`), created at render time so it is not root-owned; the container runs as the host uid:gid. `memlock: -1` because experts and caches are page-locked.
+- **Chat:** sends the alias as `model` (`MODEL_FIELD_ENGINES`: any other name is a 404); reasoning levels map to `reasoning_effort` (`off` → `none`). Inkling accepts `none|minimal|low|medium|high|xhigh|max` and still writes a short thinking block at `none`.
+- **Images:** `--vision` defaults to `off`; set `--vision dynamic` (≈0 VRAM idle) or a GPU number.
+- **Inkling 2 Mini:** `hf download jesdga/Inkling-2-Mini-Basalt Inkling-2-Mini-NVFP4-q8.basalt` (19.7 GB); every expert fits on the 96 GB card even at `--max-context 1048576 --kv fp8`. One card, no layer split; concurrency (`--parallel`) is upstream work in progress.
+- **Not supported:** metrics and slots (Basalt's `/metrics` and `/slots` are JSON of its own shape, not Prometheus / llama.cpp), benchmarking, recorded flag surface, the inspector capturing `/v1/messages`.
 
 ## API Routes
 
@@ -697,11 +708,11 @@ Each top-level key is a service name (matches `container_name`). Fields:
 | `alias` | string | Usually equals the service name; also passed to `llama-server --alias` |
 | `port` | int | Host port (container maps to 8080 for the llama.cpp family, 8000 for vLLM/ds4/TabbyAPI) |
 | `api_key` | string | Per-service key. `POST /api/services` generates `key-<hex32>` when omitted; `PUT /api/services/<name>/set-global-api-key` copies `config.GLOBAL_API_KEY` (from `LLM_DOCK_API_KEY`) into one service |
-| `template_type` | `"llamacpp"` \| `"ik_llamacpp"` \| `"vllm"` \| `"ds4"` \| `"tabbyapi"` \| `"ninfer"` \| `"sglang"` \| `"maya"` | Selects Jinja template, flag metadata and image default |
+| `template_type` | `"llamacpp"` \| `"ik_llamacpp"` \| `"vllm"` \| `"ds4"` \| `"tabbyapi"` \| `"ninfer"` \| `"sglang"` \| `"maya"` \| `"basalt"` | Selects Jinja template, flag metadata and image default |
 | `model_path` | string | Absolute in-container path to the model **file** for `llamacpp`/`ik_llamacpp`/`ds4`; to the model **directory** for `tabbyapi`; to the Maya **pack directory** (absolute host path) for `maya` |
 | `model_name` | string | vLLM only — HF model ID (e.g. `Qwen/Qwen3.6-35B-A3B-FP8`) |
 | `mmproj_path` | string | Optional, llama.cpp family — multimodal projector GGUF |
-| `image` | string | Optional image override, editable in the v2 config panel. Honoured by the engines in `flag_metadata.IMAGE_OVERRIDE_ENGINES` (`llamacpp`, `ik_llamacpp`, `vllm`, `sglang`, `maya`); `ds4`, `tabbyapi` and `ninfer` always render their `ENGINE_IMAGES` entry and reject a non-empty value at write time. Every template renders `image: {{ image }}` from `effective_image()`, so `ENGINE_IMAGES` drives all eight. `""` or absent means the engine default; `flag_metadata.effective_image()` is the one rule that the compose render and the service payload both read. `PUT /api/services/<name>` recreates a running container (600 s, so a pull fits) only when the effective image changes, and answers `configured_image` (what services.json now renders, not necessarily what runs), `restarted` and, when the recreate fails, `recreate_error` with a 200 (the config is committed); a non-local override adds a non-blocking `warnings` entry |
+| `image` | string | Optional image override, editable in the v2 config panel. Honoured by the engines in `flag_metadata.IMAGE_OVERRIDE_ENGINES` (`llamacpp`, `ik_llamacpp`, `vllm`, `sglang`, `maya`, `basalt`); `ds4`, `tabbyapi` and `ninfer` always render their `ENGINE_IMAGES` entry and reject a non-empty value at write time. Every template renders `image: {{ image }}` from `effective_image()`, so `ENGINE_IMAGES` drives all nine. `""` or absent means the engine default; `flag_metadata.effective_image()` is the one rule that the compose render and the service payload both read. `PUT /api/services/<name>` recreates a running container (600 s, so a pull fits) only when the effective image changes, and answers `configured_image` (what services.json now renders, not necessarily what runs), `restarted` and, when the recreate fails, `recreate_error` with a 200 (the config is committed); a non-local override adds a non-blocking `warnings` entry |
 | `params` | object | CLI flag → value. Empty string `""` means flag is passed with no value (e.g. `"--enable-prefix-caching": ""`). Values with spaces/JSON should be pre-quoted with single quotes. A key starting `env:` is not a flag — it becomes a container environment variable |
 | `model_size`, `model_size_str` | int, string | Written at creation; every read recomputes them via `compute_model_size`, so the stored pair is informational only |
 | `favorite` | bool | Optional, UI-only pin. Never a container flag |
@@ -1152,7 +1163,7 @@ calls it once at boot while `atexit` calls `stop_all()`.
 
 - **Port relocation is one change point.** With `inspect` on,
   `ComposeManager._render_service()` renders `"127.0.0.1:<upstream>:<internal>"`
-  for the service's port mapping (all eight templates take it through the same
+  for the service's port mapping (all nine templates take it through the same
   `port` context key; an un-inspected service renders byte-identically). The
   upstream port comes from `inspector/ports.py` — the lowest free in
   **34000–34999**, where free counts every service's `port` and

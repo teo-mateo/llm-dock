@@ -21,6 +21,7 @@ MANDATORY_FIELDS = {
     "ninfer": ["port", "model_path", "alias", "api_key"],
     "sglang": ["port", "model_path", "alias", "api_key"],
     "maya": ["port", "model_path", "alias", "api_key"],
+    "basalt": ["port", "model_path", "alias", "api_key"],
     # The gateway has no model files: it is config-driven (routes in
     # services.json, rendered by litellm_gateway.ensure()).
     "litellm": ["port", "alias", "api_key", "routes"],
@@ -45,6 +46,7 @@ ENGINE_INTERNAL_PORTS = {
     "ninfer": 8080,
     "sglang": 8001,
     "maya": 8080,
+    "basalt": 8080,
     # LiteLLM's proxy listens on 4000 inside the container.
     "litellm": 4000,
 }
@@ -67,6 +69,7 @@ ENGINE_IMAGES = {
     "ninfer": "llm-dock-ninfer",
     "sglang": "llm-dock-sglang",
     "maya": "llm-dock-maya",
+    "basalt": "llm-dock-basalt",
     # No local wrapper yet: consumed as the upstream image directly. Pulls
     # need an anonymous DOCKER_CONFIG when a stale ghcr credential is stored
     # (see CLAUDE.md "ghcr pulls fail").
@@ -79,7 +82,7 @@ def default_engine_image(template_type: str) -> str:
     return ENGINE_IMAGES.get(template_type, "")
 
 
-IMAGE_OVERRIDE_ENGINES = frozenset({"llamacpp", "ik_llamacpp", "vllm", "sglang", "maya"})
+IMAGE_OVERRIDE_ENGINES = frozenset({"llamacpp", "ik_llamacpp", "vllm", "sglang", "maya", "basalt"})
 
 
 def effective_image(template_type: str, config: dict) -> str:
@@ -2319,6 +2322,161 @@ MAYA_FLAGS = {
 }
 
 
+# ============================================
+# FLAG METADATA FOR basalt serve (single-model form)
+# The pack path is positional and rendered with host, port, alias, api key and
+# allowed-host from the service fields (BASALT_RESERVED_FLAGS).
+# ============================================
+
+BASALT_RESERVED_FLAGS = (
+    "--model", "--config", "--alias", "--api-key", "--api-key-file", "--host", "--port",
+)
+
+BASALT_FLAGS = {
+    "max_context": {
+        "cli": "--max-context",
+        "type": "int",
+        "category": "Context & KV",
+        "description": "Longest context, shared by the parallel slots (Inkling: 1024 to 1048576).",
+        "default": "8192",
+        "impact": "Critical",
+    },
+    "kv": {
+        "cli": "--kv",
+        "type": "string",
+        "category": "Context & KV",
+        "description": "KV cache format. Inkling: fp16 or fp8 (fp8 halves the full-attention caches).",
+        "default": "fp16",
+        "options": "fp16, fp8, int8, q4_0, k8v4",
+        "impact": "High",
+    },
+    "parallel": {
+        "cli": "--parallel",
+        "type": "int",
+        "category": "Slots",
+        "description": "Requests served at once (1..8); the context is split between slots.",
+        "default": "1",
+        "impact": "High",
+    },
+    "slot_full_context": {
+        "cli": "--slot-full-context",
+        "type": "bool",
+        "category": "Slots",
+        "description": "Give every slot the whole --max-context, at N times the KV.",
+        "impact": "Medium",
+    },
+    "fit_max_tokens": {
+        "cli": "--fit-max-tokens",
+        "type": "bool",
+        "category": "Server",
+        "description": "Clamp max_tokens to the remaining context instead of a 400.",
+        "impact": "Low",
+    },
+    "vision": {
+        "cli": "--vision",
+        "type": "string",
+        "category": "Vision",
+        "description": "Image input: off, dynamic (about 0 VRAM idle), cpu, or a GPU number for a sidecar.",
+        "default": "off",
+        "options": "off, dynamic, cpu, 0",
+        "impact": "High",
+    },
+    "reasoning_effort": {
+        "cli": "--reasoning-effort",
+        "type": "string",
+        "category": "Thinking",
+        "description": "Effort for requests that name none (Inkling's template default is high).",
+        "options": "none, minimal, low, medium, high, xhigh, max",
+        "impact": "Medium",
+    },
+    "reasoning_budget_tokens": {
+        "cli": "--reasoning-budget-tokens",
+        "type": "int",
+        "category": "Thinking",
+        "description": "Thinking budget for requests that name none; a request's own value wins.",
+        "default": "0",
+        "impact": "Medium",
+    },
+    "spec": {
+        "cli": "--spec",
+        "type": "int",
+        "category": "Drafting",
+        "description": "Verify windows of at most N tokens; 0 or 1 turns drafting off (Inkling DSpark default 8).",
+        "impact": "High",
+    },
+    "expert_cache": {
+        "cli": "--expert-cache",
+        "type": "string",
+        "category": "Memory",
+        "description": "Expert blobs kept in VRAM: auto (what fits) or an exact count.",
+        "default": "auto",
+        "impact": "High",
+    },
+    "vram_reserve_mib": {
+        "cli": "--vram-reserve-mib",
+        "type": "int",
+        "category": "Memory",
+        "description": "VRAM kept free on the main card for graphs, scratch and the head.",
+        "default": "700",
+        "impact": "Medium",
+    },
+    "ram_reserve_mib": {
+        "cli": "--ram-reserve-mib",
+        "type": "int",
+        "category": "Memory",
+        "description": "RAM left free for the rest of the system.",
+        "default": "2048",
+        "impact": "Medium",
+    },
+    "prompt_cache": {
+        "cli": "--prompt-cache",
+        "type": "int",
+        "category": "Caching",
+        "description": "Conversation checkpoints kept in RAM; 0 reads every prompt from the start.",
+        "default": "6",
+        "impact": "Medium",
+    },
+    "conversation_cache_mib": {
+        "cli": "--conversation-cache-mib",
+        "type": "int",
+        "category": "Caching",
+        "description": "RAM budget for parked conversations (0 = off).",
+        "default": "0",
+        "impact": "Medium",
+    },
+    "conversation_cache_disk_mib": {
+        "cli": "--conversation-cache-disk-mib",
+        "type": "int",
+        "category": "Caching",
+        "description": "Disk budget for parked conversations, under the service's state dir.",
+        "default": "0",
+        "impact": "Low",
+    },
+    "idle_sleep": {
+        "cli": "--idle-sleep",
+        "type": "int",
+        "category": "Server",
+        "description": "Seconds idle before freeing VRAM (RAM kept, wakes in seconds).",
+        "impact": "Medium",
+    },
+    "idle_unload": {
+        "cli": "--idle-unload",
+        "type": "int",
+        "category": "Server",
+        "description": "Seconds idle before unloading the model.",
+        "impact": "Medium",
+    },
+    "gpu": {
+        "cli": "--gpu",
+        "type": "string",
+        "category": "Server",
+        "description": "Cards as nvidia-smi numbers them; the first is the main card.",
+        "default": "0",
+        "impact": "Medium",
+    },
+}
+
+
 FLAG_METADATA_BY_TYPE: Dict[str, Dict[str, Any]] = {
     "llamacpp": LLAMACPP_LLAMA_SERVER_FLAGS,
     "ik_llamacpp": LLAMACPP_LLAMA_SERVER_FLAGS,
@@ -2329,6 +2487,7 @@ FLAG_METADATA_BY_TYPE: Dict[str, Dict[str, Any]] = {
     "ninfer": NINFER_FLAGS,
     "sglang": SGLANG_FLAGS,
     "maya": MAYA_FLAGS,
+    "basalt": BASALT_FLAGS,
     "litellm": {},
 }
 
@@ -2347,7 +2506,7 @@ BENCHMARK_ENGINES = frozenset({"llamacpp"})
 # which their templates pin to the service alias. The other local engines
 # receive none: a string they do not advertise can regress engines that
 # validate it.
-MODEL_FIELD_ENGINES = frozenset({"ninfer", "sglang"})
+MODEL_FIELD_ENGINES = frozenset({"ninfer", "sglang", "basalt"})
 
 # Engines whose api_key is a credential of their own that clients are configured
 # with (the gateway's master key), not the shared default key. Default-key
@@ -2560,6 +2719,11 @@ def validate_service_config(
         for flag in ("--pack", "--glm-pack", "--serve", "--model-name", "--api-key", "--port"):
             if flag in params:
                 errors.append(f"Maya '{flag}' is set from the service fields, not a param")
+
+    if template_type == "basalt":
+        for flag in BASALT_RESERVED_FLAGS:
+            if flag in params:
+                errors.append(f"Basalt '{flag}' is set from the service fields, not a param")
 
     if template_type == "sglang":
         profile = params.get("--profile", "next")

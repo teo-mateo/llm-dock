@@ -24,7 +24,7 @@ ENGINES = sorted(ENGINE_IMAGES)
 def test_request_model_sends_the_alias_only_to_engines_that_need_a_model_field(engine):
     sent = request_model({"template_type": engine, "alias": "served-id"})
 
-    assert sent == ("served-id" if engine in {"ninfer", "sglang"} else None)
+    assert sent == ("served-id" if engine in {"ninfer", "sglang", "basalt"} else None)
 
 
 def test_request_model_rules_are_unchanged_for_the_edge_cases():
@@ -60,7 +60,7 @@ def test_the_slots_route_serves_only_the_slots_engines(metrics_client, engine):
 
 def test_the_capability_tables_are_exactly_the_recorded_engines():
     assert SLOTS_ENGINES == {"llamacpp"}
-    assert MODEL_FIELD_ENGINES == {"ninfer", "sglang"}
+    assert MODEL_FIELD_ENGINES == {"ninfer", "sglang", "basalt"}
     assert WEB_UI_ENGINES == {"llamacpp"}
 
 
@@ -85,6 +85,6 @@ def test_every_engine_has_a_badge_label_and_it_is_what_the_badges_show_today():
 
     assert labels == {
         "llamacpp": "llama.cpp", "ik_llamacpp": "ik_llama", "vllm": "vLLM", "ds4": "DS4",
-        "tabbyapi": "EXL3", "ninfer": "NInfer", "sglang": "SGLang", "maya": "Maya", "litellm": "Gateway",
+        "tabbyapi": "EXL3", "ninfer": "NInfer", "sglang": "SGLang", "maya": "Maya", "basalt": "Basalt", "litellm": "Gateway",
     }
     assert all(row["badge_label"] for row in ENGINE_PRESENTATION.values())

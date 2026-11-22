@@ -22,6 +22,12 @@ from service_names import validate_rename
 logger = logging.getLogger(__name__)
 
 
+def basalt_state_dir(service_name: str) -> Path:
+    root = os.environ.get("LLM_DOCK_BASALT_STATE_DIR")
+    base = Path(root) if root else Path.home() / ".cache" / "basalt" / "llm-dock"
+    return base / service_name
+
+
 def maya_state_dir(service_name: str) -> Path:
     """Per-service Maya state (run config, engine log, shared chat settings)."""
     root = os.environ.get("LLM_DOCK_MAYA_STATE_DIR")
@@ -350,6 +356,27 @@ class ComposeManager:
                 "--api-key", config["api_key"],
             ]
 
+        elif template_type == "basalt":
+            context["model_path"] = config["model_path"]
+            context["alias"] = config["alias"]
+            context["api_key"] = config["api_key"]
+            context["uid"] = os.getuid()
+            context["gid"] = os.getgid()
+            state_dir = basalt_state_dir(service_name)
+            try:
+                state_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logger.warning(f"Cannot create Basalt state dir {state_dir}: {e}")
+            context["state_dir"] = str(state_dir)
+            context["basalt_args"] = [
+                config["model_path"],
+                "--host", "0.0.0.0",
+                "--port", "8080",
+                "--alias", config["alias"],
+                "--api-key", config["api_key"],
+                "--allowed-host", "*",
+            ]
+
         rendered_flags = []
         extra_env = {}
 
@@ -370,6 +397,12 @@ class ComposeManager:
                 env_var = flag_name[4:]  # strip "env:" prefix
                 context[env_var.lower()] = flag_value
                 extra_env[env_var] = flag_value
+                continue
+
+            if template_type == "basalt":
+                context["basalt_args"].append(flag_name)
+                if str(flag_value).strip():
+                    context["basalt_args"].append(str(flag_value))
                 continue
 
             if template_type == "maya":
